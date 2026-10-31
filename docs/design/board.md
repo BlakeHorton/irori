@@ -408,7 +408,7 @@ The site's own `onKeyDown` (Enter sends) is passed through and runs only when th
 **Candidates.** `useMentionCandidates()` (`lib/cards.ts`) reads `BoardService.MentionCandidates()` when the popover first opens and again on `roster:changed`, and returns a sample list outside Tauri.
 
 **Sites.**
-- Ask box (`cards/ask-box.tsx`): the prompt. With a shared board picked, `disabledMentions` is "Mentions work on your own board's asks".
+- Ask box (`cards/ask-box.tsx`): the prompt. It has no board picker (card #102): on a shared board's page the ask goes on that board, anywhere else on My board. On a board's page `disabledMentions` is "Mentions work on your own board's asks".
 - Card comment box (`cards/card-detail.tsx`, `CommentBox`).
 - Blocker answer (`cards/card-detail.tsx`, the answer form's `Input`): becomes a `MentionTextarea` with `autoSize rows={1}`, Enter sends as now.
 - Message reply (`cards/message-dialog.tsx`).

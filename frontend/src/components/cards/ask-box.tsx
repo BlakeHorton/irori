@@ -21,14 +21,14 @@ import { errorText } from "@/lib/talk"
 // window. The repo chip keeps it to one repo's agents. Files go with it: pick them with the clip, drop them
 // on the box, or paste a screenshot (card #25); pictures show as
 // thumbnails before they go, other files an icon for their kind (#73). The window stays on the
-// grid. The board chip posts it to a shared board instead (v0.5 §9, card
-// #59): every member's free agents hear it, the other people's through
-// their own devices. A board's agents carry no repo, and a board ask takes
-// no files yet, so both chips step aside for it.
+// grid. On a shared board's page it goes on that board (v0.5 §9, cards
+// #59, #96): every member's free agents hear it, the other people's through
+// their own devices. There is no board picker (card #102): to ask on
+// another board, go to that board. A board's agents carry no repo, and a
+// board ask takes no files yet, so the repo chip and the clip step aside.
 // An @mention (card #77) narrows it: only the agents it names hear it,
 // woken, in any repo, so the repo chip steps aside too. Mentions work on
 // your own board only.
-// board, on a board's page (card #96), starts the ask on that board.
 export function AskBox({
   onAsked,
   board: onPage = "",
@@ -40,11 +40,13 @@ export function AskBox({
   const [mentions, setMentions] = useMentionsDraft("ask/room")
   const [repo, setRepo] = useState("")
   const [repos, setRepos] = useState<AskRepo[]>([])
-  const [board, setBoard] = useState(onPage)
   const { boards } = useBoards()
-  const shared = boards.filter((b) => b.ready && !b.leaving)
-  // A board that went away (forgotten, left) falls back to the private room.
-  const onBoard = shared.some((b) => b.boardId === board) ? board : ""
+  // The page's board, while it is still a ready board of ours.
+  const onBoard = boards.some(
+    (b) => b.boardId === onPage && b.ready && !b.leaving
+  )
+    ? onPage
+    : ""
   // A board ask takes no mentions in v1.
   const targeted = onBoard ? [] : mentions
   const [busy, setBusy] = useState(false)
@@ -171,26 +173,6 @@ export function AskBox({
         {/* The controls ride the box's first line (h-9, its min height)
             whatever their own heights, and stay up top as it grows. */}
         <div className="flex h-9 shrink-0 items-center gap-2">
-          {shared.length > 0 && (
-            <ChoiceSelect
-              label="Which board it goes on"
-              size="sm"
-              value={onBoard}
-              onValueChange={(v) => {
-                setBoard(v)
-                setLine(null)
-              }}
-              disabled={busy}
-              className="w-auto shrink-0"
-              choices={[
-                { value: "", label: "My board" },
-                ...shared.map((b) => ({
-                  value: b.boardId,
-                  label: b.name || b.tag,
-                })),
-              ]}
-            />
-          )}
           {targeted.length > 0 && (
             <span
               className="max-w-56 truncate text-xs text-muted-foreground"
