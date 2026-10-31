@@ -211,8 +211,8 @@ pub fn call_c() -> Caller {
 }
 
 thread_local! {
-    /// Builds this thread's next harness with the person's done check on
-    /// (card #112), as the app runs; off by default.
+    /// Builds this thread's next harness (only) with the person's done
+    /// check on (card #112), as the app runs; off by default.
     pub static DONE_CHECK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -281,7 +281,7 @@ pub fn new_harness_setup(
             Some(Arc::new(CoordRoster(roster.clone()))),
             coord::Options {
                 now: Some(now.clone()),
-                done_check: DONE_CHECK.with(|c| c.get()),
+                done_check: DONE_CHECK.with(|c| c.replace(false)),
                 ..coord::Options::default()
             },
         )

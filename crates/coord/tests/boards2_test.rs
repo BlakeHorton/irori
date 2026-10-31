@@ -50,6 +50,11 @@ fn device_person(d: &str) -> String {
 }
 
 fn side(dev: &str, person: &str, owners: &Owners) -> Side {
+    side_with(dev, person, owners, false)
+}
+
+/// side, with the person's done check (card #112) on or off.
+fn side_with(dev: &str, person: &str, owners: &Owners, done_check: bool) -> Side {
     let clk = Clk(Arc::new(Mutex::new(fixed_now())));
     let c2 = clk.clone();
     let dir = tempfile::tempdir().unwrap();
@@ -71,6 +76,7 @@ fn side(dev: &str, person: &str, owners: &Owners) -> Side {
     let o = Options {
         now: Some(clk.func()),
         board: true,
+        done_check,
         person: person.into(),
         is_owner: Some(Arc::new(move |k: &str| k == me)),
         key_person: Some(Arc::new(key_person)),
@@ -718,4 +724,74 @@ fn irori_creating_a_board_card_is_refused() {
     assert_eq!(a.c.list_tasks(&TaskFilter::default()).len(), before);
     assert_eq!(b.c.list_tasks(&TaskFilter::default()).len(), before);
     a.c.create_task(P1, nt("by a person", "")).unwrap();
+}
+
+/// Card #112 on a shared board: an agent's completed waits on its
+/// person's Done, and that Done (resolve, then completed) closes the card.
+#[test]
+fn a_done_check_closes_on_a_shared_board() {
+    let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
+    let a = side_with("dev-a", P1, &owners, true);
+    a.st.append(
+        P1,
+        kinds::BOARD_CREATED,
+        &raw(r#"{"boardId":"b","creator":{"personId":"p1"},"name":"mlg","tag":"mlg"}"#),
+    )
+    .unwrap();
+    a.st.append(
+        CARD1,
+        kinds::AGENT_CARD,
+        &raw(r#"{"cardId":"c1","personId":"p1","status":"active"}"#),
+    )
+    .unwrap();
+    let a = side_reopen(a, P1, &owners);
+    let t = a.c.create_task(P1, nt("ship", "")).unwrap();
+    a.c.claim_task(CARD1, &t.id).unwrap();
+    let got =
+        a.c.set_task_state(CARD1, &t.id, COMPLETED, "shipped")
+            .unwrap();
+    assert_eq!(got.state, BLOCKED);
+    let b = got
+        .blockers
+        .iter()
+        .find(|b| b.open() && b.done_check)
+        .expect("a done check");
+    let bid = b.id.clone();
+    a.c.answer(
+        P1,
+        &t.id,
+        &bid,
+        BlockerAnswer {
+            pick: 1,
+            resolve: true,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    let closed = a.c.set_task_state(P1, &t.id, COMPLETED, "").unwrap();
+    assert_eq!(closed.state, COMPLETED);
+}
+
+/// A new coord over side s's store with the done check on.
+fn side_reopen(s: Side, person: &str, owners: &Owners) -> Side {
+    let me = person.to_string();
+    let o2 = owners.clone();
+    let o = Options {
+        now: Some(s.clk.func()),
+        board: true,
+        done_check: true,
+        person: person.into(),
+        is_owner: Some(Arc::new(move |k: &str| k == me)),
+        key_person: Some(Arc::new(key_person)),
+        device_person: Some(Arc::new(device_person)),
+        tag: Some(Arc::new(|| "mlg".to_string())),
+        board_owner: Some(Arc::new(move |p: &str, at: Option<&RowPos>| {
+            o2.lock().unwrap().iter().any(|(who, from, until)| {
+                who == p && at.map_or(*until == u64::MAX, |at| *from < at.hlc && at.hlc < *until)
+            })
+        })),
+        ..Options::default()
+    };
+    let c = Coord::new(s.st.clone(), None, o).unwrap();
+    Side { c, ..s }
 }

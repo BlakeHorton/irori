@@ -160,3 +160,39 @@ fn asking_twice_keeps_one_check() {
     let got = e.c.set_task_state(BOB, &t.id, COMPLETED, "").unwrap();
     assert_eq!(done_checks(&got).len(), 1);
 }
+
+#[test]
+fn an_old_windows_done_closes_on_the_next_completed() {
+    // A window that predates done checks sends Done as a plain answer;
+    // the agent resolves it and says completed again: the person's Done
+    // stands, so the card closes instead of asking again.
+    let e = env();
+    let t = claimed(&e);
+    let got = e.c.set_task_state(BOB, &t.id, COMPLETED, "").unwrap();
+    let bid = done_checks(&got)[0].id.clone();
+    e.c.answer(
+        USER,
+        &t.id,
+        &bid,
+        BlockerAnswer {
+            pick: 1,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    // The agent resolves the answered check (board_unblock blocker_id).
+    e.c.answer(
+        BOB,
+        &t.id,
+        &bid,
+        BlockerAnswer {
+            text: "closing it".into(),
+            resolve: true,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    let closed = e.c.set_task_state(BOB, &t.id, COMPLETED, "").unwrap();
+    assert_eq!(closed.state, COMPLETED);
+    assert!(done_checks(&closed).is_empty());
+}

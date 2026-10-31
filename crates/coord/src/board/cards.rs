@@ -19,8 +19,9 @@ use super::util::{
 };
 use super::{
     DONE_ANSWER, DONE_CONTEXT, DONE_QUESTION, KEEP_RESOLVED, MAX_ANSWER, MAX_ATTACHMENTS,
-    MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT, MAX_MISSING, MAX_MISSING_TEXT, MAX_OPEN_BLOCKERS,
-    MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION, MAX_STEP_TEXT, MAX_STEPS, MAX_WHY,
+    MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT, MAX_MISSING, MAX_MISSING_TEXT, MAX_OBJECTIVE,
+    MAX_OPEN_BLOCKERS, MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION, MAX_STEP_TEXT, MAX_STEPS,
+    MAX_WHY,
 };
 use crate::names::trim_space;
 
@@ -958,17 +959,50 @@ impl Fold {
             .filter(|b| b.open() && b.done_check)
             .map(|b| b.id.clone())
             .collect();
+        // A window that predates done checks answers Done without closing
+        // the card (and the agent may have resolved it since): if the
+        // person's last word on the latest check was Done, it stands, and
+        // the card closes now.
+        let said_done = t
+            .blockers
+            .iter()
+            .rev()
+            .find(|b| b.done_check)
+            .is_some_and(|b| {
+                b.options.first().is_some_and(|o| o.answer == DONE_ANSWER)
+                    && last_answer(self, t, &b.id).is_some_and(|a| a.pick == 1)
+            });
         for bid in earlier {
             self.answer(
                 by,
                 &t.id,
                 &bid,
                 BlockerAnswer {
-                    text: "asked again: ready for the person".into(),
+                    text: if said_done {
+                        "the person said Done".into()
+                    } else {
+                        "asked again: ready for the person".into()
+                    },
                     resolve: true,
                     ..BlockerAnswer::default()
                 },
             )?;
+        }
+        if said_done {
+            let at = self.stamp();
+            self.write(
+                by,
+                kinds::TASK_STATUS,
+                &TaskStateRow {
+                    task_id: t.id.clone(),
+                    state: COMPLETED.into(),
+                    note: cut(note, MAX_OBJECTIVE),
+                    by: by.into(),
+                    at,
+                    ..TaskStateRow::default()
+                },
+            )?;
+            return Ok(self.tasks[&t.id].clone());
         }
         let t = self.open_task(&t.id)?.clone();
         let now = self.stamp();

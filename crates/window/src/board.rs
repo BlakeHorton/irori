@@ -463,7 +463,13 @@ impl Window {
         };
         // Done on a done check (card #112): resolve it and close the card,
         // as the person.
-        if bl.done_check && bl.open() && option >= 0 {
+        if bl.done_check
+            && bl.open()
+            && bl
+                .options
+                .get(option.max(0) as usize)
+                .is_some_and(|o| option >= 0 && o.answer == coord::DONE_ANSWER)
+        {
             let (_, ns) = co
                 .answer(
                     &me,
