@@ -919,6 +919,7 @@ fn test_answer() {
         )
         .unwrap();
         let (mid, n1) = e.c.answer(USER, &task.id, "b1", pick(1, false)).unwrap();
+        let n1 = n1.into_iter().next().unwrap_or_default();
         assert!(
             mid.state == BLOCKED
                 && mid.reason == "Which adapter?"
@@ -936,6 +937,7 @@ fn test_answer() {
             continue;
         }
         let (got, n) = r.unwrap();
+        let n = n.into_iter().next().unwrap_or_default();
         let b = &got.blockers[1];
         let res = b.resolved.as_ref().expect("resolved");
         assert!(
@@ -994,6 +996,7 @@ fn test_answer_unclaimed_restores_submitted() {
     let (got, n) =
         e.c.answer(USER, &task.id, "b1", resolve_text("go"))
             .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     assert_eq!(got.state, SUBMITTED);
     assert_eq!(n.to, [ALICE]);
 }
@@ -1015,6 +1018,7 @@ fn test_answer_tells_holders() {
             },
         )
         .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     assert!(got.state == WORKING && n.to == [ALICE, BOB] && n.wake);
 }
 

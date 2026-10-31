@@ -1894,7 +1894,7 @@ fn test_person_comment_hearers() {
         let g = gone.clone();
         let around = move |k: &str| !g.lock().unwrap().iter().any(|x| x == k);
         let (cm, ns) =
-            e.c.person_comment(USER, &task.id, "which tag?", true, Some(&around))
+            e.c.person_comment(USER, &task.id, "which tag?", true, &[], Some(&around))
                 .unwrap();
         let unheard = answer.is_empty() && watch.is_empty();
         assert!(
@@ -1946,11 +1946,11 @@ fn test_person_comment_hearers() {
     let e = Env::new();
     let task = e.c.create_task(ALICE, nt("t")).unwrap();
     want_err(
-        e.c.person_comment(BOB, &task.id, "me too", false, None),
+        e.c.person_comment(BOB, &task.id, "me too", false, &[], None),
         ErrorKind::Invalid,
     );
     want_err(
-        e.c.person_comment(USER, &task.id, " ", false, None),
+        e.c.person_comment(USER, &task.id, " ", false, &[], None),
         ErrorKind::Invalid,
     );
 }

@@ -78,6 +78,7 @@ fn test_card_notices_route() {
             },
         )
         .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     r.core.route_notices(&user, &[n]).unwrap();
     let woke = r.notices_to(&r.key_a).iter().any(|d| {
         d.mode == mode::WAKE

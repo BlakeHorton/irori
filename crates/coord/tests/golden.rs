@@ -283,7 +283,8 @@ fn notice_texts_match_go() {
                 },
             )
             .unwrap()
-            .1],
+            .1[0]
+            .clone()],
     );
     add(
         "resolve",
@@ -299,13 +300,14 @@ fn notice_texts_match_go() {
                 },
             )
             .unwrap()
-            .1],
+            .1[0]
+            .clone()],
     );
     e.c.set_task_state(BOB, &t1.id, COMPLETED, "").unwrap();
     add("reopen", &[e.c.reopen(USER, &t1.id).unwrap().1]);
     add(
         "person comment",
-        &e.c.person_comment(USER, &t1.id, "more?", true, None)
+        &e.c.person_comment(USER, &t1.id, "more?", true, &[], None)
             .unwrap()
             .1,
     );

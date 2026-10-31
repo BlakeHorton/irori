@@ -42,6 +42,23 @@ crate::go_struct! {
     }
 }
 
+crate::go_struct! {
+    /// One agent a comment, ask, answer or message names (card #77).
+    #[derive(Debug, Clone, Default, PartialEq, Eq)]
+    pub struct Mention {
+        /// The agent's key in the log's own form (agent:<cardId> on a board).
+        pub key: String = "key",
+        /// The name as it was written, for the @name in the text.
+        pub name: String = "name",
+        /// Gone when written: stored, never delivered.
+        pub gone: bool = "gone" "omit",
+    }
+}
+
+/// A mention's notice kind, and the most mentions one write carries.
+pub const NOTICE_MENTIONED: &str = "mentioned";
+pub const MAX_MENTIONS: usize = 10;
+
 /// What a card's link points at.
 pub const LINK_URL: &str = "url";
 pub const LINK_PATH: &str = "path";
@@ -218,6 +235,9 @@ pub struct Ask {
     pub waiting: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub outcome: Option<Outcome>,
+    /// The agents the ask went to; empty: the room.
+    #[serde(skip_serializing_if = "omit")]
+    pub mentions: Vec<Mention>,
 }
 
 impl Ask {
@@ -495,6 +515,8 @@ pub struct Comment {
     pub missing: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub unheard: bool,
+    #[serde(skip_serializing_if = "omit")]
+    pub mentions: Vec<Mention>,
     pub device: String,
     #[serde(skip)]
     pub hlc: u64,
@@ -532,6 +554,8 @@ pub struct MessageEntry {
     pub fill: bool,
     /// `irori` writes the row as Irori itself; else as `from`.
     pub writer: String,
+    /// The agents the message mentions (they get their own copies).
+    pub mentions: Vec<Mention>,
 }
 
 /// Why a Notice exists.
@@ -716,6 +740,7 @@ pub struct BlockerAnswer {
     pub text: String,
     pub wake: bool,
     pub resolve: bool,
+    pub mentions: Vec<Mention>,
 }
 
 /// CommentOn's input.
@@ -726,6 +751,7 @@ pub struct CommentInput {
     pub files: Vec<FileRef>,
     pub blocker_id: String,
     pub missing: Vec<String>,
+    pub mentions: Vec<Mention>,
 }
 
 /// SetStep's input; `None` leaves a field alone.
@@ -742,6 +768,8 @@ pub struct NewAsk {
     pub files: Vec<FileRef>,
     pub repo_key: String,
     pub wake: bool,
+    /// Set: the ask goes only to these agents, woken.
+    pub mentions: Vec<Mention>,
 }
 
 /// ask_claim's answer.

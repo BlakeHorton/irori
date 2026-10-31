@@ -512,7 +512,7 @@ fn test_person_comment_on_an_open_ask_goes_to_the_room() {
     let e = Env::new();
     let (tk, _) = post_ask(&e, "check the logs");
     let (_, ns) =
-        e.c.person_comment(USER, &tk.id, "also the cron ones", false, None)
+        e.c.person_comment(USER, &tk.id, "also the cron ones", false, &[], None)
             .unwrap();
     assert!(
         ns.len() == 1 && ns[0].to.len() == 3 && ns[0].person && ns[0].text.contains("ask_claim"),
@@ -525,7 +525,7 @@ fn test_person_comment_on_an_open_ask_goes_to_the_room() {
             && e.c.stale_notice(&ns[0].reference, ALICE).is_empty()
     );
     let (_, ns) =
-        e.c.person_comment(USER, &tk.id, "thanks", false, None)
+        e.c.person_comment(USER, &tk.id, "thanks", false, &[], None)
             .unwrap();
     assert!(ns.len() == 1 && ns[0].to == [ALICE], "{ns:?}");
 }

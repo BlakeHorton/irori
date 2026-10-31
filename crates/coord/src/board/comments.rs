@@ -470,6 +470,21 @@ impl Fold {
         files: Vec<FileRef>,
         to: &str,
     ) -> Result<(Comment, Notice)> {
+        self.add_comment_full(by, id, text, wake, files, to, &[])
+    }
+
+    /// [`Fold::add_comment_to`] with the comment's mentions (checked).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn add_comment_full(
+        &mut self,
+        by: &str,
+        id: &str,
+        text: &str,
+        wake: bool,
+        files: Vec<FileRef>,
+        to: &str,
+        mentions: &[Mention],
+    ) -> Result<(Comment, Notice)> {
         let (by, text) = check_comment(by, text, &files)?;
         let t = self.any_task(id)?.clone();
         let at = self.stamp();
@@ -486,6 +501,7 @@ impl Fold {
                 at,
                 attachments: files.clone(),
                 to: to.into(),
+                mentions: mentions.to_vec(),
                 ..TaskCommentRow::default()
             },
         )?;
@@ -555,12 +571,16 @@ impl Fold {
         id: &str,
         text: &str,
         wake: bool,
+        mentions: &[Mention],
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> Result<(Comment, Vec<Notice>)> {
         let (by, text) = check_comment(by, text, &[])?;
         if !self.is_owner(&by) {
             return Err(invalid("only the person comments from the app"));
         }
+        let ms = self.check_mentions(&by, mentions)?;
+        let mentioned = |k: &str| ms.iter().any(|m| m.key == k);
+        let live_mention = ms.iter().any(|m| !m.gone);
         let t = self.any_task(id)?.clone();
         let (mut answer, mut watch) = self.hearers(&t, &by, around);
         let mut room = false;
@@ -576,6 +596,8 @@ impl Fold {
                 .collect();
             watch.clear();
         }
+        answer.retain(|k| !mentioned(k));
+        watch.retain(|k| !mentioned(k));
         let mut was = String::new();
         if t.holders
             .iter()
@@ -597,10 +619,12 @@ impl Fold {
                 text: text.clone(),
                 wake,
                 at,
-                unheard: answer.is_empty() && watch.is_empty(),
+                unheard: answer.is_empty() && watch.is_empty() && !live_mention,
+                mentions: ms.clone(),
                 ..TaskCommentRow::default()
             },
         )?;
+        let mn = self.mention_notice(&by, id, &ms, &text, &format!("comment:{cid}"))?;
         let t = self.tasks[id].clone();
         let mut head = format!("The person commented on {} ({})", quote(&t.title), t.refs());
         if !was.is_empty() {
@@ -626,7 +650,9 @@ impl Fold {
                 t.short_ref(),
                 deeper(id)
             );
-            return Ok((cm, vec![a]));
+            let mut ns = vec![a];
+            ns.extend(mn);
+            return Ok((cm, ns));
         }
         let mut ns = Vec::new();
         if !answer.is_empty() {
@@ -658,11 +684,17 @@ impl Fold {
             w.text.push_str(&deeper(id));
             ns.push(w);
         }
+        ns.extend(mn);
         Ok((cm, ns))
     }
 
     /// Appends a task.comment row as actor; returns the comment it folded to.
-    pub(crate) fn write_comment(&mut self, actor: &str, r: TaskCommentRow) -> Result<Comment> {
+    /// On a board the row carries no `mentions`: other people's devices
+    /// can't resolve this person's agents (board.md "Mentions").
+    pub(crate) fn write_comment(&mut self, actor: &str, mut r: TaskCommentRow) -> Result<Comment> {
+        if self.on_board {
+            r.mentions.clear();
+        }
         let cid = r.comment_id.clone();
         self.write_as(actor, kinds::TASK_COMMENT, &r)?;
         self.comments
@@ -718,6 +750,7 @@ impl Fold {
                 gone: m.gone,
                 fill: m.fill,
                 at,
+                mentions: m.mentions.clone(),
                 ..TaskCommentRow::default()
             },
         )

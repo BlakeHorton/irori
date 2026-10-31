@@ -68,6 +68,7 @@ fn reply(c: &Coord, by: &str, id: &str, bid: &str, text: &str, missing: &[&str])
             },
         )
         .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     assert!(
         n.to.is_empty() && n.text.is_empty(),
         "a blocker reply routed a notice: {n:?}"
@@ -213,6 +214,7 @@ fn test_blocker_states() {
     let (got, n) =
         e.c.answer(ALICE, &task.id, "b1", resolve("using port 4242"))
             .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     let r = got.blockers[0].resolved.clone().unwrap();
     assert!(
         r.answer == "4242"
@@ -467,6 +469,7 @@ fn test_answer_notice_recipients() {
             },
         )
         .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     assert!(got.state == BLOCKED && n.kind == NOTICE_ANSWERED && n.to == [ALICE, BOB] && n.wake);
     for s in [
         "Answer: postgres".to_string(),
@@ -486,6 +489,7 @@ fn test_answer_notice_recipients() {
     let (got, n) =
         e.c.answer(ALICE, &task.id, "b1", resolve("migrating"))
             .unwrap();
+    let n = n.into_iter().next().unwrap_or_default();
     assert!(
         got.state == WORKING
             && n.to == [BOB]

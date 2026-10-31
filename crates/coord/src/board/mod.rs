@@ -20,6 +20,7 @@ mod comments;
 mod error;
 mod fold;
 mod links;
+mod mention;
 mod mirror;
 mod resource;
 mod review;
@@ -50,6 +51,7 @@ pub use fold::{
     REASON_HOLDER_GONE, REASON_RELEASED, REASON_STOLEN, SUB_BUFFER, followed,
 };
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
+pub use mention::without_mentioned;
 pub use mirror::RELEASE_REQUEST;
 pub use resource::{
     RESOURCE_NAMED, RESOURCE_PATH, RESOURCE_PORT, Resource, check_repo_key, normalize_glob,
@@ -390,11 +392,37 @@ impl Coord {
         id: &str,
         blocker: &str,
         a: BlockerAnswer,
-    ) -> Result<(Task, Notice)> {
+    ) -> Result<(Task, Vec<Notice>)> {
         self.lock().answer(by, id, blocker, a)
     }
-    pub fn comment_on(&self, by: &str, id: &str, input: CommentInput) -> Result<(Comment, Notice)> {
+    /// An agent's comment or blocker reply. `[0]` is the comment's own
+    /// notice; a `mentioned` notice follows when the input mentions anyone.
+    pub fn comment_on(
+        &self,
+        by: &str,
+        id: &str,
+        input: CommentInput,
+    ) -> Result<(Comment, Vec<Notice>)> {
         self.lock().comment_on(by, id, input)
+    }
+    /// `by` makes `who` watchers of card `id` (a mention's watchers).
+    pub fn watch_for(&self, by: &str, id: &str, who: &[String]) -> Result<Task> {
+        self.lock().watch_for(by, id, who)
+    }
+    /// Mentions on card `id` that nothing stores (a blocker's question, a
+    /// resolve note): the live ones become watchers, and the notice that
+    /// wakes them comes back (`None`: nobody to tell).
+    pub fn mention(
+        &self,
+        by: &str,
+        id: &str,
+        mentions: &[Mention],
+        text: &str,
+    ) -> Result<Option<Notice>> {
+        let by = util::caller(by)?;
+        let mut f = self.lock();
+        let ms = f.check_mentions(&by, mentions)?;
+        f.mention_notice(&by, id, &ms, text, &format!("task:{id}"))
     }
     pub fn set_steps(&self, by: &str, id: &str, steps: Vec<Step>) -> Result<Task> {
         self.lock().set_steps(by, id, steps)
@@ -451,9 +479,11 @@ impl Coord {
         id: &str,
         text: &str,
         wake: bool,
+        mentions: &[Mention],
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> Result<(Comment, Vec<Notice>)> {
-        self.lock().person_comment(by, id, text, wake, around)
+        self.lock()
+            .person_comment(by, id, text, wake, mentions, around)
     }
     pub fn record_message(&self, m: MessageEntry) -> Result<Comment> {
         self.lock().record_message(m)

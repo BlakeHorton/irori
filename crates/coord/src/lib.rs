@@ -16,6 +16,7 @@ pub mod decision;
 pub mod devcolor;
 pub mod gojson;
 pub(crate) mod gotime;
+pub mod mentions;
 pub mod names;
 pub mod roster;
 

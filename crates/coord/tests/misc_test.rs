@@ -286,7 +286,7 @@ fn test_person_comment_reopens_a_finished_card() {
     )
     .unwrap();
     let (_, ns) =
-        e.c.person_comment(USER, &tk.id, "and in dev?", false, None)
+        e.c.person_comment(USER, &tk.id, "and in dev?", false, &[], None)
             .unwrap();
     assert!(
         ns.len() == 1 && ns[0].to == [ALICE] && ns[0].text.contains("open again"),
@@ -305,12 +305,12 @@ fn test_person_comment_reopens_a_finished_card() {
     e.c.claim_task(ALICE, &gone.id).unwrap();
     e.c.set_task_state(ALICE, &gone.id, COMPLETED, "").unwrap();
     let nobody = |_: &str| false;
-    e.c.person_comment(USER, &gone.id, "still there?", false, Some(&nobody))
+    e.c.person_comment(USER, &gone.id, "still there?", false, &[], Some(&nobody))
         .unwrap();
     assert_eq!(task(&e, &gone.id).state, COMPLETED);
     let free = e.c.create_task(USER, nt("Unheld")).unwrap();
     e.c.set_task_state(USER, &free.id, COMPLETED, "").unwrap();
-    e.c.person_comment(USER, &free.id, "fine", false, None)
+    e.c.person_comment(USER, &free.id, "fine", false, &[], None)
         .unwrap();
     assert_eq!(task(&e, &free.id).state, COMPLETED);
 }

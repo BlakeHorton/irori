@@ -691,6 +691,7 @@ fn comment_on_card(
             },
         )
         .map_err(map_err)?;
+    let notice = notice.into_iter().next().unwrap_or_default();
     let n = s.roster();
     let mut told = s.told(&s.tell(&c.sender, notice), &n);
     if let Some(b) = b {

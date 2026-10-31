@@ -222,6 +222,7 @@ impl Fold {
             repo_key: a.repo_key.clone(),
             owner: ev.device_id.clone(),
             since: t.created_at,
+            mentions: a.mentions.clone(),
             ..Ask::default()
         });
     }
@@ -685,6 +686,12 @@ impl Fold {
         if !self.is_owner(&by) {
             return Err(not_allowed("only the person asks the room"));
         }
+        if self.on_board && !input.mentions.is_empty() {
+            return Err(invalid(
+                "mentions work on an ask on your own board; on a shared board, ask the room",
+            ));
+        }
+        let mentions = self.check_mentions(&by, &input.mentions)?;
         let repo_key = trim_space(&input.repo_key).to_string();
         if !repo_key.is_empty() {
             check_repo_key(&repo_key)?;
@@ -708,6 +715,7 @@ impl Fold {
                 ask: Some(AskField {
                     wake: true,
                     repo_key: repo_key.clone(),
+                    mentions,
                 }),
                 by: by.clone(),
                 at,
@@ -751,6 +759,21 @@ impl Fold {
     /// The agents among `roster` that may take ask t now, sorted.
     fn free_agents(&self, t: &Task, roster: &[AgentCard], skip: &[String]) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
+        // An ask with mentions goes to them alone, idle or not, in any repo:
+        // those still in the roster and not gone.
+        if let Some(ask) = &t.ask
+            && !ask.mentions.is_empty()
+        {
+            for m in &ask.mentions {
+                let here = roster.iter().any(|a| a.key == m.key && a.status != "gone");
+                if m.gone || !here || skip.contains(&m.key) || out.contains(&m.key) {
+                    continue;
+                }
+                out.push(m.key.clone());
+            }
+            out.sort();
+            return out;
+        }
         for a in roster {
             let dev = cmp_or_dev(&a.device_id, owner::device_of(&a.key));
             if a.key.is_empty() || a.key == SWEEPER || self.is_owner(&a.key) || a.status != "idle" {
@@ -993,7 +1016,12 @@ impl Fold {
                     }
                     continue;
                 }
-                let free = self.free_agents(&t, agents, &a.heard);
+                // An ask with mentions has no late arrivals.
+                let free = if a.mentions.is_empty() {
+                    self.free_agents(&t, agents, &a.heard)
+                } else {
+                    Vec::new()
+                };
                 let window = gotime::since(&now, &a.since) < ASK_UNCLAIMED.as_nanos() as i128;
                 let unclaimed = a.unclaimed || a.told + free.len() as i64 == 0 || !window;
                 if free.is_empty() && unclaimed == a.unclaimed {
@@ -1414,7 +1442,12 @@ impl Fold {
 
 /// Tells `to` about ask t, from the person.
 fn ask_notice(t: &Task, to: &[String], wake: bool, why: &str) -> Notice {
-    let mut b = format!("The person asks the room ({})", t.refs());
+    let mentioned = t.ask.as_ref().is_some_and(|a| !a.mentions.is_empty());
+    let mut b = if mentioned {
+        format!("The person asks you by name ({})", t.refs())
+    } else {
+        format!("The person asks the room ({})", t.refs())
+    };
     if !why.is_empty() {
         b.push_str(&format!(", again: {why}"));
     }

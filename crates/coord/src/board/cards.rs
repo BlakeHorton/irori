@@ -1124,8 +1124,9 @@ impl Fold {
         id: &str,
         bid: &str,
         a: BlockerAnswer,
-    ) -> Result<(Task, Notice)> {
+    ) -> Result<(Task, Vec<Notice>)> {
         let by = caller(by)?;
+        let ms = self.check_mentions(&by, &a.mentions)?;
         if !a.resolve && !self.is_owner(&by) {
             return Err(invalid(
                 "only the person answers a blocker; resolve it (with a note once the person answered) or reply on it",
@@ -1207,6 +1208,7 @@ impl Fold {
                 n.to.push(h);
             }
         }
+        super::mention::without_mentioned(&mut n, &ms);
         if !a.resolve {
             let at = self.stamp();
             let actor = self.actor_for(&by);
@@ -1222,6 +1224,7 @@ impl Fold {
                     blocker_id: b.id.clone(),
                     pick: opt + 1,
                     at,
+                    mentions: ms.clone(),
                     ..TaskCommentRow::default()
                 },
             )?;
@@ -1240,7 +1243,9 @@ impl Fold {
             ));
             s.push_str(&deeper(id));
             n.text = s;
-            return Ok((self.tasks[id].clone(), n));
+            let mut ns = vec![n];
+            ns.extend(self.mention_notice(&by, id, &ms, &text, &format!("task:{id}"))?);
+            return Ok((self.tasks[id].clone(), ns));
         }
         let restored = if count_open(&t) == 1 {
             restore_state(&t).to_string()
@@ -1301,7 +1306,10 @@ impl Fold {
         }
         s.push_str(&deeper(id));
         n.text = s;
-        Ok((nt, n))
+        let said = if note.is_empty() { &text } else { &note };
+        let mut ns = vec![n];
+        ns.extend(self.mention_notice(&by, id, &ms, said, &format!("task:{id}"))?);
+        Ok((self.tasks[id].clone(), ns))
     }
 
     pub(crate) fn comment_on(
@@ -1309,12 +1317,24 @@ impl Fold {
         by: &str,
         id: &str,
         input: CommentInput,
-    ) -> Result<(Comment, Notice)> {
+    ) -> Result<(Comment, Vec<Notice>)> {
+        let by = caller(by)?;
+        let ms = self.check_mentions(&by, &input.mentions)?;
         let bid = trim_space(&input.blocker_id).to_string();
         if bid.is_empty() {
-            return self.add_comment(by, id, &input.text, input.wake, input.files);
+            let (cm, mut n) =
+                self.add_comment_full(&by, id, &input.text, input.wake, input.files, "", &ms)?;
+            super::mention::without_mentioned(&mut n, &ms);
+            let mut ns = vec![n];
+            ns.extend(self.mention_notice(
+                &by,
+                id,
+                &ms,
+                &cm.text,
+                &format!("comment:{}", cm.id),
+            )?);
+            return Ok((cm, ns));
         }
-        let by = caller(by)?;
         if self.is_owner(&by) {
             return Err(invalid(
                 "a person answers a blocker instead of replying on it",
@@ -1357,10 +1377,13 @@ impl Fold {
                 attachments: input.files,
                 blocker_id: bid,
                 missing,
+                mentions: ms.clone(),
                 ..TaskCommentRow::default()
             },
         )?;
-        Ok((cm, Notice::default()))
+        let mut ns = vec![Notice::default()];
+        ns.extend(self.mention_notice(&cm.by, id, &ms, &cm.text, &format!("comment:{}", cm.id))?);
+        Ok((cm, ns))
     }
 
     // ---- steps ----

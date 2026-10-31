@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use gocompat::time::GoTime;
 
-use super::types::{BlockedBy, BlockerOption, FileRef, Lease, Link, Outcome, Step};
+use super::types::{BlockedBy, BlockerOption, FileRef, Lease, Link, Mention, Outcome, Step};
 use crate::gojson::{GoDecode, decode, field, nil_vec, omit};
 
 crate::go_struct! {
@@ -14,6 +14,7 @@ crate::go_struct! {
     pub struct AskField {
         pub wake: bool = "wake" "omit",
         pub repo_key: String = "repoKey" "omit",
+        pub mentions: Vec<Mention> = "mentions" "omit",
     }
 }
 
@@ -144,6 +145,7 @@ crate::go_struct! {
         pub pick: i64 = "pick" "omit",
         pub missing: Vec<String> = "missing" "omit",
         pub unheard: bool = "unheard" "omit",
+        pub mentions: Vec<Mention> = "mentions" "omit",
     }
 }
 
