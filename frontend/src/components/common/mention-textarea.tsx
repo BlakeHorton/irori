@@ -382,7 +382,7 @@ function MentionRow({
         disabled && "cursor-not-allowed"
       )}
     >
-      <Face who={who} className="shrink-0" />
+      <Face who={who} className="shrink-0" noHover />
       <span
         className={cn(
           "min-w-0 truncate font-medium text-ink",

@@ -1,4 +1,5 @@
 import { minidenticon } from "minidenticons"
+import { AgentHover } from "@/components/cards/agent-hover"
 import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar"
 import { deviceVar, displayName, type AgentRef } from "@/lib/cards"
 import { cn } from "@/lib/utils"
@@ -10,16 +11,20 @@ import { cn } from "@/lib/utils"
 // with one device it is blue. A watcher is grey, the person is a violet
 // "you". A live working agent gets the green dot; a gone one, or one on
 // an offline device, is faded; a contested lease rings it amber
-// (docs/design/v0.4-devices.md §9).
+// (docs/design/v0.4-devices.md §9). Hovering an agent's face shows its
+// hover card (card #104): name, device, and its cards; noHover leaves it
+// out where the face already sits in a popup.
 export function Face({
   who,
   watching,
   noDot,
+  noHover,
   className,
 }: {
   who: AgentRef
   watching?: boolean
   noDot?: boolean
+  noHover?: boolean
   className?: string
 }) {
   const person = who.status === "person"
@@ -36,7 +41,7 @@ export function Face({
   ]
     .filter(Boolean)
     .join(" · ")
-  return (
+  const face = (
     <Avatar
       size="sm"
       className={cn(
@@ -45,7 +50,8 @@ export function Face({
         who.conflict && "ring-2 ring-warning",
         className
       )}
-      title={title}
+      title={noHover || person ? title : undefined}
+      aria-label={title}
     >
       {person ? (
         <AvatarFallback className="rounded-none bg-person-surface font-sans text-[10px] font-semibold text-person">
@@ -67,6 +73,7 @@ export function Face({
       )}
     </Avatar>
   )
+  return noHover ? face : <AgentHover who={who} trigger={face} />
 }
 
 // fnv1a is a 32-bit FNV-1a hash: minidenticons' own hash leaves near

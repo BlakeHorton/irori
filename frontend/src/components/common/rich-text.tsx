@@ -152,7 +152,7 @@ function MentionChip({ text, mention: m }: { text: string; mention: CardMention 
     <Tooltip>
       <TooltipTrigger render={chip} />
       <TooltipContent>
-        <Face who={m.who} noDot />
+        <Face who={m.who} noDot noHover />
         <span>
           {plainLine(m.who.name || m.name)}
           {m.who.where && ` · ${plainLine(m.who.where)}`}

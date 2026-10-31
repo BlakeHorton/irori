@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { AppHeader } from "@/components/app-header"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { MessageDialog } from "@/components/cards/message-dialog"
+import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
 import {
   asFilter,
@@ -298,7 +299,15 @@ export function App() {
     return c?.short ? `${c.tag ?? ""}#${c.short}` : "a card"
   }
 
+  // What an agent's hover card lists (card #104): the live cards. The
+  // provider sits unindented around the page to keep its diff small.
+  const agentCards = useMemo(
+    () => ({ cards, onOpen: openCard }),
+    [cards, openCard]
+  )
+
   return (
+    <AgentCards.Provider value={agentCards}>
     <div className="min-h-svh bg-background">
       <AppHeader
         roster={roster}
@@ -450,6 +459,7 @@ export function App() {
         />
       )}
     </div>
+    </AgentCards.Provider>
   )
 }
 
