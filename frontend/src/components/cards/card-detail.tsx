@@ -316,13 +316,21 @@ export function CardPage({
                       <summary className="cursor-pointer">
                         Steps done before the split
                       </summary>
-                      <Steps steps={detail.steps} spinning={false} />
+                      <Steps
+                        steps={detail.steps}
+                        spinning={false}
+                        people={detail.working}
+                      />
                     </details>
                   )}
                 </>
               ) : (
                 detail.steps.length > 0 && (
-                  <Steps steps={detail.steps} spinning={spinning} />
+                  <Steps
+                    steps={detail.steps}
+                    spinning={spinning}
+                    people={detail.working}
+                  />
                 )
               )}
             </Section>
@@ -846,7 +854,21 @@ function ProgressStrip({
 
 // Steps is the card's plan: done ones ticked, the current one marked, and
 // spinning while an agent works on the card.
-function Steps({ steps, spinning }: { steps: Step[]; spinning: boolean }) {
+// Steps is the card's checklist; a step with an owner (card #86) names
+// the agent doing it.
+function Steps({
+  steps,
+  spinning,
+  people,
+}: {
+  steps: Step[]
+  spinning: boolean
+  people: readonly AgentRef[]
+}) {
+  const ownerName = (key: string) => {
+    const w = people.find((p) => p.key === key)
+    return w ? name(w) : key
+  }
   return (
     <ul className="grid gap-1.5 text-[13px]">
       {steps.map((s) => {
@@ -886,6 +908,11 @@ function Steps({ steps, spinning }: { steps: Step[]; spinning: boolean }) {
                 {s.done ? "Done: " : s.doing ? "In progress: " : "To do: "}
               </span>
               {plainLine(s.text)}
+              {s.owner && (
+                <small className="ml-1.5 text-xs text-muted-foreground">
+                  · {ownerName(s.owner)}
+                </small>
+              )}
             </span>
           </li>
         )
@@ -1575,6 +1602,10 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
                 <span>gone</span>
                 <Revive who={w} gone={gone} />
               </>
+            ) : role === "working" && w.steps?.length ? (
+              <span title="Owns these steps: on the card until they're done">
+                on {w.steps.join(", ")}
+              </span>
             ) : role === "working" ? (
               w.assigned ? (
                 w.waiting ? (

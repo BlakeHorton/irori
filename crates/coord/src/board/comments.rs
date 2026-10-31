@@ -460,6 +460,7 @@ impl Fold {
         let mut to: Vec<String> = t
             .holders
             .iter()
+            .chain(&t.co_holders)
             .filter(|h| *h != by && !self.is_owner(h) && *h != SWEEPER)
             .cloned()
             .collect();
@@ -576,6 +577,11 @@ impl Fold {
         }
         for h in &t.holders {
             if contains(&t.assigned, h) && ok(h, &answer, &watch) {
+                answer.push(h.clone());
+            }
+        }
+        for h in &t.co_holders {
+            if ok(h, &answer, &watch) {
                 answer.push(h.clone());
             }
         }

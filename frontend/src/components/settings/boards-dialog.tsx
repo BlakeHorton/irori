@@ -26,13 +26,15 @@ import {
   type InviteStatus,
 } from "@/lib/boards"
 import { copyText } from "@/lib/clipboard"
+import { devices } from "@/lib/devices"
 import { plainLine, shortRepo } from "@/lib/irori"
 import { errorText } from "@/lib/talk"
 import { cn } from "@/lib/utils"
 
 // BoardsDialog is Settings → Boards (design/v0.5-shared-boards.md §8): each
 // board with its name, tag and one status dot (amber with its warning lines
-// when something is wrong: §6.3-6.5); Rename, Invite (owners),
+// when something is wrong: §6.3-6.5); Rename (owners), Invite someone (an
+// owner's ready board, with what happens next; else why not, card #96),
 // Leave (every one of your devices; "Leaving…" with Forget now while
 // other people are on it, §4.4) and Forget (this device only); New
 // board; and Join with an invite. An open invite takes the dialog over
@@ -47,14 +49,17 @@ export function BoardsDialog({
   const { boards, error, reload } = useBoards()
   const { invite, setInvite } = useInvite(open)
   const showInvite = !!invite && invite.state !== ""
+  const homeOff = useHomeOff(open)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-3 sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Boards</DialogTitle>
           <DialogDescription>
-            Each board is its own set of cards, apart from My devices.
-            Invite someone to share a board with them.
+            A board is a set of cards you share with other people, apart from
+            My devices. Make one per project; anyone can be on as many boards
+            as they like. Boards are private: only the people invited see
+            them.
           </DialogDescription>
         </DialogHeader>
         {showInvite ? (
@@ -67,7 +72,7 @@ export function BoardsDialog({
           />
         ) : (
           <>
-            {boards.length > 0 ? (
+            {boards.length > 0 && (
               <ul className="grid gap-2" aria-label="Your boards">
                 {boards.map((b) => (
                   <BoardRow
@@ -78,8 +83,15 @@ export function BoardsDialog({
                   />
                 ))}
               </ul>
-            ) : (
-              <p className="text-[13px] text-muted-foreground">No boards yet.</p>
+            )}
+            {boards.some((b) => b.owner && b.ready && !b.leaving) && (
+              <InviteHow homeOff={homeOff} />
+            )}
+            {boards.length === 0 && (
+              <p className="text-[13px] text-muted-foreground">
+                No boards yet. Make one below, then invite people to it; or
+                join one with an invite link someone sent you.
+              </p>
             )}
             {error && <p className="text-xs text-destructive">{error}</p>}
             <NewBoard taken={boards.map((b) => b.tag)} onMade={reload} />
@@ -89,6 +101,25 @@ export function BoardsDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+// useHomeOff says this device's home server is off while it could run
+// one: an invite link then only reaches someone who can reach this device
+// directly (no third-party relays, architecture.md §7.1).
+function useHomeOff(open: boolean): boolean {
+  const [off, setOff] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    devices
+      .homeServer()
+      .then((h) => live && setOff(h.can && !h.on && !h.elsewhere))
+      .catch(() => live && setOff(false))
+    return () => {
+      live = false
+    }
+  }, [open])
+  return off
 }
 
 function BoardRow({
@@ -177,22 +208,6 @@ function BoardRow({
               <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
                 Rename
               </Button>
-              {b.ready && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={async () => {
-                    setError(null)
-                    try {
-                      onInvite(await actions.invite(b.boardId))
-                    } catch (err) {
-                      setError(errorText(err))
-                    }
-                  }}
-                >
-                  Invite
-                </Button>
-              )}
             </>
           )
         )}
@@ -269,9 +284,77 @@ function BoardRow({
           }}
         />
       </span>
+      {!b.leaving && (
+        <InviteStrip
+          board={b}
+          onInvite={async () => {
+            setError(null)
+            try {
+              onInvite(await actions.invite(b.boardId))
+            } catch (err) {
+              setError(errorText(err))
+            }
+          }}
+        />
+      )}
       {showSettings && <BoardSettingsPanel boardId={b.boardId} onChanged={onChanged} />}
       {error && <span className="col-start-2 col-end-4 text-xs text-destructive">{error}</span>}
     </li>
+  )
+}
+
+// InviteStrip is how people get onto a board (card #96): on a board you
+// own, a clear Invite button with what happens next; otherwise the reason
+// there is none.
+function InviteStrip({
+  board: b,
+  onInvite,
+}: {
+  board: BoardSummary
+  onInvite: () => void
+}) {
+  if (!b.owner)
+    return (
+      <p className="col-start-2 col-end-4 text-xs text-muted-foreground">
+        Only an owner can invite people to this board: ask one of them.
+      </p>
+    )
+  if (!b.ready)
+    return (
+      <p className="col-start-2 col-end-4 text-xs text-muted-foreground">
+        You can invite people once its cards have arrived from your other
+        device.
+      </p>
+    )
+  return (
+    <div className="col-start-2 col-end-4 flex items-center gap-2">
+      <Button size="sm" onClick={onInvite}>
+        Invite someone
+      </Button>
+      <span className="text-xs text-muted-foreground">to {plainLine(b.name) || "this board"}</span>
+    </div>
+  )
+}
+
+// InviteHow says once, under the boards, what an invite does, and why the
+// link may not reach far (card #96).
+function InviteHow({ homeOff }: { homeOff: boolean }) {
+  return (
+    <div className="grid gap-1 border-l-2 border-primary/60 pl-2.5 text-xs text-muted-foreground">
+      <p>
+        <span className="text-ink">How an invite works:</span> you invite a
+        person, not a device. Send them the one-use link (good for an hour),
+        then read five words to each other on a call to check it's them. Their
+        other devices follow once they're in.
+      </p>
+      {homeOff && (
+        <p className="text-warning">
+          Your home server is off, so the link only works for someone who can
+          reach this device directly, like on your network. Turn it on in
+          Settings, Devices to invite people from anywhere.
+        </p>
+      )}
+    </div>
   )
 }
 

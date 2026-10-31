@@ -147,6 +147,11 @@ export type AgentRef = {
 	where: string,
 	assigned?: boolean,
 	waiting?: boolean,
+	/**
+	 *  The open steps it owns, when it's on the card as a step owner
+	 *  rather than a holder (card #86).
+	 */
+	steps?: string[],
 	/**  The hand-off note it was offered the card with (card #85). */
 	handoff?: string,
 	device?: string,
@@ -996,6 +1001,8 @@ export type Step = {
 	text: string,
 	done: boolean,
 	doing?: boolean,
+	/**  The agent doing the step (card #86). */
+	owner?: string,
 };
 
 /**

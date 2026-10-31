@@ -416,7 +416,10 @@ fn an_ask_with_mentions_goes_only_to_them() {
     // Given back, it goes to nobody it doesn't name.
     e.c.leave(BOB, &t.id, BOB).unwrap();
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(ns.iter().all(|n| !n.to.contains(&CAROL.to_string())), "{ns:?}");
+    assert!(
+        ns.iter().all(|n| !n.to.contains(&CAROL.to_string())),
+        "{ns:?}"
+    );
     assert!(ask_of(&e.c, &t.id).taker.is_empty());
 }
 

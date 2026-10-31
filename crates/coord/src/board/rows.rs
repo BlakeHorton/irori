@@ -296,6 +296,8 @@ crate::go_struct! {
         pub step_id: String = "stepId",
         pub done: Option<bool> = "done" "omit",
         pub doing: Option<bool> = "doing" "omit",
+        /// Sets the step's owner; `Some("")` clears it (card #86).
+        pub owner: Option<String> = "owner" "omit",
         pub by: String = "by",
         pub at: GoTime = "at",
     }

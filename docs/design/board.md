@@ -73,6 +73,10 @@ Every card in the app (the main window's card, which is also where a notificatio
 
 The notice wakes the assignee when the roster shows it idle. A busy, offline or unknown assignee hears at its next turn. The same applies to `board_create assign_to=` and to `board_split`'s `assign_to`.
 
+## Step owners
+
+*Card #86 (research 07 case B3, the #66 split).* A step can name the agent doing it: `board_steps` items take `owner` and `board_step` takes `owner=` (empty clears it). The owner goes on the `Step` (in `task.steps`) and on the `task.step` row as `owner`, omitted when empty. An owner of an open step who doesn't hold the card is a **co-holder**. `Task.co_holders` is worked out from the steps and never written, so it never touches `holders`: a single-holder card keeps one holder, and claims and hand-offs work as before. A co-holder hears the card like a holder (comments, the person's comments, blocker answers) and may tick its own steps, but not other steps, and it can't rewrite the list. It drops off once its steps are done. The agent newly given a step gets a `step_owner` notice, which wakes it when it's idle. The holder line reads "with beta (s2) on steps". The window lists co-holders in Who's on it as "on s2" and names the owner beside each step. That is how part of a subtask moves to another agent without a deeper split.
+
 ## Holders that go away
 
 *Card #16. Cards sat under "working" for hours, held by a session that had ended: the holder line only showed on cards without steps.*
