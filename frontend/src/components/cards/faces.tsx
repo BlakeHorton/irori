@@ -45,7 +45,8 @@ export function Face({
     <Avatar
       size="sm"
       className={cn(
-        "size-[22px] rounded-none after:rounded-none after:border-0",
+        // A dim square outline frames every face (card #104).
+        "size-[26px] rounded-none after:rounded-none after:border after:border-muted-foreground/35 after:mix-blend-normal dark:after:mix-blend-normal",
         (gone || who.offline) && "opacity-55",
         who.conflict && "ring-2 ring-warning",
         className
