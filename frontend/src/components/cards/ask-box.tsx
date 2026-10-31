@@ -88,10 +88,12 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
         text: targeted.length
           ? n === 0
             ? `Nobody you mentioned could hear it; it stays first on the board. ${missed}`.trim()
-            : `Woke ${n} ${n === 1 ? "agent" : "agents"} you mentioned; one of them takes it. ${missed}`.trim()
+            : `${n === 1 ? "Woke the agent you mentioned." : `Woke ${n} agents you mentioned; one of them takes it.`} ${missed}`.trim()
           : n === 0
             ? "Nobody is free to hear it yet; it stays first on the board."
-            : `Woke ${n} ${n === 1 ? "agent" : "agents"}; one of them takes it.`,
+            : n === 1
+              ? "Woke 1 agent."
+              : `Woke ${n} agents; one of them takes it.`,
         error: !!missed && n === 0,
       })
       setText("")
