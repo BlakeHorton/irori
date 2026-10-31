@@ -138,3 +138,118 @@ fn candidates_list_every_live_agent() {
     assert_eq!(names, ["alpha", "beta"]);
     assert!(cs.iter().all(|c| c.who.live && !c.cwd.is_empty()));
 }
+
+#[test]
+fn a_paused_ask_still_reaches_a_mentioned_agent() {
+    let r = Rig::new();
+    r.w.inbox_set_paused(true).unwrap();
+    let res =
+        r.w.ask(
+            "@beta fix the build",
+            "",
+            false,
+            &[],
+            "",
+            &[m(&r.key_b, "beta")],
+        )
+        .unwrap();
+    // Pause all holds the notice; the agent isn't called gone.
+    assert_eq!(res.told.to, vec![r.key_b.clone()]);
+    assert_ne!(res.mentioned[0].state, "gone", "{:?}", res.mentioned);
+    assert!(!res.task.ask.unwrap().unclaimed);
+}
+
+#[test]
+fn a_re_answer_tells_the_mentioned_holder_once() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let me = r.w.core.user_sender().key;
+    let t = co
+        .create_task(
+            &r.key_a,
+            coord::NewTask {
+                title: "ship it".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    co.claim_task(&r.key_a, &t.id).unwrap();
+    // The person's own item, answered once already (not open).
+    let (t, _) = co
+        .raise(
+            &me,
+            &t.id,
+            coord::NewBlocker {
+                question: "check the staging DNS".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let bid = t.blockers[0].id.clone();
+    co.answer(
+        &me,
+        &t.id,
+        &bid,
+        coord::BlockerAnswer {
+            text: "looking".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let before = r.w.core.inbox().for_agent(&r.key_a, true, 0).len();
+    let res =
+        r.w.answer(
+            &t.id,
+            &bid,
+            -1,
+            "@alpha it's fine",
+            false,
+            &[m(&r.key_a, "alpha")],
+        )
+        .unwrap();
+    assert_eq!(res.mentioned[0].state, "woke");
+    let ds = r.w.core.inbox().for_agent(&r.key_a, true, 0);
+    assert_eq!(ds.len(), before + 1, "{ds:?}");
+    assert_eq!(ds[0].mode, inbox::mode::WAKE);
+}
+
+#[test]
+fn a_resolve_note_mention_wakes() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let t = co
+        .create_task(
+            &r.key_a,
+            coord::NewTask {
+                title: "ship it".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    co.claim_task(&r.key_a, &t.id).unwrap();
+    let (t, _) = co
+        .raise(
+            &r.key_a,
+            &t.id,
+            coord::NewBlocker {
+                question: "which port?".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let bid = t.blockers[0].id.clone();
+    r.w.answer(&t.id, &bid, -1, "8080", false, &[]).unwrap();
+    let res =
+        r.w.resolve_blocker(
+            &t.id,
+            &bid,
+            "@beta take the follow-up",
+            &[m(&r.key_b, "beta")],
+        )
+        .unwrap();
+    assert_eq!(res.mentioned[0].state, "woke");
+    let ds = r.w.core.inbox().for_agent(&r.key_b, true, 0);
+    assert_eq!(ds.len(), 1, "{ds:?}");
+    assert_eq!(ds[0].mode, inbox::mode::WAKE);
+    assert!(co.get_task(&t.id).unwrap().watchers.contains(&r.key_b));
+}

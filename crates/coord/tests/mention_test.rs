@@ -97,8 +97,133 @@ fn a_mentioned_holder_hears_once() {
             None,
         )
         .unwrap();
-    assert_eq!(kinds_of(&ns), [NOTICE_MENTIONED]);
-    assert_eq!(ns[0].to, [ALICE, BOB]);
+    // Each hears once; the holder's own notice says it holds it.
+    assert_eq!(kinds_of(&ns), [NOTICE_MENTIONED, NOTICE_MENTIONED]);
+    assert_eq!(ns[0].to, [BOB]);
+    assert!(
+        ns[0].text.contains(&format!("{ALICE} holds it")),
+        "{}",
+        ns[0].text
+    );
+    assert_eq!(ns[1].to, [ALICE]);
+    assert!(
+        ns[1].text.contains("You hold it; answer on the card"),
+        "{}",
+        ns[1].text
+    );
+}
+
+#[test]
+fn mentioning_the_holder_doesnt_wake_the_watchers() {
+    let e = Env::new();
+    let t = held_by_alice(&e);
+    e.c.watch(BOB, &t.id).unwrap();
+    e.c.set_task_state(ALICE, &t.id, COMPLETED, "done").unwrap();
+    let (_, ns) =
+        e.c.person_comment(
+            USER,
+            &t.id,
+            "@alice please",
+            true,
+            &[m(ALICE, "alice")],
+            None,
+        )
+        .unwrap();
+    assert_eq!(kinds_of(&ns), [NOTICE_COMMENT, NOTICE_MENTIONED]);
+    // Bob watches: alice still answers it, so he isn't woken for her.
+    let w = &ns[0];
+    assert_eq!(w.to, [BOB]);
+    assert!(w.watching && !w.wake, "{w:?}");
+    assert!(
+        w.text.contains(&format!("{ALICE} answers it")),
+        "{}",
+        w.text
+    );
+    assert!(!w.text.contains("Nobody else is on it"), "{}", w.text);
+    // Alice hears the mention, woken, as the holder, with the reopen.
+    let a = &ns[1];
+    assert_eq!(a.to, [ALICE]);
+    assert!(a.wake);
+    assert!(
+        a.text.contains("which was completed and is open again"),
+        "{}",
+        a.text
+    );
+    assert!(a.text.contains("You hold it"), "{}", a.text);
+    assert!(!a.text.contains(&format!("{ALICE} holds it")), "{}", a.text);
+}
+
+#[test]
+fn a_mentioned_raiser_hears_the_answer_woken() {
+    let e = Env::new();
+    let t = held_by_alice(&e);
+    e.c.raise(
+        ALICE,
+        &t.id,
+        NewBlocker {
+            question: "which port?".into(),
+            ..NewBlocker::default()
+        },
+    )
+    .unwrap();
+    let (_, ns) =
+        e.c.answer(
+            USER,
+            &t.id,
+            "b1",
+            BlockerAnswer {
+                text: "@alice use 8080".into(),
+                mentions: vec![m(ALICE, "alice")],
+                ..BlockerAnswer::default()
+            },
+        )
+        .unwrap();
+    // One notice for alice: the answer itself, woken, sent as her mention.
+    let to_alice: Vec<&Notice> = ns
+        .iter()
+        .filter(|n| n.to.iter().any(|k| k == ALICE))
+        .collect();
+    assert_eq!(to_alice.len(), 1, "{ns:?}");
+    let a = to_alice[0];
+    assert_eq!(a.kind, NOTICE_MENTIONED);
+    assert!(a.wake);
+    assert!(a.text.contains("Question: which port?"), "{}", a.text);
+    assert!(a.text.contains("board_unblock"), "{}", a.text);
+    assert!(a.text.contains("blocker_id=b1"), "{}", a.text);
+    // The resolve path too.
+    e.c.raise(
+        ALICE,
+        &t.id,
+        NewBlocker {
+            question: "which host?".into(),
+            ..NewBlocker::default()
+        },
+    )
+    .unwrap();
+    let (_, ns) =
+        e.c.answer(
+            USER,
+            &t.id,
+            "b2",
+            BlockerAnswer {
+                text: "@alice localhost".into(),
+                resolve: true,
+                mentions: vec![m(ALICE, "alice")],
+                ..BlockerAnswer::default()
+            },
+        )
+        .unwrap();
+    let to_alice: Vec<&Notice> = ns
+        .iter()
+        .filter(|n| n.to.iter().any(|k| k == ALICE))
+        .collect();
+    assert_eq!(to_alice.len(), 1, "{ns:?}");
+    assert!(to_alice[0].wake);
+    assert!(
+        to_alice[0].text.contains("Question: which host?"),
+        "{}",
+        to_alice[0].text
+    );
 }
 
 #[test]
@@ -229,16 +354,17 @@ fn an_answer_mention_is_on_the_thread_and_wakes() {
 fn a_mention_with_nothing_stored() {
     let e = Env::new();
     let t = held_by_alice(&e);
-    let n =
+    let ns =
         e.c.mention(ALICE, &t.id, &[m(BOB, "bob")], "which port, @bob?")
-            .unwrap()
             .unwrap();
+    assert_eq!(ns.len(), 1);
+    let n = &ns[0];
     assert_eq!(
         (n.kind.as_str(), n.to.clone(), n.wake),
         (NOTICE_MENTIONED, vec![BOB.to_string()], true)
     );
     assert_eq!(n.reference, format!("task:{}", t.id));
-    assert!(e.c.mention(ALICE, &t.id, &[], "x").unwrap().is_none());
+    assert!(e.c.mention(ALICE, &t.id, &[], "x").unwrap().is_empty());
 }
 
 fn agents(e: &Env) -> Vec<coord::roster::AgentCard> {
@@ -420,4 +546,45 @@ fn a_shared_board_ask_refuses_mentions() {
         ),
         ErrorKind::Invalid,
     );
+}
+
+#[test]
+fn a_board_row_with_mentions_folds_without_them() {
+    let b = board();
+    let t = b.c.create_task(BOARD_PERSON, nt("shared work")).unwrap();
+    // Another member's device wrote mentions into the board log anyway.
+    let raw = |s: String| gocompat::json::RawJson(s.into_bytes());
+    b.st.append(
+        BOARD_PERSON,
+        kinds::TASK_COMMENT,
+        &raw(format!(
+            r#"{{"taskId":"{}","commentId":"cm_x","by":"{BOARD_PERSON}","text":"@cedar look","wake":false,"at":"2026-01-01T00:00:00Z","mentions":[{{"key":"{BOARD_CARD}","name":"cedar"}}]}}"#,
+            t.id
+        )),
+    )
+    .unwrap();
+    b.st.append(
+        BOARD_PERSON,
+        kinds::TASK_CREATED,
+        &raw(format!(
+            r#"{{"taskId":"t_ask","num":9,"title":"x","objective":"@cedar x","by":"{BOARD_PERSON}","at":"2026-01-01T00:00:00Z","ask":{{"wake":true,"mentions":[{{"key":"{BOARD_CARD}","name":"cedar"}}]}}}}"#
+        )),
+    )
+    .unwrap();
+    let c = Coord::new(
+        b.st.clone(),
+        None,
+        Options {
+            board: true,
+            person: BOARD_PERSON.into(),
+            is_owner: Some(Arc::new(|k: &str| k == BOARD_PERSON)),
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let cm = c.get_comment("cm_x").unwrap();
+    assert_eq!(cm.text, "@cedar look");
+    assert!(cm.mentions.is_empty(), "{:?}", cm.mentions);
+    let a = c.get_task("t_ask").unwrap().ask.unwrap();
+    assert!(a.mentions.is_empty(), "{:?}", a.mentions);
 }

@@ -86,8 +86,9 @@ impl Fold {
     }
 
     /// The live mentions in `ms` made watchers of card `id`, and their
-    /// woken notice (`None`: nobody to tell). `text` is what was written;
-    /// `reference` the notice's ref.
+    /// woken notices (none: nobody to tell). `text` is what was written;
+    /// `reference` the notices' ref; `was` the state a reopen left ("" if
+    /// none). A mentioned holder gets a notice of its own that says so.
     pub(crate) fn mention_notice(
         &mut self,
         by: &str,
@@ -95,14 +96,15 @@ impl Fold {
         ms: &[Mention],
         text: &str,
         reference: &str,
-    ) -> Result<Option<Notice>> {
+        was: &str,
+    ) -> Result<Vec<Notice>> {
         let to: Vec<String> = ms
             .iter()
             .filter(|m| !m.gone)
             .map(|m| m.key.clone())
             .collect();
         if to.is_empty() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
         let t = self.watch_for(by, id, &to)?;
         let who = if self.is_owner(by) {
@@ -110,31 +112,84 @@ impl Fold {
         } else {
             by.to_string()
         };
-        let mut s = format!(
-            "{who} mentioned you on {} ({}):\n{}\n",
+        let mut head = format!(
+            "{who} mentioned you on {} ({})",
             gocompat::quote::quote(&t.title),
-            t.refs(),
+            t.refs()
+        );
+        if !was.is_empty() {
+            head.push_str(&format!(", which was {was} and is open again"));
+        }
+        let body = format!(
+            "{head}:
+{}
+",
             cut(trim_space(text), MAX_MENTION_TEXT)
         );
-        s.push_str(&mention_ending(&t, |k| self.is_owner(k)));
-        s.push_str(&deeper(id));
-        Ok(Some(Notice {
+        let base = Notice {
             kind: NOTICE_MENTIONED.into(),
             task_id: id.into(),
             reference: reference.into(),
             title: t.title.clone(),
-            to,
             by: by.into(),
-            text: s,
             wake: true,
             person: self.is_owner(by),
             ..Notice::default()
-        }))
+        };
+        let is_owner = |k: &str| self.is_owner(k);
+        let (held, rest): (Vec<String>, Vec<String>) =
+            to.into_iter().partition(|k| contains(&t.holders, k));
+        let mut ns = Vec::new();
+        if !rest.is_empty() {
+            let mut n = base.clone();
+            n.to = rest;
+            n.text = format!("{body}{}{}", mention_ending(&t, "", is_owner), deeper(id));
+            ns.push(n);
+        }
+        for h in held {
+            let mut n = base.clone();
+            n.text = format!("{body}{}{}", mention_ending(&t, &h, is_owner), deeper(id));
+            n.to = vec![h];
+            ns.push(n);
+        }
+        Ok(ns)
     }
 }
 
-/// The last line of a mention notice, by the card's state.
-pub(crate) fn mention_ending(t: &Task, is_owner: impl Fn(&str) -> bool) -> String {
+/// Mentioned agents that `n` reaches already hear `n` itself as their
+/// mention, woken, instead of the plain mention notice: it keeps what
+/// they need (a blocker's question, what to run next). `mn` holds the
+/// mention notices; their keys move from `n` and `mn` into a woken copy
+/// of `n` that joins `mn`.
+pub fn mention_into(n: &mut Notice, mn: &mut Vec<Notice>) {
+    let both: Vec<String> =
+        n.to.iter()
+            .filter(|k| mn.iter().any(|m| m.to.contains(k)))
+            .cloned()
+            .collect();
+    if both.is_empty() {
+        return;
+    }
+    n.to.retain(|k| !both.contains(k));
+    for m in mn.iter_mut() {
+        m.to.retain(|k| !both.contains(k));
+    }
+    mn.retain(|m| !m.to.is_empty());
+    let mut c = n.clone();
+    c.kind = NOTICE_MENTIONED.into();
+    c.to = both;
+    c.wake = true;
+    c.text = format!(
+        "You were mentioned in this.
+{}",
+        n.text
+    );
+    mn.insert(0, c);
+}
+
+/// The last line of a mention notice, by the card's state; `me` is the
+/// recipient when it holds the card ("" otherwise).
+pub(crate) fn mention_ending(t: &Task, me: &str, is_owner: impl Fn(&str) -> bool) -> String {
     if t.open_ask().is_some_and(|a| a.taker.is_empty()) && !is_terminal(&t.state) {
         return format!(
             "It is an ask nobody has taken: if you can take it on now, ask_claim {}.",
@@ -150,9 +205,18 @@ pub(crate) fn mention_ending(t: &Task, is_owner: impl Fn(&str) -> bool) -> Strin
     let holders: Vec<&str> = t
         .holders
         .iter()
-        .filter(|h| !is_owner(h) && *h != SWEEPER)
+        .filter(|h| !is_owner(h) && *h != SWEEPER && *h != me)
         .map(String::as_str)
         .collect();
+    if !me.is_empty() {
+        if holders.is_empty() {
+            return "You hold it; answer on the card with board_comment.".into();
+        }
+        return format!(
+            "You hold it with {}; answer on the card with board_comment.",
+            holders.join(", ")
+        );
+    }
     if holders.is_empty() {
         return "Nobody holds it. If the work is yours, board_join it; else answer on the card with board_comment.".into();
     }

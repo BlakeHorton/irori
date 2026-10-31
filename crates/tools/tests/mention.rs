@@ -82,9 +82,11 @@ fn mention_by_key_across_devices_and_misses() {
     let out = h.okj(
         &a,
         "board_comment",
-        json!({"task_id": id, "text": "maple, this one", "mention": [KEY_M2]}),
+        json!({"task_id": id, "text": "@maple, this one", "mention": [KEY_M2]}),
     );
     has(&out, &["Mentioned: maple (woke)."]);
+    // The text's @maple is the one named by key: no ambiguous line.
+    has_not(&out, &["ambiguous", "Not delivered"]);
     let ns = h.notices(KEY_M2);
     assert_eq!(ns.len(), 1);
     has(
@@ -147,4 +149,50 @@ fn a_blocker_mention_wakes_without_storing() {
     has(&out, &["Mentioned: beta (woke)."]);
     assert_eq!(h.notices(KEY_B).len(), 1);
     assert_eq!(h.b.co.get_task(&id).unwrap().watchers, [KEY_B]);
+}
+
+#[test]
+fn a_mentioned_creator_hears_an_unblock_once() {
+    let h = new_harness();
+    let (a, b) = (call_a(), call_b());
+    // beta made it and nobody holds it: the unblock notice goes to beta.
+    let id = h.new_card(&b, json!({"title": "nobody on it"}));
+    h.okj(
+        &b,
+        "board_block",
+        json!({"task_id": id, "question": "which port?"}),
+    );
+    let before = h.notices(KEY_B).len();
+    let out = h.okj(
+        &a,
+        "board_unblock",
+        json!({"task_id": id, "note": "@beta your turn"}),
+    );
+    has(&out, &["Unblocked", "Mentioned: beta (woke)."]);
+    let ns = h.notices(KEY_B);
+    assert_eq!(ns.len(), before + 1, "{ns:?}");
+    // The one notice is the unblock itself, woken.
+    assert_eq!(ns[0].mode, WAKE);
+    has(&ns[0].message.text, &["your turn"]);
+}
+
+#[test]
+fn mentions_past_the_cap_are_reported() {
+    let h = new_harness();
+    let a = call_a();
+    for i in 0..11 {
+        h.b.roster.put(card(
+            &format!("dev1/0000000{i:x}-7777-4777-8777-777777777777"),
+            &format!("n{i}"),
+            "",
+            "",
+        ));
+    }
+    let id = h.new_card(&a, json!({"title": "everyone"}));
+    let text: String = (0..11).map(|i| format!("@n{i} ")).collect();
+    let out = h.okj(&a, "board_comment", json!({"task_id": id, "text": text}));
+    has(
+        &out,
+        &["Not delivered: n10: at most 10 mentions per write."],
+    );
 }

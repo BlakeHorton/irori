@@ -259,8 +259,9 @@ pub async fn board_resolve_blocker(
     task_id: String,
     blocker_id: String,
     note: String,
+    mentions: Vec<ts::Mention>,
 ) -> R<AnswerResult> {
-    w.resolve_blocker(&task_id, &blocker_id, &note)
+    w.resolve_blocker(&task_id, &blocker_id, &note, &mentions)
 }
 
 #[tauri::command]

@@ -222,7 +222,12 @@ impl Fold {
             repo_key: a.repo_key.clone(),
             owner: ev.device_id.clone(),
             since: t.created_at,
-            mentions: a.mentions.clone(),
+            // Never from a board log, as for comments (board.md "Mentions").
+            mentions: if self.on_board {
+                Vec::new()
+            } else {
+                a.mentions.clone()
+            },
             ..Ask::default()
         });
     }

@@ -17,13 +17,17 @@ import { deviceVar, useMentionCandidates } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 import {
   addMention,
+  composing as imeComposing,
   filterCandidates,
   insertMention,
+  isFull,
   isGone,
   keepMentions,
+  MaxMentions,
   menuKey,
   moveHighlight,
   settle,
+  settleRange,
   tokenAt,
   type Mention,
   type MentionCandidate,
@@ -47,9 +51,10 @@ type Props = Omit<ComponentProps<typeof Textarea>, "value" | "onChange"> & {
 // at the caret, filtered by what follows. Focus stays in the box. Tab
 // enters the list and steps through it (Shift+Tab back, Up and Down too),
 // Enter or a click puts "@name " in the text and records the agent's key,
-// Esc closes the list and keeps the text. While the list has rows, Enter
-// never reaches the site's own onKeyDown, so it doesn't send. Deleting the
-// "@name" drops its key.
+// Esc closes the list and keeps the text. While the list is open, Enter
+// never reaches the site's own onKeyDown, so it doesn't send (with no
+// rows it does nothing). Deleting the "@name" drops its key; pasting one,
+// or typing punctuation straight after an exact name, records it.
 export function MentionTextarea({
   value,
   mentions,
@@ -92,6 +97,11 @@ export function MentionTextarea({
   const at = token ? `${token.start}:${token.query}` : ""
   const highlight = hi.at === at ? hi.i : -1
   const shown = rows.length ? (highlight < 0 ? 0 : highlight) : -1
+  // At the cap a new agent can't be added; one already named can.
+  const kept = keepMentions(mentions, value)
+  const capped = isFull(kept)
+  const taken = (row: MentionCandidate) =>
+    kept.some((m) => m.key === row.who.key)
 
   // The caret goes after an inserted mention once React has put the text in.
   useLayoutEffect(() => {
@@ -135,7 +145,7 @@ export function MentionTextarea({
   }
 
   const pick = (row: MentionCandidate) => {
-    if (!token) return
+    if (!token || (capped && !taken(row))) return
     const r = insertMention(value, token, caret, row.who.name)
     const next = addMention(keepMentions(mentions, r.text), {
       key: row.who.key,
@@ -150,7 +160,7 @@ export function MentionTextarea({
   }
 
   const keyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    const composing = e.nativeEvent.isComposing
+    const composing = imeComposing(e)
     const k = menuKey(
       { key: e.key, shiftKey: e.shiftKey, isComposing: composing },
       open,
@@ -171,6 +181,13 @@ export function MentionTextarea({
       pick(rows[shown])
       return
     }
+    if (k === "hold") {
+      // The list is open with nothing to pick: Enter waits for the
+      // person to fix the name or press Esc.
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if (k === "close") {
       // The window listener has it; this keeps the site's handler out.
       e.preventDefault()
@@ -189,16 +206,31 @@ export function MentionTextarea({
 
   const change = (v: string, at: number) => {
     let next = mentions
-    // A space typed after an exact, unique name counts as picking it.
+    // A space or closing punctuation typed after an exact, unique name
+    // counts as picking it.
     const p = at - 1
-    if (
-      !disabledMentions &&
+    const typed =
       p >= 0 &&
-      v[p] === " " &&
       v.length === value.length + 1 &&
       v.slice(0, p) + v.slice(p + 1) === value
-    )
+    if (!disabledMentions && typed && endsMention.test(v[p]))
       next = settle(value, p, next, cands)
+    // Pasted text (or Ctrl+Z bringing a mention back): each exact,
+    // unique name in what came in counts as picked.
+    if (!disabledMentions && !typed && v.length > value.length) {
+      let from = 0
+      while (from < value.length && v[from] === value[from]) from++
+      const tail = value.length - from
+      let back = 0
+      while (
+        back < tail &&
+        v[v.length - 1 - back] === value[value.length - 1 - back]
+      )
+        back++
+      // From the "@" a paste may finish ("@" typed, then "oak" pasted).
+      const start = Math.max(0, v.lastIndexOf("@", from))
+      next = settleRange(v, start, v.length - back, next, cands)
+    }
     onChange(v, keepMentions(next, v))
   }
 
@@ -269,9 +301,16 @@ export function MentionTextarea({
             aria-label="Agents to mention"
             className="grid max-h-72 overflow-y-auto"
           >
+            {capped && (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                At most {MaxMentions} mentions
+              </p>
+            )}
             {rows.length === 0 ? (
               <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                No agent named {plainLine(token?.query ?? "")}
+                {token?.query
+                  ? `No agent named ${plainLine(token.query)}`
+                  : "No agents to mention"}
               </p>
             ) : (
               rows.map((c, i) => (
@@ -281,6 +320,7 @@ export function MentionTextarea({
                   row={c}
                   active={i === shown}
                   explicit={i === highlight}
+                  disabled={capped && !taken(c)}
                   onPick={() => pick(c)}
                 />
               ))
@@ -301,12 +341,15 @@ function MentionRow({
   row,
   active,
   explicit,
+  disabled,
   onPick,
 }: {
   id: string
   row: MentionCandidate
   active: boolean
   explicit: boolean
+  // Past the cap: shown, not pickable.
+  disabled: boolean
   onPick: () => void
 }) {
   const { who } = row
@@ -318,6 +361,7 @@ function MentionRow({
       id={id}
       role="option"
       aria-selected={active}
+      aria-disabled={disabled || undefined}
       title={[plainLine(who.name), who.where, row.cwd, gone && "gone"]
         .filter(Boolean)
         .join(" · ")}
@@ -329,7 +373,8 @@ function MentionRow({
         active &&
           (explicit ? "bg-accent ring-1 ring-ring ring-inset" : "bg-muted/60"),
         !active && "hover:bg-muted/40",
-        gone && "opacity-55"
+        (gone || disabled) && "opacity-55",
+        disabled && "cursor-not-allowed"
       )}
     >
       <Face who={who} className="shrink-0" />
@@ -355,6 +400,10 @@ function MentionRow({
     </div>
   )
 }
+
+// endsMention is a character that ends a typed name: whitespace or
+// closing punctuation (lib/mentions' after).
+const endsMention = /[\s.,;:!?)'"]/
 
 function lastPart(path: string): string {
   const parts = path.split(/[\\/]+/).filter(Boolean)

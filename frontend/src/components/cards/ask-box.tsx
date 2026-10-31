@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
 import { cards, MaxComment, MaxUploadFiles, type AskRepo } from "@/lib/cards"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
-import { askingLine, notDelivered } from "@/lib/mentions"
+import { askingLine, composing, notDelivered } from "@/lib/mentions"
 import { errorText } from "@/lib/talk"
 
 // AskBox is the person talking to the room (docs/design/board.md "Asks"):
@@ -143,7 +143,7 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
             if (
               e.key === "Enter" &&
               !e.shiftKey &&
-              !e.nativeEvent.isComposing
+              !composing(e)
             ) {
               e.preventDefault()
               e.currentTarget.form?.requestSubmit()

@@ -969,7 +969,13 @@ impl Fold {
             blocker_id: p.blocker_id.clone(),
             pick: p.pick.max(0),
             missing: p.missing.clone(),
-            mentions: p.mentions.clone(),
+            // A board log never carries mentions (board.md "Mentions"); one
+            // another device wrote anyway is dropped here too.
+            mentions: if self.on_board {
+                Vec::new()
+            } else {
+                p.mentions.clone()
+            },
             device: ev.device_id.clone(),
             hlc: ev.hlc.0,
             seq: ev.seq,

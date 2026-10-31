@@ -4,6 +4,7 @@ import { AgentRef } from "../gen/models"
 import {
   addMention,
   askingLine,
+  composing,
   exactUnique,
   filterCandidates,
   hasMention,
@@ -14,6 +15,7 @@ import {
   moveHighlight,
   notDelivered,
   settle,
+  settleRange,
   splitMentions,
   tokenAt,
   type MentionCandidate,
@@ -139,8 +141,9 @@ describe("menuKey (the Enter guard)", () => {
     expect(menuKey(k("Tab"), false, 2)).toBeNull()
   })
 
-  test("no matches: Enter sends and Tab moves focus; Esc still closes", () => {
-    expect(menuKey(k("Enter"), true, 0)).toBeNull()
+  test("no matches: Enter is held (no send), Tab moves focus; Esc closes", () => {
+    expect(menuKey(k("Enter"), true, 0)).toBe("hold")
+    expect(menuKey(k("Enter", true), true, 0)).toBeNull()
     expect(menuKey(k("Tab"), true, 0)).toBeNull()
     expect(menuKey(k("Escape"), true, 0)).toBe("close")
   })
@@ -165,10 +168,77 @@ describe("insertMention", () => {
       text: "@fern there",
       caret: 6,
     })
-    expect(insertMention("@fx", { start: 0, query: "f" }, 2, "fern")).toEqual({
-      text: "@fern x",
+  })
+
+  test("replaces the rest of the word the caret is in", () => {
+    // Caret after "@f" in "@foak hello": the old name goes.
+    expect(
+      insertMention("@foak hello", { start: 0, query: "f" }, 2, "fern")
+    ).toEqual({ text: "@fern hello", caret: 6 })
+    // Caret after "@oa" in "@oak".
+    expect(insertMention("@oak", { start: 0, query: "oa" }, 3, "oak")).toEqual({
+      text: "@oak ",
+      caret: 5,
+    })
+    // Punctuation after the word stays.
+    expect(insertMention("@fx, hi", { start: 0, query: "f" }, 2, "fern")).toEqual({
+      text: "@fern , hi",
       caret: 6,
     })
+  })
+})
+
+describe("IME", () => {
+  test("keyCode 229 counts as composing (WKWebView's commit Enter)", () => {
+    expect(composing({ nativeEvent: { isComposing: false, keyCode: 229 } })).toBe(true)
+    expect(composing({ nativeEvent: { isComposing: true, keyCode: 13 } })).toBe(true)
+    expect(composing({ nativeEvent: { isComposing: false, keyCode: 13 } })).toBe(false)
+  })
+})
+
+describe("punctuation after a name", () => {
+  test("settle and the filter read \"@oak,\" as oak", () => {
+    expect(settle("@fern,", 6, [], all)).toEqual([
+      { key: "agent:fern", name: "fern" },
+    ])
+    expect(keys(filterCandidates(all, "fern."))).toEqual(["agent:fern"])
+  })
+})
+
+describe("same-named mentions", () => {
+  const ms = [
+    { key: "agent:oak", name: "oak" },
+    { key: "agent:oak-mac", name: "oak" },
+  ]
+
+  test("one @oak left keeps one key, the first added", () => {
+    expect(keepMentions(ms, "@oak hi")).toEqual([ms[0]])
+    expect(keepMentions(ms, "@oak and @oak")).toBe(ms)
+    expect(keepMentions(ms, "hi")).toEqual([])
+  })
+
+  test("the k-th @oak chip is the k-th oak", () => {
+    const spans = splitMentions("@oak and @oak", ms)
+    const got = spans.flatMap((x) => (x.kind === "mention" ? [x.mention.key] : []))
+    expect(got).toEqual(["agent:oak", "agent:oak-mac"])
+  })
+})
+
+describe("settleRange (paste, undo)", () => {
+  test("records each exact, unique live name in the range", () => {
+    expect(settleRange("@fern please review", 0, 19, [], all)).toEqual([
+      { key: "agent:fern", name: "fern" },
+    ])
+    // Two oaks: ambiguous, not recorded; a gone one neither.
+    expect(settleRange("@oak @cedar", 0, 11, [], all)).toEqual([])
+    // Outside the range is left alone.
+    expect(settleRange("@fern and @boak", 6, 15, [], all)).toEqual([
+      { key: "agent:boak", name: "boak" },
+    ])
+    // A longer name wins.
+    expect(
+      settleRange("@oak tree hi", 0, 12, [], [oaktree, fern])
+    ).toEqual([{ key: "agent:oaktree", name: "oak tree" }])
   })
 })
 

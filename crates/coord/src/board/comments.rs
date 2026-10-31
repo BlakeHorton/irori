@@ -596,6 +596,10 @@ impl Fold {
                 .collect();
             watch.clear();
         }
+        // Who answers is decided before the mentioned leave the lists: a
+        // mentioned holder still answers it, so watchers aren't woken in
+        // its place.
+        let answerers = answer.clone();
         answer.retain(|k| !mentioned(k));
         watch.retain(|k| !mentioned(k));
         let mut was = String::new();
@@ -619,12 +623,12 @@ impl Fold {
                 text: text.clone(),
                 wake,
                 at,
-                unheard: answer.is_empty() && watch.is_empty() && !live_mention,
+                unheard: answerers.is_empty() && watch.is_empty() && !live_mention,
                 mentions: ms.clone(),
                 ..TaskCommentRow::default()
             },
         )?;
-        let mn = self.mention_notice(&by, id, &ms, &text, &format!("comment:{cid}"))?;
+        let mn = self.mention_notice(&by, id, &ms, &text, &format!("comment:{cid}"), &was)?;
         let t = self.tasks[id].clone();
         let mut head = format!("The person commented on {} ({})", quote(&t.title), t.refs());
         if !was.is_empty() {
@@ -670,13 +674,13 @@ impl Fold {
         if !watch.is_empty() {
             let mut w = base;
             w.to = watch;
-            w.wake = wake && answer.is_empty();
+            w.wake = wake && answerers.is_empty();
             w.watching = true;
             w.text = format!("{head}, a card you watch:\n{text}\n");
-            if !answer.is_empty() {
+            if !answerers.is_empty() {
                 w.text.push_str(&format!(
                     "{} answers it; answer on the card only if it asks you.",
-                    answer.join(", ")
+                    answerers.join(", ")
                 ));
             } else {
                 w.text.push_str("Nobody else is on it: if it asks something you can answer, answer on the card with board_comment.");

@@ -265,7 +265,15 @@ impl Window {
         }
         let plan = self.plan_mentions("", mentions);
         let refs = self.store_uploads(files)?;
-        let agents = self.core.ask_agents();
+        // A mention is the person's explicit choice: Pause all doesn't
+        // take a mentioned agent here out of the ask (ask_agents would);
+        // the inbox policy holds its notice instead, and the outcome says
+        // held.
+        let agents = if plan.private.is_empty() {
+            self.core.ask_agents()
+        } else {
+            self.core.mesh_agents()
+        };
         let (t, n) = self
             .core
             .coord()
@@ -452,37 +460,32 @@ impl Window {
             resolve: self.nobody_can_act(&t, &bl.raised_by),
             mentions: plan.log.clone(),
         };
-        let mut pre = Vec::new();
         let status = if bl.status.is_empty() {
             coord::BLOCKER_OPEN
         } else {
             bl.status.as_str()
         };
         if a.resolve && a.pick == 0 && status != coord::BLOCKER_OPEN {
-            // The answer goes on the thread first, with its mentions.
-            let (_, ns) = co
-                .answer(
-                    &me,
-                    task_id,
-                    blocker_id,
-                    BlockerAnswer {
-                        text: text.into(),
-                        wake,
-                        mentions: std::mem::take(&mut a.mentions),
-                        ..BlockerAnswer::default()
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-            pre = ns
-                .into_iter()
-                .filter(|n| n.kind == coord::NOTICE_MENTIONED)
-                .collect();
+            // The answer goes on the thread first, with its mentions; its
+            // notices are dropped, as the resolve below tells everyone
+            // (the mentioned once, woken).
+            co.answer(
+                &me,
+                task_id,
+                blocker_id,
+                BlockerAnswer {
+                    text: text.into(),
+                    wake,
+                    mentions: a.mentions.clone(),
+                    ..BlockerAnswer::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
             a.text = String::new();
         }
-        let (t, mut ns) = co
+        let (t, ns) = co
             .answer(&me, task_id, blocker_id, a)
             .map_err(|e| e.to_string())?;
-        ns.extend(pre);
         let (ns, mentioned) = self.route_mentioned(ns, &plan);
         let told = self.tell(&ns[0], Tell::NextTurn);
         Ok(AnswerResult {
@@ -506,17 +509,20 @@ impl Window {
         !live(raiser) && !t.holders.iter().any(|h| live(h))
     }
 
-    /// BoardService.ResolveBlocker: "Mark resolved" on an item.
+    /// BoardService.ResolveBlocker: "Mark resolved" on an item. The note's
+    /// `mentions` wake those agents, as an answer's do.
     pub fn resolve_blocker(
         &self,
         task_id: &str,
         blocker_id: &str,
         note: &str,
+        mentions: &[ts::Mention],
     ) -> Result<AnswerResult, String> {
         let (task_id, blocker_id) = (trim(task_id), trim(blocker_id));
         if blocker_id == NOTE_ITEM {
             return Err(invalid("answer the card's question instead"));
         }
+        let plan = self.plan_mentions(task_id, mentions);
         let (co, keys) = self.on(task_id, &[])?;
         let (t, ns) = co
             .answer(
@@ -526,10 +532,12 @@ impl Window {
                 BlockerAnswer {
                     text: note.into(),
                     resolve: true,
+                    mentions: plan.log.clone(),
                     ..BlockerAnswer::default()
                 },
             )
             .map_err(|e| e.to_string())?;
+        let (ns, mentioned) = self.route_mentioned(ns, &plan);
         let told = ns
             .first()
             .map(|n| self.tell(n, Tell::NextTurn))
@@ -537,7 +545,7 @@ impl Window {
         Ok(AnswerResult {
             card: self.card(&t.id)?,
             told,
-            ..AnswerResult::default()
+            mentioned,
         })
     }
 

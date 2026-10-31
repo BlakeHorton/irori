@@ -105,7 +105,7 @@ pub(crate) fn send(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             &d.to
         };
         out += &s.recorded(&m, to, held_on_card(ib, &d));
-        s.watch_mentioned(c, &m);
+        out += &s.watch_mentioned(c, &m);
     }
     out + &mline
 }
@@ -152,8 +152,8 @@ pub(crate) fn reply(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     };
     let mline = s.message_mentions(c, &m, &d, &res);
     // A reply keeps the Ref of the message it answers.
-    let rec = s.recorded(&m, &d.to, held_on_card(ib, &d));
-    s.watch_mentioned(c, &m);
+    let mut rec = s.recorded(&m, &d.to, held_on_card(ib, &d));
+    rec += &s.watch_mentioned(c, &m);
     format!(
         "Replied to delivery {} (now answered) with message {} {}{rec}{mline}",
         one_line(id, 80),

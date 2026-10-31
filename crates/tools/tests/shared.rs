@@ -553,6 +553,28 @@ fn a_reply_to_a_bridged_message_goes_on_the_card() {
     );
 }
 
+#[test]
+fn a_message_mention_watches_a_shared_card() {
+    let r = rig();
+    let id = created_id(&r.h.okj(
+        &call_a(),
+        "board_create",
+        json!({"title": "Loader", "board": "mlg"}),
+    ));
+    let out = r.h.okj(
+        &call_a(),
+        "send",
+        json!({"to": "beta", "text": "@gamma fyi", "task_id": id}),
+    );
+    has(&out, &["Mentioned: gamma (woke)."]);
+    has_not(&out, &["don't watch"]);
+    let gamma = r.fake.key(KEY_C);
+    assert!(
+        r.fake.co.get_task(&id).unwrap().watchers.contains(&gamma),
+        "{out}"
+    );
+}
+
 fn cs_text(r: &Rig, id: &str) -> Vec<String> {
     r.fake
         .co

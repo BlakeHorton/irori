@@ -1213,8 +1213,7 @@ pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let told = s.tell(&c.sender, notice);
-    let mline = s.mention_only(c, &id, note, &a);
+    let (told, mline) = s.mention_with(c, &id, note, &a, Some(notice));
     let n = s.roster();
     format!(
         "Unblocked {}; it is {} again.{}{mline}\n{}",

@@ -11,13 +11,15 @@ use crate::roster::AgentCard;
 /// A miss: why an `@name` or a `mention` item reached nobody.
 pub const MISS_AMBIGUOUS: &str = "ambiguous";
 pub const MISS_UNKNOWN: &str = "unknown";
+/// Past the MAX_MENTIONS cap.
+pub const MISS_CAP: &str = "over the cap";
 
 /// One name or key that wasn't delivered.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Miss {
     /// As written, without the @.
     pub name: String,
-    /// [`MISS_AMBIGUOUS`] or [`MISS_UNKNOWN`].
+    /// [`MISS_AMBIGUOUS`], [`MISS_UNKNOWN`] or [`MISS_CAP`].
     pub reason: String,
     /// The keys it could be, for an ambiguous one.
     pub candidates: Vec<String>,
@@ -100,6 +102,12 @@ pub fn resolve(agents: &[AgentCard], author: &str, text: &str, given: &[String])
         }
         if r.mentions.len() < MAX_MENTIONS {
             r.mentions.push(m);
+        } else if !r.misses.iter().any(|x| x.name == m.name) {
+            r.misses.push(Miss {
+                name: m.name,
+                reason: MISS_CAP.into(),
+                candidates: Vec::new(),
+            });
         }
     };
     let miss = |r: &mut Resolved, name: &str, cands: &[&AgentCard]| {
@@ -193,6 +201,12 @@ pub fn resolve(agents: &[AgentCard], author: &str, text: &str, given: &[String])
                         gone: false,
                     },
                 ),
+                // Named by key in `given` already: not a miss.
+                Some(c)
+                    if r.mentions.iter().any(|m| {
+                        m.name.to_lowercase() == written.to_lowercase()
+                            || c.iter().any(|a| a.key == m.key)
+                    }) => {}
                 Some(c) => miss(&mut r, written, &c),
             },
             None => {
@@ -271,9 +285,10 @@ mod tests {
         assert!(r.mentions.is_empty());
         assert_eq!(r.misses[0].reason, MISS_AMBIGUOUS);
         assert_eq!(r.misses[0].candidates, ["pc/s3", "mac/s4"]);
-        // By key it works.
+        // By key it works, and the text's @maple is no miss then.
         let r = resolve(&roster(), "pc/me", "@maple", &["mac/s4".into()]);
         assert_eq!(keys(&r), ["mac/s4"]);
+        assert!(r.misses.is_empty(), "{:?}", r.misses);
     }
 
     #[test]
@@ -315,9 +330,14 @@ mod tests {
             .map(|i| card(&format!("pc/a{i}"), &format!("n{i}"), "idle"))
             .collect();
         let text: String = (0..12).map(|i| format!("@n{i} ")).collect();
-        assert_eq!(
-            resolve(&agents, "pc/me", &text, &[]).mentions.len(),
-            MAX_MENTIONS
-        );
+        let r = resolve(&agents, "pc/me", &text, &[]);
+        assert_eq!(r.mentions.len(), MAX_MENTIONS);
+        // The ones past the cap are reported, not dropped quietly.
+        let over: Vec<(&str, &str)> = r
+            .misses
+            .iter()
+            .map(|m| (m.name.as_str(), m.reason.as_str()))
+            .collect();
+        assert_eq!(over, [("n10", MISS_CAP), ("n11", MISS_CAP)]);
     }
 }

@@ -377,12 +377,12 @@ fn resolve_blocker_by_person() {
     let b2 = raise(&r, &r.key_a, &t.id, "Which port?", &["postgres", "8080"]);
     let invalid = coord::ErrorKind::Invalid.text();
     assert!(
-        r.w.resolve_blocker(&t.id, NOTE_ITEM, "")
+        r.w.resolve_blocker(&t.id, NOTE_ITEM, "", &[])
             .unwrap_err()
             .starts_with(invalid)
     );
     assert!(
-        r.w.resolve_blocker(&t.id, &b1.id, "")
+        r.w.resolve_blocker(&t.id, &b1.id, "", &[])
             .unwrap_err()
             .starts_with(invalid),
         "resolved an unanswered item with nothing"
@@ -390,7 +390,7 @@ fn resolve_blocker_by_person() {
     r.w.answer(&t.id, &b1.id, 0, "", false, &[]).unwrap();
     r.w.answer(&t.id, &b2.id, -1, "whatever is free", false, &[])
         .unwrap();
-    let res = r.w.resolve_blocker(&t.id, &b1.id, "").unwrap();
+    let res = r.w.resolve_blocker(&t.id, &b1.id, "", &[]).unwrap();
     let b = blocker(&res.card, &b1.id);
     let rs = b.resolved.as_ref().unwrap();
     assert_eq!(b.state, BLOCKER_RESOLVED);
@@ -404,6 +404,7 @@ fn resolve_blocker_by_person() {
             &t.id,
             &format!(" {} ", b2.id),
             "I'll pick one myself later.",
+            &[],
         )
         .unwrap();
     let b = blocker(&res.card, &b2.id);
@@ -413,7 +414,7 @@ fn resolve_blocker_by_person() {
     assert_eq!(rs.note, "I'll pick one myself later.");
     assert_eq!(res.card.summary.state, coord::WORKING);
     assert!(
-        r.w.resolve_blocker(&t.id, &b2.id, "")
+        r.w.resolve_blocker(&t.id, &b2.id, "", &[])
             .unwrap_err()
             .starts_with(coord::ErrorKind::BadState.text()),
         "resolved twice"

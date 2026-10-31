@@ -145,14 +145,19 @@ impl Window {
             let rs = ib.send_mention_copies(&me, m, &nd.to, &self.core.agent_name(&nd.to));
             out = plan.copy_outcomes(&rs, &nd.to);
             // On a card the mentioned agents watch it.
+            // On a card the mentioned agents watch it, on whichever log
+            // holds it (a shared board's too).
             if let Some(tid) = tools::notice::card_for(self.core.coord(), &m.ref_) {
-                let who: Vec<String> = m
-                    .mentions
-                    .iter()
-                    .filter(|x| !x.gone)
-                    .map(|x| x.key.clone())
-                    .collect();
-                let _ = self.core.coord().watch_for(&me.key, &tid, &who);
+                let mut keys = vec![me.key.clone()];
+                keys.extend(m.mentions.iter().filter(|x| !x.gone).map(|x| x.key.clone()));
+                if keys.len() > 1
+                    && let Err(e) = self
+                        .core
+                        .task_coord(&tid, &keys)
+                        .and_then(|(co, ks)| co.watch_for(&ks[0], &tid, &ks[1..]))
+                {
+                    irori_core::log(&format!("irori: mentioned agents watch {tid}: {e}"));
+                }
             }
         }
         if let Ok((m, nd)) = &r

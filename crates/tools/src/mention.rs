@@ -2,7 +2,7 @@
 //! `mention` arg and `@name` in text, resolved against every device's
 //! roster, and the "Mentioned: … Not delivered: …" line.
 
-use coord::mentions::{MISS_AMBIGUOUS, Miss, Resolved};
+use coord::mentions::{MISS_AMBIGUOUS, MISS_CAP, Miss, Resolved};
 use coord::{Mention, NOTICE_MENTIONED, Notice};
 use inbox::notice::NoticeResult;
 
@@ -75,33 +75,54 @@ impl Inner {
     /// Mentions on card `id` that nothing stores (a blocker's question,
     /// an unblock note): woken, made watchers; the result line.
     pub(crate) fn mention_only(&self, c: &Caller, id: &str, text: &str, a: &Args) -> String {
+        self.mention_with(c, id, text, a, None).1
+    }
+
+    /// As [`Inner::mention_only`], telling `rich` too (the unblock notice):
+    /// a mentioned agent it reaches hears it woken, once (coord's
+    /// mention_into). Returns `rich`'s results and the result line.
+    pub(crate) fn mention_with(
+        &self,
+        c: &Caller,
+        id: &str,
+        text: &str,
+        a: &Args,
+        rich: Option<Notice>,
+    ) -> (Vec<NoticeResult>, String) {
         let res = self.resolve_mentions(c, text, &a.strs("mention"));
+        let tell_rich = |n: Option<Notice>| n.map(|n| self.tell(&c.sender, n)).unwrap_or_default();
         if res.mentions.is_empty() && res.misses.is_empty() {
-            return String::new();
+            return (tell_rich(rich), String::new());
         }
+        let failed = |e: &dyn std::fmt::Display| {
+            format!(
+                "
+Not delivered: the mentions ({}).",
+                one_line(&e.to_string(), 160)
+            )
+        };
         let (logm, shown) = self.mentions_on(id, &res.mentions);
         let n = self.roster();
-        let mres = match self.on(id, std::slice::from_ref(&c.sender.key)) {
+        let mut ns = match self.on(id, std::slice::from_ref(&c.sender.key)) {
             Ok((co, ks)) => match co.mention(&ks[0], id, &logm, text) {
-                Ok(Some(notice)) => self.tell(&c.sender, notice),
-                Ok(None) => Vec::new(),
-                Err(e) => {
-                    return format!(
-                        "
-Not delivered: the mentions ({}).",
-                        one_line(&e.to_string(), 160)
-                    );
-                }
+                Ok(ns) => ns,
+                Err(e) => return (tell_rich(rich), failed(&e)),
             },
-            Err(e) => {
-                return format!(
-                    "
-Not delivered: the mentions ({}).",
-                    one_line(&e.to_string(), 160)
-                );
-            }
+            Err(e) => return (tell_rich(rich), failed(&e)),
         };
-        mention_line(&outcomes(&shown, &mres), &res.misses, &n)
+        let mut rich = rich;
+        if let Some(r) = rich.as_mut() {
+            coord::mention_into(r, &mut ns);
+        }
+        let told = tell_rich(rich);
+        let mut mres = Vec::new();
+        for x in ns {
+            mres.extend(self.tell(&c.sender, x));
+        }
+        (
+            told,
+            mention_line(&outcomes(&shown, &mres), &res.misses, &n),
+        )
     }
 
     /// Routes `ns` from the caller: the mention notice's results come
@@ -176,6 +197,9 @@ fn miss_text(m: &Miss, n: &Names<'_>) -> String {
             keys.join("; ")
         );
     }
+    if m.reason == MISS_CAP {
+        return format!("{name}: at most {} mentions per write", coord::MAX_MENTIONS);
+    }
     if m.is_key() {
         return format!("no agent has key {name}");
     }
@@ -236,21 +260,28 @@ impl Inner {
         mention_line(&copy_outcomes(&res.mentions, &rs, &d.to), &res.misses, &n)
     }
 
-    /// `m`'s live mentions watch the card its Ref names on this device's
-    /// board.
-    pub(crate) fn watch_mentioned(&self, c: &Caller, m: &inbox::Message) {
-        let co = self.b.coord();
-        let Some(tid) = crate::notice::card_for(co, &m.ref_) else {
-            return;
+    /// `m`'s live mentions watch the card its Ref names, on whichever
+    /// log holds it (a shared board's too); "" or a line saying they
+    /// couldn't.
+    pub(crate) fn watch_mentioned(&self, c: &Caller, m: &inbox::Message) -> String {
+        let Some(tid) = crate::notice::card_for(self.b.coord(), &m.ref_) else {
+            return String::new();
         };
-        let who: Vec<String> = m
-            .mentions
-            .iter()
-            .filter(|x| !x.gone)
-            .map(|x| x.key.clone())
-            .collect();
-        if !who.is_empty() {
-            let _ = co.watch_for(&c.sender.key, &tid, &who);
+        let mut keys = vec![c.sender.key.clone()];
+        keys.extend(m.mentions.iter().filter(|x| !x.gone).map(|x| x.key.clone()));
+        if keys.len() == 1 {
+            return String::new();
+        }
+        let res = self
+            .on(&tid, &keys)
+            .and_then(|(co, ks)| co.watch_for(&ks[0], &tid, &ks[1..]));
+        match res {
+            Ok(_) => String::new(),
+            Err(e) => format!(
+                "
+The mentioned agents don't watch the card: {}.",
+                one_line(&e.to_string(), 160)
+            ),
         }
     }
 }

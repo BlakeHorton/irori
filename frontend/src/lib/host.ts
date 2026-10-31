@@ -119,8 +119,8 @@ export const BoardService = {
     call(commands.boardComment(id, text, tell, mentions)),
   Answer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: B.Mention[]) =>
     call(commands.boardAnswer(taskId, blockerId, option, text, wake, mentions)),
-  ResolveBlocker: (taskId: string, blockerId: string, note: string) =>
-    call(commands.boardResolveBlocker(taskId, blockerId, note)),
+  ResolveBlocker: (taskId: string, blockerId: string, note: string, mentions: B.Mention[]) =>
+    call(commands.boardResolveBlocker(taskId, blockerId, note, mentions)),
   Ask: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: B.Mention[]) =>
     call(commands.boardAsk(text, repoKey, wake, boardId, mentions)),
   AskWithFiles: (

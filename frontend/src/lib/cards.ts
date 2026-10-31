@@ -559,7 +559,8 @@ function sampleAnswer(
 function sampleResolveBlocker(
   id: string,
   blockerId: string,
-  note: string
+  note: string,
+  mentions: Mention[]
 ): AnswerResult {
   const c = sampleCard(id)
   const b = sampleBlocker(c, blockerId)
@@ -580,6 +581,7 @@ function sampleResolveBlocker(
   return AnswerResult({
     card: c,
     told: Told({ to: c.working.map((w) => w.key), mode: "next_turn" }),
+    mentioned: sampleOutcomes(sampleMentions(mentions)),
   })
 }
 
@@ -769,14 +771,16 @@ export const cards = {
   },
 
   // resolveBlocker is "Mark resolved": the person's answer stands, with
-  // note (optional) beside the check.
+  // note (optional) beside the check. Each of mentions (picked in the
+  // note) is woken and watches the card.
   async resolveBlocker(
     id: string,
     blockerId: string,
-    note: string
+    note: string,
+    mentions: Mention[] = []
   ): Promise<AnswerResult> {
-    if (inWails()) return BoardService.ResolveBlocker(id, blockerId, note)
-    return sampleResolveBlocker(id, blockerId, note)
+    if (inWails()) return BoardService.ResolveBlocker(id, blockerId, note, mentions)
+    return sampleResolveBlocker(id, blockerId, note, mentions)
   },
 
   // comment puts the person's comment on card id's thread. Its holders

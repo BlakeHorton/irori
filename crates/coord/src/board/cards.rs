@@ -1208,7 +1208,8 @@ impl Fold {
                 n.to.push(h);
             }
         }
-        super::mention::without_mentioned(&mut n, &ms);
+        // A mentioned raiser or holder hears this notice itself, woken
+        // (mention_into), not a plain mention without the question.
         if !a.resolve {
             let at = self.stamp();
             let actor = self.actor_for(&by);
@@ -1243,8 +1244,10 @@ impl Fold {
             ));
             s.push_str(&deeper(id));
             n.text = s;
+            let mut mn = self.mention_notice(&by, id, &ms, &text, &format!("task:{id}"), "")?;
+            super::mention::mention_into(&mut n, &mut mn);
             let mut ns = vec![n];
-            ns.extend(self.mention_notice(&by, id, &ms, &text, &format!("task:{id}"))?);
+            ns.extend(mn);
             return Ok((self.tasks[id].clone(), ns));
         }
         let restored = if count_open(&t) == 1 {
@@ -1307,8 +1310,10 @@ impl Fold {
         s.push_str(&deeper(id));
         n.text = s;
         let said = if note.is_empty() { &text } else { &note };
+        let mut mn = self.mention_notice(&by, id, &ms, said, &format!("task:{id}"), "")?;
+        super::mention::mention_into(&mut n, &mut mn);
         let mut ns = vec![n];
-        ns.extend(self.mention_notice(&by, id, &ms, said, &format!("task:{id}"))?);
+        ns.extend(mn);
         Ok((self.tasks[id].clone(), ns))
     }
 
@@ -1332,6 +1337,7 @@ impl Fold {
                 &ms,
                 &cm.text,
                 &format!("comment:{}", cm.id),
+                "",
             )?);
             return Ok((cm, ns));
         }
@@ -1382,7 +1388,14 @@ impl Fold {
             },
         )?;
         let mut ns = vec![Notice::default()];
-        ns.extend(self.mention_notice(&cm.by, id, &ms, &cm.text, &format!("comment:{}", cm.id))?);
+        ns.extend(self.mention_notice(
+            &cm.by,
+            id,
+            &ms,
+            &cm.text,
+            &format!("comment:{}", cm.id),
+            "",
+        )?);
         Ok((cm, ns))
     }
 

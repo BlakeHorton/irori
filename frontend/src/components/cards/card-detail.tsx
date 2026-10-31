@@ -60,7 +60,7 @@ import { AttachmentList } from "@/components/attachments"
 import type { FileRef } from "@/lib/attachments"
 import { LinkChip, RichLine, RichText } from "@/components/common/rich-text"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
-import { useMissed } from "@/lib/mentions"
+import { composing, useMissed } from "@/lib/mentions"
 import { useBoards, type BoardSummary } from "@/lib/boards"
 import { previewFlag } from "@/lib/preview"
 import { ShareButton, WithdrawButton } from "./share-dialog"
@@ -954,7 +954,7 @@ function CommentBox({ cardId }: { cardId: string }) {
         onKeyDown={(e) => {
           // Enter sends, Shift+Enter is a new line (not while an IME is
           // composing, where Enter picks a candidate).
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
             e.preventDefault()
             e.currentTarget.form?.requestSubmit()
           }
@@ -1017,6 +1017,9 @@ function BlockerItem({
   const [mentions, setMentions] = useMentionsDraft(`${cardId}/blocker/${b.id}`)
   const [missed, setMissed] = useMissed()
   const [note, setNote] = useDraft(`${cardId}/resolve/${b.id}`)
+  const [noteMentions, setNoteMentions] = useMentionsDraft(
+    `${cardId}/resolve/${b.id}`
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [told, setTold] = useState<Sent | null>(null)
@@ -1055,6 +1058,7 @@ function BlockerItem({
       setText("")
       setMentions([])
       setNote("")
+      setNoteMentions([])
       setAdding(false)
       setResolving(false)
     } catch (err) {
@@ -1081,7 +1085,10 @@ function BlockerItem({
 
   const markResolved = (e: FormEvent) => {
     e.preventDefault()
-    void run(() => cards.resolveBlocker(cardId, b.id, note), null)
+    void run(
+      () => cards.resolveBlocker(cardId, b.id, note, noteMentions),
+      null
+    )
   }
 
   const form = showForm ? (
@@ -1116,7 +1123,7 @@ function BlockerItem({
           onKeyDown={(e) => {
             // Enter sends, as the one-line field did; Shift+Enter is a
             // new line.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
               e.preventDefault()
               e.currentTarget.form?.requestSubmit()
             }
@@ -1267,13 +1274,26 @@ function BlockerItem({
       )}
       {resolving && (
         <form className="flex gap-1.5" onSubmit={markResolved}>
-          <Input
+          <MentionTextarea
+            autoSize
+            rows={1}
             value={note}
+            mentions={noteMentions}
             maxLength={MaxAnswer}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(v, ms) => {
+              setNote(v)
+              setNoteMentions(ms)
+            }}
+            onKeyDown={(e) => {
+              // Enter saves, as the one-line field did.
+              if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
+                e.preventDefault()
+                e.currentTarget.form?.requestSubmit()
+              }
+            }}
             placeholder="A note beside the check (optional)"
             aria-label={`Note on resolving: ${plainLine(b.question)}`}
-            className="min-w-0 flex-1 bg-card"
+            className="max-h-40 min-h-9 min-w-0 flex-1 bg-card py-1.5"
             disabled={busy}
           />
           <Button type="submit" disabled={busy}>
@@ -1286,6 +1306,7 @@ function BlockerItem({
             onClick={() => {
               setResolving(false)
               setNote("")
+              setNoteMentions([])
             }}
           >
             Cancel

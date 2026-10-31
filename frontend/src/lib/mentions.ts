@@ -28,6 +28,23 @@ const after = /[\s.,;:!?)'"]/
 
 export type Token = { start: number; query: string }
 
+// trailing is closing punctuation typed straight after a name ("@oak,").
+const trailing = /[.,;:!?)'"]+$/
+
+// bare is query without closing punctuation at its end.
+function bare(query: string): string {
+  return query.replace(trailing, "")
+}
+
+// composing says a key press belongs to an IME composition. WKWebView
+// (the Mac build) sends the Enter that commits one with isComposing false
+// and keyCode 229.
+export function composing(e: {
+  nativeEvent: { isComposing?: boolean; keyCode?: number }
+}): boolean {
+  return !!e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229
+}
+
 // gone says the agent has left (not merely offline).
 export function isGone(who: AgentRef): boolean {
   return who.status === "gone"
@@ -64,7 +81,7 @@ export function filterCandidates(
   cands: readonly MentionCandidate[],
   query: string
 ): MentionCandidate[] {
-  const q = query.toLowerCase()
+  const q = bare(query).toLowerCase()
   const rank = (c: MentionCandidate) => {
     const n = c.who.name.toLowerCase()
     return [
@@ -94,15 +111,17 @@ export function moveHighlight(i: number, count: number, dir: 1 | -1): number {
   return (i + dir + count) % count
 }
 
-// insertMention puts "@name " in place of the token, and returns the text
-// and where the caret goes.
+// insertMention puts "@name " in place of the token and the rest of the
+// word the caret is in, and returns the text and where the caret goes.
 export function insertMention(
   text: string,
   t: Token,
   caret: number,
   name: string
 ): { text: string; caret: number } {
-  const rest = text.slice(caret)
+  let end = caret
+  while (end < text.length && !after.test(text[end])) end++
+  const rest = text.slice(end)
   const space = /^\s/.test(rest) ? "" : " "
   const ins = `@${name}${space}`
   return {
@@ -140,14 +159,50 @@ export function hasMention(
   return false
 }
 
-// keepMentions drops the mentions whose "@name" left the text.
+// countMention is how many whole "@name" spans text holds (as
+// hasMention counts them).
+export function countMention(
+  text: string,
+  name: string,
+  longer: readonly string[] = []
+): number {
+  if (!name) return 0
+  const needle = `@${name}`
+  const over = longer.filter(
+    (n) => n.length > name.length && n.startsWith(name)
+  )
+  let n = 0
+  for (let i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + 1))
+    if (
+      mentionAt(text, i, name) &&
+      !over.some((o) => text.startsWith(o, i + 1) && mentionAt(text, i, o))
+    )
+      n++
+  return n
+}
+
+// keepMentions drops the mentions whose "@name" left the text. Two
+// mentions with one name (two agents called oak) need two "@oak" spans:
+// with fewer, the latest-added go first.
 export function keepMentions(
   mentions: readonly Mention[],
   text: string
 ): Mention[] {
   const names = mentions.map((m) => m.name)
-  const out = mentions.filter((m) => hasMention(text, m.name, names))
+  const left = new Map<string, number>()
+  const out = mentions.filter((m) => {
+    if (!left.has(m.name)) left.set(m.name, countMention(text, m.name, names))
+    const n = left.get(m.name) ?? 0
+    if (n <= 0) return false
+    left.set(m.name, n - 1)
+    return true
+  })
   return out.length === mentions.length ? (mentions as Mention[]) : out
+}
+
+// isFull says mentions holds MaxMentions already.
+export function isFull(mentions: readonly Mention[]): boolean {
+  return mentions.length >= MaxMentions
 }
 
 // addMention records m, once per key, at most MaxMentions.
@@ -189,17 +244,55 @@ export function settle(
     cands.map((c) => c.who.name)
   )
   if (!t) return mentions as Mention[]
-  const hit = exactUnique(t.query, cands)
+  const name = bare(t.query)
+  const hit = exactUnique(name, cands)
   if (!hit) return mentions as Mention[]
-  return addMention(mentions, { key: hit.who.key, name: t.query })
+  return addMention(mentions, { key: hit.who.key, name })
 }
 
-// MenuKey is what a key does with the picker open.
-export type MenuKey = "next" | "prev" | "pick" | "close" | null
+// settleRange records each whole "@name" in text whose "@" is in
+// [from, to) and whose name is exactly one live agent's (pasted text, or
+// a mention Ctrl+Z brought back). Longest names first, so "@oak tree"
+// wins over "@oak".
+export function settleRange(
+  text: string,
+  from: number,
+  to: number,
+  mentions: readonly Mention[],
+  cands: readonly MentionCandidate[]
+): Mention[] {
+  const names = [
+    ...new Set(cands.filter((c) => !isGone(c.who)).map((c) => c.who.name)),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  let out = mentions as Mention[]
+  const lower = text.toLowerCase()
+  for (
+    let i = text.indexOf("@", Math.max(0, from));
+    i >= 0 && i < to;
+    i = text.indexOf("@", i + 1)
+  ) {
+    if (i > 0 && !before.test(text[i - 1])) continue
+    const n = names.find(
+      (x) => lower.startsWith(x.toLowerCase(), i + 1) && mentionAt(text, i, x)
+    )
+    if (!n) continue
+    const written = text.slice(i + 1, i + 1 + n.length)
+    const hit = exactUnique(written, cands)
+    if (hit && !out.some((m) => m.key === hit.who.key))
+      out = addMention(out, { key: hit.who.key, name: written })
+  }
+  return out
+}
 
-// menuKey maps a key press to the picker: only while it is open with rows
-// (with no rows, Enter sends and Tab moves focus as usual), and never
-// while an IME is composing.
+// MenuKey is what a key does with the picker open: "hold" swallows it.
+export type MenuKey = "next" | "prev" | "pick" | "close" | "hold" | null
+
+// menuKey maps a key press to the picker: only while it is open, and
+// never while an IME is composing. With no rows (a typo, or the list
+// still loading) Enter is held, so it doesn't send what the person can
+// see is unfinished; Tab moves focus as usual.
 export function menuKey(
   e: { key: string; shiftKey: boolean; isComposing?: boolean },
   open: boolean,
@@ -207,7 +300,7 @@ export function menuKey(
 ): MenuKey {
   if (!open || e.isComposing) return null
   if (e.key === "Escape") return "close"
-  if (rows === 0) return null
+  if (rows === 0) return e.key === "Enter" && !e.shiftKey ? "hold" : null
   switch (e.key) {
     case "Tab":
       return e.shiftKey ? "prev" : "next"
@@ -237,14 +330,24 @@ export function splitMentions<M extends { name: string }>(
     .slice()
     .sort((a, b) => b.name.length - a.name.length)
   if (!named.length || !text.includes("@")) return [{ kind: "text", text }]
+  // Same-named mentions go out in order: the k-th "@oak" is the k-th
+  // mention named oak (the last one for any past that).
+  const used = new Map<string, number>()
+  const nth = (name: string): M => {
+    const all = mentions.filter((x) => x.name === name)
+    const k = used.get(name) ?? 0
+    used.set(name, k + 1)
+    return all[Math.min(k, all.length - 1)]
+  }
   const out: MentionSpan<M>[] = []
   let from = 0
   for (let i = text.indexOf("@"); i >= 0; i = text.indexOf("@", i + 1)) {
     if (i < from) continue
-    const m = named.find(
+    const hit = named.find(
       (x) => text.startsWith(x.name, i + 1) && mentionAt(text, i, x.name)
     )
-    if (!m) continue
+    if (!hit) continue
+    const m = nth(hit.name)
     if (i > from) out.push({ kind: "text", text: text.slice(from, i) })
     const end = i + 1 + m.name.length
     out.push({ kind: "mention", text: text.slice(i, end), mention: m })

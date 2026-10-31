@@ -51,7 +51,7 @@ pub use fold::{
     REASON_HOLDER_GONE, REASON_RELEASED, REASON_STOLEN, SUB_BUFFER, followed,
 };
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
-pub use mention::without_mentioned;
+pub use mention::{mention_into, without_mentioned};
 pub use mirror::RELEASE_REQUEST;
 pub use resource::{
     RESOURCE_NAMED, RESOURCE_PATH, RESOURCE_PORT, Resource, check_repo_key, normalize_glob,
@@ -410,19 +410,19 @@ impl Coord {
         self.lock().watch_for(by, id, who)
     }
     /// Mentions on card `id` that nothing stores (a blocker's question, a
-    /// resolve note): the live ones become watchers, and the notice that
-    /// wakes them comes back (`None`: nobody to tell).
+    /// resolve note): the live ones become watchers, and the notices that
+    /// wake them come back (none: nobody to tell).
     pub fn mention(
         &self,
         by: &str,
         id: &str,
         mentions: &[Mention],
         text: &str,
-    ) -> Result<Option<Notice>> {
+    ) -> Result<Vec<Notice>> {
         let by = util::caller(by)?;
         let mut f = self.lock();
         let ms = f.check_mentions(&by, mentions)?;
-        f.mention_notice(&by, id, &ms, text, &format!("task:{id}"))
+        f.mention_notice(&by, id, &ms, text, &format!("task:{id}"), "")
     }
     pub fn set_steps(&self, by: &str, id: &str, steps: Vec<Step>) -> Result<Task> {
         self.lock().set_steps(by, id, steps)
