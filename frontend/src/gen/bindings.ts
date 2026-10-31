@@ -41,6 +41,7 @@ export const commands = {
 	boardClose: (id: string, state: string, note: string) => __TAURI_INVOKE<Task>("board_close", { id, state, note }),
 	boardDelete: (id: string) => __TAURI_INVOKE<null>("board_delete", { id }),
 	boardPin: (id: string, pinned: boolean) => __TAURI_INVOKE<null>("board_pin", { id, pinned }),
+	boardPlace: (id: string, x: number, y: number) => __TAURI_INVOKE<null>("board_place", { id, x, y }),
 	boardMovePin: (id: string, before: string) => __TAURI_INVOKE<null>("board_move_pin", { id, before }),
 	boardReopen: (id: string) => __TAURI_INVOKE<TaskResult>("board_reopen", { id }),
 	boardsList: () => __TAURI_INVOKE<BoardSummary[]>("boards_list"),
@@ -318,6 +319,12 @@ export type BoardSummary = {
 	warnings?: string[],
 };
 
+/**  A card's spot on the Board's canvas, in canvas pixels (card #93). */
+export type CanvasPos = {
+	x: number,
+	y: number,
+};
+
 /**  The capture:changed payload: what changed since the last one. */
 export type CaptureChange = {
 	kinds: string[],
@@ -514,6 +521,8 @@ export type CardSummary = {
 	subtaskBlocked?: string,
 	pinned?: boolean,
 	pinRank?: number,
+	/**  Where the card sits on the Board's canvas (card #93), once placed. */
+	pos?: CanvasPos | null,
 };
 
 /**  One entry of a card's thread. */

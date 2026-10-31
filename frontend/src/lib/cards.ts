@@ -222,6 +222,7 @@ function summary(c: CardDetail): CardSummary {
     subtaskBlocked: c.subtaskBlocked,
     pinned: c.pinned,
     pinRank: c.pinRank,
+    pos: c.pos,
   })
 }
 
@@ -833,6 +834,24 @@ export const cards = {
     const c = sampleCard(id)
     if (c.ask) c.ask = CardAsk({ ...c.ask, state: AskState.Open, wake: true })
     sampleChanged()
+  },
+
+  // place keeps where the person dropped card id on the Board's canvas
+  // (card #93): in coord, so every device shows the same layout.
+  async place(id: string, x: number, y: number): Promise<void> {
+    const [rx, ry] = [Math.round(x), Math.round(y)]
+    if (inWails()) {
+      await BoardService.Place(id, rx, ry)
+      return
+    }
+    sampleCard(id).pos = { x: rx, y: ry }
+    sampleChanged()
+  },
+
+  // detail is one card's page data (its blockers, for the canvas).
+  async detail(id: string): Promise<CardDetail> {
+    if (inWails()) return BoardService.Card(id)
+    return { ...sampleCard(id) } as CardDetail
   },
 
   // pin pins (or unpins) a card for the person: the Pinned group, last.

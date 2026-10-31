@@ -324,6 +324,12 @@ pub async fn board_pin(w: W<'_>, id: String, pinned: bool) -> R<()> {
 
 #[tauri::command]
 #[specta::specta]
+pub async fn board_place(w: W<'_>, id: String, x: i64, y: i64) -> R<()> {
+    w.place(&id, x, y)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn board_move_pin(w: W<'_>, id: String, before: String) -> R<()> {
     w.move_pin(&id, &before)
 }
@@ -723,6 +729,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_close,
             board_delete,
             board_pin,
+            board_place,
             board_move_pin,
             board_reopen,
             boards_list,

@@ -563,3 +563,19 @@ fn revised_blocker_shows_in_its_thread() {
     assert_eq!(b.state, BLOCKER_ANSWERED);
     assert_eq!(b.thread.last().unwrap().text, "Yes");
 }
+
+/// Card #93: a card dropped on the canvas keeps its spot, on the summary.
+#[test]
+fn cards_carry_their_canvas_spot() {
+    let r = Rig::new();
+    let (a, b) = (held_task(&r), held_task(&r));
+    r.w.place(&a.id, 340, -60).unwrap();
+    let cs = r.w.cards();
+    let get = |id: &str| cs.iter().find(|s| s.id == id).unwrap().clone();
+    assert_eq!(
+        get(&a.id).pos,
+        Some(irori_window::cards::CanvasPos { x: 340, y: -60 })
+    );
+    assert_eq!(get(&b.id).pos, None);
+    assert!(r.w.place("01NOPE", 0, 0).is_err());
+}

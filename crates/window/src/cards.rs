@@ -196,6 +196,21 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "is_zero_f")]
     #[specta(optional, type = i64)]
     pub pin_rank: f64,
+    /// Where the card sits on the Board's canvas (card #93), once placed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub pos: Option<CanvasPos>,
+}
+
+/// A card's spot on the Board's canvas, in canvas pixels (card #93).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Type)]
+pub struct CanvasPos {
+    pub x: i64,
+    pub y: i64,
+}
+
+fn pos_of(placed: &HashMap<String, (i64, i64)>, id: &str) -> Option<CanvasPos> {
+    placed.get(id).map(|&(x, y)| CanvasPos { x, y })
 }
 
 fn is_zero(n: &i64) -> bool {
@@ -853,8 +868,10 @@ impl Window {
             ..Default::default()
         });
         let mut out = Vec::with_capacity(tasks.len());
+        let placed = co.positions();
         for t in &tasks {
             let mut s = card_summary(t, &p);
+            s.pos = pos_of(&placed, &t.id);
             let mut last = t.updated_at;
             if let Some(acts) = co.activity(&t.id)
                 && let Some(a) = acts.first()
@@ -1031,6 +1048,7 @@ impl Window {
             if !s.ready {
                 continue;
             }
+            let placed = co.positions();
             for t in co.list_tasks(&coord::TaskFilter {
                 open: true,
                 ..Default::default()
@@ -1040,6 +1058,7 @@ impl Window {
                 }
                 let pt = self.priv_task(t);
                 let mut cs = card_summary(&pt, p);
+                cs.pos = pos_of(&placed, &pt.id);
                 cs.scope = crate::boards::SCOPE_BOARD.into();
                 cs.scope_label = s.name.clone();
                 cs.board = s.board_id.clone();

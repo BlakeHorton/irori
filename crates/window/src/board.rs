@@ -298,6 +298,14 @@ impl Window {
             .map_err(|e| e.to_string())
     }
 
+    /// Where the person dropped a card on the Board's canvas (card #93). A
+    /// shared card's spot goes in its board's log: one layout for the board.
+    pub fn place(&self, id: &str, x: i64, y: i64) -> Result<(), String> {
+        let (co, keys) = self.on(trim(id), &[])?;
+        co.place(&keys[0], trim(id), x, y)
+            .map_err(|e| e.to_string())
+    }
+
     /// BoardService.MovePin: just before another pinned card ("" last).
     pub fn move_pin(&self, id: &str, before: &str) -> Result<(), String> {
         let (co, keys) = self.private_only(trim(id))?;
