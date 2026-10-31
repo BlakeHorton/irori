@@ -273,7 +273,8 @@ function inviteError(err: unknown): string {
 // PeoplePanel is who is on the board and how to get more people on it:
 // Invite someone (an owner, once the board is ready) with how an invite
 // works, else why there is no Invite; then the members and the board's
-// settings. An open invite takes the panel over until it ends.
+// settings. An open invite stands in for the Invite button until it
+// ends; the settings stay (card #103).
 function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: () => Promise<void> }) {
   const { invite, setInvite } = useInvite(true)
   const homeOff = useHomeOff(true)
@@ -321,12 +322,12 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
             )
           )}
           {error && <p className="text-xs text-destructive">{error}</p>}
-          {b.ready && !b.leaving && (
-            <div className="border-t border-border pt-3">
-              <BoardSettingsPanel boardId={b.boardId} onChanged={onChanged} />
-            </div>
-          )}
         </>
+      )}
+      {b.ready && !b.leaving && (
+        <div className="border-t border-border pt-3">
+          <BoardSettingsPanel boardId={b.boardId} onChanged={onChanged} />
+        </div>
       )}
     </aside>
   )

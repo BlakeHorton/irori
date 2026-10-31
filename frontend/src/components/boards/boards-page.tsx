@@ -27,7 +27,9 @@ export function BoardsPage({ cards }: { cards: CardSummary[] }) {
         </p>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
-      {inviting ? (
+      {/* An open invite sits over the list, never in its place (card
+          #103): your boards stay one click away while it waits. */}
+      {inviting && (
         <div className="glass-panel max-w-xl p-4">
           <InvitePanel
             s={invite}
@@ -37,29 +39,27 @@ export function BoardsPage({ cards }: { cards: CardSummary[] }) {
             }}
           />
         </div>
-      ) : (
-        <>
-          {boards.length > 0 ? (
-            <ul
-              className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
-              aria-label="Your boards"
-            >
-              {boards.map((b) => (
-                <BoardTile key={b.boardId} board={b} cards={cards} />
-              ))}
-            </ul>
-          ) : (
-            <p className="text-[13px] text-muted-foreground">
-              No boards yet. Make one for a project below, then invite people
-              to it; or join one with an invite link someone sent you.
-            </p>
-          )}
-          <div className="grid max-w-xl gap-3">
-            <NewBoard taken={boards.map((b) => b.tag)} onMade={reload} />
-            <JoinInvite onJoined={setInvite} />
-          </div>
-        </>
       )}
+      {boards.length > 0 ? (
+        <ul
+          className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
+          aria-label="Your boards"
+        >
+          {boards.map((b) => (
+            <BoardTile key={b.boardId} board={b} cards={cards} />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">
+          No boards yet. Make one for a project below, then invite people
+          to it; or join one with an invite link someone sent you.
+        </p>
+      )}
+      <div className="grid max-w-xl gap-3">
+        <NewBoard taken={boards.map((b) => b.tag)} onMade={reload} />
+        {/* One invite at a time: joining waits until this one ends. */}
+        {!inviting && <JoinInvite onJoined={setInvite} />}
+      </div>
     </div>
   )
 }
