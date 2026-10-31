@@ -38,7 +38,7 @@ These are carried in the board tools' descriptions and in a short block the mod 
 > A card the person posts or asks for is never backlog: it is work to start now (new work on an existing task, or new work to pick up immediately), so take it up or get it taken, don't leave it waiting.
 > When you take a card, give it steps and keep them ticked.
 > When you need the person, raise one blocker per question (never several asks in one note): context for a newcomer, options when there are real choices, and your recommendation marked.
-> Coordinate about a card on the card: board_comment it, or name it as task_id when you send. Use direct messages only for things not about a card.
+> Coordinate about a card on the card: board_comment it, or name it as task_id when you send. To bring in another agent, mention it: @name in text (its exact name from the agents tool), or its name or key in mention. A mention wakes that agent now and, on a card, makes it a watcher (never a holder). Use direct messages only for things not about a card.
 > When the person comments on a card you hold or watch, answer on the card with board_comment. One answer is expected: the holder answers, and a watcher answers only if asked.
 
 *v0.4.2, from the first two-machine run:* an agent put three asks in one `input_required` note and the person saw one fat card. So `board_status input_required` is refused unless the card has an open blocker (and on a card that has them it changes nothing, since a state change would close them); the error says to raise each question with `board_block`. An option can be marked `recommended` (at most one per raise; a lone option is the recommendation; `board_recommend` always recommends, and marks an option already offered). The window shows the recommended one first with a badge, the others as options, and the field for an answer in the person's own words. Older `input_required` cards still show their note as one item.
@@ -331,7 +331,7 @@ Mentioned: cedar (woke), lotus on Mac (woke). Not delivered: fern is gone; maple
 
 Held deliveries read "held by <reason>" in place of "woke", and rate-limited ones "not sent: <error>".
 
-The tool descriptions gain: "To bring in another agent, mention it: @name in text (its exact name from the agents tool), or its name or key in mention. A mention wakes that agent now and, on a card, makes it a watcher (never a holder). Use it when you need that agent, not to copy it in. An ambiguous or unknown name isn't delivered; the result says which, with the keys to pick from." `board_comment`'s description adds: "A blocker reply with a mention still goes back to the person, and the mentioned agent hears it." `BoardInstructions` gains the first two sentences.
+The tool texts gain (the tool descriptions are capped at 500 bytes and had no room, so the four sentences went into the shared `Instructions` every tool carries, and board_comment's blocker sentence into its `mention` description): "To bring in another agent, mention it: @name in text (its exact name from the agents tool), or its name or key in mention. A mention wakes that agent now and, on a card, makes it a watcher (never a holder). Use it when you need that agent, not to copy it in. An ambiguous or unknown name isn't delivered; the result says which, with the keys to pick from." `board_comment`'s description adds: "A blocker reply with a mention still goes back to the person, and the mentioned agent hears it." `BoardInstructions` gains the first two sentences.
 
 ### Shared boards
 

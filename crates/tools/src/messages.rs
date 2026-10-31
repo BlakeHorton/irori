@@ -21,6 +21,7 @@ const SEND_ARGS: &[(&str, Ty)] = &[
     ("reason", Ty::Str),
     ("attach", Ty::Strs),
     ("task_id", Ty::Str),
+    ("mention", Ty::Strs),
 ];
 
 pub(crate) fn send(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -75,18 +76,22 @@ pub(crate) fn send(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(f) => f,
         Err(msg) => return msg,
     };
+    let res = s.resolve_mentions(c, text, &a.strs("mention"));
     let o = SendOptions {
         reason: trim(a.str("reason")).to_string(),
         mode: mode::WAKE.into(),
         attachments: files.iter().map(to_inbox).collect(),
         ref_: r.clone(),
         notice: false,
+        mentions: crate::mention::to_inbox(&res.mentions),
+        ..SendOptions::default()
     };
     let ib = s.b.inbox();
     let (m, d) = match ib.send_with(&c.sender, &address, text, o) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    let mline = s.message_mentions(c, &m, &d, &res);
     let mut out = format!(
         "Sent message {}{} {}",
         m.id,
@@ -100,8 +105,9 @@ pub(crate) fn send(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             &d.to
         };
         out += &s.recorded(&m, to, held_on_card(ib, &d));
+        s.watch_mentioned(c, &m);
     }
-    out
+    out + &mline
 }
 
 /// `to` names a pull request ("pr:..." or a GitHub URL) rather than an
@@ -114,7 +120,11 @@ fn is_pr_target(to: &str) -> bool {
     gocompat::text::to_lower_str(to).contains("github.com/")
 }
 
-const REPLY_ARGS: &[(&str, Ty)] = &[("delivery_id", Ty::Str), ("text", Ty::Str)];
+const REPLY_ARGS: &[(&str, Ty)] = &[
+    ("delivery_id", Ty::Str),
+    ("text", Ty::Str),
+    ("mention", Ty::Strs),
+];
 
 pub(crate) fn reply(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let a = match decode(raw, REPLY_ARGS) {
@@ -134,17 +144,21 @@ pub(crate) fn reply(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         return out;
     }
     let ib = s.b.inbox();
-    let (m, d) = match ib.reply(&c.sender, id, a.str("text")) {
+    let res = s.resolve_mentions(c, a.str("text"), &a.strs("mention"));
+    let ms = crate::mention::to_inbox(&res.mentions);
+    let (m, d) = match ib.reply_with(&c.sender, id, a.str("text"), &ms) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    let mline = s.message_mentions(c, &m, &d, &res);
     // A reply keeps the Ref of the message it answers.
+    let rec = s.recorded(&m, &d.to, held_on_card(ib, &d));
+    s.watch_mentioned(c, &m);
     format!(
-        "Replied to delivery {} (now answered) with message {} {}{}",
+        "Replied to delivery {} (now answered) with message {} {}{rec}{mline}",
         one_line(id, 80),
         m.id,
         s.outcome(&d),
-        s.recorded(&m, &d.to, held_on_card(ib, &d))
     )
 }
 

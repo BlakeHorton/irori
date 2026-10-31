@@ -49,6 +49,7 @@ mod board;
 mod capturetools;
 mod explore;
 mod format;
+mod mention;
 mod messages;
 pub mod notice;
 pub mod notify;

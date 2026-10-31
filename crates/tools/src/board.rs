@@ -709,6 +709,7 @@ const COMMENT_ARGS: &[(&str, Ty)] = &[
     ("attach", Ty::Strs),
     ("blocker_id", Ty::Str),
     ("missing", Ty::Strs),
+    ("mention", Ty::Strs),
 ];
 
 pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -742,7 +743,9 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let (cm, notice) = match co.comment_on(
+    let res = s.resolve_mentions(c, a.str("text"), &a.strs("mention"));
+    let (logm, shown) = s.mentions_on(&id, &res.mentions);
+    let (cm, mut notices) = match co.comment_on(
         &as_[0],
         &id,
         CommentInput {
@@ -751,16 +754,28 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             files: files.iter().map(to_coord).collect(),
             blocker_id: bid.clone(),
             missing,
+            mentions: logm,
         },
     ) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    let notice = if notices.is_empty() {
+        coord::Notice::default()
+    } else {
+        notices.remove(0)
+    };
+    let (_, mres) = s.tell_all(c, notices);
+    let mline = crate::mention::mention_line(
+        &crate::mention::outcomes(&shown, &mres),
+        &res.misses,
+        &s.roster(),
+    );
     if !bid.is_empty() {
         // A reply on a blocker tells nobody: the person is the audience.
         let b = one_line(&bid, 20);
         return format!(
-            "Replied on blocker {b} of {}{}; it stays open and goes back to the person. Resolve it with board_unblock blocker_id={b} note=… once you have what you need. If your reply answered their question and the choices are not what they were, revise it now with board_block blocker_id={b} (the question and options that fit, or none); don't leave the same options up.",
+            "Replied on blocker {b} of {}{}; it stays open and goes back to the person. Resolve it with board_unblock blocker_id={b} note=… once you have what you need. If your reply answered their question and the choices are not what they were, revise it now with board_block blocker_id={b} (the question and options that fit, or none); don't leave the same options up.{mline}",
             s.short_of(&id),
             attached_line(&files)
         );
@@ -786,10 +801,10 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let rs = s.tell(&c.sender, notice);
     if !rs.is_empty() {
         out += &s.told(&rs, &n);
-    } else {
+    } else if shown.iter().all(|m| m.gone) {
         out += " Nobody else holds it, so nobody was told; it shows on the Board.";
     }
-    out
+    out + &mline
 }
 
 // --- board_block / board_unblock ---
@@ -811,6 +826,7 @@ const BLOCK_ARGS: &[(&str, Ty)] = &[
     ("links", Ty::Strs),
     ("attach", Ty::Strs),
     ("blocker_id", Ty::Str),
+    ("mention", Ty::Strs),
 ];
 
 fn link_labels(ls: &[Link]) -> String {
@@ -974,6 +990,7 @@ fn revise_blocker(s: &Inner, c: &Caller, a: &Args, id: &str, bid: &str) -> Strin
     if many_questions(&item.question) {
         out += &format!(" Its question asks more than one thing. {ONE_ASK_EACH}");
     }
+    out += &s.mention_only(c, id, &item.question, a);
     format!("{out}\n{}", s.line(&t))
 }
 
@@ -1112,6 +1129,7 @@ pub(crate) fn board_block(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         }
         _ => out += " Anyone may board_unblock it.",
     }
+    out += &s.mention_only(c, &id, &item.question, &a);
     format!("{out}\n{}", s.line(&t))
 }
 
@@ -1120,6 +1138,7 @@ const UNBLOCK_ARGS: &[(&str, Ty)] = &[
     ("note", Ty::Str),
     ("blocker_id", Ty::Str),
     ("pick", Ty::Int),
+    ("mention", Ty::Strs),
 ];
 
 pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -1144,7 +1163,9 @@ pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
                 "to resolve one blocker give pick (the number of a recommended answer) or note (your answer).",
             );
         }
-        let (t, notice) = match co.answer(
+        let res = s.resolve_mentions(c, note, &a.strs("mention"));
+        let (logm, shown) = s.mentions_on(&id, &res.mentions);
+        let (t, notices) = match co.answer(
             &as_[0],
             &id,
             bid,
@@ -1152,12 +1173,14 @@ pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
                 pick,
                 text: note.into(),
                 resolve: true,
+                mentions: logm,
                 ..BlockerAnswer::default()
             },
         ) {
             Ok(v) => v,
             Err(e) => return map_err(e),
         };
+        let (told, mres) = s.tell_all(c, notices);
         let n = s.roster();
         let mut out = format!(
             "Resolved blocker {} on {}",
@@ -1175,9 +1198,11 @@ pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         } else {
             out += &format!("it is {} again.", t.state);
         }
+        let mline =
+            crate::mention::mention_line(&crate::mention::outcomes(&shown, &mres), &res.misses, &n);
         return format!(
-            "{out}{}\n{}",
-            s.told(&s.tell(&c.sender, notice), &n),
+            "{out}{}{mline}\n{}",
+            s.told(&told, &n),
             s.card_line(&t, None, &n, &s.now())
         );
     }
@@ -1188,12 +1213,14 @@ pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    let told = s.tell(&c.sender, notice);
+    let mline = s.mention_only(c, &id, note, &a);
     let n = s.roster();
     format!(
-        "Unblocked {}; it is {} again.{}\n{}",
+        "Unblocked {}; it is {} again.{}{mline}\n{}",
         t.short_ref(),
         t.state,
-        s.told(&s.tell(&c.sender, notice), &n),
+        s.told(&told, &n),
         s.card_line(&t, None, &n, &s.now())
     )
 }

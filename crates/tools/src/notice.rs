@@ -85,6 +85,15 @@ pub fn record_on_card(
             gone: r.gone,
             fill: r.fill,
             writer: r.writer.clone(),
+            mentions: m
+                .mentions
+                .iter()
+                .map(|x| coord::Mention {
+                    key: x.key.clone(),
+                    name: x.name.clone(),
+                    gone: x.gone,
+                })
+                .collect(),
         })
         .map_err(RecordError::Coord)?;
     Ok(cm.task_id)
