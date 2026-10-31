@@ -104,6 +104,10 @@ kinds! {
     TASK_SHARED = "task.shared" => Replicated, Refuses;
     TASK_LINKED = "task.linked" => Replicated, Accepts;
     TASK_COMMENT = "task.comment" => Replicated, Accepts;
+    /// The person edited their comment before any agent read it (card
+    /// #105). Private cards only: a board member's device bridges the
+    /// first row on its own, so a board log never takes an edit.
+    TASK_COMMENT_EDITED = "task.comment.edited" => Replicated, Refuses;
     TASK_STEPS = "task.steps" => Replicated, Accepts;
     TASK_STEP = "task.step" => Replicated, Accepts;
     TASK_WATCHED = "task.watched" => Replicated, Accepts;

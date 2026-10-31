@@ -47,6 +47,7 @@ pub mod board;
 pub mod boards;
 pub mod cards;
 pub mod commands;
+pub mod comment_edit;
 pub mod devices;
 pub mod events;
 pub mod inbox;

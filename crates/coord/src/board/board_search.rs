@@ -98,7 +98,13 @@ impl Fold {
             });
         }
         for cm in self.comments.values() {
-            if crate::gotime::before(&cm.at, since) {
+            // An edit (card #105) indexes the comment again.
+            let updated = if cm.edited_at.is_zero() {
+                cm.at
+            } else {
+                cm.edited_at
+            };
+            if crate::gotime::before(&updated, since) {
                 continue;
             }
             let t = self.tasks.get(&cm.task_id);
@@ -106,7 +112,7 @@ impl Fold {
                 r#ref: make_ref(Kind::Comment, &cm.id),
                 kind: Kind::Comment,
                 at: cm.at,
-                updated: cm.at,
+                updated,
                 title: format!("comment on {}", t.map(|t| t.title.as_str()).unwrap_or("")),
                 body: cm.text.clone(),
                 agent: if self.is_owner(&cm.by) {

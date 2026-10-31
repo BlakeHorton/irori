@@ -728,6 +728,7 @@ impl Fold {
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
             kinds::TASK_PLACED => self.fold_placed(ev),
+            kinds::TASK_COMMENT_EDITED => self.fold_comment_edited(ev, &at),
             kinds::TASK_OFFERED => self.fold_offered(ev, &at),
             kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
