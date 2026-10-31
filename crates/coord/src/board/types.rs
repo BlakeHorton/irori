@@ -754,6 +754,14 @@ pub struct ClaimResult {
     pub owner: String,
 }
 
+/// board_edit's input: `None` leaves that field as it is.
+#[derive(Debug, Clone, Default)]
+pub struct TaskEdit {
+    pub title: Option<String>,
+    pub objective: Option<String>,
+    pub done_when: Option<String>,
+}
+
 /// ask_close's input.
 #[derive(Debug, Clone, Default)]
 pub struct AskOutcome {

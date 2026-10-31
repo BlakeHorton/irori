@@ -37,6 +37,7 @@ These are carried in the board tools' descriptions and in a short block the mod 
 > When a card's work is done, mark it done; don't keep it as a record.
 > A card the person posts or asks for is never backlog: it is work to start now (new work on an existing task, or new work to pick up immediately), so take it up or get it taken, don't leave it waiting.
 > When you take a card, give it steps and keep them ticked.
+> When an answer or a comment changes what a card is for, `board_edit` it so its title, objective and done-when say what it is now, and redo its steps: never leave the old title on new work.
 > When you need the person, raise one blocker per question (never several asks in one note): context for a newcomer, options when there are real choices, and your recommendation marked.
 > Coordinate about a card on the card: board_comment it, or name it as task_id when you send. Use direct messages only for things not about a card.
 > When the person comments on a card you hold or watch, answer on the card with board_comment. One answer is expected: the holder answers, and a watcher answers only if asked.

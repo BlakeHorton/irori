@@ -88,6 +88,7 @@ const CARD_WRITES: &[&str] = &[
     "board_leave",
     "board_assign",
     "board_link",
+    "board_edit",
     "board_recommend",
     "board_split",
     "board_watch",

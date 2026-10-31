@@ -459,6 +459,93 @@ fn test_board_link() {
     );
 }
 
+/// board_edit: the holder renames a card when its purpose changes (card #74).
+#[test]
+fn test_board_edit() {
+    let h = new_harness();
+    let (a, b) = (call_a(), call_b());
+    let co = h.b.co.clone();
+    let id = h.new_card(&a, json!({"title": "Paste screenshots into an Ask"}));
+    let r = h.short(&id);
+    h.failsj(
+        &a,
+        "board_edit",
+        json!({"task_id": id}),
+        &["title, objective or done_when"],
+    );
+    h.failsj(
+        &a,
+        "board_edit",
+        json!({"task_id": id, "title": "  "}),
+        &["needs a title"],
+    );
+    h.failsj(
+        &b,
+        "board_edit",
+        json!({"task_id": id, "title": "mine now"}),
+        &["only its holder"],
+    );
+    has(
+        &h.okj(
+            &a,
+            "board_edit",
+            json!({"task_id": id, "title": "Ask box: thumbnails and file icons", "done_when": "pictures show as thumbnails"}),
+        ),
+        &[&format!("Edited {r}"), "board_steps", "Ask box: thumbnails and file icons"],
+    );
+    let t = co.get_task(&id).unwrap();
+    assert_eq!(t.title, "Ask box: thumbnails and file icons");
+    assert_eq!(t.done_criteria, "pictures show as thumbnails");
+    let log = format!("{:?}", co.activity(&id).unwrap());
+    has(&log, &["renamed it from", "Paste screenshots into an Ask"]);
+    // Empty clears the objective; title stays.
+    h.okj(&a, "board_edit", json!({"task_id": id, "objective": "x"}));
+    h.okj(&a, "board_edit", json!({"task_id": id, "objective": ""}));
+    let t = co.get_task(&id).unwrap();
+    assert!(
+        t.objective.is_empty() && t.title.starts_with("Ask box"),
+        "{t:?}"
+    );
+
+    // A card that was an ask: once closed, a later holder may rename it.
+    let (ask, _) = co
+        .post_ask(
+            "user:dev1",
+            coord::NewAsk {
+                text: "screenshots?".into(),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+    let ra = h.short(&ask.id);
+    h.okj(&a, "ask_claim", json!({"task_id": ra}));
+    h.failsj(
+        &a,
+        "board_edit",
+        json!({"task_id": ra, "title": "x"}),
+        &["ask_close"],
+    );
+    h.okj(
+        &a,
+        "ask_close",
+        json!({"task_id": ra, "outcome": "card", "note": "on it", "title": "Paste screenshots"}),
+    );
+    h.okj(&a, "board_assign", json!({"task_id": ra, "to": "beta"}));
+    has(
+        &h.okj(
+            &b,
+            "board_edit",
+            json!({"task_id": ra, "title": "Thumbnails in the Ask box"}),
+        ),
+        &[&format!("Edited {ra}")],
+    );
+    assert_eq!(
+        co.get_task(&ask.id).unwrap().title,
+        "Thumbnails in the Ask box"
+    );
+}
+
 /// Leases that block something show on the Board.
 #[test]
 fn test_board_shows_blocking_lease() {

@@ -1518,6 +1518,75 @@ impl Fold {
     }
 
     /// The creator, any holder or a person.
+    /// board_edit: the holder, the creator or the person renames a card or
+    /// changes its objective or done-when, so it says what it is for now.
+    pub(crate) fn edit_task(&mut self, by: &str, id: &str, e: TaskEdit) -> Result<Task> {
+        let by = caller(by)?;
+        let title = e.title.map(|s| trim_space(&s).to_string());
+        let obj = e.objective.map(|s| trim_space(&s).to_string());
+        let done = e.done_when.map(|s| trim_space(&s).to_string());
+        if title.is_none() && obj.is_none() && done.is_none() {
+            return Err(invalid(
+                "give title, objective or done_when: what the card is now",
+            ));
+        }
+        if title.as_deref() == Some("") {
+            return Err(invalid("a card needs a title"));
+        }
+        if title
+            .as_deref()
+            .is_some_and(|t| runes(t) > super::MAX_TITLE)
+        {
+            return Err(invalid(format!(
+                "title longer than {} characters",
+                super::MAX_TITLE
+            )));
+        }
+        if [&obj, &done].iter().any(|x| {
+            x.as_deref()
+                .is_some_and(|v| runes(v) > super::MAX_OBJECTIVE)
+        }) {
+            return Err(invalid(format!(
+                "objective or done_when longer than {} characters",
+                super::MAX_OBJECTIVE
+            )));
+        }
+        let t = self.open_task(id)?.clone();
+        if !self.may_manage(&t, &by) {
+            return Err(not_allowed(format!(
+                "edit {}: only its holder, its creator or the person may",
+                t.short_ref()
+            )));
+        }
+        if t.open_ask().is_some() {
+            return Err(bad_state(format!(
+                "{} is an open ask: ask_close it with outcome card and the title it should have",
+                t.short_ref()
+            )));
+        }
+        let same = title.as_ref().is_none_or(|v| *v == t.title)
+            && obj.as_ref().is_none_or(|v| *v == t.objective)
+            && done.as_ref().is_none_or(|v| *v == t.done_criteria);
+        if same {
+            return Ok(t);
+        }
+        let at = self.stamp();
+        self.write(
+            &by,
+            self.ask_kind(kinds::TASK_EDITED),
+            &TaskEditedRow {
+                task_id: id.into(),
+                title,
+                objective: obj,
+                done_criteria: done,
+                by: by.clone(),
+                at,
+                ..TaskEditedRow::default()
+            },
+        )?;
+        Ok(self.tasks[id].clone())
+    }
+
     pub(crate) fn may_manage(&self, t: &Task, by: &str) -> bool {
         by == t.created_by || contains(&t.holders, by) || self.is_owner(by)
     }

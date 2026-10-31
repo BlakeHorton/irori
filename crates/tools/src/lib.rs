@@ -229,7 +229,7 @@ pub(crate) struct Inner {
 const CALLER_READS: [&str; 6] = ["inbox", "timeline", "overview", "search", "show", "board"];
 
 fn handlers() -> HashMap<&'static str, Handler> {
-    let list: [(&'static str, Handler); 41] = [
+    let list: [(&'static str, Handler); 42] = [
         ("agents", observe::agents),
         ("events", observe::events),
         ("send", messages::send),
@@ -252,6 +252,7 @@ fn handlers() -> HashMap<&'static str, Handler> {
         ("board_assign", board::board_assign),
         ("board_status", board::board_status),
         ("board_link", board::board_link),
+        ("board_edit", board::board_edit),
         ("board_steps", board::board_steps),
         ("board_step", board::board_step),
         ("board_recommend", board::board_recommend),

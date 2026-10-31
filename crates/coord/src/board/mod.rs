@@ -396,6 +396,10 @@ impl Coord {
     pub fn comment_on(&self, by: &str, id: &str, input: CommentInput) -> Result<(Comment, Notice)> {
         self.lock().comment_on(by, id, input)
     }
+    /// Renames a card or changes its objective or done-when (board_edit).
+    pub fn edit_task(&self, by: &str, id: &str, e: TaskEdit) -> Result<Task> {
+        self.lock().edit_task(by, id, e)
+    }
     pub fn set_steps(&self, by: &str, id: &str, steps: Vec<Step>) -> Result<Task> {
         self.lock().set_steps(by, id, steps)
     }

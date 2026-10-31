@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use coord::{
     BlockedBy, Blocker, BlockerAnswer, BlockerOption, BoardFilter, BoardView, Card, Comment,
-    CommentInput, Coord, Link, NewBlocker, NewSubtask, NewTask, Step, StepUpdate, Task,
+    CommentInput, Coord, Link, NewBlocker, NewSubtask, NewTask, Step, StepUpdate, Task, TaskEdit,
 };
 use gocompat::time::GoTime;
 
@@ -1599,6 +1599,47 @@ pub(crate) fn board_link(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Err(e) => return map_err(e),
     };
     format!("Linked {}.\n{}", t.short_ref(), s.line(&t))
+}
+
+// --- board_edit ---
+
+const EDIT_ARGS: &[(&str, Ty)] = &[
+    ("task_id", Ty::Str),
+    ("title", Ty::OptStr),
+    ("objective", Ty::OptStr),
+    ("done_when", Ty::OptStr),
+];
+
+pub(crate) fn board_edit(s: &Inner, c: &Caller, raw: &[u8]) -> String {
+    let a = match decode(raw, EDIT_ARGS) {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+    let id = match s.task_id(a.str("task_id")) {
+        Ok(id) => id,
+        Err(m) => return m,
+    };
+    let e = TaskEdit {
+        title: a.opt_str("title"),
+        objective: a.opt_str("objective"),
+        done_when: a.opt_str("done_when"),
+    };
+    if e.title.is_none() && e.objective.is_none() && e.done_when.is_none() {
+        return err_text("give title, objective or done_when: what the card is for now.");
+    }
+    let (co, as_) = match s.on(&id, std::slice::from_ref(&c.sender.key)) {
+        Ok(v) => v,
+        Err(e) => return map_err(e),
+    };
+    let t = match co.edit_task(&as_[0], &id, e) {
+        Ok(t) => t,
+        Err(e) => return map_err(e),
+    };
+    format!(
+        "Edited {}; its thread says what changed. If the plan changed too, give it new steps with board_steps.\n{}",
+        t.short_ref(),
+        s.line(&t)
+    )
 }
 
 // --- leases ---
