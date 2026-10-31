@@ -223,6 +223,22 @@ crate::go_struct! {
     }
 }
 
+/// Where Irori's hand-out of an unheld card stands (card #82): it goes to
+/// one free agent at a time, and on to the next only on an event.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Offer {
+    /// The agent it went to; empty while no agent is free.
+    #[serde(skip_serializing_if = "omit")]
+    pub to: String,
+    pub reason: String,
+    /// When it went to `to` (or began to wait).
+    pub since: GoTime,
+    /// Every agent it went to so far.
+    #[serde(skip_serializing_if = "omit")]
+    pub heard: Vec<String>,
+}
+
 /// An ask's state on its card (Go `coord.Ask`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Ask {
@@ -346,6 +362,9 @@ pub struct Task {
     pub watchers: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub ask: Option<Ask>,
+    /// Irori's hand-out of this unheld card (card #82).
+    #[serde(skip_serializing_if = "omit")]
+    pub offer: Option<Offer>,
     #[serde(skip_serializing_if = "omit")]
     pub returned: Option<Returned>,
     #[serde(skip_serializing_if = "omit")]
@@ -604,6 +623,8 @@ pub const NOTICE_WAIT: &str = "wait";
 pub const NOTICE_ASK: &str = "ask";
 pub const NOTICE_TAKEN: &str = "taken";
 pub const NOTICE_ASK_COMMENT: &str = "ask_comment";
+/// An unheld card offered to the free agents (card #82).
+pub const NOTICE_OFFER: &str = "offer";
 
 /// Something coord wants agents to hear; the caller routes it once per
 /// recipient (coord.md §1.1).

@@ -502,3 +502,21 @@ crate::go_struct! {
         pub at: GoTime = "at",
     }
 }
+
+crate::go_struct! {
+    /// task.offered (card #82): where Irori's hand-out of an unheld card
+    /// stands. `to` is the one free agent it went to (empty while it
+    /// waits for one); `was` the agent it moved on from; `heard` every
+    /// agent it went to so far.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskOfferedRow {
+        pub task_id: String = "taskId",
+        pub to: String = "to" "omit",
+        pub was: String = "was" "omit",
+        pub reason: String = "reason",
+        pub heard: Vec<String> = "heard" "omit",
+        pub since: GoTime = "since",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}

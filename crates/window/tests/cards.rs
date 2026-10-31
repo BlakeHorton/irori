@@ -26,6 +26,23 @@ fn held_task(r: &Rig) -> coord::Task {
     co.claim_task(&r.key_a, &t.id).unwrap()
 }
 
+/// Another card alpha holds: assigned to it first, since an agent takes a
+/// second card only when one is handed to it (one card at a time, #82).
+fn another_held_task(r: &Rig) -> coord::Task {
+    let co = r.w.core.coord();
+    let t = co
+        .create_task(
+            &r.key_a,
+            coord::NewTask {
+                title: "ship it".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    co.assign(&me(r), &t.id, &r.key_a).unwrap();
+    co.claim_task(&r.key_a, &t.id).unwrap()
+}
+
 fn me(r: &Rig) -> String {
     r.w.core.user_sender().key
 }
@@ -191,7 +208,7 @@ fn card_message() {
     let r = Rig::new();
     let co = r.w.core.coord();
     let t = held_task(&r);
-    let other = held_task(&r);
+    let other = another_held_task(&r);
     let long = "y".repeat(coord::MAX_COMMENT + 100);
     let to = inbox::Address::new(inbox::addr::AGENT, &r.key_b);
     let from = inbox::Sender::new(&r.key_a, "alpha", "agent");
@@ -353,7 +370,7 @@ fn answer_resolves_when_nobody_can_act() {
     assert_eq!(res.card.summary.state, coord::WORKING);
 
     // The person's own item on a card a live agent holds.
-    let t2 = held_task(&r);
+    let t2 = another_held_task(&r);
     let mine = raise(&r, &me(&r), &t2.id, "check the staging DNS", &[]);
     let res =
         r.w.answer(&t2.id, &mine.id, -1, "checked", false, &[])
@@ -428,7 +445,7 @@ fn resolve_blocker_by_person() {
 fn cards_pinned_first() {
     let r = Rig::new();
     let co = r.w.core.coord();
-    let (a, z, m) = (held_task(&r), held_task(&r), held_task(&r));
+    let (a, z, m) = (held_task(&r), another_held_task(&r), another_held_task(&r));
     r.w.pin(&z.id, true).unwrap();
     r.w.pin(&a.id, true).unwrap();
     assert!(
@@ -571,7 +588,7 @@ fn revised_blocker_shows_in_its_thread() {
 #[test]
 fn cards_carry_their_canvas_spot() {
     let r = Rig::new();
-    let (a, b) = (held_task(&r), held_task(&r));
+    let (a, b) = (held_task(&r), another_held_task(&r));
     r.w.place(&a.id, 340, -60).unwrap();
     let cs = r.w.cards();
     let get = |id: &str| cs.iter().find(|s| s.id == id).unwrap().clone();

@@ -175,6 +175,24 @@ pub trait BoardViewer: Send + Sync {
 pub trait Backend: Send + Sync {
     /// This device's roster (presence plus Grok members).
     fn agents(&self) -> Vec<presence::AgentCard>;
+    /// The agents Irori hands an unheld card to (#82): every device's, as
+    /// asks go out, without this device's while Pause all is on. The
+    /// default is [`Backend::agents`].
+    fn room_agents(&self) -> Vec<coord::roster::AgentCard> {
+        self.agents()
+            .into_iter()
+            .map(|a| coord::roster::AgentCard {
+                key: a.key,
+                device_id: a.device_id,
+                status: a.status,
+                repo_key: a.repo_key,
+                device_state: a.device_state,
+                updated_at: a.updated_at,
+                last_activity: a.last_activity,
+                ..coord::roster::AgentCard::default()
+            })
+            .collect()
+    }
     fn events(&self, f: &store::Filter) -> Result<Vec<store::Event>, String>;
     fn inbox(&self) -> &inbox::Inbox;
     fn coord(&self) -> &Arc<coord::Coord>;

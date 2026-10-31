@@ -261,9 +261,10 @@ fn test_list_tasks() {
             },
         )
         .unwrap();
-    e.c.claim_task(BOB, &t2.id).unwrap();
+    // One card at a time (#82): t3 is done with before t2 is taken.
     e.c.claim_task(BOB, &t3.id).unwrap();
     e.c.set_task_state(BOB, &t3.id, FAILED, "").unwrap();
+    e.c.claim_task(BOB, &t2.id).unwrap();
     let f = |repo: &str, holder: &str, open: bool| TaskFilter {
         repo_key: repo.into(),
         holder: holder.into(),

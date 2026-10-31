@@ -795,14 +795,18 @@ impl Fold {
     }
 
     /// The agents holding another open ask: one ask per agent at a time.
-    fn handed_elsewhere(&self, id: &str) -> Vec<String> {
-        self.tasks
+    /// An unheld card Irori handed to an agent counts too (#82).
+    pub(crate) fn handed_elsewhere(&self, id: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .tasks
             .values()
             .filter(|t| t.id != id && !is_terminal(&t.state))
             .filter_map(|t| t.open_ask())
             .filter(|a| !a.taker.is_empty())
             .map(|a| a.taker.clone())
-            .collect()
+            .collect();
+        out.extend(self.offered_elsewhere(id));
+        out
     }
 
     /// Where an ask handed to `a.taker` stands, by events only: a comment
@@ -815,7 +819,20 @@ impl Fold {
         {
             return Handed::Touched;
         }
-        let Some(card) = roster.get(a.taker.as_str()) else {
+        self.turn_state(&a.taker, &a.since, roster)
+    }
+
+    /// Where an agent something was handed to at `since` stands, by
+    /// events only: its turn ended (idle again, with transcript rows and a
+    /// status change since), it went away, or it still has it. Shared by
+    /// asks (#91) and unheld cards (#82).
+    pub(crate) fn turn_state(
+        &self,
+        taker: &str,
+        since: &GoTime,
+        roster: &HashMap<&str, &AgentCard>,
+    ) -> Handed {
+        let Some(card) = roster.get(taker) else {
             return Handed::Gone;
         };
         let dev = cmp_or_dev(&card.device_id, owner::device_of(&card.key));
@@ -831,8 +848,8 @@ impl Fold {
         // Idle again, with transcript rows and a status change since it was
         // handed: a turn ran and ended without touching it.
         if card.status == "idle"
-            && gotime::after(&card.updated_at, &a.since)
-            && gotime::after(&card.last_activity, &a.since)
+            && gotime::after(&card.updated_at, since)
+            && gotime::after(&card.last_activity, since)
         {
             return Handed::Ended;
         }

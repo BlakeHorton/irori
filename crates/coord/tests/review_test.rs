@@ -175,11 +175,13 @@ fn test_gone_card_starts_grace_clock() {
     ];
     e.clk.add(Duration::from_secs(3600));
     assert_eq!(c.claim_task(BOB, &task.id).unwrap().holder, BOB);
-    let task2 = c.create_task(BOB, nt("t2")).unwrap();
-    c.claim_task(BOB, &task2.id).unwrap();
+    // BOB works t now, so another agent holds t2 (one card at a time, #82).
+    let task2 = c.create_task(CAROL, nt("t2")).unwrap();
+    c.claim_task(CAROL, &task2.id).unwrap();
     *ros.0.lock().unwrap() = vec![
         card(ALICE, "idle", None),
-        card(BOB, "gone", Some(e.clk.now())),
+        card(BOB, "idle", None),
+        card(CAROL, "gone", Some(e.clk.now())),
     ];
     e.clk.add(secs(1));
     want_err(c.claim_task(ALICE, &task2.id), ErrorKind::Held);

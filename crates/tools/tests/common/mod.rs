@@ -424,7 +424,17 @@ impl Harness {
     }
 
     /// Go `notices`: the open deliveries to `key` that carry Board notices.
+    /// `key`'s Board notices, leaving out the offers board_create sends
+    /// free agents (#82): tests count the notices their own steps cause.
     pub fn notices(&self, key: &str) -> Vec<inbox::Delivery> {
+        self.all_notices(key)
+            .into_iter()
+            .filter(|d| d.message.reason != coord::NOTICE_OFFER)
+            .collect()
+    }
+
+    /// Every Board notice for `key`, offers too.
+    pub fn all_notices(&self, key: &str) -> Vec<inbox::Delivery> {
         self.b
             .ib
             .for_agent(key, true, 0)

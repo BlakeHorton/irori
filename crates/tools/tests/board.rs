@@ -138,6 +138,9 @@ fn test_board_comment_delivery() {
     ] {
         let h = new_harness();
         let (a, b) = (call_a(), call_b());
+        // beta is mid-turn, so the new card isn't offered to it (#82):
+        // the wakes below are the comment's alone.
+        h.b.roster.set_status(KEY_B, "working");
         let id = h.new_card(&a, json!({"title": "lexer"}));
         h.okj(&b, "board_join", json!({"task_id": id}));
         let mut args = json!({"task_id": id, "text": "the lexer drops tabs"});
@@ -1960,4 +1963,63 @@ fn test_step_owners() {
         json!({"task_id": id, "step_id": "s1", "owner": ""}),
     );
     assert!(!out.contains("on steps"), "{out}");
+}
+
+/// #82: an unheld card an agent posts goes to one free agent, which takes
+/// it with board_join; a busy agent is told no; skipping the delivery
+/// passes it on.
+#[test]
+fn test_board_create_hands_an_unheld_card_to_one_free_agent() {
+    let h = new_harness();
+    let (a, b, c) = (call_a(), call_b(), call_c());
+    // gamma works another repo; grokker is busy.
+    h.b.roster.set_status(KEY_G, "working");
+    let out = h.okj(&a, "board_create", json!({"title": "port the lexer"}));
+    has(&out, &["Irori handed it to beta", "Woke: beta"]);
+    let id = created_id(&out);
+    let ns = h.all_notices(KEY_B);
+    assert!(
+        ns.len() == 1
+            && ns[0].message.reason == coord::NOTICE_OFFER
+            && ns[0].mode == WAKE
+            && ns[0].message.text.contains("board_join"),
+        "{ns:?}"
+    );
+    assert!(
+        h.all_notices(KEY_A).is_empty(),
+        "the poster isn't handed its own card"
+    );
+    assert!(h.all_notices(KEY_G).is_empty(), "a busy agent isn't woken");
+    assert!(
+        h.all_notices(KEY_C).is_empty(),
+        "another repo's agent isn't woken"
+    );
+    let w = h.b.ib.next_wake(KEY_B, inbox::path::MOD).unwrap().unwrap();
+    assert!(w.prompt.contains("offer=\"true\""), "{}", w.prompt);
+    // beta takes it; gamma is told it is held.
+    h.okj(&b, "board_join", json!({"task_id": id}));
+    h.failsj(&c, "board_join", json!({"task_id": id}), &["held by"]);
+    // A second card while beta works the first: it goes to grokker, now
+    // idle, and beta is told no when it tries to take it.
+    h.b.roster.set_status(KEY_G, "idle");
+    let out = h.okj(&a, "board_create", json!({"title": "and the parser"}));
+    has(&out, &["Irori handed it to grokker"]);
+    let id2 = created_id(&out);
+    h.failsj(
+        &b,
+        "board_join",
+        json!({"task_id": id2}),
+        &["one card at a time", "board_leave"],
+    );
+    // grokker skips the delivery: it gives the card back.
+    let d = h.all_notices(KEY_G);
+    assert_eq!(d.len(), 1, "{d:?}");
+    let g = grok_caller();
+    has(
+        &h.okj(&g, "skip", json!({"delivery_id": d[0].id})),
+        &["gave the card", "next free agent"],
+    );
+    let t = h.b.co.get_task(&id2).unwrap();
+    let o = t.live_offer().unwrap();
+    assert!(o.to.is_empty() && o.reason == coord::OFFER_PASSED, "{o:?}");
 }

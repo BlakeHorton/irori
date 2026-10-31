@@ -301,9 +301,10 @@ fn test_person_comment_reopens_a_finished_card() {
         acts.len() >= 2 && acts[1].what == "reopened by the person's comment",
         "{acts:?}"
     );
-    let gone = e.c.create_task(ALICE, nt("Left behind")).unwrap();
-    e.c.claim_task(ALICE, &gone.id).unwrap();
-    e.c.set_task_state(ALICE, &gone.id, COMPLETED, "").unwrap();
+    // ALICE works the reopened ask, so another agent takes this one (#82).
+    let gone = e.c.create_task(BOB, nt("Left behind")).unwrap();
+    e.c.claim_task(BOB, &gone.id).unwrap();
+    e.c.set_task_state(BOB, &gone.id, COMPLETED, "").unwrap();
     let nobody = |_: &str| false;
     e.c.person_comment(USER, &gone.id, "still there?", false, &[], Some(&nobody))
         .unwrap();

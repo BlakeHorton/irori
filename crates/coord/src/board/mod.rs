@@ -22,7 +22,9 @@ mod fold;
 mod links;
 mod mention;
 mod mirror;
+mod offers;
 mod placed;
+pub use offers::{OFFER_HANDED, OFFER_PASSED, OFFER_WAITING};
 mod resource;
 mod review;
 pub mod rows;
@@ -309,6 +311,13 @@ impl Coord {
     }
     pub fn reopen(&self, by: &str, id: &str) -> Result<(Task, Notice)> {
         self.lock().reopen(by, id, REOPEN_NOTE)
+    }
+    /// `by` puts its new unheld card `id` up for a free agent (card #82):
+    /// Irori hands it to the one in `agents` idle longest, or it waits for
+    /// the next to go idle. The notice is for that agent; its `to` is
+    /// empty when nobody is free.
+    pub fn offer_card(&self, by: &str, id: &str, agents: &[AgentCard]) -> Result<Notice> {
+        self.lock().offer_card(by, id, agents)
     }
     pub fn join(&self, by: &str, id: &str, who: &str) -> Result<Task> {
         self.lock().join(by, id, who)
@@ -747,8 +756,31 @@ impl Coord {
 
     /// `sweep_asks` with the notices told before a failed write kept, as
     /// Go's `SweepAsks` returns both.
+    /// It hands on the unheld cards this device's agents posted too
+    /// (card #82).
     pub fn sweep_asks_partial(&self, agents: &[AgentCard]) -> (Vec<Notice>, Result<()>) {
-        self.lock().sweep_asks(agents)
+        let mut f = self.lock();
+        let (mut out, r) = f.sweep_asks(agents);
+        if r.is_err() {
+            return (out, r);
+        }
+        let (more, r) = f.sweep_offers(agents);
+        out.extend(more);
+        (out, r)
+    }
+    /// The inbox's Stale hook for a card Irori handed out (card #82): the
+    /// note to close a hand-out notice to `to` with once the card went to
+    /// someone else, was taken or closed, or `""`. Never takes coord's lock.
+    pub fn stale_offer(&self, r: &str, to: &str) -> String {
+        let Some(id) = r.strip_prefix("task:") else {
+            return String::new();
+        };
+        let s = self.stale.read().unwrap_or_else(|e| e.into_inner());
+        match s.offers.get(id) {
+            Some((true, t)) if t != to => "Irori handed it to another agent".into(),
+            Some((false, why)) => why.clone(),
+            _ => String::new(),
+        }
     }
     /// The inbox's Stale hook: never takes coord's lock.
     pub fn stale_notice(&self, r: &str, to: &str) -> String {

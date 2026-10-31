@@ -231,6 +231,9 @@ impl Fold {
         if engaged(&t, &by) && t.state != SUBMITTED {
             return Ok(t);
         }
+        // One card at a time: an agent busy on a working card leaves this
+        // one for a free agent (card #82).
+        self.check_free(&by, &t)?;
         let now = self.stamp();
         if !t.shared {
             for h in &t.holders {

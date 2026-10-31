@@ -109,6 +109,9 @@ kinds! {
     TASK_WATCHED = "task.watched" => Replicated, Accepts;
     /// A card's spot on the Board's canvas (card #93).
     TASK_PLACED = "task.placed" => Replicated, Accepts;
+    /// Irori's hand-out of an unheld card to one free agent at a time
+    /// (card #82).
+    TASK_OFFERED = "task.offered" => Replicated, Accepts;
     /// Waits (card #87): one-shot wakes on a task's state or a branch.
     WAIT_CREATED = "wait.created" => Replicated, Accepts;
     WAIT_FIRED = "wait.fired" => Replicated, Accepts;

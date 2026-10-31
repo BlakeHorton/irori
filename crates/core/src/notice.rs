@@ -28,6 +28,7 @@ pub use tools::notice::{
 pub fn stale_notice(co: &Coord, d: &Delivery) -> String {
     match d.message.reason.as_str() {
         coord::NOTICE_ASK | coord::NOTICE_ASK_COMMENT => co.stale_notice(&d.message.ref_, &d.to),
+        coord::NOTICE_OFFER => co.stale_offer(&d.message.ref_, &d.to),
         _ => String::new(),
     }
 }

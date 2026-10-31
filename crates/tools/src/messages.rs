@@ -458,10 +458,12 @@ pub(crate) fn skip(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if let Err(e) = s.b.inbox().skip(&c.sender.key, id, trim(a.str("note"))) {
         return map_err(e);
     }
-    if let Some(r) = pass_handed_ask(s, c, id) {
+    if let Some((r, ask)) = pass_handed_ask(s, c, id) {
         return format!(
-            "Skipped delivery {}; you gave the ask {r} back and Irori hands it to the next idle agent.",
-            one_line(id, 80)
+            "Skipped delivery {}; you gave the {} {r} back and Irori hands it to the next {} agent.",
+            one_line(id, 80),
+            if ask { "ask" } else { "card" },
+            if ask { "idle" } else { "free" },
         );
     }
     format!(
@@ -470,18 +472,26 @@ pub(crate) fn skip(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     )
 }
 
-/// Skipping the delivery of an ask Irori handed to the caller, untouched,
-/// gives it back so it moves on now (#91). Its short ref when it did.
-fn pass_handed_ask(s: &Inner, c: &Caller, did: &str) -> Option<String> {
+/// Skipping the delivery of an ask (#91) or an unheld card (#82) Irori
+/// handed to the caller, untouched, gives it back so it moves on now. Its
+/// short ref when it did, and whether it was an ask.
+fn pass_handed_ask(s: &Inner, c: &Caller, did: &str) -> Option<(String, bool)> {
     let ib = s.b.inbox();
     let m = ib.message(&ib.get(did)?.message_id)?;
     let id = m.ref_.strip_prefix("task:")?.to_string();
     let (co, as_) = s.on(&id, std::slice::from_ref(&c.sender.key)).ok()?;
     let t = co.get_task(&id)?;
+    if let Some(o) = t.live_offer() {
+        if o.to != as_[0] {
+            return None;
+        }
+        co.leave(&as_[0], &id, &as_[0]).ok()?;
+        return Some((t.short_ref(), false));
+    }
     let a = t.open_ask()?;
     if !a.handed || a.taker != as_[0] {
         return None;
     }
     co.leave(&as_[0], &id, &as_[0]).ok()?;
-    Some(t.short_ref())
+    Some((t.short_ref(), true))
 }

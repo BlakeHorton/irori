@@ -609,7 +609,11 @@ fn test_overview() {
     let r = with_capture(|_| {});
     let (a, b) = (call_a(), call_b());
     r.send_to(&b, "alpha", "please look at the parser");
+    // alpha is mid-turn while beta posts its card, so the card isn't
+    // offered to it (#82): the inbox below holds the message alone.
+    r.b.roster.set_status(KEY_A, "working");
     let blocked = r.new_card(&b, json!({"title": "flaky ci", "repo": r.repo_key}));
+    r.b.roster.set_status(KEY_A, "idle");
     r.okj(&b, "board_join", json!({"task_id": blocked}));
     r.okj(
         &b,

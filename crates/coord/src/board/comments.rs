@@ -251,6 +251,11 @@ impl Fold {
             return Ok(self.tasks[id].clone());
         }
         if !is_holder(t, &who) {
+            // A card Irori handed `who` and it hasn't taken: it goes to
+            // the next free agent (card #82).
+            if self.pass_offer(&who, id)? {
+                return Ok(self.tasks[id].clone());
+            }
             return Err(not_found(format!("{who} isn't on task {id}")));
         }
         let at = self.stamp();

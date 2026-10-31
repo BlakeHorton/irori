@@ -160,6 +160,9 @@ pub(crate) struct Sub {
 pub(crate) struct StaleMap {
     pub stale: HashMap<String, String>,
     pub closed: HashSet<String>,
+    /// Unheld cards Irori hands out (card #82), by id: (live, the agent it
+    /// went to while live, or why it no longer goes out).
+    pub offers: HashMap<String, (bool, String)>,
 }
 
 /// The bits of a task `touch` needs, so a handler can touch while it
@@ -463,6 +466,9 @@ impl Fold {
     /// references kept back that it lets through now.
     pub(crate) fn apply(&mut self, ev: &Event) {
         self.fold(ev);
+        if let Some(p) = row::<TaskIdRow>(&ev.payload) {
+            self.sync_offer_stale(&p.task_id);
+        }
         self.fold_deferred();
         self.retry_aside();
         if !self.replaying {
@@ -722,6 +728,7 @@ impl Fold {
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
             kinds::TASK_PLACED => self.fold_placed(ev),
+            kinds::TASK_OFFERED => self.fold_offered(ev, &at),
             kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
             kinds::TASK_PARENT => {

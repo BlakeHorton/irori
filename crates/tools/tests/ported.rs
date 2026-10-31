@@ -313,6 +313,9 @@ fn test_defer_skip() {
 fn test_watch_digests_merge_until_read() {
     let h = new_harness();
     let (a, b) = (call_a(), call_b());
+    // beta busy as alpha posts, so Irori doesn't hand beta the card (#82).
+    h.b.roster.set_status(KEY_B, "working");
+    h.b.roster.set_status(KEY_G, "working");
     let id = created_id(&h.ok(&a, "board_create", r#"{"title":"Ship v0.6.0"}"#));
     let tid = serde_json::json!({"task_id": id}).to_string();
     h.ok(&a, "board_join", &tid);

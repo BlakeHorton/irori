@@ -746,6 +746,30 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
                 );
             }
         }
+    } else if private && !t.shared {
+        // Pull, not push (#82): Irori hands it to one free agent at a time;
+        // the poster doesn't pick.
+        match co.offer_card(&keys[0], &t.id, &s.b.room_agents()) {
+            Ok(offer) if !offer.to.is_empty() => {
+                let to = offer.to[0].clone();
+                out += &format!(
+                    " Irori handed it to {}, the free agent idle longest; if it can't take it on, it goes to the next.{}",
+                    n.who(&to),
+                    // From Irori, not the poster: it hands the card out,
+                    // and the poster's messages to that agent aren't spent.
+                    s.told(&s.tell(&inbox::system_sender(), offer), &n)
+                );
+                if let Some(nt) = co.get_task(&t.id) {
+                    t = nt;
+                }
+            }
+            Ok(_) => {
+                out += " No agent is free now: Irori hands it to the next one to go idle. Take it yourself with board_join only if you hold no card in progress; board_assign it when one agent is clearly the right one.";
+            }
+            Err(_) => {
+                out += " Take it up with board_join, or hand it over with board_assign.";
+            }
+        }
     } else {
         out += " Take it up with board_join, or hand it over with board_assign.";
     }

@@ -10,7 +10,7 @@ The highest-value fixes are small: an assignment that wakes an idle assignee, a 
 
 ## Settled since: who takes a card
 
-Stephen, 10-31, after seeing Lead hold #77-#80 at once: put the task up and see if someone claims it; an agent picks up another card only when it becomes free. This answers part of case G and leans decision 6 toward (a). Card #82 changes Irori's instructions to agents and how an unheld card reaches free agents.
+Stephen, 10-31, after seeing Lead hold #77-#80 at once: put the task up and see if someone claims it; an agent picks up another card only when it becomes free. This answers part of case G and leans decision 6 toward (a). Card #82 changes Irori's instructions to agents and how an unheld card reaches free agents. Done on main with #82 (decision 40): an unheld card an agent posts goes to one free agent at a time, the one idle longest, and moves on only on events (it gives it back, its turn ends without `board_join`, or it goes away), as asks do since #91; `board_join` refuses an agent already holding a card in progress or owning an open step on one; and the tool guidance says post-then-claim, with `board_assign` only when one agent is clearly the right one (docs/design/board.md, "Card #82").
 
 ## 1. Real cases
 

@@ -279,6 +279,9 @@ impl tools::Backend for ToolsView {
             .map(presence_card)
             .collect()
     }
+    fn room_agents(&self) -> Vec<AgentCard> {
+        self.0.ask_agents()
+    }
     fn events(&self, f: &Filter) -> Result<Vec<Event>, String> {
         self.0.store.list(f).map_err(|e| e.to_string())
     }
@@ -1458,7 +1461,7 @@ impl Core {
                     if s2
                         .coord
                         .get_task(&ch.task_id)
-                        .is_some_and(|t| t.open_ask().is_some())
+                        .is_some_and(|t| t.open_ask().is_some() || t.live_offer().is_some())
                     {
                         s2.asks_kick.kick();
                     }
