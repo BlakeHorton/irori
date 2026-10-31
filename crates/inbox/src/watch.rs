@@ -176,7 +176,7 @@ pub struct Watcher {
 
 /// A hold the person is asked about (Pause all is their own).
 fn card_held(d: &Delivery) -> bool {
-    d.state == st::HELD && d.hold != hold::PAUSED
+    d.state == st::HELD && d.hold != hold::PAUSED && d.hold != hold::EDITING
 }
 
 /// A hold in the person's words.
@@ -192,6 +192,7 @@ pub fn hold_reason(h: &str) -> String {
         hold::CROSS_PERSON => "it comes from another person on a shared board, and your receive setting for that board asks you first",
         hold::MEMBER_LEASE => "another person asks your agent to give up a lease",
         hold::MEMBER_REMOVED => "it comes from a person who is no longer on that board",
+        hold::EDITING => "you are editing it",
         other => other,
     }
     .to_string()

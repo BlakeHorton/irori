@@ -3,7 +3,13 @@ import { useState, type ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { AttachmentList } from "@/components/attachments"
 import { Button } from "@/components/ui/button"
-import { cards, type CardMessage, type CardThreadItem } from "@/lib/cards"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  cards,
+  EditState,
+  type CardMessage,
+  type CardThreadItem,
+} from "@/lib/cards"
 import { parseTime, plainBlock, plainLine, relativeTime } from "@/lib/irori"
 import { errorText, talk } from "@/lib/talk"
 import {
@@ -108,6 +114,16 @@ function ThreadRow({
   // released: the person released a dismissed message here; its text
   // joins the card once the inbox lets it through.
   const [released, setReleased] = useState(false)
+  // edit: the person's comment no agent read yet (card #105). Modify holds
+  // it back from every agent until Save (the new text goes out) or Cancel
+  // (it goes as it was). shown is what the person just did, until the
+  // card's next load changes the comment.
+  const seen = `${item.edit ?? ""}\n${item.text}`
+  const [shown, setShown] = useState<{ edit: string; seen: string } | null>(
+    null
+  )
+  const [draft, setDraft] = useState<string | null>(null)
+  const edit = shown && shown.seen === seen ? shown.edit : (item.edit ?? "")
   const at = parseTime(item.at)
   const time = (
     <time
@@ -159,6 +175,48 @@ function ThreadRow({
     } finally {
       setBusy(false)
     }
+  }
+  const editAction = async (
+    run: () => Promise<void>,
+    after: string,
+    keepDraft = false
+  ) => {
+    if (!cardId || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await run()
+      setShown({ edit: after, seen })
+      if (!keepDraft) setDraft(null)
+    } catch (err) {
+      setError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const modify = () => {
+    if (!cardId) return
+    setDraft(item.text)
+    void editAction(
+      () => cards.modifyComment(cardId, item.id),
+      EditState.Editing,
+      true
+    )
+  }
+  const cancelEdit = () =>
+    cardId &&
+    void editAction(() => cards.cancelComment(cardId, item.id), EditState.Can)
+  const saveEdit = () => {
+    if (!cardId) return
+    const text = draft ?? item.text
+    if (!text.trim()) {
+      setError("Write a comment first.")
+      return
+    }
+    void editAction(
+      () => cards.saveComment(cardId, item.id, text),
+      EditState.Can
+    )
   }
   const release = async () => {
     if (!item.deliveryId || busy) return
@@ -244,6 +302,49 @@ function ThreadRow({
           <p className="text-muted-foreground">
             Not let through the wake policy yet, so its text isn't on the card.
           </p>
+        ) : edit === EditState.Editing ? (
+          <form
+            className="grid gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault()
+              saveEdit()
+            }}
+          >
+            <Textarea
+              value={draft ?? item.text}
+              onChange={(e) => setDraft(e.target.value)}
+              aria-label="Edit your comment"
+              className="min-h-16 text-[12.5px]"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  saveEdit()
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault()
+                  cancelEdit()
+                }
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="xs" type="submit" disabled={busy}>
+                Save
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                type="button"
+                disabled={busy}
+                onClick={cancelEdit}
+              >
+                Cancel
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Held back: no agent gets it until you save or cancel.
+              </span>
+            </div>
+          </form>
         ) : (
           body && (
             <RichText
@@ -266,6 +367,18 @@ function ThreadRow({
           </div>
         )}
         <AttachmentList attachments={item.attachments ?? []} />
+        {cardId && edit === EditState.Can && (
+          <Button
+            size="xs"
+            variant="ghost"
+            className="justify-self-start text-muted-foreground"
+            disabled={busy}
+            title="No agent has read it yet: take it back to edit it"
+            onClick={modify}
+          >
+            Modify
+          </Button>
+        )}
         {!full && cardId && opensInFull(item) && (
           <Button
             size="xs"

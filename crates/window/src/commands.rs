@@ -351,6 +351,32 @@ pub async fn board_place(w: W<'_>, id: String, x: i64, y: i64) -> R<()> {
     w.place(&id, x, y)
 }
 
+/// Modify on the person's comment no agent read yet (card #105): holds it.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_comment_modify(w: W<'_>, id: String, comment_id: String) -> R<()> {
+    w.comment_modify(&id, &comment_id)
+}
+
+/// Cancel on a comment held for editing: it goes out as it was.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_comment_modify_cancel(w: W<'_>, id: String, comment_id: String) -> R<()> {
+    w.comment_modify_cancel(&id, &comment_id)
+}
+
+/// Save on a comment held for editing: its new text goes out.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_comment_modify_save(
+    w: W<'_>,
+    id: String,
+    comment_id: String,
+    text: String,
+) -> R<()> {
+    w.comment_modify_save(&id, &comment_id, &text).map(|_| ())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_move_pin(w: W<'_>, id: String, before: String) -> R<()> {
@@ -754,6 +780,9 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_delete,
             board_pin,
             board_place,
+            board_comment_modify,
+            board_comment_modify_cancel,
+            board_comment_modify_save,
             board_move_pin,
             board_reopen,
             boards_list,

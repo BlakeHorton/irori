@@ -22,6 +22,7 @@
 
 mod attach;
 mod bridge;
+mod edit;
 mod fence;
 mod ids;
 mod mesh;
@@ -49,6 +50,7 @@ pub use bridge::{
     AUTONOMY_DEFAULT, AutonomySetting, BOARD_KIND, BoardFrom, BridgeRow, RECEIVE_DEFAULT,
     ReceiveSetting, autonomy, board_sender_key, receive, receive_decision, row_kind,
 };
+pub use edit::{EditState, editing};
 pub use fence::{batch, fence, fence_prompt};
 pub use ids::IdGen;
 pub use pr::normalize_pr;
@@ -247,6 +249,9 @@ pub mod hold {
     /// It came from a person removed from the board, or who left it,
     /// before it reached the agent (v0.5 §4.3).
     pub const MEMBER_REMOVED: &str = "member_removed";
+    /// The person took their comment back to edit it before any agent read
+    /// it (card #105). Their own hold: never asked about, never counted.
+    pub const EDITING: &str = "editing";
 }
 
 /// Delivery modes.

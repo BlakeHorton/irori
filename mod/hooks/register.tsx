@@ -56,6 +56,8 @@ let ended = false
 /** From the newest hello: where control and tool calls go, and who they act as. */
 let api: { url: string; token: string } | null = null
 let attachSecret = ''
+/** The cwd the attach runs with, for a reattach the mod starts itself. */
+let attachCwd = ''
 /** Tool names registered from the Core's list, so a second hello doesn't redo them. */
 const registered = new Set<string>()
 
@@ -85,6 +87,7 @@ async function callCore(
   extra?: Record<string, string>,
 ): Promise<Answer> {
   if (!api || !attachSecret) return { ok: false, status: 0, error: 'not attached to Irori yet' }
+  const secret = attachSecret
   try {
     const response = await $.http.fetch(api.url + path, {
       method,
@@ -99,6 +102,12 @@ async function callCore(
     }
     if (response.ok) return { ok: true, status: response.status, body: parsed }
     const error = (parsed as { error?: unknown } | undefined)?.error
+    // A wrong token (the Core restarted) or a secret the Core no longer
+    // knows (its stream ended): this attach is dead, whatever the runner
+    // says. Drop it and attach again (card #111).
+    if (response.status === 401 || (response.status === 403 && typeof error === 'string' && error.includes('X-Irori-Attach'))) {
+      await reattach($, secret, `the Irori Core refused this session's attach (${response.status}); reattaching`)
+    }
     return {
       ok: false,
       status: response.status,
@@ -123,6 +132,27 @@ async function report($: EngineInterface, path: string, body: object): Promise<b
   }
   $.ui.log(`irori: ${path} failed after retries`, { to: 'debug' })
   return false
+}
+
+/**
+ * Drops a dead attach and starts a new one, once per dead secret: calls that
+ * fail together on the same secret start one reattach.
+ */
+async function reattach($: EngineInterface, deadSecret: string, why: string) {
+  if (!deadSecret || attachSecret !== deadSecret || ended) return
+  api = null
+  attachSecret = ''
+  $.ui.log(`irori: ${why}`, { to: 'debug' })
+  await startAttach($, attachCwd, why)
+}
+
+/** Waits up to `ms` for a hello after a reattach; true once attached. */
+async function attached($: EngineInterface, ms: number): Promise<boolean> {
+  for (let waited = 0; waited < ms; waited += 250) {
+    if (api && attachSecret) return true
+    await $.clock.sleep(250)
+  }
+  return Boolean(api && attachSecret)
 }
 
 async function setView($: EngineInterface, patch: Partial<AttachView>) {
@@ -372,8 +402,13 @@ async function handleEvent($: EngineInterface, e: AttachEvent): Promise<'superse
       await setView($, { name: e.name, nameSource: e.nameSource, aiTitle: e.aiTitle })
       return
     case 'error':
+      // `irori attach` says error only while it has no stream (Irori down,
+      // a stream that dropped, a session off the roster): the secret from
+      // the last hello is dead until the next one (card #111).
       $.ui.log(`irori attach: ${e.message ?? 'error'}`, { to: 'debug' })
-      await setView($, { error: e.message })
+      api = null
+      attachSecret = ''
+      await setView($, { status: 'connecting', error: e.message })
       return
     case 'superseded':
       return 'superseded'
@@ -391,19 +426,20 @@ function scheduleRestart($: EngineInterface, cwd: string, run: number) {
 }
 
 /** Spawns `irori attach` and reads its events; a newer call wins (generation guard). */
-async function startAttach($: EngineInterface, cwd: string) {
+async function startAttach($: EngineInterface, cwd: string, why?: string) {
   stopChild?.()
   stopChild = null
   restartTimer?.cancel()
   restartTimer = null
   const run = ++generation
+  attachCwd = cwd
   const path = iroriPath()
   if (!path) {
     await setView($, { status: 'off', error: NO_PATH_ERROR })
     return
   }
   const sessionId = await $.session.id()
-  await setView($, { status: 'connecting' })
+  await setView($, why ? { status: 'connecting', error: why } : { status: 'connecting' })
 
   void (async () => {
     let superseded = false
@@ -412,6 +448,11 @@ async function startAttach($: EngineInterface, cwd: string) {
       const child = $.process.spawn({
         argv: [path, 'attach', '--session', sessionId, '--cwd', cwd, '--mod-version', MOD_VERSION],
       })
+      // A newer startAttach ran while this one awaited: this child is stale.
+      if (run !== generation) {
+        void child.return(undefined as never)
+        return
+      }
       stopChild = () => void child.return(undefined as never)
       let buffer = ''
       for (;;) {
@@ -420,7 +461,11 @@ async function startAttach($: EngineInterface, cwd: string) {
           exit = `irori attach exited (code ${step.value?.code ?? '?'})`
           break
         }
-        if (run !== generation) return
+        if (run !== generation) {
+          // Leaving the loop without return() would leave it running.
+          void child.return(undefined as never)
+          return
+        }
         const { stream, text } = step.value
         if (stream === 'stderr') {
           $.ui.log(text, { to: 'debug' })
@@ -481,14 +526,22 @@ async function markEnded($: EngineInterface, turnId: string) {
   }
 }
 
-async function callTool($: EngineInterface, e: Record<string, unknown>): Promise<string> {
+async function callTool($: EngineInterface, e: Record<string, unknown>, budgetMs: number): Promise<string> {
   const name = bareToolName(String(e.tool ?? ''))
   if (!name) return 'Error: not an Irori tool.'
-  const answer = await callCore($, 'POST', `/v1/tools/${encodeURIComponent(name)}`, { args: toolArgs(e) })
+  const path = `/v1/tools/${encodeURIComponent(name)}`
+  const secret = attachSecret
+  let answer = await callCore($, 'POST', path, { args: toolArgs(e) })
+  // A refused attach ran nothing: once the reattach says hello, try again.
+  const refused = !answer.ok && (answer.status === 401 || answer.status === 403) && attachSecret !== secret
+  // Wait for the new hello within this hook's budget, keeping time for the retry.
+  if (refused && (await attached($, Math.min(15_000, budgetMs - 5_000)))) {
+    answer = await callCore($, 'POST', path, { args: toolArgs(e) })
+  }
   if (!answer.ok) {
     if (!api) {
       const view = await read($, attachAtom)
-      return `Error: this session isn't attached to Irori (${describeAttach(view)})`
+      return `Error: this session isn't attached to Irori (${describeAttach(view)}). It reattaches by itself: try again in a few seconds. If it stays this way, check that the Irori app is running; /irori shows the status.`
     }
     return `Error: ${answer.error}`
   }
@@ -583,8 +636,8 @@ export const register: Register = (on, options) => {
   })
 
   // Every Irori tool, whichever names the Core listed (registered late, after hello).
-  on('tool.call', { tool: /^mcp__irori__/ }, async ($, e) => ({
-    result: await callTool($, e as unknown as Record<string, unknown>),
+  on('tool.call', { tool: /^mcp__irori__/ }, async ($, e, next) => ({
+    result: await callTool($, e as unknown as Record<string, unknown>, next.budget.remainingMs),
   })).catch(() => ({ result: 'Error: the irori mod failed on this call (it timed out or threw); try again.' }))
 
   on('turn.start', async ($, e, next) => {

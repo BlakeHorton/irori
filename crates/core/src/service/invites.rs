@@ -265,10 +265,7 @@ impl Core {
         // Where the invitee will dial, never the code (card #107).
         crate::log(&format!(
             "invite: the link names relay {} and direct {:?}",
-            a.relay
-                .as_ref()
-                .map(|u| u.to_string())
-                .unwrap_or_else(|| "none".into()),
+            a.relay.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "none".into()),
             a.direct
         ));
         let link = host
