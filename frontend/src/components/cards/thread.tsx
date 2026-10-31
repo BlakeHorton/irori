@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   cards,
   EditState,
+  type AgentRef,
   type CardMessage,
   type CardThreadItem,
 } from "@/lib/cards"
@@ -140,25 +141,33 @@ function ThreadRow({
     return (
       <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-2">
         {time}
-        <span className="text-ink-2">
-          <Badge
-            variant="warning"
-            className="mr-1.5 h-4 px-1.5 align-middle text-[10.5px]"
-          >
-            Revised
-          </Badge>
-          <RichLine text={item.text} />
-          {item.device && <DeviceTag device={item.device} />}
+        <span className="flex items-start gap-1.5 text-ink-2">
+          <ActorFace who={item.who} />
+          <span className="min-w-0">
+            <Badge
+              variant="warning"
+              className="mr-1.5 h-4 px-1.5 align-middle text-[10.5px]"
+            >
+              Revised
+            </Badge>
+            <RichLine text={item.text} />
+            {item.device && <DeviceTag device={item.device} />}
+          </span>
         </span>
       </div>
     )
+  // An activity line (card #117): whoever made the change shows their
+  // face, and the line stays dim so it reads as a log, not a comment.
   if (item.kind === ThreadKind.Event)
     return (
       <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-2">
         {time}
-        <span className="text-muted-foreground">
-          <RichLine text={item.text} />
-          {item.device && <DeviceTag device={item.device} />}
+        <span className="flex items-start gap-1.5 text-muted-foreground">
+          <ActorFace who={item.who} />
+          <span className="min-w-0">
+            <RichLine text={item.text} />
+            {item.device && <DeviceTag device={item.device} />}
+          </span>
         </span>
       </div>
     )
@@ -407,4 +416,11 @@ function DeviceTag({ device }: { device: string }) {
       {plainLine(device)}
     </Badge>
   )
+}
+
+// ActorFace is who made an activity line's change (card #117), dimmed to
+// match the line; Irori's own lines have none.
+function ActorFace({ who }: { who?: AgentRef | null }) {
+  if (!who?.key || who.status === "irori") return null
+  return <Face who={who} noDot className="-my-0.5 shrink-0 opacity-75" />
 }
