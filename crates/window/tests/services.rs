@@ -472,6 +472,7 @@ fn ts_shapes_match_the_json() {
         "threadEarlier",
         "historyTrimmed",
         "subtaskList",
+        "waits",
     ] {
         summary.as_object_mut().unwrap().remove(k);
     }

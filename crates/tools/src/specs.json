@@ -924,7 +924,7 @@
   },
   {
     "name": "wait",
-    "description": "Ask to be woken once when something you depend on happens, instead of polling or asking again: a card on your Board reaching a state (task_id + until), or a git branch moving (branch, optional repo). Irori wakes you with what happened (the card's new state and note, or the branch's new commit). A wait fires once, then ends; it also ends after a day, or when your session ends. You can't wait on your own card. Waits work on your own Board's cards; for a shared board's card use board_watch. A branch wait reads this device's refs (the local branch and origin's copy): a push made elsewhere shows once it is fetched here. List yours with waits, drop one with wait_cancel.",
+    "description": "Be woken once when something you depend on happens, instead of polling: a card on your Board reaching a state (task_id, until), or a git branch moving (branch, repo). The wake says what happened. A wait ends when it fires, after a day, or when your session ends; not on your own card. For a shared board's card use board_watch. Branch waits read this device's refs (local and origin), so a push elsewhere shows once fetched. waits lists yours; wait_cancel drops one.",
     "inputSchema": {
       "type": "object",
       "properties": {

@@ -1118,7 +1118,7 @@ mod tests {
     #[test]
     fn fallback_is_valid_and_has_join() {
         let specs = for_grok(tools::fallback_specs(), &|m| panic!("{m}"));
-        assert_eq!(specs.len(), 42);
+        assert_eq!(specs.len(), 45);
         assert!(specs.iter().any(|s| s.name == "join"));
     }
 }
