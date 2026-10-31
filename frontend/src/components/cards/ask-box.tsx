@@ -160,7 +160,7 @@ export function AskBox({
               e.currentTarget.form?.requestSubmit()
             }
           }}
-          placeholder="Ask the room… (@ to ask one agent)"
+          placeholder="Ask the room… (@ to ask one agent, # for a card)"
           aria-label={
             targeted.length ? askingLine(targeted) : "Ask every free agent"
           }

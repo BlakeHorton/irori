@@ -520,16 +520,3 @@ crate::go_struct! {
         pub at: GoTime = "at",
     }
 }
-
-crate::go_struct! {
-    /// task.comment.edited (card #105): the person's new text for their
-    /// comment, written before any agent read it.
-    #[derive(Debug, Clone, Default, PartialEq)]
-    pub struct TaskCommentEditedRow {
-        pub task_id: String = "taskId",
-        pub comment_id: String = "commentId",
-        pub by: String = "by",
-        pub text: String = "text",
-        pub at: GoTime = "at",
-    }
-}

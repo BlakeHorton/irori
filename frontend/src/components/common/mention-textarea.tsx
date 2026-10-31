@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 
+import { AgentCards } from "@/components/cards/agent-hover"
 import { Face } from "@/components/cards/faces"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,7 +19,11 @@ import { deviceVar, useMentionCandidates } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 import {
   addMention,
+  cardTokenAt,
   composing as imeComposing,
+  filterCards,
+  insertCardRef,
+  type CardCandidate,
   filterCandidates,
   insertMention,
   isFull,
@@ -84,16 +90,41 @@ export function MentionTextarea({
   const cands = given ?? loaded
   const names = useMemo(() => cands.map((c) => c.who.name), [cands])
 
-  const token: Token | null =
+  // The # picker (card #114): the window's live cards. An "@" token wins.
+  const ctx = useContext(AgentCards)
+  const cardCands = useMemo<CardCandidate[]>(
+    () =>
+      (ctx?.cards ?? [])
+        .filter((c) => c.short)
+        .map((c) => ({
+          id: c.id,
+          short: c.short,
+          ref: `${c.tag ?? ""}#${c.short}`,
+          title: plainLine(c.title),
+        })),
+    [ctx?.cards]
+  )
+  const agentToken: Token | null =
     focused && !disabledMentions ? tokenAt(value, caret, names) : null
+  const cardToken: Token | null =
+    focused && !agentToken && cardCands.length
+      ? cardTokenAt(value, caret, cardCands.map((c) => c.title))
+      : null
+  const token: Token | null = agentToken ?? cardToken
+  const forCards = !agentToken && !!cardToken
   // A dismissal lasts while its token does: once the token is gone (sent,
   // deleted, cleared by the site) the next "@" opens the list again.
   if (dismissed !== null && token?.start !== dismissed) setDismissed(null)
   const open = !!token && token.start !== dismissed
-  const rows = useMemo(
-    () => (open && token ? filterCandidates(cands, token.query) : []),
-    [open, token?.query, cands] // eslint-disable-line react-hooks/exhaustive-deps
+  const agentRows = useMemo(
+    () => (open && !forCards && token ? filterCandidates(cands, token.query) : []),
+    [open, forCards, token?.query, cands] // eslint-disable-line react-hooks/exhaustive-deps
   )
+  const cardRows = useMemo(
+    () => (open && forCards && token ? filterCards(cardCands, token.query) : []),
+    [open, forCards, token?.query, cardCands] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const rows: unknown[] = forCards ? cardRows : agentRows
   const at = token ? `${token.start}:${token.query}` : ""
   const highlight = hi.at === at ? hi.i : -1
   const shown = rows.length ? (highlight < 0 ? 0 : highlight) : -1
@@ -144,6 +175,15 @@ export function MentionTextarea({
     if (t) setCaret(t.selectionStart ?? 0)
   }
 
+  const pickCard = (row: CardCandidate) => {
+    if (!token) return
+    const r = insertCardRef(value, token, caret, row.ref)
+    pendingCaret.current = r.caret
+    setCaret(r.caret)
+    setDismissed(token.start)
+    onChange(r.text, keepMentions(mentions, r.text))
+  }
+
   const pick = (row: MentionCandidate) => {
     if (!token || (capped && !taken(row))) return
     const r = insertMention(value, token, caret, row.who.name)
@@ -178,7 +218,8 @@ export function MentionTextarea({
     if (k === "pick") {
       e.preventDefault()
       e.stopPropagation()
-      pick(rows[shown])
+      if (forCards) pickCard(cardRows[shown])
+      else pick(agentRows[shown])
       return
     }
     if (k === "hold") {
@@ -300,6 +341,40 @@ export function MentionTextarea({
           finalFocus={false}
           className="w-80 gap-0 p-1"
         >
+          {forCards ? (
+          <div
+            role="listbox"
+            id={listId}
+            aria-label="Cards to mention"
+            className="grid max-h-72 overflow-y-auto"
+          >
+            {cardRows.length === 0 ? (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                {token?.query ? `No card matches ${plainLine(token.query)}` : "No cards"}
+              </p>
+            ) : (
+              cardRows.map((c, i) => (
+                <div
+                  key={c.id}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={i === shown}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickCard(c)}
+                  className={cn(
+                    "flex min-w-0 cursor-pointer items-center gap-2 px-2 py-1.5 text-[13px]",
+                    i === shown &&
+                      (i === highlight ? "bg-accent ring-1 ring-ring ring-inset" : "bg-muted/60"),
+                    i !== shown && "hover:bg-muted/40"
+                  )}
+                >
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.ref}</span>
+                  <span className="min-w-0 truncate text-ink">{c.title}</span>
+                </div>
+              ))
+            )}
+          </div>
+          ) : (
           <div
             role="listbox"
             id={listId}
@@ -318,7 +393,7 @@ export function MentionTextarea({
                   : "No agents to mention"}
               </p>
             ) : (
-              rows.map((c, i) => (
+              agentRows.map((c, i) => (
                 <MentionRow
                   key={c.who.key}
                   id={`${listId}-${i}`}
@@ -331,6 +406,7 @@ export function MentionTextarea({
               ))
             )}
           </div>
+          )}
         </PopoverContent>
       </Popover>
     </>

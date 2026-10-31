@@ -337,6 +337,14 @@ A mention is `@name` in the text plus the agent's key beside it. The text stays 
 - **At most 10 mentions** per comment, ask or message; more is refused ("mention at most 10 agents"). An agent's text naming more gets the first 10, and the result says the rest weren't delivered ("<name>: at most 10 mentions per write"). The picker shows "At most 10 mentions" and won't add an eleventh agent.
 - **`unheard`** on the comment is false when any mention was delivered.
 
+### Card mentions
+
+*2026-10-31, card #114. Stephen: "I should be able to mention tasks just like I mention agents ... Maybe # should trigger that"; then a line on the mentioned card with a link back, and agents' #N counts too.*
+
+- **In text, a card ref is a link.** `#12` (or `mlg#12` on a shared board) that names exactly one live card renders as a chip that opens it, in comments, blocker replies, asks and event lines. A ref no card has stays text.
+- **The # picker.** In any box with the @ picker, `#` at the start of a word opens a list of live cards: digits match the card's number, words match its title. Tab, Enter and Esc work as for @. Picking puts `#12 ` in the text. Nothing is stored beside it: the ref is the text.
+- **A line on the mentioned card.** When a comment names another card, the board's fold puts "mentioned this in #7" (by the writer) on that card's activity, watched, so its holders see it at their next turn and nobody is woken. It is derived from the `task.comment` row (activity kind `task.mentioned`, no row of its own), so it works whoever wrote the comment, agent or person, and every device folds the same lines. A comment naming its own card, or the same card twice, adds one line or none. Bare `#12` on a shared board counts only when one card there has that number.
+
 ### Asks
 
 An ask with mentions goes only to the agents it names, woken, idle or not, in any repo (the repo chip and the Wake toggle don't apply). `told` is how many were sent, and `heard` is that set, so the person's comment on it while nobody has taken it (`ask_comment`) reaches the same agents. One of them takes it with `ask_claim`, as usual; the take lock doesn't change. There are no late arrivals: the owner's sweep tells nobody new about an ask with mentions. A re-announcement (Wake them, a taker that gave it back or went away) goes to the mentioned agents still around, with Wake. If every mentioned agent is gone, `told` is 0 and `unclaimed` is written at once, as today. Pause all doesn't take a mentioned agent on this device out of the ask (the window posts it against the full roster, not `Core.AskAgents`): a mention is the person's explicit choice, the inbox policy holds the notice, and the outcome says held, not gone. An ask without mentions is unchanged.

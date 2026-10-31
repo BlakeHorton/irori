@@ -771,25 +771,6 @@ function sampleAnswerNote(
   })
 }
 
-// EditState is CardThreadItem.edit (card #105): "can" while no agent has
-// read the person's comment (Modify takes it back), "editing" while it is
-// held back for the person to edit.
-export const EditState = {
-  Can: "can",
-  Editing: "editing",
-} as const
-
-// sampleEdit is Modify, Cancel and Save on the sample's comment.
-function sampleEdit(id: string, commentId: string, edit: string, text?: string) {
-  const c = sampleCard(id)
-  c.thread = c.thread.map((it) =>
-    it.id === commentId
-      ? { ...it, edit, ...(text === undefined ? {} : { text, edited: true }) }
-      : it
-  )
-  sampleChanged()
-}
-
 // sampleComment is BoardService.Comment on the sample: the person's
 // comment at the end of the thread, heard by the live agents on the card
 // (watchers answer only if asked); with none, it is unheard.
@@ -816,7 +797,6 @@ function sampleComment(id: string, text: string, wake: boolean, mentions: Mentio
       text: t,
       unheard,
       mentions: named.length ? named : undefined,
-      edit: unheard ? undefined : EditState.Can,
     }),
   ]
   c.updatedAt = now
@@ -937,37 +917,6 @@ export const cards = {
     }
     sampleCard(id).pos = { x: rx, y: ry }
     sampleChanged()
-  },
-
-  // modifyComment is Modify on the person's comment no agent read yet
-  // (card #105): it is held back from every agent until saveComment or
-  // cancelComment.
-  async modifyComment(id: string, commentId: string): Promise<void> {
-    if (inWails()) {
-      await BoardService.CommentModify(id, commentId)
-      return
-    }
-    sampleEdit(id, commentId, EditState.Editing)
-  },
-
-  // cancelComment lets a comment held for editing go out as it was.
-  async cancelComment(id: string, commentId: string): Promise<void> {
-    if (inWails()) {
-      await BoardService.CommentModifyCancel(id, commentId)
-      return
-    }
-    sampleEdit(id, commentId, EditState.Can)
-  },
-
-  // saveComment sends the held comment's new text to the agents it was
-  // held from.
-  async saveComment(id: string, commentId: string, text: string): Promise<void> {
-    if (inWails()) {
-      await BoardService.CommentModifySave(id, commentId, text)
-      return
-    }
-    if (!text.trim()) throw new Error("coord: invalid input: an empty comment")
-    sampleEdit(id, commentId, EditState.Can, text.trim())
   },
 
   // detail is one card's page data (its blockers, for the canvas).

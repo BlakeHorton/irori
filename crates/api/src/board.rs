@@ -331,7 +331,7 @@ pub fn overview_input(
     input.inbox_held = ib
         .list(COUNT_LIMIT)
         .iter()
-        .filter(|d| d.to == key && d.state == inbox::st::HELD && !inbox::editing(d))
+        .filter(|d| d.to == key && d.state == inbox::st::HELD)
         .count() as i64;
 
     let mut tasks = co.list_tasks(&coord::TaskFilter {

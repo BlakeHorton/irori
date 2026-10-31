@@ -1032,7 +1032,7 @@ function CommentBox({ cardId }: { cardId: string }) {
             e.currentTarget.form?.requestSubmit()
           }
         }}
-        placeholder="Comment on the card (@ to bring in an agent)"
+        placeholder="Comment on the card (@ to bring in an agent, # for a card)"
         aria-label="Your comment on the card"
         className="max-h-48 min-h-10 bg-card"
         disabled={busy}

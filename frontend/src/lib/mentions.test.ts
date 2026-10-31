@@ -3,6 +3,10 @@ import { describe, expect, test } from "bun:test"
 import { AgentRef } from "../gen/models"
 import {
   addMention,
+  cardRefs,
+  cardTokenAt,
+  filterCards,
+  insertCardRef,
   askingLine,
   composing,
   exactUnique,
@@ -343,4 +347,36 @@ test("@oak inside a recorded @oak tree doesn't keep oak", () => {
   ]
   expect(keepMentions(ms, "@oak tree hi")).toEqual([ms[1]])
   expect(keepMentions(ms, "@oak tree and @oak")).toBe(ms)
+})
+
+describe("card mentions (card #114)", () => {
+  test("cardRefs finds whole-word refs only", () => {
+    const r = cardRefs("see #12, (mlg#3) not a.#4 or #5a; #67")
+    expect(r.map((x) => [x.tag, x.n])).toEqual([
+      [null, "12"],
+      ["mlg", "3"],
+      [null, "67"],
+    ])
+  })
+  test("cardTokenAt opens on # at a word start", () => {
+    expect(cardTokenAt("hi #1", 5)).toEqual({ start: 3, query: "1" })
+    expect(cardTokenAt("a#1", 3)).toBeNull()
+    expect(cardTokenAt("#subtask lay", 12, ["Subtask layout"])).toEqual({ start: 0, query: "subtask lay" })
+    expect(cardTokenAt("#sub lay", 8, ["Other"])).toBeNull()
+  })
+  test("filterCards ranks number matches first", () => {
+    const cs = [
+      { id: "a", ref: "#21", short: "21", title: "Two" },
+      { id: "b", ref: "#3", short: "3", title: "Has 2 in title" },
+      { id: "c", ref: "#2", short: "2", title: "Second" },
+    ]
+    expect(filterCards(cs, "2").map((c) => c.id)).toEqual(["a", "c", "b"])
+    expect(filterCards(cs, "sec").map((c) => c.id)).toEqual(["c"])
+  })
+  test("insertCardRef replaces the token", () => {
+    expect(insertCardRef("see #su", { start: 4, query: "su" }, 7, "#12")).toEqual({
+      text: "see #12 ",
+      caret: 8,
+    })
+  })
 })

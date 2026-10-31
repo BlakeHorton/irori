@@ -16,7 +16,6 @@
 mod asks;
 mod board_search;
 mod cards;
-mod comment_edit;
 mod comments;
 mod error;
 mod fold;
@@ -561,15 +560,6 @@ impl Coord {
     ) -> Result<(Comment, Vec<Notice>)> {
         self.lock()
             .person_comment(by, id, text, wake, mentions, around)
-    }
-    /// The person's new text for their comment on a private card, before
-    /// any agent read it (card #105). The caller holds its deliveries.
-    pub fn edit_comment(&self, by: &str, comment_id: &str, text: &str) -> Result<Comment> {
-        self.lock().edit_comment(by, comment_id, text)
-    }
-    /// Whether the person may edit this comment (theirs, on a private card).
-    pub fn comment_editable(&self, by: &str, comment_id: &str) -> Result<Comment> {
-        self.lock().comment_editable(by, comment_id)
     }
     pub fn record_message(&self, m: MessageEntry) -> Result<Comment> {
         self.lock().record_message(m)

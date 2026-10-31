@@ -292,7 +292,6 @@ impl Window {
         for d in ib.list(SCAN_ALL) {
             match d.state.as_str() {
                 st::QUEUED | st::DELIVERED => snap.counts.unread += 1,
-                st::HELD if inbox::editing(&d) => {}
                 st::HELD => {
                     snap.counts.held += 1;
                     snap.held.push(d);

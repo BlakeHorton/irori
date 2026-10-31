@@ -567,9 +567,6 @@ pub struct Comment {
     /// A reviewer's verdict on a private card: approved or changes.
     #[serde(skip_serializing_if = "omit")]
     pub verdict: String,
-    /// When the person last edited it before an agent read it (card #105).
-    #[serde(skip_serializing_if = "crate::gojson::omit_zero_time")]
-    pub edited_at: GoTime,
     pub device: String,
     #[serde(skip)]
     pub hlc: u64,

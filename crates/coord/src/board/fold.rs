@@ -728,7 +728,6 @@ impl Fold {
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
             kinds::TASK_PLACED => self.fold_placed(ev),
-            kinds::TASK_COMMENT_EDITED => self.fold_comment_edited(ev, &at),
             kinds::TASK_OFFERED => self.fold_offered(ev, &at),
             kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
@@ -1123,11 +1122,40 @@ impl Fold {
         } else if p.msg_id.is_empty() {
             self.touch(ev, &ti, cm_at, &cm_by, "commented", false, Vec::new());
         }
+        if primary && p.msg_id.is_empty() {
+            self.mention_cards(ev, &p.task_id, &p.text, cm_at, &cm_by);
+        }
         self.note(Change {
             kind: COMMENT_ADDED.into(),
             task_id: p.task_id,
             ..Change::default()
         });
+    }
+
+    /// Card mentions (card #114): each other card a comment names by its
+    /// short ref (`#12`, `mlg#12`) gets a line, "mentioned this in #7",
+    /// whoever wrote it. Derived here, so no row of its own: every device
+    /// folds the same lines from the same comments.
+    fn mention_cards(&mut self, ev: &Event, from: &str, text: &str, at: GoTime, by: &str) {
+        let Some(src) = self.tasks.get(from).map(|t| t.short_ref()) else {
+            return;
+        };
+        let mut done: HashSet<String> = HashSet::new();
+        for (tag, n) in card_refs(text) {
+            let mut hits = self.tasks.values().filter(|t| {
+                t.id != from && t.short == n && tag.as_ref().is_none_or(|g| *g == t.tag)
+            });
+            let (Some(t), None) = (hits.next(), hits.next()) else {
+                continue;
+            };
+            if !done.insert(t.id.clone()) {
+                continue;
+            }
+            let ti = Touch::of(t);
+            let mut line = line_of(ev, at, by, &format!("mentioned this in {src}"));
+            line.kind = MENTIONED_KIND.into();
+            self.touch_line(&ti, line, true, Vec::new());
+        }
     }
 
     /// Folds a row for a comment id already folded: only a mirrored
@@ -1791,6 +1819,40 @@ pub(crate) fn restore_state(t: &Task) -> &'static str {
 }
 
 /// The activity line row ev makes.
+/// The activity kind of a card-mention line (card #114). Not a row kind:
+/// the line is folded from a `task.comment`.
+pub(crate) const MENTIONED_KIND: &str = "task.mentioned";
+
+/// The card refs in text: `#12` (tag None) or `mlg#12`, each a whole word
+/// (start, whitespace or "(" before; not a digit or letter after). The
+/// number is returned as written.
+pub(crate) fn card_refs(text: &str) -> Vec<(Option<String>, String)> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    for (i, &c) in b.iter().enumerate() {
+        if c != b'#' {
+            continue;
+        }
+        let mut j = i + 1;
+        while j < b.len() && b[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j == i + 1 || (j < b.len() && (b[j].is_ascii_alphanumeric() || b[j] == b'_')) {
+            continue;
+        }
+        let mut k = i;
+        while k > 0 && (b[k - 1].is_ascii_alphanumeric() || b[k - 1] == b'-' || b[k - 1] == b'_') {
+            k -= 1;
+        }
+        if k > 0 && !(b[k - 1].is_ascii_whitespace() || b[k - 1] == b'(') {
+            continue;
+        }
+        let tag = (k < i).then(|| text[k..i].to_string());
+        out.push((tag, text[i + 1..j].to_string()));
+    }
+    out
+}
+
 pub(crate) fn line_of(ev: &Event, at: GoTime, by: &str, what: &str) -> Activity {
     Activity {
         at,

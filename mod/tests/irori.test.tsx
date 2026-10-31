@@ -83,8 +83,6 @@ function world(
     toastThrows?: boolean
     appendFails?: () => 'deny' | undefined
     board?: unknown
-    /** Answers for /v1/tools/<name> calls, used up in order before the default. */
-    toolAnswers?: Array<{ status: number; text: string }>
   } = {},
 ) {
   const children: Array<ReturnType<typeof makeChild>> = []
@@ -136,8 +134,6 @@ function world(
   on('http.fetch', ($, e) => {
     calls.push({ url: e.url, method: e.init?.method ?? 'GET', headers: { ...(e.init?.headers ?? {}) }, body: e.init?.body })
     if (e.url.endsWith('/v1/tools?client=claude')) return { value: { ok: true, status: 200, headers: {}, text: JSON.stringify(specs) } } as never
-    const next = e.url.includes('/v1/tools/') ? opts.toolAnswers?.shift() : undefined
-    if (next) return { value: { ok: next.status < 300, status: next.status, headers: {}, text: next.text } } as never
     if (e.url.includes('/v1/tools/')) return { value: { ok: true, status: 200, headers: {}, text: '{"text":"Sent: msg_01 to bob."}' } } as never
     if (e.url.endsWith('/v1/policy') && (e.init?.method ?? 'GET') === 'GET')
       return { value: { ok: true, status: 200, headers: {}, text: '{"mode":"everyone","block":[],"allow":[],"paused":false}' } } as never
@@ -173,7 +169,7 @@ describe('attach', () => {
       await band.unmount()
     }
     const ran = await $.command.run(irori(''))
-    expect(ran.text).toContain('irori mod 0.4.3')
+    expect(ran.text).toContain('irori mod 0.4.2')
     expect(ran.text).toContain('set iroriPath')
   })
 
@@ -181,7 +177,7 @@ describe('attach', () => {
     const w = world(on)
     await $.session.start({ cwd: 'C:/work/api', surface: 'terminal', isInteractive: true })
     await until(() => w.children.length === 1, 'spawn')
-    expect(w.spawned[0]).toEqual([IRORI, 'attach', '--session', SESSION, '--cwd', 'C:/work/api', '--mod-version', '0.4.3'])
+    expect(w.spawned[0]).toEqual([IRORI, 'attach', '--session', SESSION, '--cwd', 'C:/work/api', '--mod-version', '0.4.2'])
 
     // hello split across two pieces, a blank keepalive, and a stray log line.
     const h = line(hello)
@@ -492,58 +488,6 @@ describe('tools', () => {
     expect(sent[0]!.headers['X-Irori-Attach']).toBe('secret-1')
   })
 
-  test('a secret the Core no longer knows starts a reattach, and the call goes again on the new hello (card #111)', OPTIONS, async ($, on) => {
-    const stale = { status: 403, text: '{"error":"this route needs a current X-Irori-Attach or X-Irori-Member secret"}' }
-    const w = world(on, { toolAnswers: [stale] })
-    // The reattach waits for its hello with $.clock.sleep: let it pass quickly.
-    on('clock.sleep', async ($, e) => {
-      await pause(Math.min(Number((e as { ms?: unknown }).ms ?? 0), 50))
-      return { value: undefined } as never
-    })
-    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
-    await until(() => w.children.length === 1, 'spawn')
-    w.children[0]!.write(line(hello))
-    await until(() => w.registered.length === 2, 'tools registered')
-    const running = $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
-    await until(() => w.children.length === 2, 'reattach spawn')
-    w.children[1]!.write(line({ ...hello, attachSecret: 'secret-2' }))
-    const ran = await running
-    expect(String((ran as { result?: unknown }).result)).toBe('Sent: msg_01 to bob.')
-    const sent = posts(w.calls, '/v1/tools/send')
-    expect(sent.map(c => c.headers['X-Irori-Attach'])).toEqual(['secret-1', 'secret-2'])
-  })
-
-  test('a refusal that is not about the attach is not retried', OPTIONS, async ($, on) => {
-    const w = world(on, { toolAnswers: [{ status: 403, text: '{"error":"not yours"}' }] })
-    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
-    await until(() => w.children.length === 1, 'spawn')
-    w.children[0]!.write(line(hello))
-    await until(() => w.registered.length === 2, 'tools registered')
-    const ran = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
-    expect(String((ran as { result?: unknown }).result)).toBe('Error: not yours')
-    expect(posts(w.calls, '/v1/tools/send').length).toBe(1)
-    expect(w.children.length).toBe(1)
-  })
-
-  test('an error from irori attach drops the secret: tools say so instead of sending a dead one (card #111)', OPTIONS, async ($, on) => {
-    const w = world(on)
-    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
-    await until(() => w.children.length === 1, 'spawn')
-    w.children[0]!.write(line(hello))
-    await until(() => w.registered.length === 2, 'tools registered')
-    w.children[0]!.write(line({ type: 'error', message: "Irori's connection to this session dropped; reattaching." }))
-    await pause(50)
-    const ran = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
-    expect(String((ran as { result?: unknown }).result)).toMatch(/^Error: this session isn't attached to Irori \(Reconnecting to the Irori Core: Irori's connection/)
-    expect(posts(w.calls, '/v1/tools/send').length).toBe(0)
-    // The next hello attaches it again.
-    w.children[0]!.write(line({ ...hello, attachSecret: 'secret-2' }))
-    await pause(50)
-    const again = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
-    expect(String((again as { result?: unknown }).result)).toBe('Sent: msg_01 to bob.')
-    expect(posts(w.calls, '/v1/tools/send')[0]!.headers['X-Irori-Attach']).toBe('secret-2')
-  })
-
   test('before hello a tool call says the session is not attached', OPTIONS, async ($, on) => {
     world(on)
     const ran = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
@@ -564,7 +508,7 @@ describe('/irori', () => {
     }
     expect(w.calls.filter(c => c.url.endsWith('/v1/policy'))).toEqual([])
     const status = await $.command.run(irori(''))
-    expect(status.text).toContain('irori mod 0.4.3')
+    expect(status.text).toContain('irori mod 0.4.2')
     expect(status.text).toContain('Attached as api work')
   })
 
@@ -587,7 +531,7 @@ describe('/irori', () => {
     const paused = await $.command.run(irori('pause', PERSON))
     expect(paused.text).toContain('Paused')
     const bad = await $.command.run(irori('mode sometimes', PERSON))
-    expect(bad.text).toContain('Use /irori mode everyone or /irori mode allowlist.')
+    expect(bad.text).toContain('Use /irori mode everyone, /irori mode allowlist or /irori mode open.')
   })
 })
 

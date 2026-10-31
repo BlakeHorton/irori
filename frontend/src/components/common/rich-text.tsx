@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react"
+import { useContext, useEffect, useState, type ReactNode } from "react"
 import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react"
 
+import { AgentCards } from "@/components/cards/agent-hover"
 import { Face } from "@/components/cards/faces"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -12,7 +13,7 @@ import {
 } from "@/lib/cards"
 import { copyText } from "@/lib/clipboard"
 import { plainLine } from "@/lib/irori"
-import { isGone, splitMentions } from "@/lib/mentions"
+import { cardRefs, isGone, splitMentions } from "@/lib/mentions"
 import { richBlocks, richInline, safeHref, type Inline } from "@/lib/rich"
 import { cn } from "@/lib/utils"
 
@@ -104,12 +105,13 @@ function Pieces({
 }) {
   return pieces.map((p, i) => {
     if (p.kind === "text") {
-      if (!mentions?.length) return <span key={i}>{p.text}</span>
+      if (!mentions?.length)
+        return <span key={i}><CardRefs text={p.text} interactive={interactive} /></span>
       return (
         <span key={i}>
           {splitMentions(p.text, mentions).map((s, j) =>
             s.kind === "text" ? (
-              s.text
+              <CardRefs key={j} text={s.text} interactive={interactive} />
             ) : (
               <MentionChip key={j} text={s.text} mention={s.mention} />
             )
@@ -121,6 +123,49 @@ function Pieces({
       return <Code key={i} text={p.text} copy={interactive} />
     return <InlineLink key={i} link={p} interactive={interactive} />
   })
+}
+
+// CardRefs is text with each card ref ("#12", "mlg#12", card #114) that
+// names a live card made a link that opens it. A ref no card has, or text
+// outside the app's card list, stays text.
+function CardRefs({ text, interactive }: { text: string; interactive: boolean }) {
+  const ctx = useContext(AgentCards)
+  if (!ctx || !text.includes("#")) return text
+  const out: ReactNode[] = []
+  let last = 0
+  for (const r of cardRefs(text)) {
+    const c = ctx.cards.filter(
+      (x) => x.short === r.n && (r.tag === null || (x.tag ?? "") === r.tag)
+    )
+    if (c.length !== 1) continue
+    const card = c[0]
+    out.push(text.slice(last, r.start))
+    const label = text.slice(r.start, r.end)
+    out.push(
+      interactive ? (
+        <button
+          key={r.start}
+          type="button"
+          className="rounded-sm bg-primary/10 px-0.5 font-medium text-primary hover:underline"
+          title={plainLine(card.title)}
+          onClick={(e) => {
+            e.stopPropagation()
+            ctx.onOpen(card.id)
+          }}
+        >
+          {label}
+        </button>
+      ) : (
+        <span key={r.start} className="font-medium text-primary" title={plainLine(card.title)}>
+          {label}
+        </span>
+      )
+    )
+    last = r.end
+  }
+  if (!out.length) return text
+  out.push(text.slice(last))
+  return <>{out}</>
 }
 
 // MentionChip is one "@name" a mention names: in the agent's device

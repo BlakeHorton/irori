@@ -339,7 +339,7 @@ fn deliver_event(ib: &Inbox, w: &Wake) -> Event {
 
 fn held_event(ib: &Inbox, id: &str) -> Option<Event> {
     let d = ib.get(id)?;
-    if d.state != inbox::st::HELD || inbox::editing(&d) {
+    if d.state != inbox::st::HELD {
         return None;
     }
     Some(Event {
@@ -357,7 +357,7 @@ fn counts_event(ib: &Inbox, key: &str) -> Event {
     let held = ib
         .list(COUNT_LIMIT)
         .iter()
-        .filter(|d| d.to == key && d.state == inbox::st::HELD && !inbox::editing(d))
+        .filter(|d| d.to == key && d.state == inbox::st::HELD)
         .count();
     Event {
         unread: ib.for_agent(key, false, COUNT_LIMIT).len() as i64,

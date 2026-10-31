@@ -418,3 +418,79 @@ export function useMissed(): [
   )
   return [line, set]
 }
+
+// CardRef is one card ref in text (card #114): "#12" (tag null) or
+// "mlg#12", as the Core's card_refs reads them: a whole word, after the
+// start, whitespace or "(", and not followed by a letter, digit or "_".
+export type CardRef = { start: number; end: number; tag: string | null; n: string }
+
+export function cardRefs(text: string): CardRef[] {
+  const out: CardRef[] = []
+  const re = /([A-Za-z0-9_-]*)#(\d+)(?![A-Za-z0-9_])/g
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const start = m.index
+    if (start > 0 && !/[\s(]/.test(text[start - 1])) continue
+    out.push({ start, end: start + m[0].length, tag: m[1] || null, n: m[2] })
+  }
+  return out
+}
+
+// cardTokenAt is the "#query" the caret is in (card #114), or null: a "#"
+// at the start or after whitespace or "(", up to the caret, no newline.
+// A space ends it unless some card title still holds the query.
+export function cardTokenAt(
+  text: string,
+  caret: number,
+  titles: readonly string[] = []
+): Token | null {
+  const head = text.slice(0, caret)
+  const at = head.lastIndexOf("#")
+  if (at < 0 || (at > 0 && !before.test(head[at - 1]))) return null
+  const query = head.slice(at + 1)
+  if (query.includes("\n") || query.includes("@") || query.length > 64) return null
+  if (!/\s/.test(query)) return { start: at, query }
+  const q = query.toLowerCase()
+  if (titles.some((t) => t.toLowerCase().includes(q))) return { start: at, query }
+  return null
+}
+
+// CardCandidate is one row of the # picker.
+export type CardCandidate = { id: string; ref: string; short: string; title: string }
+
+// filterCards are the # picker's rows for query: a number matches the
+// cards whose number starts with it, words match titles. Number matches
+// first, then title starts, then the rest in the list's order.
+export function filterCards(
+  cards: readonly CardCandidate[],
+  query: string
+): CardCandidate[] {
+  const q = bare(query).toLowerCase().trim()
+  if (!q) return cards.slice(0, MaxRows)
+  const rank = (c: CardCandidate) =>
+    c.short.startsWith(q) ? 0 : c.title.toLowerCase().startsWith(q) ? 1 : 2
+  return cards
+    .filter((c) => c.short.startsWith(q) || c.title.toLowerCase().includes(q))
+    .map((c, i) => ({ c, r: rank(c), i }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .slice(0, MaxRows)
+    .map((x) => x.c)
+}
+
+// insertCardRef puts "#12 " (or "mlg#12 ") in place of the token and the
+// rest of the word the caret is in.
+export function insertCardRef(
+  text: string,
+  t: Token,
+  caret: number,
+  ref: string
+): { text: string; caret: number } {
+  let end = caret
+  while (end < text.length && !after.test(text[end])) end++
+  const rest = text.slice(end)
+  const space = /^\s/.test(rest) ? "" : " "
+  const ins = `${ref}${space}`
+  return {
+    text: text.slice(0, t.start) + ins + rest,
+    caret: t.start + ins.length + (space ? 0 : 1),
+  }
+}

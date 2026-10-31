@@ -59,7 +59,6 @@ export function threadLabel(
     })
   for (const line of item.pending ?? [])
     badges.push({ label: line, tone: "slate" })
-  if (item.edited) badges.push({ label: "edited", tone: "slate" })
   if (item.files)
     badges.push({
       label: item.files === 1 ? "1 file" : `${item.files} files`,

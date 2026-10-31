@@ -43,12 +43,6 @@ export const commands = {
 	boardDelete: (id: string) => __TAURI_INVOKE<null>("board_delete", { id }),
 	boardPin: (id: string, pinned: boolean) => __TAURI_INVOKE<null>("board_pin", { id, pinned }),
 	boardPlace: (id: string, x: number, y: number) => __TAURI_INVOKE<null>("board_place", { id, x, y }),
-	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
-	boardCommentModify: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify", { id, commentId }),
-	/**  Cancel on a comment held for editing: it goes out as it was. */
-	boardCommentModifyCancel: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify_cancel", { id, commentId }),
-	/**  Save on a comment held for editing: its new text goes out. */
-	boardCommentModifySave: (id: string, commentId: string, text: string) => __TAURI_INVOKE<null>("board_comment_modify_save", { id, commentId, text }),
 	boardMovePin: (id: string, before: string) => __TAURI_INVOKE<null>("board_move_pin", { id, before }),
 	boardReopen: (id: string) => __TAURI_INVOKE<TaskResult>("board_reopen", { id }),
 	boardsList: () => __TAURI_INVOKE<BoardSummary[]>("boards_list"),
@@ -579,13 +573,6 @@ export type CardThreadItem = {
 	unheard?: boolean,
 	pending?: string[],
 	mentions?: CardMention[],
-	/**
-	 *  The person's comment no agent has read yet (card #105): "can" (Modify
-	 *  takes it back to edit) or "editing" (held back until Save or Cancel).
-	 */
-	edit?: string,
-	/**  The person edited it before any agent read it. */
-	edited?: boolean,
 };
 
 /**

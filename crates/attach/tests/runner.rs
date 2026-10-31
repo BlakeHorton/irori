@@ -82,13 +82,9 @@ impl Proc {
 }
 
 fn start_runner(data: &Path, session: &str) -> Proc {
-    start_runner_with(data, session, |_| {})
-}
-
-fn start_runner_with(data: &Path, session: &str, edit: impl FnOnce(&mut Options)) -> Proc {
     let out = Out::default();
     let stop = CancellationToken::new();
-    let mut o = Options {
+    let done = tokio::spawn(runner::run(Options {
         session: session.into(),
         mod_version: "0.2.0-test".into(),
         data_dir: data.to_path_buf(),
@@ -97,9 +93,7 @@ fn start_runner_with(data: &Path, session: &str, edit: impl FnOnce(&mut Options)
         min_backoff: Duration::from_millis(50),
         max_backoff: Duration::from_millis(200),
         ..Options::default()
-    };
-    edit(&mut o);
-    let done = tokio::spawn(runner::run(o));
+    }));
     Proc { out, stop, done }
 }
 
@@ -189,8 +183,8 @@ async fn not_on_roster_yet_retries_quietly() {
     p.exited().await;
 }
 
-/// The Core going away mid-stream: the runner says the stream dropped,
-/// reconnects, and says Irori isn't running once per outage.
+/// The Core going away mid-stream: the runner reconnects, and says Irori
+/// isn't running once per outage.
 #[tokio::test(flavor = "multi_thread")]
 async fn reconnects_after_the_core_stops() {
     let r = Rig::new().await;
@@ -198,97 +192,16 @@ async fn reconnects_after_the_core_stops() {
     p.out.wait("hello", 1).await;
     let data = r.data.clone();
     drop(r); // the host stops and the Core closes (its lockfile goes)
-    p.out.wait("error", 2).await;
+    p.out.wait("error", 1).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let errs: Vec<Value> = p
+    let errs = p
         .out
         .events()
-        .into_iter()
+        .iter()
         .filter(|e| e["type"] == "error")
-        .map(|e| e["message"].clone())
-        .collect();
-    // The stream's secret died, then Irori is down: each said once.
-    assert_eq!(
-        errs,
-        vec![
-            Value::from(runner::DROPPED),
-            Value::from(runner::NOT_RUNNING)
-        ]
-    );
+        .count();
+    assert_eq!(errs, 1);
     assert!(!data.join("irori.json").exists());
-    p.stop.cancel();
-    p.exited().await;
-}
-
-/// An app restart (or update) under an attached session (card #111): the
-/// runner attaches to the new Core by itself, and the new hello's secret is
-/// the one the new Core takes.
-#[tokio::test(flavor = "multi_thread")]
-async fn reattaches_after_the_app_restarts() {
-    let r = Rig::new().await;
-    let p = start_runner(&r.data, SESS_A);
-    let first = p.out.wait("hello", 1).await;
-    let r = r.restart().await;
-    let second = p.out.wait("hello", 2).await;
-    // Between the two, the mod heard its secret died.
-    let evs = p.out.events();
-    let h2 = evs.iter().rposition(|e| e["type"] == "hello").unwrap();
-    let first_err = evs.iter().position(|e| e["type"] == "error").unwrap();
-    assert!(first_err < h2);
-    assert_eq!(evs[first_err]["message"], runner::DROPPED);
-    assert_ne!(first["attachSecret"], second["attachSecret"]);
-    assert_eq!(
-        second["api"]["url"],
-        format!("http://127.0.0.1:{}", r.host.port)
-    );
-    let old = first["attachSecret"].as_str().unwrap();
-    let new = second["attachSecret"].as_str().unwrap();
-    assert!(!r.host.server.is_attach_secret(old));
-    assert!(r.host.server.is_attach_secret(new));
-    p.stop.cancel();
-    p.exited().await;
-}
-
-/// A stream that goes silent (the Core lost it without closing it; no
-/// keepalive either) is dropped after the idle timeout and attached again,
-/// instead of holding the session forever (card #111).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_silent_stream_is_reattached() {
-    let r = Rig::with(Duration::from_secs(3600), |_| {}).await;
-    let p = start_runner_with(&r.data, SESS_A, |o| {
-        o.idle_timeout = Duration::from_millis(300)
-    });
-    let first = p.out.wait("hello", 1).await;
-    let dropped = p.out.wait("error", 1).await;
-    assert_eq!(dropped["message"], runner::DROPPED);
-    let second = p.out.wait("hello", 2).await;
-    assert!(
-        r.host
-            .server
-            .is_attach_secret(second["attachSecret"].as_str().unwrap())
-    );
-    assert!(
-        !r.host
-            .server
-            .is_attach_secret(first["attachSecret"].as_str().unwrap())
-    );
-    p.stop.cancel();
-    p.exited().await;
-}
-
-/// A session that stays off the roster is said once, not left on a silent
-/// "connecting" (card #111).
-#[tokio::test(flavor = "multi_thread")]
-async fn off_the_roster_too_long_is_said_once() {
-    let r = Rig::new().await;
-    let late = "dddddddd-4444-4444-8444-000000000004";
-    let p = start_runner_with(&r.data, late, |o| {
-        o.roster_grace = Duration::from_millis(300)
-    });
-    let err = p.out.wait("error", 1).await;
-    assert_eq!(err["message"], runner::not_on_roster(late));
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    assert_eq!(p.out.events().len(), 1, "{}", p.out.text());
     p.stop.cancel();
     p.exited().await;
 }

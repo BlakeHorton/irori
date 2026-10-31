@@ -428,20 +428,7 @@ pub struct CardThreadItem {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub mentions: Vec<CardMention>,
-    /// The person's comment no agent has read yet (card #105): "can" (Modify
-    /// takes it back to edit) or "editing" (held back until Save or Cancel).
-    #[serde(skip_serializing_if = "String::is_empty")]
-    #[specta(optional)]
-    pub edit: String,
-    /// The person edited it before any agent read it.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    #[specta(optional)]
-    pub edited: bool,
 }
-
-/// What Modify can do with the person's comment (card #105).
-pub const EDIT_CAN: &str = "can";
-pub const EDIT_EDITING: &str = "editing";
 
 /// A message on a card's thread in full, for the person.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
@@ -1241,13 +1228,6 @@ impl Window {
         for items in by_blocker.values_mut() {
             self.held_on_thread(items);
         }
-        if !co.is_board() {
-            let edits = self.core.inbox().comment_edit_states(&p.user);
-            edit_on_thread(&mut d.thread, &d.comments, &edits);
-            for items in by_blocker.values_mut() {
-                edit_on_thread(items, &d.comments, &edits);
-            }
-        }
         d.history_trimmed = acts.len() == coord::MAX_ACTIVITY;
         let mut resolved = Vec::new();
         if t.state == coord::INPUT_REQUIRED {
@@ -1597,31 +1577,6 @@ fn build_thread(
     )
 }
 
-/// Marks the person's comments no agent has read yet (card #105). Only a
-/// private card's: a shared board's members already have theirs.
-fn edit_on_thread(
-    items: &mut [CardThreadItem],
-    comments: &[Comment],
-    edits: &HashMap<String, inbox::EditState>,
-) {
-    for it in items.iter_mut() {
-        if it.kind != THREAD_COMMENT || it.who.status != "person" {
-            continue;
-        }
-        let Some(cm) = comments.iter().find(|c| c.id == it.id) else {
-            continue;
-        };
-        it.edited = !cm.edited_at.is_zero();
-        // A comment nobody was told of (or whose notices are long gone)
-        // has no agent to wait for: it stays as it is.
-        it.edit = match edits.get(&cm.id) {
-            Some(inbox::EditState::Unread) => EDIT_CAN.into(),
-            Some(inbox::EditState::Editing) => EDIT_EDITING.into(),
-            _ => String::new(),
-        };
-    }
-}
-
 /// A person's comment's Pending lines from its notices still open.
 fn pending_lines(ds: &[Delivery], t: &Task, p: &People) -> Vec<String> {
     let mut out = Vec::new();
@@ -1635,9 +1590,6 @@ fn pending_lines(ds: &[Delivery], t: &Task, p: &People) -> Vec<String> {
                 out.push(format!("queued for {} (busy)", who.name))
             }
             st::QUEUED => out.push(format!("queued for {}", who.name)),
-            st::HELD if inbox::editing(d) => {
-                out.push(format!("held for {} while you edit", who.name))
-            }
             st::HELD => out.push(format!("held for {}", who.name)),
             st::DELIVERED => out.push(format!("sent to {}, not read yet", who.name)),
             _ => {}

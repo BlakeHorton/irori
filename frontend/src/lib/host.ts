@@ -140,12 +140,6 @@ export const BoardService = {
   Pin: (id: string, pinned: boolean) => done(commands.boardPin(id, pinned)),
   MovePin: (id: string, before: string) => done(commands.boardMovePin(id, before)),
   Place: (id: string, x: number, y: number) => done(commands.boardPlace(id, x, y)),
-  CommentModify: (id: string, commentId: string) =>
-    done(commands.boardCommentModify(id, commentId)),
-  CommentModifyCancel: (id: string, commentId: string) =>
-    done(commands.boardCommentModifyCancel(id, commentId)),
-  CommentModifySave: (id: string, commentId: string, text: string) =>
-    done(commands.boardCommentModifySave(id, commentId, text)),
   Reopen: (id: string) => call(commands.boardReopen(id)),
 }
 
