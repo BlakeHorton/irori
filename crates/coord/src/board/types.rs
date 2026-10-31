@@ -500,6 +500,9 @@ pub struct Comment {
     pub missing: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub unheard: bool,
+    /// A reviewer's verdict on a private card: approved or changes.
+    #[serde(skip_serializing_if = "omit")]
+    pub verdict: String,
     pub device: String,
     #[serde(skip)]
     pub hlc: u64,
@@ -731,6 +734,8 @@ pub struct CommentInput {
     pub files: Vec<FileRef>,
     pub blocker_id: String,
     pub missing: Vec<String>,
+    /// A review verdict (#88): approved or changes; empty for a plain comment.
+    pub verdict: String,
 }
 
 /// SetStep's input; `None` leaves a field alone.

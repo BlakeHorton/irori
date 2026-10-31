@@ -713,6 +713,7 @@ const COMMENT_ARGS: &[(&str, Ty)] = &[
     ("attach", Ty::Strs),
     ("blocker_id", Ty::Str),
     ("missing", Ty::Strs),
+    ("verdict", Ty::Str),
 ];
 
 pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -728,6 +729,10 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         return err_text("give the comment text.");
     }
     let bid = trim(a.str("blocker_id")).to_string();
+    let verdict = gocompat::text::to_lower_str(trim(a.str("verdict")));
+    if !verdict.is_empty() && !bid.is_empty() {
+        return err_text("a verdict is its own comment: give verdict or blocker_id, not both.");
+    }
     let missing = a.strs("missing");
     if !missing.is_empty() && bid.is_empty() {
         return err_text("missing needs blocker_id: which blocker's answer it is missing from.");
@@ -755,6 +760,7 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             files: files.iter().map(to_coord).collect(),
             blocker_id: bid.clone(),
             missing,
+            verdict: verdict.clone(),
         },
     ) {
         Ok(v) => v,
@@ -770,8 +776,13 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         );
     }
     let n = s.roster();
+    let verdict_note = match verdict.as_str() {
+        "" => "",
+        coord::VERDICT_CHANGES => " (verdict: changes asked)",
+        _ => " (verdict: approved)",
+    };
     let mut out = format!(
-        "Commented comment:{} on {}{}.",
+        "Commented comment:{} on {}{verdict_note}{}.",
         cm.id,
         s.short_of(&cm.task_id),
         attached_line(&files)

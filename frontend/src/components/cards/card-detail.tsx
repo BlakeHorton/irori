@@ -1,5 +1,10 @@
 import { useState, type FormEvent, type ReactNode } from "react"
-import { ArrowLeftIcon, ExternalLinkIcon, PinIcon, PinOffIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  ExternalLinkIcon,
+  PinIcon,
+  PinOffIcon,
+} from "lucide-react"
 
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +34,7 @@ import {
   type CardDetail,
   type CardOption,
   type CardPR,
+  type CardReview,
   type CardSubtask,
   type CardSummary,
   type Step,
@@ -119,10 +125,10 @@ export function CardPage({
           <PageHeader card={summary} spinning={busy(summary)} />
         ) : (
           !error && (
-          <header className="grid gap-2" aria-hidden>
-            <span className="h-[18px] w-40 bg-muted/60" />
-            <span className="h-8 w-[min(32rem,80%)] bg-muted/40" />
-          </header>
+            <header className="grid gap-2" aria-hidden>
+              <span className="h-[18px] w-40 bg-muted/60" />
+              <span className="h-8 w-[min(32rem,80%)] bg-muted/40" />
+            </header>
           )
         )}
         <Card className="items-start gap-2 px-5 py-5! text-sm">
@@ -175,8 +181,15 @@ export function CardPage({
         onOpen={onOpen}
         extra={
           <>
-            <BoardActions detail={detail} boards={boards} onOpen={onOpen} onBack={onBack} />
-            {!detail.onBoard && <DeleteButton detail={detail} onDeleted={onBack} />}
+            <BoardActions
+              detail={detail}
+              boards={boards}
+              onOpen={onOpen}
+              onBack={onBack}
+            />
+            {!detail.onBoard && (
+              <DeleteButton detail={detail} onDeleted={onBack} />
+            )}
           </>
         }
       />
@@ -231,8 +244,8 @@ export function CardPage({
                       <RichLine text={detail.blockerQuestion} />
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Raised without recommended answers. The agent on it
-                      clears it when it's sorted.
+                      Raised without recommended answers. The agent on it clears
+                      it when it's sorted.
                     </div>
                   </div>
                 )}
@@ -273,7 +286,7 @@ export function CardPage({
 
         <aside
           aria-label="About the card"
-          className="min-w-0 min-[900px]:sticky min-[900px]:top-[4.5rem] min-[900px]:max-h-[calc(100svh-5.5rem)] min-[900px]:overflow-y-auto min-[900px]:col-start-2 min-[900px]:row-span-2 min-[900px]:row-start-1"
+          className="min-w-0 min-[900px]:sticky min-[900px]:top-[4.5rem] min-[900px]:col-start-2 min-[900px]:row-span-2 min-[900px]:row-start-1 min-[900px]:max-h-[calc(100svh-5.5rem)] min-[900px]:overflow-y-auto"
         >
           <Card className="gap-0 py-0!">
             <Section title="Progress">
@@ -310,10 +323,28 @@ export function CardPage({
 
             <Section
               title="Who's on it"
-              last={!detail.prs.length && !links.length && !files.length}
+              last={
+                !detail.reviews.length &&
+                !detail.prs.length &&
+                !links.length &&
+                !files.length
+              }
             >
               <People detail={detail} gone={gone} />
             </Section>
+
+            {detail.reviews.length > 0 && (
+              <Section
+                title="Review"
+                last={!detail.prs.length && !links.length && !files.length}
+              >
+                <div className="grid gap-2">
+                  {detail.reviews.map((r) => (
+                    <ReviewRow key={r.reviewer.key} review={r} now={now} />
+                  ))}
+                </div>
+              </Section>
+            )}
 
             {detail.prs.length > 0 && (
               <Section
@@ -377,7 +408,7 @@ function AskStatus({
   const [note, setNote] = useDraft(`${detail.id}/close-ask`)
   if (!detail.ask) return null
   return (
-    <div className="glass-panel flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 glass-panel">
       <AskLine ask={detail.ask} className="min-w-48 flex-1" />
       <Input
         value={note}
@@ -413,7 +444,7 @@ function CloseBar({ detail }: { detail: CardDetail }) {
   }
   const kids = (detail.subtaskList?.length ?? 0) > 0
   return (
-    <div className="glass-panel flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 glass-panel">
       <span className="min-w-40 flex-1 text-[13px] text-muted-foreground">
         Close it by hand
       </span>
@@ -481,7 +512,7 @@ function ReopenBar({ detail }: { detail: CardDetail }) {
   const followsSubtasks =
     (detail.subtaskList?.length ?? 0) > 0 && detail.subtaskList.every(over)
   return (
-    <div className="glass-panel flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 glass-panel">
       <span className="min-w-48 flex-1 text-[13px] text-muted-foreground">
         {overLabel(detail)}
         {followsSubtasks
@@ -516,7 +547,7 @@ function SharedToBar({
   const s = detail.sharedTo
   if (!s) return null
   return (
-    <div className="glass-panel flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 glass-panel">
       <span className="min-w-48 flex-1 text-[13px] text-muted-foreground">
         Shared to {plainLine(s.boardName) || "a board"} as{" "}
         <span className="font-mono text-ink">{plainLine(s.ref)}</span>. Work it
@@ -557,7 +588,13 @@ function BoardActions({
       />
     )
   }
-  if (over(detail) || detail.sharedTo || openAsk(detail) || detail.parent || (detail.subtasks ?? 0) > 0)
+  if (
+    over(detail) ||
+    detail.sharedTo ||
+    openAsk(detail) ||
+    detail.parent ||
+    (detail.subtasks ?? 0) > 0
+  )
     return null
   return (
     <ShareButton
@@ -596,7 +633,11 @@ function PageHeader({
           </span>
         )}
         {/* Pins are private-board rows; a shared card isn't pinned. */}
-        {card.scope === "board" ? <span className="ml-auto" /> : <PinButton card={card} />}
+        {card.scope === "board" ? (
+          <span className="ml-auto" />
+        ) : (
+          <PinButton card={card} />
+        )}
         {extra}
       </div>
       <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance text-ink">
@@ -634,7 +675,11 @@ function PinButton({ card }: { card: CardSummary }) {
       className="ml-auto h-7 gap-1.5 text-xs"
       disabled={busy}
       aria-pressed={pinned}
-      title={pinned ? "Unpin: back to the regular list" : "Pin: keep it in the Pinned group at the top"}
+      title={
+        pinned
+          ? "Unpin: back to the regular list"
+          : "Pin: keep it in the Pinned group at the top"
+      }
       onClick={async () => {
         setBusy(true)
         try {
@@ -684,7 +729,7 @@ function Subtasks({
               </span>
               <span
                 className={cn(
-                  "text-[11px] uppercase tracking-wide",
+                  "text-[11px] tracking-wide uppercase",
                   k.blocked ? "text-destructive" : "text-muted-foreground"
                 )}
               >
@@ -760,7 +805,7 @@ function ProgressStrip({
   const p = percent(detail.progress)
   const current = detail.steps.find((s) => s.doing && !s.done)
   return (
-    <div className="glass-panel grid gap-2 px-4 py-3 min-[900px]:hidden">
+    <div className="grid gap-2 px-4 py-3 glass-panel min-[900px]:hidden">
       {p === null ? (
         <HolderLine holder={detail.holder} />
       ) : (
@@ -1341,7 +1386,10 @@ function OptionItem({
             <RichLine text={o.answer} interactive={false} />
           </span>
           {o.recommended && (
-            <Badge variant="info" className="h-4 rounded-full px-1.5 text-[10.5px]">
+            <Badge
+              variant="info"
+              className="h-4 rounded-full px-1.5 text-[10.5px]"
+            >
               Recommended
             </Badge>
           )}
@@ -1543,6 +1591,47 @@ function Revive({ who, gone }: { who: AgentRef; gone: GoneSession[] }) {
 
 // PRRow is one linked pull request with what the ledger knows of it: who
 // opened it, reviewed it or touched it. CI and review state come with v0.4.
+const reviewStates: Record<
+  string,
+  { label: string; variant: "info" | "success" | "warning" }
+> = {
+  requested: { label: "requested", variant: "info" },
+  approved: { label: "approved", variant: "success" },
+  changes: { label: "changes asked", variant: "warning" },
+}
+
+/** One reviewer's review of a private card (#88): its state, who asked,
+ *  and the verdict comment once there is one. */
+function ReviewRow({ review, now }: { review: CardReview; now: Date }) {
+  const st = reviewStates[review.state] ?? reviewStates.requested
+  return (
+    <div className="grid gap-1.5 border border-border bg-background/40 px-3 py-2.5">
+      <div className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 text-[13px]">
+        <Face who={review.reviewer} noDot />
+        <span className="min-w-0 truncate">
+          <span className="text-ink">{name(review.reviewer)}</span>{" "}
+          <small className="text-xs text-muted-foreground">
+            · asked by {name(review.askedBy)}
+            {review.pr ? ` · ${plainLine(review.pr)}` : ""}
+          </small>
+        </span>
+        <Badge
+          variant={st.variant}
+          className="h-5 px-2 text-[11px]"
+          title={relativeTime(parseTime(review.at), now)}
+        >
+          {st.label}
+        </Badge>
+      </div>
+      {review.text && (
+        <p className="text-xs whitespace-pre-wrap text-muted-foreground">
+          {review.text}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function PRRow({ pr }: { pr: CardPR }) {
   const roles: [string, AgentRef[]][] = [
     ["Opened by", pr.openedBy],

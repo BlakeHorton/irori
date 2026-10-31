@@ -380,6 +380,24 @@ impl Fold {
         if !t.done_criteria.is_empty() {
             let _ = writeln!(b, "\ndone when:\n{}", t.done_criteria);
         }
+        let reviews = self.reviews_of(&t.id);
+        if !self.on_board && !reviews.is_empty() {
+            b.push_str("\nreviews:\n");
+            for r in &reviews {
+                let state = match r.state.as_str() {
+                    super::review::VERDICT_CHANGES => "changes asked",
+                    s => s,
+                };
+                let _ = write!(b, "- {} (asked by {}): {state}", r.reviewer, r.from);
+                if !r.pr.is_empty() {
+                    let _ = write!(b, " [{}]", r.pr);
+                }
+                if !r.comment_id.is_empty() {
+                    let _ = write!(b, " (comment:{})", r.comment_id);
+                }
+                b.push('\n');
+            }
+        }
         if !t.links.is_empty() {
             b.push_str("\nlinks:\n");
             for l in &t.links {
@@ -431,6 +449,9 @@ impl Fold {
                 }
                 if cm.gone {
                     text.push_str(" (recipient gone, left on the card)");
+                }
+                if !cm.verdict.is_empty() {
+                    let _ = write!(who, " (review: {})", cm.verdict);
                 }
                 if !cm.blocker_id.is_empty() {
                     // The person's answer on a blocker, or an agent's reply on it.

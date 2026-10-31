@@ -277,6 +277,21 @@ pub struct CardBlocker {
     pub thread: Vec<CardThreadItem>,
 }
 
+/// One reviewer's review of a private card (#88).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CardReview {
+    pub reviewer: AgentRef,
+    pub asked_by: AgentRef,
+    /// requested, approved or changes.
+    pub state: String,
+    #[specta(type = ts::Time)]
+    pub at: GoTime,
+    pub pr: String,
+    /// The verdict comment's text, once there is one.
+    pub text: String,
+}
+
 /// A pull request linked from the card.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -402,6 +417,7 @@ pub struct CardDetail {
     #[specta(type = Vec<ts::Step>)]
     pub steps: Vec<Step>,
     pub blockers: Vec<CardBlocker>,
+    pub reviews: Vec<CardReview>,
     pub prs: Vec<CardPR>,
     #[specta(type = Vec<ts::Link>)]
     pub links: Vec<Link>,
@@ -1135,6 +1151,18 @@ impl Window {
         }
         resolved.reverse();
         d.blockers.extend(resolved);
+        if !co.is_board() {
+            for r in co.reviews_of(&t.id) {
+                d.reviews.push(CardReview {
+                    reviewer: p.ref_(&r.reviewer),
+                    asked_by: p.ref_(&r.from),
+                    state: r.state,
+                    at: r.at,
+                    pr: r.pr,
+                    text: r.text,
+                });
+            }
+        }
         for l in &t.links {
             if let Some(pr) = self.card_pr(l, &p) {
                 d.prs.push(pr);

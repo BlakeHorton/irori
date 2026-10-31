@@ -55,7 +55,9 @@ pub use resource::{
     RESOURCE_NAMED, RESOURCE_PATH, RESOURCE_PORT, Resource, check_repo_key, normalize_glob,
     normalize_resource, overlaps, parse_resource,
 };
-pub use review::{NOTICE_REVIEW, ReviewRequest};
+pub use review::{
+    NOTICE_REVIEW, REVIEW_REQUESTED, Review, ReviewRequest, VERDICT_APPROVED, VERDICT_CHANGES,
+};
 pub use short::{parse_ref, parse_short, short_suffix};
 pub use types::*;
 
@@ -543,6 +545,10 @@ impl Coord {
     /// A card's review requests, oldest first.
     pub fn reviews(&self, id: &str) -> Vec<ReviewRequest> {
         self.lock().reviews.get(id).cloned().unwrap_or_default()
+    }
+    /// A card's reviews, one per reviewer, with each one's state (#88).
+    pub fn reviews_of(&self, id: &str) -> Vec<Review> {
+        self.lock().reviews_of(id)
     }
     /// A member's dedicated reviewer for repo, else for the board.
     pub fn reviewer(&self, person: &str, repo: &str) -> String {

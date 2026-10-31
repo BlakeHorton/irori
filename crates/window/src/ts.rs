@@ -584,5 +584,7 @@ pub struct Comment {
     pub missing: Vec<String>,
     #[specta(optional)]
     pub unheard: bool,
+    #[specta(optional)]
+    pub verdict: String,
     pub device: String,
 }

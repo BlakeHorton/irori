@@ -33,6 +33,7 @@ export type CardPR = B.CardPR
 export type CardProgress = B.CardProgress
 export type CardRef = B.CardRef
 export type CardResolution = B.CardResolution
+export type CardReview = B.CardReview
 export type CardSubtask = B.CardSubtask
 export type CardSummary = B.CardSummary
 export type CardThreadItem = B.CardThreadItem
@@ -182,7 +183,7 @@ export function CardBoard(p: Partial<B.CardBoard> = {}): B.CardBoard {
 
 /** CardDetail with Go's zero values for every field left out. */
 export function CardDetail(p: Partial<B.CardDetail> = {}): B.CardDetail {
-  return { ...CardSummary(), "goal": "", "doneWhen": "", "note": "", "steps": [], "blockers": [], "prs": [], "links": [], "recent": [], "comments": [], "thread": [], "threadEarlier": 0, "historyTrimmed": false, "subtaskList": [], ...p } as B.CardDetail
+  return { ...CardSummary(), "goal": "", "doneWhen": "", "note": "", "steps": [], "blockers": [], "reviews": [], "prs": [], "links": [], "recent": [], "comments": [], "thread": [], "threadEarlier": 0, "historyTrimmed": false, "subtaskList": [], ...p } as B.CardDetail
 }
 
 /** CardHolder with Go's zero values for every field left out. */
@@ -218,6 +219,11 @@ export function CardRef(p: Partial<B.CardRef> = {}): B.CardRef {
 /** CardResolution with Go's zero values for every field left out. */
 export function CardResolution(p: Partial<B.CardResolution> = {}): B.CardResolution {
   return { "answer": "", "option": 0, "by": AgentRef(), "at": "", "closed": false, "note": "", ...p } as B.CardResolution
+}
+
+/** CardReview with Go's zero values for every field left out. */
+export function CardReview(p: Partial<B.CardReview> = {}): B.CardReview {
+  return { "reviewer": AgentRef(), "askedBy": AgentRef(), "state": "", "at": "", "pr": "", "text": "", ...p } as B.CardReview
 }
 
 /** CardSubtask with Go's zero values for every field left out. */

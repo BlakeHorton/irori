@@ -381,6 +381,7 @@ export type CardDetail = {
 	note: string,
 	steps: Step[],
 	blockers: CardBlocker[],
+	reviews: CardReview[],
 	prs: CardPR[],
 	links: Link[],
 	recent: CardActivity[],
@@ -450,6 +451,18 @@ export type CardResolution = {
 	at: string,
 	closed: boolean,
 	note: string,
+};
+
+/**  One reviewer's review of a private card (#88). */
+export type CardReview = {
+	reviewer: AgentRef,
+	askedBy: AgentRef,
+	/**  requested, approved or changes. */
+	state: string,
+	at: string,
+	pr: string,
+	/**  The verdict comment's text, once there is one. */
+	text: string,
 };
 
 /**  One row of a parent's subtask list. */
@@ -549,6 +562,7 @@ export type Comment = {
 	pick?: number,
 	missing?: string[],
 	unheard?: boolean,
+	verdict?: string,
 	device: string,
 };
 

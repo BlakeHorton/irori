@@ -144,6 +144,8 @@ crate::go_struct! {
         pub pick: i64 = "pick" "omit",
         pub missing: Vec<String> = "missing" "omit",
         pub unheard: bool = "unheard" "omit",
+        /// A review verdict on a private card (#88): approved or changes.
+        pub verdict: String = "verdict" "omit",
     }
 }
 

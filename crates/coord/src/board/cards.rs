@@ -1375,6 +1375,9 @@ impl Fold {
         id: &str,
         input: CommentInput,
     ) -> Result<(Comment, Notice)> {
+        if !trim_space(&input.verdict).is_empty() {
+            return self.review_verdict(by, id, input);
+        }
         let bid = trim_space(&input.blocker_id).to_string();
         if bid.is_empty() {
             return self.add_comment(by, id, &input.text, input.wake, input.files);

@@ -28,6 +28,7 @@ import {
   type CardHolder,
   type CardOption,
   type CardPR,
+  type CardReview,
   type CardRef,
   type CardSubtask,
   LinkKind,
@@ -52,6 +53,7 @@ export type {
   CardHolder,
   CardOption,
   CardPR,
+  CardReview,
   CardRef,
   CardSubtask,
   CardSummary,
@@ -101,7 +103,10 @@ export const AskState = {
 // whose agent is idle, offline or gone doesn't look like work in progress.
 // A card without steps always shows it in place of the bar.
 export function holderLineShows(c: { holder: { state: string } }): boolean {
-  return c.holder.state !== Holding.HoldActive && c.holder.state !== Holding.HoldPerson
+  return (
+    c.holder.state !== Holding.HoldActive &&
+    c.holder.state !== Holding.HoldPerson
+  )
 }
 
 // nobodyOn says the card has nobody live on it: its holder went away, or
@@ -269,23 +274,44 @@ function sampleAsk(text: string, repoKey: string, wake: boolean): TaskResult {
     holder: cs[0].holder,
     recent: [],
     thread: [
-      CardThreadItem({ id: "sample-ask-post", kind: "event", at: now, who: sampleYou, text: "You asked the room" }),
+      CardThreadItem({
+        id: "sample-ask-post",
+        kind: "event",
+        at: now,
+        who: sampleYou,
+        text: "You asked the room",
+      }),
     ],
     threadEarlier: 0,
     historyTrimmed: false,
     updatedAt: now,
-    ask: CardAsk({ state: AskState.Open, told: heard.length, owner: "This PC", wake, taker: null, outcome: null }),
+    ask: CardAsk({
+      state: AskState.Open,
+      told: heard.length,
+      owner: "This PC",
+      wake,
+      taker: null,
+      outcome: null,
+    }),
   } as CardDetail
   sample = [c, ...cs]
   sampleChanged()
-  return TaskResult({ task: { id: c.id } as TaskResult["task"], told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }) })
+  return TaskResult({
+    task: { id: c.id } as TaskResult["task"],
+    told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }),
+  })
 }
 
 // samplePin and sampleMovePin are BoardService.Pin and MovePin on the
 // sample: ranks as coord makes them.
 function samplePin(id: string, pinned: boolean) {
   const c = sampleCard(id)
-  const top = Math.max(0, ...sampleState().filter((x) => x.pinned).map((x) => x.pinRank ?? 0))
+  const top = Math.max(
+    0,
+    ...sampleState()
+      .filter((x) => x.pinned)
+      .map((x) => x.pinRank ?? 0)
+  )
   c.pinned = pinned
   c.pinRank = pinned ? top + 1 : 0
   sampleChanged()
@@ -344,7 +370,12 @@ function sampleReopen(id: string) {
 
 // The boards' sample side (boards.ts): what Share to board writes, and
 // Withdraw. board is a sample BoardSummary.
-type SampleBoard = { boardId: string; name: string; tag: string; people: string[] }
+type SampleBoard = {
+  boardId: string
+  name: string
+  tag: string
+  people: string[]
+}
 
 // strictPass is internal/scrub.Strict for the sample: absolute paths and
 // home directories become [path].
@@ -352,14 +383,27 @@ function strictPass(s: string): string {
   return s
     .replace(/(^|[^A-Za-z0-9])file:\/\/[^\s"'<>|*?)\]`]*/gi, "$1[path]")
     .replace(/(^|[^A-Za-z0-9])[A-Za-z]:[\\/][^\s"'<>|*?)\]`]*/g, "$1[path]")
-    .replace(/(^|[\s"'([=,:*`])(?:~|\$HOME)(?:[\\/][^\s"'<>|*?)\]`]*)?/g, "$1[path]")
-    .replace(/(^|[\s"'([=,:*`])\/[A-Za-z0-9._@+-]+\/[^\s"'<>|*?)\]`]*/g, "$1[path]")
+    .replace(
+      /(^|[\s"'([=,:*`])(?:~|\$HOME)(?:[\\/][^\s"'<>|*?)\]`]*)?/g,
+      "$1[path]"
+    )
+    .replace(
+      /(^|[\s"'([=,:*`])\/[A-Za-z0-9._@+-]+\/[^\s"'<>|*?)\]`]*/g,
+      "$1[path]"
+    )
 }
 
-export function samplePreview(id: string, board: SampleBoard): SharePreviewShape {
+export function samplePreview(
+  id: string,
+  board: SampleBoard
+): SharePreviewShape {
   const c = sampleCard(id)
-  if (c.scope === "board") throw new Error("coord: invalid input: the card is already on a board")
-  if (over(c)) throw new Error(`coord: bad state: #${c.short} is ${c.state}; share a card that is still in play`)
+  if (c.scope === "board")
+    throw new Error("coord: invalid input: the card is already on a board")
+  if (over(c))
+    throw new Error(
+      `coord: bad state: #${c.short} is ${c.state}; share a card that is still in play`
+    )
   const dropped: string[] = []
   const clean = (what: string, s: string) => {
     const t = strictPass(s)
@@ -373,13 +417,16 @@ export function samplePreview(id: string, board: SampleBoard): SharePreviewShape
     goal: clean("goal", c.goal),
     doneWhen: clean("done-when", c.doneWhen),
     steps: c.steps.map((s) => clean("steps", s.text)),
-    links: c.links.filter((l) => l.kind !== LinkKind.LinkPath).map((l) => l.ref),
+    links: c.links
+      .filter((l) => l.kind !== LinkKind.LinkPath)
+      .map((l) => l.ref),
     repo: c.repoKey,
     visibleTo: board.people,
     dropped: [] as string[],
     hash: "sample",
   }
-  if (c.links.some((l) => l.kind === LinkKind.LinkPath)) dropped.push("a link to a path on this machine")
+  if (c.links.some((l) => l.kind === LinkKind.LinkPath))
+    dropped.push("a link to a path on this machine")
   out.dropped = [...new Set(dropped)]
   return out
 }
@@ -403,7 +450,12 @@ export function sampleShare(id: string, board: SampleBoard): string {
   const p = samplePreview(id, board)
   const c = sampleCard(id)
   const cs = sampleState()
-  const top = Math.max(0, ...cs.filter((x) => x.board === board.boardId).map((x) => parseInt(x.short, 10) || 0))
+  const top = Math.max(
+    0,
+    ...cs
+      .filter((x) => x.board === board.boardId)
+      .map((x) => parseInt(x.short, 10) || 0)
+  )
   const shared = {
     ...c,
     id: `sample-shared-${Date.now()}`,
@@ -420,21 +472,35 @@ export function sampleShare(id: string, board: SampleBoard): string {
     scopeLabel: board.name,
     board: board.boardId,
     tag: board.tag,
-    onBoard: { id: board.boardId, name: board.name, tag: board.tag, visibleTo: board.people, canWithdraw: true },
+    onBoard: {
+      id: board.boardId,
+      name: board.name,
+      tag: board.tag,
+      visibleTo: board.people,
+      canWithdraw: true,
+    },
     sharedTo: undefined,
     pinned: false,
   } as CardDetail
   cs.unshift(shared)
   c.state = TaskState.Canceled
   c.note = `Shared to ${board.name} as ${board.tag}#${shared.short} (visible to: ${board.people.join(", ")}). Work it there; this private card is closed.`
-  c.sharedTo = { boardId: board.boardId, boardName: board.name, taskId: shared.id, ref: `${board.tag}#${shared.short}` }
+  c.sharedTo = {
+    boardId: board.boardId,
+    boardName: board.name,
+    taskId: shared.id,
+    ref: `${board.tag}#${shared.short}`,
+  }
   sampleChanged()
   return shared.id
 }
 
 export function sampleWithdraw(id: string): string {
   const c = sampleCard(id)
-  if (!c.onBoard) throw new Error(`coord: invalid input: ${id} is a private card; cancel it instead`)
+  if (!c.onBoard)
+    throw new Error(
+      `coord: invalid input: ${id} is a private card; cancel it instead`
+    )
   c.state = TaskState.Canceled
   c.onBoard = { ...c.onBoard, canWithdraw: false }
   const from = sampleState().find((x) => x.sharedTo?.taskId === id)
@@ -827,8 +893,14 @@ export const cards = {
   async askRepos(): Promise<AskRepo[]> {
     if (inWails()) return (await BoardService.AskRepos()) ?? []
     return [
-      AskRepo({ repoKey: "remote:github.com/sample-org/example-app", label: "example-app" }),
-      AskRepo({ repoKey: "remote:github.com/sample-org/irori", label: "irori" }),
+      AskRepo({
+        repoKey: "remote:github.com/sample-org/example-app",
+        label: "example-app",
+      }),
+      AskRepo({
+        repoKey: "remote:github.com/sample-org/irori",
+        label: "irori",
+      }),
     ]
   },
 
@@ -915,7 +987,9 @@ async function loadCards(): Promise<CardSummary[]> {
       .map(summary)
     // As BoardService.Cards: pinned first, in their order, each pinned
     // parent followed by its subtasks.
-    const pins = live.filter((c) => c.pinned).sort((a, b) => (a.pinRank ?? 0) - (b.pinRank ?? 0))
+    const pins = live
+      .filter((c) => c.pinned)
+      .sort((a, b) => (a.pinRank ?? 0) - (b.pinRank ?? 0))
     const pinned: CardSummary[] = []
     for (const p of pins) {
       if (pinned.includes(p)) continue
@@ -1136,10 +1210,7 @@ export function agentBusy(w: AgentRef): boolean {
 // overLabel is a finished card's state word: "Answered" for an ask its
 // taker answered, "Closed" for an ask nothing came of (board.md
 // "Outcomes"), else Done, Canceled or Failed.
-export function overLabel(c: {
-  state: string
-  ask?: CardAsk | null
-}): string {
+export function overLabel(c: { state: string; ask?: CardAsk | null }): string {
   const kind = c.ask?.state === AskState.Closed ? c.ask.outcome?.kind : ""
   switch (c.state) {
     case TaskState.Completed:

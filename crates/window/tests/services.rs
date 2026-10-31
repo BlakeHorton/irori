@@ -463,6 +463,7 @@ fn ts_shapes_match_the_json() {
         "note",
         "steps",
         "blockers",
+        "reviews",
         "prs",
         "links",
         "recent",

@@ -990,6 +990,9 @@ impl Fold {
             ..Comment::default()
         };
         cm.unheard = p.unheard && person;
+        if self.verdict_counts(&p) {
+            cm.verdict = p.verdict.clone();
+        }
         if !primary && !p.held {
             cm.passed = p.text.clone();
         }
