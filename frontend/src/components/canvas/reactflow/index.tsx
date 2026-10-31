@@ -243,7 +243,6 @@ export default function Canvas({ graph, layout, onOpen }: CanvasProps) {
         fitViewOptions={{ padding: 0.12 }}
         minZoom={0.15}
         maxZoom={1.75}
-        proOptions={{ hideAttribution: true }}
         nodesConnectable={false}
         elevateNodesOnSelect={false}
       >
