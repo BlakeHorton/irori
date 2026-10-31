@@ -1011,6 +1011,8 @@ function BlockerItem({
   const [resolving, setResolving] = useState(() => !!note)
   // A resolved item folds to its one line; a click opens it.
   const [unfolded, setUnfolded] = useState(false)
+  // Set-aside options (card #90) stay folded under "Earlier options".
+  const [earlier, setEarlier] = useState(false)
   const raised = parseTime(b.at)
   const r = b.resolved
   const state = b.state || BlockerState.Open
@@ -1018,9 +1020,14 @@ function BlockerItem({
   const chip = blockerChip(b)
   const answered =
     state === BlockerState.Answered || state === BlockerState.Replied
-  // Answered: the form waits behind "Add to your answer".
+  // The person answered in their own words: the options are set aside
+  // until the agent offers new ones, and the box continues the talk.
+  const aside = !!b.optionsAside
+  const replying = aside || answered
+  // Answered: the form waits behind "Add to your answer", unless the
+  // options are set aside, when the reply box is the way on.
   const showForm =
-    answerable(state) && (state !== BlockerState.Answered || adding)
+    answerable(state) && (state !== BlockerState.Answered || adding || aside)
 
   // run sends an answer (own is its words, "" for a pick), or with own
   // null marks the item resolved.
@@ -1050,7 +1057,7 @@ function BlockerItem({
 
   const send = (option: number, own: string) => {
     if (option < 0 && !own.trim()) {
-      setError("Write an answer first.")
+      setError(replying ? "Write a reply first." : "Write an answer first.")
       return
     }
     void run(() => cards.answer(cardId, b.id, option, own), own)
@@ -1068,7 +1075,34 @@ function BlockerItem({
 
   const form = showForm ? (
     <div className="grid gap-1.5">
-      {b.options.length > 0 && (
+      {aside && b.options.length > 0 && (
+        <div className="grid gap-1">
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            aria-expanded={earlier}
+            className="justify-self-start px-0 font-normal text-muted-foreground"
+            onClick={() => setEarlier((v) => !v)}
+          >
+            {earlier ? "▾" : "▸"} Earlier options ({b.options.length})
+          </Button>
+          {earlier && (
+            <ul
+              className="grid gap-1 border-l border-border pl-3 text-xs text-muted-foreground"
+              aria-label={`Earlier options for: ${plainLine(b.question)}`}
+            >
+              {b.options.map((o, i) => (
+                <li key={i}>
+                  <RichLine text={o.answer} />
+                  {o.recommended && ` (recommended by ${name(o.by)})`}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {!aside && b.options.length > 0 && (
         <div
           className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-1.5"
           role="group"
@@ -1090,18 +1124,18 @@ function BlockerItem({
           maxLength={MaxAnswer}
           onChange={(e) => setText(e.target.value)}
           placeholder={
-            answered
-              ? "Answer again, or add what's missing"
+            replying
+              ? "Say more, or describe another option"
               : b.options.length
                 ? "Or answer in your own words"
                 : "Answer in your own words"
           }
-          aria-label={`Your answer to: ${plainLine(b.question)}`}
+          aria-label={`${replying ? "Your reply on" : "Your answer to"}: ${plainLine(b.question)}`}
           className="min-w-0 flex-1 bg-card"
           disabled={busy}
         />
         <Button type="submit" disabled={busy}>
-          {busy ? "Sending…" : "Answer"}
+          {busy ? "Sending…" : replying ? "Reply" : "Answer"}
         </Button>
       </form>
     </div>
@@ -1211,7 +1245,7 @@ function BlockerItem({
       )}
       {answered && !busy && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {state === BlockerState.Answered && !adding && (
+          {state === BlockerState.Answered && !adding && !aside && (
             <Button
               size="xs"
               variant="ghost"

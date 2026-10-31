@@ -270,6 +270,10 @@ pub struct CardBlocker {
     #[specta(optional)]
     pub sent_to: Option<AgentRef>,
     pub missing: Vec<String>,
+    /// The person answered in their own words since the options were
+    /// offered (card #90): the window folds them under "Earlier options"
+    /// and shows a reply box until a revision offers new ones.
+    pub options_aside: bool,
     pub thread: Vec<CardThreadItem>,
 }
 
@@ -1089,6 +1093,7 @@ impl Window {
                     bl.status.clone()
                 },
                 missing: bl.missing.clone(),
+                options_aside: bl.options_aside && bl.open(),
                 thread: by_blocker.remove(&bl.id).unwrap_or_default(),
                 links: bl.links.clone(),
                 attachments: bl.attachments.clone(),

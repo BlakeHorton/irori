@@ -164,6 +164,11 @@ pub struct Blocker {
     pub sent_to: String,
     #[serde(skip_serializing_if = "omit")]
     pub missing: Vec<String>,
+    /// The person answered in their own words since these options were
+    /// offered (card #90): they are set aside, kept for the record, until
+    /// a revision offers new ones.
+    #[serde(skip_serializing_if = "omit")]
+    pub options_aside: bool,
     /// The row's reason: Task.reason while this is the first open item.
     #[serde(skip)]
     pub(crate) reason: String,

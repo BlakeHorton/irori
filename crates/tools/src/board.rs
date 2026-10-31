@@ -317,6 +317,10 @@ impl Inner {
                 for f in &bl.attachments {
                     b += &format!("    file: {} (attachment_get)\n", describe_coord(f));
                 }
+                if bl.options_aside {
+                    b += "    options set aside: the person answered in their own words; answer in the thread, then revise with board_block blocker_id\n";
+                }
+                let opts = if bl.options_aside { &[][..] } else { opts };
                 for (j, o) in opts.iter().enumerate() {
                     b += &format!(
                         "    {}. {} ({})",
@@ -335,7 +339,7 @@ impl Inner {
                     }
                     b += "\n";
                 }
-                if opts.len() < bl.options.len() {
+                if !bl.options_aside && opts.len() < bl.options.len() {
                     b += &format!("    (+{} more answers)\n", bl.options.len() - opts.len());
                 }
             }

@@ -172,7 +172,7 @@ export function CardAsk(p: Partial<B.CardAsk> = {}): B.CardAsk {
 
 /** CardBlocker with Go's zero values for every field left out. */
 export function CardBlocker(p: Partial<B.CardBlocker> = {}): B.CardBlocker {
-  return { "id": "", "question": "", "context": "", "raisedBy": AgentRef(), "at": "", "options": [], "resolved": null, "state": "", "links": [], "attachments": [], "missing": [], "thread": [], ...p } as B.CardBlocker
+  return { "id": "", "question": "", "context": "", "raisedBy": AgentRef(), "at": "", "options": [], "resolved": null, "state": "", "links": [], "attachments": [], "missing": [], "optionsAside": false, "thread": [], ...p } as B.CardBlocker
 }
 
 /** CardBoard with Go's zero values for every field left out. */

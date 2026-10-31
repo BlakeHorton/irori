@@ -464,8 +464,10 @@ export function sampleCards(now: Date): CardDetail[] {
           resolved: null,
           // Answered: the person's question back went to the raiser, so
           // it waits on sample-badger (a grey "Waiting on agent" card).
+          // Their own words set the options aside (card #90).
           state: "answered",
           sentTo: badger,
+          optionsAside: true,
           thread: [
             CardThreadItem({
               id: "sample-2-b1-a1",

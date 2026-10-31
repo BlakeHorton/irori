@@ -346,6 +346,12 @@ impl Fold {
                 for f in &bl.attachments {
                     let _ = writeln!(b, "  file: {}", describe(f));
                 }
+                if bl.open() && bl.options_aside {
+                    let _ = writeln!(
+                        b,
+                        "  options set aside: the person answered in their own words; revise with board_block blocker_id for new ones (the earlier ones follow)"
+                    );
+                }
                 for (i, o) in bl.options.iter().enumerate() {
                     if o.recommended {
                         let _ = write!(

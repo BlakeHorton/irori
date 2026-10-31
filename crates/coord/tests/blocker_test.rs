@@ -1158,3 +1158,78 @@ fn test_revise_late_rows_converge() {
     let again = blocker_of(&e.reopen(), &task.id, "b1").1;
     assert!(!live.open() && !again.open(), "{live:?} {again:?}");
 }
+
+// Card #90: the person answers in their own words, so the options are set
+// aside (kept, and still there after a reopen) until a revision offers new
+// ones; a revision with none keeps it a conversation.
+#[test]
+fn test_own_words_set_options_aside() {
+    let e = Env::new();
+    let task = raised_on(&e);
+    let (_, b) = blocker_of(&e.c, &task.id, "b1");
+    assert!(!b.options_aside, "fresh options are not aside");
+    // A pick doesn't set them aside.
+    let picked = raised_on(&e);
+    e.c.answer(
+        USER,
+        &picked.id,
+        "b1",
+        BlockerAnswer {
+            pick: 2,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    assert!(!blocker_of(&e.c, &picked.id, "b1").1.options_aside);
+    // An agent's reply on the blocker doesn't either.
+    reply(&e.c, ALICE, &task.id, "b1", "both work", &[]);
+    assert!(!blocker_of(&e.c, &task.id, "b1").1.options_aside);
+
+    let (_, n) =
+        e.c.answer(
+            USER,
+            &task.id,
+            "b1",
+            text("neither, what about WireGuard's own?"),
+        )
+        .unwrap();
+    assert!(
+        n.text.contains("options you offered are set aside")
+            && n.text.contains("board_block task_id=")
+            && n.text.contains("recommendation marked"),
+        "{}",
+        n.text
+    );
+    for c in [&e.c, &e.reopen()] {
+        let (_, b) = blocker_of(c, &task.id, "b1");
+        assert!(b.options_aside && b.options.len() == 2, "{b:?}");
+    }
+    // A revision with new options brings them back.
+    e.c.revise(
+        ALICE,
+        &task.id,
+        "b1",
+        revision(
+            "Use wireguard-nt?",
+            vec![rec("Yes, wireguard-nt"), opt("No, Wintun")],
+        ),
+    )
+    .unwrap();
+    for c in [&e.c, &e.reopen()] {
+        let (_, b) = blocker_of(c, &task.id, "b1");
+        assert!(
+            !b.options_aside && b.options[0].answer == "Yes, wireguard-nt",
+            "{b:?}"
+        );
+    }
+    // Own words again, then a revision with none: no options, nothing aside.
+    e.c.answer(USER, &task.id, "b1", text("and the license?"))
+        .unwrap();
+    assert!(blocker_of(&e.c, &task.id, "b1").1.options_aside);
+    e.c.revise(ALICE, &task.id, "b1", revision("Is MIT fine?", vec![]))
+        .unwrap();
+    for c in [&e.c, &e.reopen()] {
+        let (_, b) = blocker_of(c, &task.id, "b1");
+        assert!(!b.options_aside && b.options.is_empty(), "{b:?}");
+    }
+}

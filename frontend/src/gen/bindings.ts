@@ -356,6 +356,12 @@ export type CardBlocker = {
 	attachments: FileRef[],
 	sentTo?: AgentRef | null,
 	missing: string[],
+	/**
+	 *  The person answered in their own words since the options were
+	 *  offered (card #90): the window folds them under "Earlier options"
+	 *  and shows a reply box until a revision offers new ones.
+	 */
+	optionsAside: boolean,
 	thread: CardThreadItem[],
 };
 

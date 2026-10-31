@@ -150,14 +150,21 @@ pub(crate) fn refresh_blocker(
         return;
     };
     let asked = t.blockers[i].asked.clone();
-    let mut cs: Vec<&Comment> = ids
-        .into_iter()
-        .flatten()
-        .filter_map(|id| comments.get(id))
-        .filter(|cm| cm.blocker_id == bid && !cm.pos().before(&asked))
-        .collect();
+    let mine = || {
+        ids.into_iter()
+            .flatten()
+            .filter_map(|id| comments.get(id))
+            .filter(|cm| cm.blocker_id == bid)
+    };
+    let mut cs: Vec<&Comment> = mine().filter(|cm| !cm.pos().before(&asked)).collect();
     cs.sort_by_key(|c| c.pos());
+    // The person's own words since the options were offered set them aside
+    // (card #90); a revision with new options brings options back.
+    let since = t.blockers[i].options_at.clone();
+    let aside = !t.blockers[i].options.is_empty()
+        && mine().any(|cm| cm.person && cm.pick <= 0 && !cm.pos().before(&since));
     let b = &mut t.blockers[i];
+    b.options_aside = aside;
     b.status = BLOCKER_OPEN.into();
     b.sent_to.clear();
     b.missing.clear();
@@ -1286,6 +1293,12 @@ impl Fold {
                 cut(&text, MAX_NOTICE_FIELD)
             );
             s.push_str(&picked_line(opt, &rec_by, rec));
+            if opt < 0 && !b.options.is_empty() {
+                s.push_str(&format!(
+                    "\nThe person answered in their own words, so the options you offered are set aside: their window shows only the thread and a reply box. Answer them in the thread (board_comment task_id={id} blocker_id={}). Once you can see the choices that fit now, revise with board_block task_id={id} blocker_id={} with new options and your recommendation marked, or none to keep it a conversation.",
+                    b.id, b.id
+                ));
+            }
             s.push_str(&format!(
                 "\nIt is not resolved yet. When you have what you need: board_unblock task_id={id} blocker_id={} note=\"<one line on what you will do now>\". If the answer doesn't settle it: board_comment task_id={id} blocker_id={} with what is still missing. If it is a question or changes what is being decided, answer it there, then resolve the blocker if that settles it, or revise it with board_block task_id={id} blocker_id={} with the question and options that fit now (or none); never offer the same options again.",
                 b.id, b.id, b.id
