@@ -139,70 +139,74 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
           readOnly={busy}
           aria-busy={busy}
         />
-        {shared.length > 0 && (
-          <ChoiceSelect
-            label="Which board it goes on"
-            size="sm"
-            value={onBoard}
-            onValueChange={(v) => {
-              setBoard(v)
-              setLine(null)
+        {/* The controls ride the box's first line (h-9, its min height)
+            whatever their own heights, and stay up top as it grows. */}
+        <div className="flex h-9 shrink-0 items-center gap-2">
+          {shared.length > 0 && (
+            <ChoiceSelect
+              label="Which board it goes on"
+              size="sm"
+              value={onBoard}
+              onValueChange={(v) => {
+                setBoard(v)
+                setLine(null)
+              }}
+              disabled={busy}
+              className="w-auto shrink-0"
+              choices={[
+                { value: "", label: "My board" },
+                ...shared.map((b) => ({
+                  value: b.boardId,
+                  label: b.name || b.tag,
+                })),
+              ]}
+            />
+          )}
+          {!onBoard && repos.length > 0 && (
+            <ChoiceSelect
+              label="Which agents hear it"
+              size="sm"
+              value={repo}
+              onValueChange={setRepo}
+              disabled={busy}
+              className="w-auto shrink-0"
+              choices={[
+                { value: "", label: "Any repo" },
+                ...repos.map((r) => ({ value: r.repoKey, label: r.label })),
+              ]}
+            />
+          )}
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              addFiles(e.target.files)
+              e.target.value = ""
             }}
-            disabled={busy}
-            className="w-auto shrink-0"
-            choices={[
-              { value: "", label: "My board" },
-              ...shared.map((b) => ({
-                value: b.boardId,
-                label: b.name || b.tag,
-              })),
-            ]}
           />
-        )}
-        {!onBoard && repos.length > 0 && (
-          <ChoiceSelect
-            label="Which agents hear it"
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="shrink-0"
+            title="Add files (or drop them here, or paste a screenshot)"
+            aria-label="Add files"
+            disabled={busy || !!onBoard || files.length >= MaxUploadFiles}
+            onClick={() => picker.current?.click()}
+          >
+            <PaperclipIcon />
+          </Button>
+          <Button
+            type="submit"
             size="sm"
-            value={repo}
-            onValueChange={setRepo}
-            disabled={busy}
-            className="w-auto shrink-0"
-            choices={[
-              { value: "", label: "Any repo" },
-              ...repos.map((r) => ({ value: r.repoKey, label: r.label })),
-            ]}
-          />
-        )}
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            addFiles(e.target.files)
-            e.target.value = ""
-          }}
-        />
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          className="shrink-0"
-          title="Add files (or drop them here, or paste a screenshot)"
-          aria-label="Add files"
-          disabled={busy || !!onBoard || files.length >= MaxUploadFiles}
-          onClick={() => picker.current?.click()}
-        >
-          <PaperclipIcon />
-        </Button>
-        <Button
-          type="submit"
-          size="sm"
-          className="shrink-0"
-          disabled={busy || !text.trim()}
-        >
-          {busy ? "Asking…" : "Ask"}
-        </Button>
+            className="shrink-0"
+            disabled={busy || !text.trim()}
+          >
+            {busy ? "Asking…" : "Ask"}
+          </Button>
+        </div>
       </div>
       {files.length > 0 && (
         <ul
