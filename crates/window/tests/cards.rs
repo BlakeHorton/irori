@@ -582,3 +582,50 @@ fn cards_carry_their_canvas_spot() {
     assert_eq!(get(&b.id).pos, None);
     assert!(r.w.place("01NOPE", 0, 0).is_err());
 }
+
+/// Card #98: an agent gone from the roster (a Grok member after a restart,
+/// say) shows by the last name it went by, in Who's on it and in the
+/// thread's lines, never by its raw key.
+#[test]
+fn a_gone_agent_keeps_its_name() {
+    let gone = "c99db25c/grok-b7494dc724f6";
+    let now = unix_ms() / 1000;
+    let r = Rig::with(|o| {
+        std::fs::write(
+            o.data_dir.join(irori_core::agentnames::FILE),
+            serde_json::json!({ gone: {"name": "juniper", "at": now} }).to_string(),
+        )
+        .unwrap();
+    });
+    let co = r.w.core.coord();
+    let t = co
+        .create_task(
+            &r.key_a,
+            coord::NewTask {
+                title: "hand it on".into(),
+                ..coord::NewTask::default()
+            },
+        )
+        .unwrap();
+    co.assign(&r.key_a, &t.id, gone).unwrap();
+    let d = r.w.card(&t.id).unwrap();
+    let w = d
+        .summary
+        .working
+        .iter()
+        .find(|w| w.key == gone)
+        .expect("on the card");
+    assert_eq!((w.name.as_str(), w.status.as_str()), ("juniper", "gone"));
+    assert!(
+        d.recent
+            .iter()
+            .any(|a| a.text.ends_with("assigned it to juniper")),
+        "{:?}",
+        d.recent
+    );
+    assert!(
+        d.thread.iter().all(|e| !e.text.contains(gone)),
+        "{:?}",
+        d.thread
+    );
+}

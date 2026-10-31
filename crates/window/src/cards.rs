@@ -529,6 +529,8 @@ pub(crate) struct People {
     owner: Option<OwnerFn>,
     self_id: String,
     names: HashMap<String, String>,
+    /// Every agent key → the last name it went by, gone ones too (#98).
+    known: std::collections::BTreeMap<String, String>,
     paired: bool,
     colors: BTreeMap<String, String>,
     conflicts: HashMap<String, String>,
@@ -578,6 +580,7 @@ impl Window {
         for a in c.mesh_agents() {
             p.by_key.insert(a.key.clone(), a);
         }
+        p.known = c.known_agent_names();
         p.colors = c.device_colors();
         let mut live = 0;
         for d in c.certified_devices() {
@@ -614,6 +617,26 @@ impl People {
 
     fn is_owner(&self, key: &str) -> bool {
         self.owner.as_ref().is_some_and(|f| f(key))
+    }
+
+    /// An Irori-written line (never a comment's words) with each agent key
+    /// it names replaced by that agent's name (card #98).
+    pub(crate) fn named(&self, line: &str) -> String {
+        let mut out = line.to_string();
+        let mut keys: Vec<&String> = self.known.keys().chain(self.by_key.keys()).collect();
+        // Longer keys first, so no key is cut inside another.
+        keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
+        keys.dedup();
+        for k in keys {
+            if !k.contains('/') || !out.contains(k.as_str()) {
+                continue;
+            }
+            let name = self.ref_(k).name;
+            if !name.is_empty() && name != *k {
+                out = out.replace(k.as_str(), &name);
+            }
+        }
+        out
     }
 
     pub(crate) fn ref_(&self, key: &str) -> AgentRef {
@@ -662,6 +685,10 @@ impl People {
             conflict: self.conflicts.get(key).cloned().unwrap_or_default(),
             ..AgentRef::default()
         };
+        // A gone agent keeps the last name it went by (card #98).
+        if let Some(n) = self.known.get(key).filter(|n| !n.is_empty()) {
+            r.name = n.clone();
+        }
         if let Some(a) = self.by_key.get(key) {
             if !a.name.is_empty() {
                 r.name = a.name.clone();
@@ -1287,7 +1314,7 @@ impl Window {
             let who = p.ref_(&a.by);
             d.recent.push(CardActivity {
                 at: a.at,
-                text: format!("{} {}", who.name, a.what),
+                text: format!("{} {}", who.name, p.named(&a.what)),
                 who,
             });
         }
@@ -1505,7 +1532,7 @@ fn build_thread(
                 kind: THREAD_EVENT.into(),
                 at: a.at,
                 device: p.chip(&a.device),
-                text: format!("{} {}", who.name, a.what),
+                text: format!("{} {}", who.name, p.named(&a.what)),
                 blocker_id: a.blocker_id.clone(),
                 revised: a.revised,
                 who,

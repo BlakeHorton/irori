@@ -178,6 +178,11 @@ pub trait Backend: Send + Sync {
     fn events(&self, f: &store::Filter) -> Result<Vec<store::Event>, String>;
     fn inbox(&self) -> &inbox::Inbox;
     fn coord(&self) -> &Arc<coord::Coord>;
+    /// Every agent key → the last name it went by, gone agents included
+    /// (card #98); empty when the backend keeps none.
+    fn known_names(&self) -> std::collections::BTreeMap<String, String> {
+        std::collections::BTreeMap::new()
+    }
     /// Capture serves timeline, why, search, show, overview, commits and
     /// prs; `None` makes them answer "capture is off".
     fn capture(&self) -> Option<&capture::Capture> {
@@ -521,6 +526,8 @@ pub(crate) fn decode(raw: &[u8], fields: &'static [(&'static str, Ty)]) -> Resul
 /// person.
 pub(crate) struct Names<'a> {
     pub cards: HashMap<String, presence::AgentCard>,
+    /// Last-known names of agents no longer on the roster (card #98).
+    known: std::collections::BTreeMap<String, String>,
     co: &'a coord::Coord,
 }
 
@@ -532,6 +539,7 @@ impl Inner {
         }
         Names {
             cards,
+            known: self.b.known_names(),
             co: self.b.coord(),
         }
     }
@@ -567,6 +575,10 @@ impl Names<'_> {
                 }
                 return format!("{name} ({k})");
             }
+        }
+        // Gone from the roster: the last name it went by (card #98).
+        if let Some(name) = self.known.get(key).filter(|n| !n.trim().is_empty()) {
+            return format!("{} ({k}, gone)", format::one_line(name, 80));
         }
         k
     }

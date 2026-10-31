@@ -187,6 +187,8 @@ struct Services {
     capture: capture::Capture,
     asks: Arc<coord::approvals::Book>,
     names: Arc<Namer>,
+    /// The last name every agent went by, kept past its going (card #98).
+    agent_names: Arc<crate::agentnames::AgentNames>,
     members: Arc<Members>,
     names_kick: Arc<Kick>,
     /// Kicked by roster and Board changes: asks are handed out and on by
@@ -285,6 +287,10 @@ impl tools::Backend for ToolsView {
     }
     fn coord(&self) -> &Arc<Coord> {
         &self.0.coord
+    }
+    fn known_names(&self) -> std::collections::BTreeMap<String, String> {
+        self.0.note_agent_names();
+        self.0.agent_names.all()
     }
     fn capture(&self) -> Option<&capture::Capture> {
         Some(&self.0.capture)
@@ -445,6 +451,33 @@ type LocalFn = Arc<dyn Fn() -> Vec<AgentCard> + Send + Sync>;
 
 struct LocalAgents(LocalFn);
 struct MeshAgents(Arc<Roster>);
+
+/// What coord reads: this device's agents, and names from the whole mesh
+/// and the name book, so its notice texts name agents (card #98).
+struct CoordAgents {
+    local: LocalFn,
+    mesh: Arc<Roster>,
+    names: Arc<crate::agentnames::AgentNames>,
+}
+
+impl Agents for CoordAgents {
+    fn agents(&self) -> Vec<AgentCard> {
+        (self.local)()
+    }
+    fn name_of(&self, key: &str) -> String {
+        let live = self
+            .mesh
+            .agents()
+            .into_iter()
+            .find(|a| a.key == key)
+            .map(|a| a.name)
+            .unwrap_or_default();
+        if !live.trim().is_empty() {
+            return live;
+        }
+        self.names.get(key)
+    }
+}
 
 impl Agents for LocalAgents {
     fn agents(&self) -> Vec<AgentCard> {
@@ -626,6 +659,7 @@ impl Core {
             Arc::new(move |d: &str| r.key(d))
         };
         let names = Arc::new(Namer::new(&dir, &me));
+        let agent_names = Arc::new(crate::agentnames::AgentNames::new(&dir));
         let mut popts = presence::Options {
             claude_dir: opts.claude_dir.to_string_lossy().into_owned(),
             device_id: me.clone(),
@@ -742,7 +776,11 @@ impl Core {
         let co = Arc::new(
             Coord::new(
                 st.clone(),
-                Some(Arc::new(LocalAgents(local.clone()))),
+                Some(Arc::new(CoordAgents {
+                    local: local.clone(),
+                    mesh: roster.clone(),
+                    names: agent_names.clone(),
+                })),
                 coord::Options {
                     now: Some(now.clone()),
                     is_owner: Some(is_owner.clone()),
@@ -948,6 +986,7 @@ impl Core {
             capture: cap,
             asks,
             names,
+            agent_names,
             members,
             names_kick: Kick::new(),
             asks_kick: Kick::new(),
@@ -1324,6 +1363,7 @@ impl Core {
                     if s.names.settle() {
                         s.presence.rescan();
                     }
+                    s.note_agent_names();
                 }
             });
         }
@@ -1714,13 +1754,27 @@ impl Core {
         self.s.roster.agents()
     }
 
-    /// An agent key's card name in the mesh roster, or `""`.
+    /// An agent key's name: its card's in the mesh roster, else the last
+    /// name it went by (gone agents, Grok members after a restart; card
+    /// #98), or `""`.
     pub fn agent_name(&self, key: &str) -> String {
-        self.mesh_agents()
+        let live = self
+            .mesh_agents()
             .into_iter()
             .find(|a| a.key == key)
             .map(|a| a.name)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if !live.is_empty() {
+            return live;
+        }
+        self.s.agent_names.get(key)
+    }
+
+    /// Every agent key → the last name it went by, gone ones included
+    /// (card #98).
+    pub fn known_agent_names(&self) -> std::collections::BTreeMap<String, String> {
+        self.s.note_agent_names();
+        self.s.agent_names.all()
     }
 
     /// Gives the Core the desktop app's Revive, which a revive ask answered
@@ -2036,6 +2090,12 @@ fn revive_for_ask(rv: &Mutex<Option<ReviveFn>>, me: &str, target: &str) -> Resul
 }
 
 impl Services {
+    /// Records the names on the mesh roster in the name book (card #98).
+    fn note_agent_names(&self) {
+        self.agent_names
+            .note(&self.roster.agents(), presence::now_local().secs);
+    }
+
     fn user_sender(&self) -> Sender {
         Sender::new(&format!("user:{}", self.device.id), "you", "user")
     }

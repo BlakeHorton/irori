@@ -621,3 +621,30 @@ fn a_board_row_with_mentions_folds_without_them() {
     let a = c.get_task("t_ask").unwrap().ask.unwrap();
     assert!(a.mentions.is_empty(), "{:?}", a.mentions);
 }
+
+/// Card #98: the mention names its holder by name, "name (key)".
+#[test]
+fn test_mention_names_the_holder() {
+    let e = Env::new();
+    e.ros.set_name(ALICE, "oak");
+    let t = held_by_alice(&e);
+    let (_, ns) =
+        e.c.person_comment(
+            USER,
+            &t.id,
+            "@carol can you look?",
+            false,
+            &[m(CAROL, "carol")],
+            None,
+        )
+        .unwrap();
+    let mn = ns
+        .iter()
+        .find(|n| n.to == [CAROL])
+        .expect("carol's mention");
+    assert!(
+        mn.text.contains(&format!("oak ({ALICE}) holds it")),
+        "{}",
+        mn.text
+    );
+}

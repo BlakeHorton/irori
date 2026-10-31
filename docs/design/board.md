@@ -79,6 +79,9 @@ The notice wakes the assignee when the roster shows it idle. A busy, offline or 
 
 ## Holders that go away
 
+*Names (card #98).* The Core keeps the last name each agent went by in `agent-names.json`: key → name and when it was last seen, kept for 30 days. It's fed from the mesh roster, Grok members included. A gone agent, or a Grok member after a restart, still shows by name in Who's on it, on canvas nodes, in thread lines (keys swapped for names when shown; the stored line keeps the key) and in tool output ("name (key, gone)"). Coord's notice texts name agents "name (key)", or use the bare key when no name is known.
+
+
 *Card #16. Cards sat under "working" for hours, held by a session that had ended: the holder line only showed on cards without steps.*
 
 - **Every card says who is on it.** A card with steps shows the holder line under its bar whenever nobody is busy on it (idle, offline, gone, assigned, or nobody), not only cards without steps. A card whose holder went away carries a "Nobody on it" chip.

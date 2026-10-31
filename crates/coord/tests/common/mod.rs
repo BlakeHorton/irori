@@ -58,9 +58,13 @@ impl Clk {
     }
 }
 
-/// Key -> status; `set(key, "")` drops the card.
+/// Key -> status; `set(key, "")` drops the card. Names (card #98) are
+/// separate and outlive the card, like the Core's name book.
 #[derive(Default)]
-pub struct TestRoster(pub Mutex<BTreeMap<String, String>>);
+pub struct TestRoster(
+    pub Mutex<BTreeMap<String, String>>,
+    pub Mutex<BTreeMap<String, String>>,
+);
 
 impl TestRoster {
     pub fn new(keys: &[&str]) -> Arc<TestRoster> {
@@ -69,6 +73,9 @@ impl TestRoster {
             r.0.lock().unwrap().insert(k.to_string(), "idle".into());
         }
         Arc::new(r)
+    }
+    pub fn set_name(&self, key: &str, name: &str) {
+        self.1.lock().unwrap().insert(key.into(), name.into());
     }
     pub fn set(&self, key: &str, status: &str) {
         let mut m = self.0.lock().unwrap();
@@ -89,9 +96,13 @@ impl Agents for TestRoster {
             .map(|(k, s)| AgentCard {
                 key: k.clone(),
                 status: s.clone(),
+                name: self.1.lock().unwrap().get(k).cloned().unwrap_or_default(),
                 ..AgentCard::default()
             })
             .collect()
+    }
+    fn name_of(&self, key: &str) -> String {
+        self.1.lock().unwrap().get(key).cloned().unwrap_or_default()
     }
 }
 

@@ -35,6 +35,7 @@
 //! `irori-home`) is built unless [`Options::no_home`], and binds nothing
 //! until it is switched on and there is another device.
 
+pub mod agentnames;
 pub mod attachments;
 pub mod devices;
 pub mod diag;

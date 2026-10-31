@@ -893,9 +893,9 @@ impl Fold {
                     .into_iter()
                     .map(|l| {
                         let actor = if l.by == SWEEPER {
-                            "Irori"
+                            "Irori".to_string()
                         } else {
-                            l.by.as_str()
+                            self.named(&l.by)
                         };
                         format!("{actor} {}", l.what)
                     })
@@ -1302,7 +1302,8 @@ impl Fold {
                 },
             )?;
             let mut s = format!(
-                "{by} answered the blocker on {} ({}, blocker {}).\nQuestion: {}\nAnswer: {}",
+                "{} answered the blocker on {} ({}, blocker {}).\nQuestion: {}\nAnswer: {}",
+                self.named(&by),
                 quote(&t.title),
                 t.refs(),
                 b.id,
@@ -1353,7 +1354,8 @@ impl Fold {
         let mut s = String::new();
         if last.is_some() {
             s.push_str(&format!(
-                "{by} resolved blocker {} on {} ({})",
+                "{} resolved blocker {} on {} ({})",
+                self.named(&by),
                 b.id,
                 quote(&t.title),
                 t.refs()
@@ -1368,7 +1370,8 @@ impl Fold {
             ));
         } else {
             s.push_str(&format!(
-                "{by} answered the blocker on {} ({}, blocker {}).\nQuestion: {}\nAnswer: {}",
+                "{} answered the blocker on {} ({}, blocker {}).\nQuestion: {}\nAnswer: {}",
+                self.named(&by),
                 quote(&t.title),
                 t.refs(),
                 b.id,
@@ -1690,7 +1693,7 @@ impl Fold {
                 let holder = if after.holder.is_empty() {
                     "nobody".to_string()
                 } else {
-                    after.holder.clone()
+                    self.named(&after.holder)
                 };
                 Notice {
                     kind: NOTICE_STEP_OWNER.into(),
@@ -1701,7 +1704,8 @@ impl Fold {
                     by: by.into(),
                     wake: self.idle(&o),
                     text: format!(
-                        "{by} gave you {} on {} ({}): {}. You hear the card like a holder until your steps are done; tick each with board_step. {holder} holds the card.{}",
+                        "{} gave you {} on {} ({}): {}. You hear the card like a holder until your steps are done; tick each with board_step. {holder} holds the card.{}",
+                        self.named(by),
                         if ss.len() == 1 { "a step" } else { "steps" },
                         quote(&after.title),
                         after.refs(),

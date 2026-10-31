@@ -157,7 +157,8 @@ impl Fold {
             n.to = vec![to.clone()];
         }
         let mut b = format!(
-            "{by} assigned you a task: {} ({}).",
+            "{} assigned you a task: {} ({}).",
+            self.named(&by),
             quote(&t.title),
             t.refs()
         );
@@ -432,7 +433,11 @@ impl Fold {
             },
         )?;
         let nt = self.tasks[id].clone();
-        let who = if by == SWEEPER { "Irori" } else { by };
+        let who = if by == SWEEPER {
+            "Irori".to_string()
+        } else {
+            self.named(by)
+        };
         let mut b = format!("{who} unblocked {} ({})", quote(&t.title), t.refs());
         if !note.is_empty() {
             b.push_str(&format!(": {note}"));
@@ -542,7 +547,8 @@ impl Fold {
             wake,
             attachments: files,
             text: format!(
-                "{by} commented on {} ({}):\n{text}{}",
+                "{} commented on {} ({}):\n{text}{}",
+                self.named(&by),
                 quote(&t.title),
                 t.refs(),
                 deeper(id)

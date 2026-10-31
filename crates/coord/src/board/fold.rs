@@ -23,6 +23,28 @@ use crate::names::trim_space;
 use crate::roster::Agents;
 
 /// Release reasons in lease.released rows.
+impl Fold {
+    /// How a notice names agent `key` (card #98): "name (key)" when the
+    /// roster knows its name, else the key. The person and Irori stay as
+    /// the caller gave them.
+    pub(crate) fn named(&self, key: &str) -> String {
+        if key.is_empty() || key == SWEEPER || self.is_owner(key) {
+            return key.to_string();
+        }
+        let name = self
+            .roster
+            .as_ref()
+            .map(|r| r.name_of(key))
+            .unwrap_or_default();
+        let name = name.trim();
+        if name.is_empty() || name == key {
+            key.to_string()
+        } else {
+            format!("{name} ({key})")
+        }
+    }
+}
+
 /// How much of a hand-off note the thread line quotes.
 const MAX_HANDOFF_LINE: usize = 300;
 

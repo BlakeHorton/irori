@@ -31,9 +31,9 @@ fn an_agent_mention_wakes_and_watches() {
     has(
         &ns[0].message.text,
         &[
-            &format!("{KEY_B} mentioned you on"),
+            &format!("beta ({KEY_B}) mentioned you on"),
             "knows the ports",
-            &format!("{KEY_A} holds it"),
+            &format!("alpha ({KEY_A}) holds it"),
         ],
     );
     let t = h.b.co.get_task(&id).unwrap();

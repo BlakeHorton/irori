@@ -64,6 +64,15 @@ crate::go_struct! {
 /// (Go `interface{ Agents() []presence.AgentCard }`).
 pub trait Agents: Send + Sync {
     fn agents(&self) -> Vec<AgentCard>;
+    /// The name `key` goes by, or `""`: its card's, or one remembered after
+    /// it went (card #98; the Core keeps those).
+    fn name_of(&self, key: &str) -> String {
+        self.agents()
+            .into_iter()
+            .find(|a| a.key == key)
+            .map(|a| a.name)
+            .unwrap_or_default()
+    }
 }
 
 type LocalFn = Arc<dyn Fn() -> Vec<AgentCard> + Send + Sync>;

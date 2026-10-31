@@ -110,7 +110,7 @@ impl Fold {
         let who = if self.is_owner(by) {
             "The person".to_string()
         } else {
-            by.to_string()
+            self.named(by)
         };
         let mut head = format!(
             "{who} mentioned you on {} ({})",
@@ -137,18 +137,27 @@ impl Fold {
             ..Notice::default()
         };
         let is_owner = |k: &str| self.is_owner(k);
+        let named = |k: &str| self.named(k);
         let (held, rest): (Vec<String>, Vec<String>) =
             to.into_iter().partition(|k| contains(&t.holders, k));
         let mut ns = Vec::new();
         if !rest.is_empty() {
             let mut n = base.clone();
             n.to = rest;
-            n.text = format!("{body}{}{}", mention_ending(&t, "", is_owner), deeper(id));
+            n.text = format!(
+                "{body}{}{}",
+                mention_ending(&t, "", is_owner, named),
+                deeper(id)
+            );
             ns.push(n);
         }
         for h in held {
             let mut n = base.clone();
-            n.text = format!("{body}{}{}", mention_ending(&t, &h, is_owner), deeper(id));
+            n.text = format!(
+                "{body}{}{}",
+                mention_ending(&t, &h, is_owner, named),
+                deeper(id)
+            );
             n.to = vec![h];
             ns.push(n);
         }
@@ -188,8 +197,14 @@ pub fn mention_into(n: &mut Notice, mn: &mut Vec<Notice>) {
 }
 
 /// The last line of a mention notice, by the card's state; `me` is the
-/// recipient when it holds the card ("" otherwise).
-pub(crate) fn mention_ending(t: &Task, me: &str, is_owner: impl Fn(&str) -> bool) -> String {
+/// recipient when it holds the card ("" otherwise). `named` says how a
+/// holder is named (card #98).
+pub(crate) fn mention_ending(
+    t: &Task,
+    me: &str,
+    is_owner: impl Fn(&str) -> bool,
+    named: impl Fn(&str) -> String,
+) -> String {
     if t.open_ask().is_some_and(|a| a.taker.is_empty()) && !is_terminal(&t.state) {
         return format!(
             "It is an ask nobody has taken: if you can take it on now, ask_claim {}.",
@@ -202,11 +217,11 @@ pub(crate) fn mention_ending(t: &Task, me: &str, is_owner: impl Fn(&str) -> bool
             t.state
         );
     }
-    let holders: Vec<&str> = t
+    let holders: Vec<String> = t
         .holders
         .iter()
         .filter(|h| !is_owner(h) && *h != SWEEPER && *h != me)
-        .map(String::as_str)
+        .map(|h| named(h))
         .collect();
     if !me.is_empty() {
         if holders.is_empty() {

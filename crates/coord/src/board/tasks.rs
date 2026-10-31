@@ -409,9 +409,9 @@ impl Fold {
             ..Notice::default()
         };
         let who = if self.is_owner(&by) {
-            "The person"
+            "The person".to_string()
         } else {
-            &by
+            self.named(&by)
         };
         n.text = format!(
             "{who} reopened {} ({}), which was {was}. It is {} again",

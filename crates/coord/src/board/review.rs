@@ -258,7 +258,8 @@ impl Fold {
             to: rcpt,
             by: by.clone(),
             text: format!(
-                "{by} asks you to review {pr} for {}. Review it with your own gh; Irori never posts reviews or merges.",
+                "{} asks you to review {pr} for {}. Review it with your own gh; Irori never posts reviews or merges.",
+                self.named(&by),
                 t.short_ref()
             ),
             ..Notice::default()
@@ -313,7 +314,8 @@ impl Fold {
             by: by.into(),
             wake: true,
             text: format!(
-                "{by} asks you to review {} ({short}): {what}. Look at the work, then answer on the card: board_comment task_id={short} verdict=approved, or verdict=changes saying what needs changing.{}",
+                "{} asks you to review {} ({short}): {what}. Look at the work, then answer on the card: board_comment task_id={short} verdict=approved, or verdict=changes saying what needs changing.{}",
+                self.named(by),
                 quote(&t.title),
                 deeper(&t.id)
             ),
@@ -422,12 +424,18 @@ impl Fold {
         }
         let head = if changes {
             format!(
-                "{by} asks for changes on {} ({})",
+                "{} asks for changes on {} ({})",
+                self.named(&by),
                 quote(&t.title),
                 t.refs()
             )
         } else {
-            format!("{by} approved {} ({})", quote(&t.title), t.refs())
+            format!(
+                "{} approved {} ({})",
+                self.named(&by),
+                quote(&t.title),
+                t.refs()
+            )
         };
         let tail = if changes {
             "\nMake the changes, then board_review again to ask for another look."
