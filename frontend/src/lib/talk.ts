@@ -192,7 +192,10 @@ export const talk = {
 
   // reply answers a message sent to the person; its sender is woken.
   async reply(id: string, text: string): Promise<void> {
-    if (inWails()) return InboxService.Reply(id, text)
+    if (inWails()) {
+      await InboxService.Reply(id, text)
+      return
+    }
     sampleDelivery(id)
     if (!text.trim()) throw new Error("inbox: invalid input: write a reply")
     sampleSetState(id, State.Answered)

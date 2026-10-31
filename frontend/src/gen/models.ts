@@ -27,6 +27,7 @@ export type CardBlocker = B.CardBlocker
 export type CardBoard = B.CardBoard
 export type CardDetail = B.CardDetail
 export type CardHolder = B.CardHolder
+export type CardMention = B.CardMention
 export type CardMessage = B.CardMessage
 export type CardOption = B.CardOption
 export type CardPR = B.CardPR
@@ -56,6 +57,9 @@ export type InboxCounts = B.InboxCounts
 export type InviteStatus = B.InviteStatus
 export type Link = B.Link
 export type LinkKind = B.LinkKind
+export type Mention = B.Mention
+export type MentionCandidate = B.MentionCandidate
+export type MentionOutcome = B.MentionOutcome
 export type Message = B.Message
 export type Mode = B.Mode
 export type NotifyOptions = B.NotifyOptions
@@ -70,6 +74,7 @@ export type Returned = B.Returned
 export type ReviewerChoice = B.ReviewerChoice
 export type Rollup = B.Rollup
 export type RosterChange = B.RosterChange
+export type SendResult = B.SendResult
 export type Sender = B.Sender
 export type SharePreview = B.SharePreview
 export type SharedCopy = B.SharedCopy
@@ -190,6 +195,11 @@ export function CardHolder(p: Partial<B.CardHolder> = {}): B.CardHolder {
   return { "who": AgentRef(), "state": "", "others": 0, ...p } as B.CardHolder
 }
 
+/** CardMention with Go's zero values for every field left out. */
+export function CardMention(p: Partial<B.CardMention> = {}): B.CardMention {
+  return { "name": "", "who": AgentRef(), "gone": false, ...p } as B.CardMention
+}
+
 /** CardMessage with Go's zero values for every field left out. */
 export function CardMessage(p: Partial<B.CardMessage> = {}): B.CardMessage {
   return { "text": "", "files": [], ...p } as B.CardMessage
@@ -305,6 +315,21 @@ export function Link(p: Partial<B.Link> = {}): B.Link {
   return { "kind": "", "ref": "", "label": "", ...p } as B.Link
 }
 
+/** Mention with Go's zero values for every field left out. */
+export function Mention(p: Partial<B.Mention> = {}): B.Mention {
+  return { "key": "", "name": "", ...p } as B.Mention
+}
+
+/** MentionCandidate with Go's zero values for every field left out. */
+export function MentionCandidate(p: Partial<B.MentionCandidate> = {}): B.MentionCandidate {
+  return { "who": AgentRef(), "cwd": "", "repo": "", ...p } as B.MentionCandidate
+}
+
+/** MentionOutcome with Go's zero values for every field left out. */
+export function MentionOutcome(p: Partial<B.MentionOutcome> = {}): B.MentionOutcome {
+  return { "key": "", "name": "", "state": "", ...p } as B.MentionOutcome
+}
+
 /** Message with Go's zero values for every field left out. */
 export function Message(p: Partial<B.Message> = {}): B.Message {
   return { "id": "", "from": Sender(), "to": Address(), "text": "", "hop": 0, "trust": "", "sentAt": "", ...p } as B.Message
@@ -373,6 +398,11 @@ export function RosterChange(p: Partial<B.RosterChange> = {}): B.RosterChange {
 /** Sender with Go's zero values for every field left out. */
 export function Sender(p: Partial<B.Sender> = {}): B.Sender {
   return { "key": "", "name": "", "kind": "", ...p } as B.Sender
+}
+
+/** SendResult with Go's zero values for every field left out. */
+export function SendResult(p: Partial<B.SendResult> = {}): B.SendResult {
+  return { "message": Message(), "mentioned": [], ...p } as B.SendResult
 }
 
 /** SharedCopy with Go's zero values for every field left out. */

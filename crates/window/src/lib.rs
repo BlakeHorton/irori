@@ -51,6 +51,7 @@ pub mod devices;
 pub mod events;
 pub mod inbox;
 pub mod invites;
+pub mod mentions;
 pub mod roster;
 pub mod seams;
 pub mod settings;

@@ -13,6 +13,7 @@ use specta::Type;
 
 use crate::Window;
 use crate::cards::{AgentRef, CardDetail, NOTE_ITEM, not_found_task};
+use crate::mentions::{MentionOutcome, Plan};
 use crate::ts;
 
 /// MaxUpload caps one file added from the window.
@@ -36,6 +37,10 @@ pub struct TaskResult {
     #[specta(type = ts::Task)]
     pub task: Task,
     pub told: Told,
+    /// What each mention came to (card #77).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub mentioned: Vec<MentionOutcome>,
 }
 
 /// Comment's answer.
@@ -46,6 +51,10 @@ pub struct CommentResult {
     pub told: Told,
     pub answers: Vec<AgentRef>,
     pub watching: Vec<AgentRef>,
+    /// What each mention came to (card #77).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub mentioned: Vec<MentionOutcome>,
 }
 
 /// Answer's reply: the card after the answer, and who heard.
@@ -53,6 +62,10 @@ pub struct CommentResult {
 pub struct AnswerResult {
     pub card: CardDetail,
     pub told: Told,
+    /// What each mention came to (card #77).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub mentioned: Vec<MentionOutcome>,
 }
 
 /// One choice on the ask box's repo chip.
@@ -127,17 +140,51 @@ impl Window {
         told
     }
 
-    /// BoardService.Comment: the person's comment on a task.
-    pub fn comment(&self, id: &str, text: &str, tell: &str) -> Result<CommentResult, String> {
+    /// Routes the `mentioned` notices in `ns` (always woken, whatever the
+    /// Tell) and returns the others, with each mention's outcome.
+    fn route_mentioned(&self, ns: Vec<Notice>, plan: &Plan) -> (Vec<Notice>, Vec<MentionOutcome>) {
+        let (mut rest, mut heard) = (Vec::new(), Vec::new());
+        for n in ns {
+            if n.kind == coord::NOTICE_MENTIONED {
+                heard.extend(self.core.route_notice(&self.core.user_sender(), &n));
+            } else {
+                rest.push(n);
+            }
+        }
+        if plan.private.is_empty() && plan.unknown.is_empty() {
+            return (rest, Vec::new());
+        }
+        (rest, plan.outcomes(&heard))
+    }
+
+    /// BoardService.Comment: the person's comment on a task. `mentions`
+    /// are the keys the picker recorded.
+    pub fn comment(
+        &self,
+        id: &str,
+        text: &str,
+        tell: &str,
+        mentions: &[ts::Mention],
+    ) -> Result<CommentResult, String> {
         let tl = parse_tell(tell)?;
         let (co, keys) = self.on(id, &[])?;
         let me = keys[0].clone();
+        let plan = self.plan_mentions(id, mentions);
         let mut res = CommentResult::default();
         if tl == Tell::None {
-            let (c, _) = co
-                .add_comment(&me, id, text, false)
+            let (c, ns) = co
+                .comment_on(
+                    &me,
+                    id,
+                    coord::CommentInput {
+                        text: text.into(),
+                        mentions: plan.log.clone(),
+                        ..Default::default()
+                    },
+                )
                 .map_err(|e| e.to_string())?;
             res.comment = c;
+            (_, res.mentioned) = self.route_mentioned(ns, &plan);
             return Ok(res);
         }
         let p = self.people();
@@ -145,9 +192,11 @@ impl Window {
         // session behind each (private_key).
         let around = |k: &str| p.ref_(&self.core.private_key(k)).live;
         let (c, ns) = co
-            .person_comment(&me, id, text, tl == Tell::Wake, Some(&around))
+            .person_comment(&me, id, text, tl == Tell::Wake, &plan.log, Some(&around))
             .map_err(|e| e.to_string())?;
         res.comment = c;
+        let (ns, mentioned) = self.route_mentioned(ns, &plan);
+        res.mentioned = mentioned;
         for (i, n) in ns.iter().enumerate() {
             let told = self.tell(n, tl);
             res.told.to.extend(told.to.iter().cloned());
@@ -181,8 +230,14 @@ impl Window {
         wake: bool,
         files: &[UploadFile],
         board_id: &str,
+        mentions: &[ts::Mention],
     ) -> Result<TaskResult, String> {
         let board_id = trim(board_id);
+        if !board_id.is_empty() && !mentions.is_empty() {
+            return Err(invalid(
+                "mentions work on an ask on your own board; on a shared board, ask the room",
+            ));
+        }
         if !board_id.is_empty() {
             if !files.is_empty() {
                 return Err(invalid(
@@ -202,8 +257,13 @@ impl Window {
                 )
                 .map_err(|e| e.to_string())?;
             let told = self.tell(&n, Tell::NextTurn);
-            return Ok(TaskResult { task: t, told });
+            return Ok(TaskResult {
+                task: t,
+                told,
+                ..TaskResult::default()
+            });
         }
+        let plan = self.plan_mentions("", mentions);
         let refs = self.store_uploads(files)?;
         let agents = self.core.ask_agents();
         let (t, n) = self
@@ -216,12 +276,31 @@ impl Window {
                     files: refs.iter().map(crate::coord_ref).collect(),
                     repo_key: trim(repo_key).into(),
                     wake,
+                    mentions: plan.log.clone(),
                 },
                 &agents,
             )
             .map_err(|e| e.to_string())?;
-        let told = self.tell(&n, Tell::NextTurn);
-        Ok(TaskResult { task: t, told })
+        if plan.private.is_empty() && plan.unknown.is_empty() {
+            let told = self.tell(&n, Tell::NextTurn);
+            return Ok(TaskResult {
+                task: t,
+                told,
+                ..TaskResult::default()
+            });
+        }
+        // An ask with mentions goes to them alone, woken.
+        let heard = self.core.route_notice(&self.core.user_sender(), &n);
+        let told = Told {
+            to: n.to.iter().map(|k| self.core.private_key(k)).collect(),
+            mode: inbox::mode::WAKE.into(),
+            error: inbox::notice::notice_err(&heard).unwrap_or_default(),
+        };
+        Ok(TaskResult {
+            task: t,
+            told,
+            mentioned: plan.outcomes(&heard),
+        })
     }
 
     /// BoardService.AskAgain: "Wake them" on an ask nobody took.
@@ -328,7 +407,11 @@ impl Window {
         let (co, keys) = self.on(trim(id), &[])?;
         let (t, n) = co.reopen(&keys[0], trim(id)).map_err(|e| e.to_string())?;
         let told = self.tell(&n, Tell::NextTurn);
-        Ok(TaskResult { task: t, told })
+        Ok(TaskResult {
+            task: t,
+            told,
+            ..TaskResult::default()
+        })
     }
 
     /// BoardService.Answer: the person's answer to one blocker; option is
@@ -340,13 +423,15 @@ impl Window {
         option: i64,
         text: &str,
         wake: bool,
+        mentions: &[ts::Mention],
     ) -> Result<AnswerResult, String> {
         if option < -1 {
             return Err(invalid("option is an index or -1"));
         }
         let (task_id, blocker_id) = (trim(task_id), trim(blocker_id));
+        let plan = self.plan_mentions(task_id, mentions);
         if blocker_id == NOTE_ITEM {
-            return self.answer_input(task_id, option, text, wake);
+            return self.answer_input(task_id, option, text, wake, &plan);
         }
         let (co, keys) = self.on(task_id, &[])?;
         let me = keys[0].clone();
@@ -365,33 +450,45 @@ impl Window {
             text: text.into(),
             wake,
             resolve: self.nobody_can_act(&t, &bl.raised_by),
+            mentions: plan.log.clone(),
         };
+        let mut pre = Vec::new();
         let status = if bl.status.is_empty() {
             coord::BLOCKER_OPEN
         } else {
             bl.status.as_str()
         };
         if a.resolve && a.pick == 0 && status != coord::BLOCKER_OPEN {
-            co.answer(
-                &me,
-                task_id,
-                blocker_id,
-                BlockerAnswer {
-                    text: text.into(),
-                    wake,
-                    ..BlockerAnswer::default()
-                },
-            )
-            .map_err(|e| e.to_string())?;
+            // The answer goes on the thread first, with its mentions.
+            let (_, ns) = co
+                .answer(
+                    &me,
+                    task_id,
+                    blocker_id,
+                    BlockerAnswer {
+                        text: text.into(),
+                        wake,
+                        mentions: std::mem::take(&mut a.mentions),
+                        ..BlockerAnswer::default()
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            pre = ns
+                .into_iter()
+                .filter(|n| n.kind == coord::NOTICE_MENTIONED)
+                .collect();
             a.text = String::new();
         }
-        let (t, n) = co
+        let (t, mut ns) = co
             .answer(&me, task_id, blocker_id, a)
             .map_err(|e| e.to_string())?;
-        let told = self.tell(&n, Tell::NextTurn);
+        ns.extend(pre);
+        let (ns, mentioned) = self.route_mentioned(ns, &plan);
+        let told = self.tell(&ns[0], Tell::NextTurn);
         Ok(AnswerResult {
             card: self.card(&t.id)?,
             told,
+            mentioned,
         })
     }
 
@@ -421,7 +518,7 @@ impl Window {
             return Err(invalid("answer the card's question instead"));
         }
         let (co, keys) = self.on(task_id, &[])?;
-        let (t, n) = co
+        let (t, ns) = co
             .answer(
                 &keys[0],
                 task_id,
@@ -433,10 +530,14 @@ impl Window {
                 },
             )
             .map_err(|e| e.to_string())?;
-        let told = self.tell(&n, Tell::NextTurn);
+        let told = ns
+            .first()
+            .map(|n| self.tell(n, Tell::NextTurn))
+            .unwrap_or_default();
         Ok(AnswerResult {
             card: self.card(&t.id)?,
             told,
+            ..AnswerResult::default()
         })
     }
 
@@ -447,6 +548,7 @@ impl Window {
         option: i64,
         text: &str,
         wake: bool,
+        plan: &Plan,
     ) -> Result<AnswerResult, String> {
         let (co, keys) = self.on(id, &[])?;
         let me = keys[0].clone();
@@ -463,10 +565,20 @@ impl Window {
                 "this question has no recommended answers; answer in your own words",
             ));
         }
-        let (_, n) = co
-            .add_comment(&me, id, text, wake)
+        let (_, ns) = co
+            .comment_on(
+                &me,
+                id,
+                coord::CommentInput {
+                    text: text.into(),
+                    wake,
+                    mentions: plan.log.clone(),
+                    ..Default::default()
+                },
+            )
             .map_err(|e| e.to_string())?;
-        let told = self.tell(&n, Tell::NextTurn);
+        let (ns, mentioned) = self.route_mentioned(ns, plan);
+        let told = self.tell(&ns[0], Tell::NextTurn);
         let back = if t.holders.len() > t.assigned.len() {
             coord::WORKING
         } else {
@@ -477,6 +589,7 @@ impl Window {
         Ok(AnswerResult {
             card: self.card(id)?,
             told,
+            mentioned,
         })
     }
 

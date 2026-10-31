@@ -1,11 +1,21 @@
 //! The person's view of the inbox (I:inbox_service.go). Every action acts
 //! as the person at this device (`Core::user_sender`), never as an agent.
 
-use inbox::{Delivery, Message, Policy, st};
+use inbox::{Delivery, Policy, st};
 use serde::Serialize;
 use specta::Type;
 
 use crate::Window;
+use crate::mentions::MentionOutcome;
+use crate::ts;
+
+/// Send's answer: the message, and what each mention came to.
+#[derive(Debug, Clone, Default, Serialize, Type)]
+pub struct SendResult {
+    #[specta(type = ts::Message)]
+    pub message: inbox::Message,
+    pub mentioned: Vec<MentionOutcome>,
+}
 
 /// List's and HeldHistory's cap.
 pub const MAX_LIST: usize = 500;
@@ -79,7 +89,13 @@ impl Window {
     }
 
     /// InboxService.Send: text from the person to an agent or a repo.
-    pub fn inbox_send(&self, to: &str, repo: &str, text: &str) -> Result<Message, String> {
+    pub fn inbox_send(
+        &self,
+        to: &str,
+        repo: &str,
+        text: &str,
+        mentions: &[ts::Mention],
+    ) -> Result<SendResult, String> {
         let (to, repo) = (trim(to), trim(repo));
         let addr = if !repo.is_empty() {
             inbox::Address::new(inbox::addr::REPO, repo)
@@ -88,19 +104,57 @@ impl Window {
         } else {
             inbox::Address::new(inbox::addr::AGENT, to)
         };
-        let (m, _) = self
-            .core
-            .inbox()
-            .send(&self.core.user_sender(), &addr, text, "")
+        let plan = self.plan_mentions("", mentions);
+        let me = self.core.user_sender();
+        let ib = self.core.inbox();
+        let (m, d) = ib
+            .send_with(
+                &me,
+                &addr,
+                text,
+                inbox::SendOptions {
+                    mode: inbox::mode::WAKE.into(),
+                    mentions: plan.inbox(),
+                    ..Default::default()
+                },
+            )
             .map_err(err)?;
-        Ok(m)
+        let rs = ib.send_mention_copies(&me, &m, &d.to, &self.core.agent_name(&d.to));
+        Ok(SendResult {
+            mentioned: plan.copy_outcomes(&rs, &d.to),
+            message: m,
+        })
     }
 
     /// InboxService.Reply: answers a message sent to the person. A reply
     /// about a card also goes on that card's thread.
-    pub fn inbox_reply(&self, id: &str, text: &str) -> Result<(), String> {
+    pub fn inbox_reply(
+        &self,
+        id: &str,
+        text: &str,
+        mentions: &[ts::Mention],
+    ) -> Result<Vec<MentionOutcome>, String> {
         let ib = self.core.inbox();
-        let r = ib.reply(&self.core.user_sender(), trim(id), text);
+        let plan = self.plan_mentions("", mentions);
+        let me = self.core.user_sender();
+        let r = ib.reply_with(&me, trim(id), text, &plan.inbox());
+        let mut out = Vec::new();
+        if let Ok((m, nd)) = &r
+            && !m.mentions.is_empty()
+        {
+            let rs = ib.send_mention_copies(&me, m, &nd.to, &self.core.agent_name(&nd.to));
+            out = plan.copy_outcomes(&rs, &nd.to);
+            // On a card the mentioned agents watch it.
+            if let Some(tid) = tools::notice::card_for(self.core.coord(), &m.ref_) {
+                let who: Vec<String> = m
+                    .mentions
+                    .iter()
+                    .filter(|x| !x.gone)
+                    .map(|x| x.key.clone())
+                    .collect();
+                let _ = self.core.coord().watch_for(&me.key, &tid, &who);
+            }
+        }
         if let Ok((m, nd)) = &r
             && !m.ref_.is_empty()
         {
@@ -114,7 +168,8 @@ impl Window {
                 Err(e) => irori_core::log(&format!("irori: put the reply on {}: {e}", m.ref_)),
             }
         }
-        self.acted(r.map(|_| ()).map_err(err))
+        self.acted(r.map(|_| ()).map_err(err))?;
+        Ok(out)
     }
 
     /// InboxService.MarkRead: closes a message sent to the person.

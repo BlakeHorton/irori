@@ -252,6 +252,19 @@ pub struct Message {
     pub notice: bool,
     #[specta(optional)]
     pub attachments: Vec<FileRef>,
+    #[specta(optional)]
+    pub mentions: Vec<Mention>,
+}
+
+/// One agent a comment, ask or message names (coord.Mention, card #77).
+/// Also what the window sends: `gone` is ignored there, the window decides.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+pub struct Mention {
+    pub key: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub gone: bool,
 }
 
 /// inbox.Delivery.
@@ -461,6 +474,8 @@ pub struct Ask {
     pub waiting: Vec<String>,
     #[specta(optional)]
     pub outcome: Outcome,
+    #[specta(optional)]
+    pub mentions: Vec<Mention>,
 }
 
 /// coord.Returned.
@@ -584,5 +599,7 @@ pub struct Comment {
     pub missing: Vec<String>,
     #[specta(optional)]
     pub unheard: bool,
+    #[specta(optional)]
+    pub mentions: Vec<Mention>,
     pub device: String,
 }

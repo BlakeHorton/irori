@@ -72,13 +72,13 @@ fn boards_in_the_window() {
     let pd = w.card(&priv_t.id).unwrap();
     assert_eq!(pd.shared_to.expect("shared to").ref_, "mlg#1");
     // A write from the window to the private id is refused, naming mlg#1.
-    let e = w.comment(&priv_t.id, "more", "none").unwrap_err();
+    let e = w.comment(&priv_t.id, "more", "none", &[]).unwrap_err();
     assert!(
         e.contains("mlg#1"),
         "a comment on the shared private card: {e}"
     );
     // The person comments on the shared card from the window.
-    w.comment(&shared_id, "on the board", "none").unwrap();
+    w.comment(&shared_id, "on the board", "none", &[]).unwrap();
     let co = w.core.board_coord(&mlg.board_id).unwrap();
     let cs = co.comments(&shared_id).unwrap_or_default();
     assert!(
@@ -149,7 +149,7 @@ fn comment_on_a_shared_card_tells_its_agent() {
         )
         .unwrap();
     co.assign(&me, &card.id, &agent).unwrap();
-    let res = w.comment(&card.id, "which branch?", "wake").unwrap();
+    let res = w.comment(&card.id, "which branch?", "wake", &[]).unwrap();
     assert!(
         res.told.to == [r.key_a.clone()] && res.answers.len() == 1 && res.answers[0].key == r.key_a,
         "the comment told {:?}, answers {:?}; want the assigned agent's session",

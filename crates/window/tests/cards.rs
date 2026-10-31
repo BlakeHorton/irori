@@ -241,7 +241,7 @@ fn answer_leaves_blocker_open() {
     let t = held_task(&r);
     let bl = raise(&r, &r.key_a, &t.id, "Which DB?", &["postgres"]);
     let res =
-        r.w.answer(&t.id, &bl.id, -1, "Which one is cheaper to run?", true)
+        r.w.answer(&t.id, &bl.id, -1, "Which one is cheaper to run?", true, &[])
             .unwrap();
     let b = blocker(&res.card, &bl.id);
     assert_eq!(res.card.summary.state, coord::BLOCKED);
@@ -340,13 +340,13 @@ fn answer_resolves_when_nobody_can_act() {
     co.claim_task(&ended, &t.id).unwrap();
     let b1 = raise(&r, &ended, &t.id, "Ship it?", &[]);
     let b2 = raise(&r, &ended, &t.id, "Which region?", &[]);
-    let res = r.w.answer(&t.id, &b1.id, -1, "yes", true).unwrap();
+    let res = r.w.answer(&t.id, &b1.id, -1, "yes", true, &[]).unwrap();
     let b = blocker(&res.card, &b1.id);
     let rs = b.resolved.as_ref().unwrap();
     assert_eq!(b.state, BLOCKER_RESOLVED);
     assert_eq!((rs.answer.as_str(), rs.note.as_str()), ("yes", ""));
     assert_eq!(res.card.summary.state, coord::BLOCKED);
-    let res = r.w.answer(&t.id, &b2.id, -1, "eu-west", true).unwrap();
+    let res = r.w.answer(&t.id, &b2.id, -1, "eu-west", true, &[]).unwrap();
     let b = blocker(&res.card, &b2.id);
     assert_eq!(b.state, BLOCKER_RESOLVED);
     assert_eq!(b.resolved.as_ref().unwrap().answer, "eu-west");
@@ -355,7 +355,9 @@ fn answer_resolves_when_nobody_can_act() {
     // The person's own item on a card a live agent holds.
     let t2 = held_task(&r);
     let mine = raise(&r, &me(&r), &t2.id, "check the staging DNS", &[]);
-    let res = r.w.answer(&t2.id, &mine.id, -1, "checked", false).unwrap();
+    let res =
+        r.w.answer(&t2.id, &mine.id, -1, "checked", false, &[])
+            .unwrap();
     let b = blocker(&res.card, &mine.id);
     assert_eq!(b.state, BLOCKER_RESOLVED);
     assert_eq!(b.resolved.as_ref().unwrap().answer, "checked");
@@ -385,8 +387,8 @@ fn resolve_blocker_by_person() {
             .starts_with(invalid),
         "resolved an unanswered item with nothing"
     );
-    r.w.answer(&t.id, &b1.id, 0, "", false).unwrap();
-    r.w.answer(&t.id, &b2.id, -1, "whatever is free", false)
+    r.w.answer(&t.id, &b1.id, 0, "", false, &[]).unwrap();
+    r.w.answer(&t.id, &b2.id, -1, "whatever is free", false, &[])
         .unwrap();
     let res = r.w.resolve_blocker(&t.id, &b1.id, "").unwrap();
     let b = blocker(&res.card, &b1.id);
@@ -481,7 +483,7 @@ fn comment_with_nobody_on_the_card() {
                 },
             )
             .unwrap();
-    let res = r.w.comment(&t.id, "note to self", "wake").unwrap();
+    let res = r.w.comment(&t.id, "note to self", "wake", &[]).unwrap();
     assert!(res.told.mode.is_empty() && res.told.to.is_empty());
     assert!(res.answers.is_empty() && res.watching.is_empty());
     assert_eq!(r.w.card(&t.id).unwrap().comments.len(), 1);
@@ -496,7 +498,7 @@ fn revised_blocker_shows_in_its_thread() {
     let co = r.w.core.coord();
     let t = held_task(&r);
     let bl = raise(&r, &r.key_a, &t.id, "Which DB?", &["postgres", "mysql"]);
-    r.w.answer(&t.id, &bl.id, -1, "Which one is cheaper to run?", true)
+    r.w.answer(&t.id, &bl.id, -1, "Which one is cheaper to run?", true, &[])
         .unwrap();
     co.comment_on(
         &r.key_a,
@@ -558,7 +560,7 @@ fn revised_blocker_shows_in_its_thread() {
     let raw = serde_json::to_string(b).unwrap();
     assert!(raw.contains("\"revised\":true"), "{raw}");
     // The pick is from the revised options.
-    let res = r.w.answer(&t.id, &bl.id, 0, "", true).unwrap();
+    let res = r.w.answer(&t.id, &bl.id, 0, "", true, &[]).unwrap();
     let b = blocker(&res.card, &bl.id);
     assert_eq!(b.state, BLOCKER_ANSWERED);
     assert_eq!(b.thread.last().unwrap().text, "Yes");

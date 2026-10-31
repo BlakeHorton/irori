@@ -97,8 +97,10 @@ export const InboxService = {
   HeldHistory: (limit: number) => call(commands.inboxHeldHistory(limit)),
   Counts: () => call(commands.inboxCounts()),
   Get: (deliveryId: string) => call(commands.inboxGet(deliveryId)),
-  Send: (to: string, repo: string, text: string) => call(commands.inboxSend(to, repo, text)),
-  Reply: (deliveryId: string, text: string) => done(commands.inboxReply(deliveryId, text)),
+  Send: (to: string, repo: string, text: string, mentions: B.Mention[] = []) =>
+    call(commands.inboxSend(to, repo, text, mentions)),
+  Reply: (deliveryId: string, text: string, mentions: B.Mention[] = []) =>
+    call(commands.inboxReply(deliveryId, text, mentions)),
   MarkRead: (deliveryId: string) => done(commands.inboxMarkRead(deliveryId)),
   Release: (deliveryId: string) => done(commands.inboxRelease(deliveryId)),
   Dismiss: (deliveryId: string) => done(commands.inboxDismiss(deliveryId)),
@@ -113,15 +115,29 @@ export const BoardService = {
   Card: (id: string) => call(commands.boardCard(id)),
   DoneCards: (limit: number, before: string) => call(commands.boardDoneCards(limit, before)),
   Message: (taskId: string, msgId: string) => call(commands.boardMessage(taskId, msgId)),
-  Comment: (id: string, text: string, tell: string) => call(commands.boardComment(id, text, tell)),
-  Answer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean) =>
-    call(commands.boardAnswer(taskId, blockerId, option, text, wake)),
+  Comment: (id: string, text: string, tell: string, mentions: B.Mention[] = []) =>
+    call(commands.boardComment(id, text, tell, mentions)),
+  Answer: (
+    taskId: string,
+    blockerId: string,
+    option: number,
+    text: string,
+    wake: boolean,
+    mentions: B.Mention[] = [],
+  ) => call(commands.boardAnswer(taskId, blockerId, option, text, wake, mentions)),
   ResolveBlocker: (taskId: string, blockerId: string, note: string) =>
     call(commands.boardResolveBlocker(taskId, blockerId, note)),
-  Ask: (text: string, repoKey: string, wake: boolean, boardId: string) =>
-    call(commands.boardAsk(text, repoKey, wake, boardId)),
-  AskWithFiles: (text: string, repoKey: string, wake: boolean, files: B.UploadFile[], boardId: string) =>
-    call(commands.boardAskWithFiles(text, repoKey, wake, files, boardId)),
+  Ask: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: B.Mention[] = []) =>
+    call(commands.boardAsk(text, repoKey, wake, boardId, mentions)),
+  AskWithFiles: (
+    text: string,
+    repoKey: string,
+    wake: boolean,
+    files: B.UploadFile[],
+    boardId: string,
+    mentions: B.Mention[] = [],
+  ) => call(commands.boardAskWithFiles(text, repoKey, wake, files, boardId, mentions)),
+  MentionCandidates: () => call(commands.boardMentionCandidates()),
   AskAgain: (id: string) => done(commands.boardAskAgain(id)),
   AskRepos: () => call(commands.boardAskRepos()),
   CloseAsk: (id: string, note: string) => call(commands.boardCloseAsk(id, note)),

@@ -79,16 +79,16 @@ fn board_cards_and_answers() {
         assert!(j.get(k).is_some(), "CardDetail has no {k}");
     }
 
-    let a = r.w.answer(&t.id, &bl.id, 0, "", false).unwrap();
+    let a = r.w.answer(&t.id, &bl.id, 0, "", false, &[]).unwrap();
     assert_eq!(a.told.to, vec![r.key_a.clone()]);
     assert_eq!(a.card.blockers[0].state, "answered");
     assert_eq!(r.w.cards()[0].waiting, 1);
 
-    let c = r.w.comment(&t.id, "looks right", "next_turn").unwrap();
+    let c = r.w.comment(&t.id, "looks right", "next_turn", &[]).unwrap();
     assert_eq!(c.comment.text, "looks right");
     assert_eq!(c.answers.len(), 1);
     assert_eq!(c.told.mode, "next_turn");
-    assert!(r.w.comment(&t.id, "x", "loud").is_err());
+    assert!(r.w.comment(&t.id, "x", "loud", &[]).is_err());
 
     r.w.pin(&t.id, true).unwrap();
     assert!(r.w.cards()[0].pinned);
@@ -146,7 +146,7 @@ fn done_cards_page() {
 fn asks_and_repos() {
     let r = Rig::new();
     let res =
-        r.w.ask("Who can look at the tray?", "", false, &[], "")
+        r.w.ask("Who can look at the tray?", "", false, &[], "", &[])
             .unwrap();
     assert!(res.task.ask.is_some());
     let cards = r.w.cards();
@@ -175,14 +175,17 @@ fn ask_with_a_file_lands_on_the_card() {
             false,
             std::slice::from_ref(&f),
             "no-such-board",
+            &[],
         )
         .unwrap_err();
     assert!(e.contains("files"), "{e}");
     let e =
-        r.w.ask("Anyone?", "", false, &[], "no-such-board")
+        r.w.ask("Anyone?", "", false, &[], "no-such-board", &[])
             .unwrap_err();
     assert!(e.contains("no such board"), "{e}");
-    let res = r.w.ask("See the picture", "", false, &[f], "").unwrap();
+    let res =
+        r.w.ask("See the picture", "", false, &[f], "", &[])
+            .unwrap();
     let d = r.w.card(&res.task.id).unwrap();
     let files: Vec<_> = d
         .comments
@@ -251,10 +254,10 @@ fn ask_with_a_file_lands_on_the_card() {
 #[test]
 fn inbox_send_reply_and_policy() {
     let r = Rig::new();
-    let m = r.w.inbox_send(&r.key_b, "", "hello beta").unwrap();
-    assert_eq!(m.text, "hello beta");
+    let m = r.w.inbox_send(&r.key_b, "", "hello beta", &[]).unwrap();
+    assert_eq!(m.message.text, "hello beta");
     assert_eq!(
-        r.w.inbox_send("", "", "x").unwrap_err(),
+        r.w.inbox_send("", "", "x", &[]).unwrap_err(),
         "pick an agent or a repo to send to"
     );
     let list = r.w.inbox_list(0);
@@ -267,7 +270,7 @@ fn inbox_send_reply_and_policy() {
     let beta = inbox::Sender::new(&r.key_b, "beta", "agent");
     let (_, d) = ib.reply(&beta, &list[0].id, "a question back").unwrap();
     assert_eq!(d.to, r.w.core.user_sender().key);
-    r.w.inbox_reply(&d.id, "an answer").unwrap();
+    r.w.inbox_reply(&d.id, "an answer", &[]).unwrap();
     assert_eq!(r.w.inbox_get(&d.id).unwrap().state, "answered");
     assert_eq!(
         r.w.inbox_get("nope").unwrap_err(),
@@ -439,7 +442,7 @@ fn ts_shapes_match_the_json() {
         },
     )
     .unwrap();
-    let _ = r.w.comment(&t.id, "a comment", "none").unwrap();
+    let _ = r.w.comment(&t.id, "a comment", "none", &[]).unwrap();
     let task = co.get_task(&t.id).unwrap();
 
     let j = |v: &dyn erased::Ser| v.json();
@@ -476,8 +479,9 @@ fn ts_shapes_match_the_json() {
     }
     check_shape(&src, "CardSummary", &summary);
 
-    let m = r.w.inbox_send(&r.key_b, "", "hi").unwrap();
-    check_shape(&src, "Message", &j(&m));
+    let m = r.w.inbox_send(&r.key_b, "", "hi", &[]).unwrap();
+    check_shape(&src, "SendResult", &j(&m));
+    check_shape(&src, "Message", &j(&m.message));
     let d = &r.w.inbox_list(0)[0];
     check_shape(&src, "Delivery", &j(d));
     check_shape(&src, "Sender", &j(&d.message.from));

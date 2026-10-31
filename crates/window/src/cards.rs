@@ -133,6 +133,35 @@ pub struct CardAsk {
     #[specta(optional, type = Option<ts::Outcome>)]
     pub outcome: Option<coord::Outcome>,
     pub outcome_ref: String,
+    /// The agents the ask went to; empty: the room.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub mentions: Vec<CardMention>,
+}
+
+/// A mention on a thread item or an ask, with the agent as the window
+/// knows it now (card #77).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+pub struct CardMention {
+    /// As written, for the @name in the text.
+    pub name: String,
+    pub who: AgentRef,
+    /// Stored gone, or gone now: not delivered.
+    pub gone: bool,
+}
+
+/// `ms` as the thread shows them.
+pub(crate) fn card_mentions(ms: &[coord::Mention], p: &People) -> Vec<CardMention> {
+    ms.iter()
+        .map(|m| {
+            let who = p.ref_(&m.key);
+            CardMention {
+                name: m.name.clone(),
+                gone: m.gone || who.status == "gone",
+                who,
+            }
+        })
+        .collect()
 }
 
 /// One card in the grid.
@@ -351,6 +380,9 @@ pub struct CardThreadItem {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub pending: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub mentions: Vec<CardMention>,
 }
 
 /// A message on a card's thread in full, for the person.
@@ -689,6 +721,7 @@ pub(crate) fn card_ask(
         told: a.told,
         owner: p.where_(&a.owner),
         wake: a.wake,
+        mentions: card_mentions(&a.mentions, p),
         ..CardAsk::default()
     };
     if let Some(o) = &a.outcome {
@@ -1310,6 +1343,7 @@ fn build_thread(
             blocker_id: cm.blocker_id.clone(),
             missing: cm.missing.clone(),
             unheard: cm.unheard,
+            mentions: card_mentions(&cm.mentions, p),
             ..CardThreadItem::default()
         };
         if !cm.msg_id.is_empty() {

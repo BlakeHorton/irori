@@ -21,8 +21,9 @@ use crate::boards::{BoardSettings, BoardSummary, SharePreview};
 use crate::cards::{CardDetail, CardMessage, CardSummary, DonePage};
 use crate::devices::{DeviceView, HomeServerView, PairStatus, RelayView};
 use crate::events::{CaptureChange, Empty};
-use crate::inbox::InboxCounts;
+use crate::inbox::{InboxCounts, SendResult};
 use crate::invites::InviteStatus;
+use crate::mentions::{MentionCandidate, MentionOutcome};
 use crate::roster::{GoneSession, RosterChange};
 use crate::settings::{NotifyOptions, Target};
 use crate::ts::{self, Typed};
@@ -136,14 +137,20 @@ pub async fn inbox_send(
     to: String,
     repo: String,
     text: String,
-) -> R<Typed<inbox::Message, ts::Message>> {
-    w.inbox_send(&to, &repo, &text).map(Typed::new)
+    mentions: Vec<ts::Mention>,
+) -> R<SendResult> {
+    w.inbox_send(&to, &repo, &text, &mentions)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn inbox_reply(w: W<'_>, delivery_id: String, text: String) -> R<()> {
-    w.inbox_reply(&delivery_id, &text)
+pub async fn inbox_reply(
+    w: W<'_>,
+    delivery_id: String,
+    text: String,
+    mentions: Vec<ts::Mention>,
+) -> R<Vec<MentionOutcome>> {
+    w.inbox_reply(&delivery_id, &text, &mentions)
 }
 
 #[tauri::command]
@@ -221,8 +228,14 @@ pub async fn board_message(w: W<'_>, task_id: String, msg_id: String) -> R<CardM
 
 #[tauri::command]
 #[specta::specta]
-pub async fn board_comment(w: W<'_>, id: String, text: String, tell: String) -> R<CommentResult> {
-    w.comment(&id, &text, &tell)
+pub async fn board_comment(
+    w: W<'_>,
+    id: String,
+    text: String,
+    tell: String,
+    mentions: Vec<ts::Mention>,
+) -> R<CommentResult> {
+    w.comment(&id, &text, &tell, &mentions)
 }
 
 #[tauri::command]
@@ -234,8 +247,9 @@ pub async fn board_answer(
     option: i64,
     text: String,
     wake: bool,
+    mentions: Vec<ts::Mention>,
 ) -> R<AnswerResult> {
-    w.answer(&task_id, &blocker_id, option, &text, wake)
+    w.answer(&task_id, &blocker_id, option, &text, wake, &mentions)
 }
 
 #[tauri::command]
@@ -257,8 +271,9 @@ pub async fn board_ask(
     repo_key: String,
     wake: bool,
     board_id: String,
+    mentions: Vec<ts::Mention>,
 ) -> R<TaskResult> {
-    w.ask(&text, &repo_key, wake, &[], &board_id)
+    w.ask(&text, &repo_key, wake, &[], &board_id, &mentions)
 }
 
 #[tauri::command]
@@ -270,11 +285,18 @@ pub async fn board_ask_with_files(
     wake: bool,
     files: Vec<UploadFile>,
     board_id: String,
+    mentions: Vec<ts::Mention>,
 ) -> R<TaskResult> {
     blocking(&w, move |w| {
-        w.ask(&text, &repo_key, wake, &files, &board_id)
+        w.ask(&text, &repo_key, wake, &files, &board_id, &mentions)
     })
     .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn board_mention_candidates(w: W<'_>) -> R<Vec<MentionCandidate>> {
+    Ok(w.mention_candidates())
 }
 
 #[tauri::command]
@@ -719,6 +741,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_ask_with_files,
             board_ask_again,
             board_ask_repos,
+            board_mention_candidates,
             board_close_ask,
             board_close,
             board_delete,
