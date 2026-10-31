@@ -49,8 +49,8 @@ fn a_comment_mention_wakes_and_watches() {
     assert_eq!(ds[0].mode, inbox::mode::WAKE);
     assert_eq!(ds[0].message.reason, coord::NOTICE_MENTIONED);
     let got = co.get_task(&t.id).unwrap();
-    assert_eq!(got.watchers, [r.key_b.clone()]);
-    assert_eq!(got.holders, [r.key_a.clone()]);
+    assert_eq!(got.watchers, std::slice::from_ref(&r.key_b));
+    assert_eq!(got.holders, std::slice::from_ref(&r.key_a));
     // The thread shows the mention with the agent as the window knows it.
     let d = r.w.card(&t.id).unwrap();
     let it = d
