@@ -56,6 +56,11 @@ pub struct AgentRef {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
     pub waiting: bool,
+    /// The open steps it owns, when it's on the card as a step owner
+    /// rather than a holder (card #86).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub steps: Vec<String>,
     /// The hand-off note it was offered the card with (card #85).
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
@@ -713,8 +718,18 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
         r.waiting = r.assigned && p.unsent.contains(&unsent_key(h, &format!("task:{}", t.id)));
         s.working.push(r);
     }
+    for k in &t.co_holders {
+        let mut r = p.ref_(k);
+        r.steps = t
+            .steps
+            .iter()
+            .filter(|st| !st.done && st.owner == *k)
+            .map(|st| st.id.clone())
+            .collect();
+        s.working.push(r);
+    }
     for w in &t.watchers {
-        if !t.holders.contains(w) {
+        if !t.holders.contains(w) && !t.co_holders.contains(w) {
             s.watching.push(p.ref_(w));
         }
     }
@@ -811,14 +826,19 @@ fn stale(s: &CardSummary, last: &GoTime, now: i64) -> bool {
 }
 
 /// The holder that took the card up (the first), else the first assigned.
+/// A step owner (card #86) is never the holder; it counts among the others.
 pub(crate) fn holder_line(working: &[AgentRef]) -> CardHolder {
-    if working.is_empty() {
+    let holds = |r: &AgentRef| r.steps.is_empty();
+    let Some(first) = working.iter().position(holds) else {
         return CardHolder {
             state: Holding::Nobody,
             ..CardHolder::default()
         };
-    }
-    let i = working.iter().position(|r| !r.assigned).unwrap_or(0);
+    };
+    let i = working
+        .iter()
+        .position(|r| holds(r) && !r.assigned)
+        .unwrap_or(first);
     let w = working[i].clone();
     let state = if w.status == "person" {
         Holding::Person

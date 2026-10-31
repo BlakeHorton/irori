@@ -462,7 +462,7 @@
   {
     "step": 95,
     "tool": "board_step",
-    "text": "Error: give done (true ticks it, false unticks it) or doing (true makes it the current step)."
+    "text": "Error: give done (true ticks it, false unticks it), doing (true makes it the current step) or owner (the agent doing it; empty takes it off them)."
   },
   {
     "step": 96,

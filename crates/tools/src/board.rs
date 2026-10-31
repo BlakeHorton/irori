@@ -197,6 +197,23 @@ impl Inner {
         } else {
             b += "; nobody holds it";
         }
+        // Step owners are co-holders while their steps are open (card #86).
+        let co: Vec<String> = t
+            .co_holders
+            .iter()
+            .map(|k| {
+                let ids: Vec<&str> = t
+                    .steps
+                    .iter()
+                    .filter(|st| !st.done && st.owner == *k)
+                    .map(|st| st.id.as_str())
+                    .collect();
+                format!("{} ({})", n.who(k), ids.join(", "))
+            })
+            .collect();
+        if !co.is_empty() {
+            b += &format!("; with {} on steps", co.join(", "));
+        }
         if t.shared {
             b += "; shared";
         }
@@ -632,6 +649,7 @@ pub(crate) fn steps_of(v: &[StepArg]) -> Vec<Step> {
             text: st.text.clone(),
             done: st.done,
             doing: st.doing,
+            owner: st.owner.clone(),
         })
         .collect()
 }
@@ -1302,17 +1320,41 @@ pub(crate) fn board_steps(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(id) => id,
         Err(m) => return m,
     };
-    let (co, as_) = match s.on(&id, std::slice::from_ref(&c.sender.key)) {
+    // Owners by name or key, as the board's coord knows them (card #86).
+    let mut steps = steps_of(&a.steps("steps"));
+    let mut keys = vec![c.sender.key.clone()];
+    for st in &steps {
+        let o = trim(&st.owner);
+        if o.is_empty() {
+            continue;
+        }
+        match s.assignee(o) {
+            Ok(k) => keys.push(k),
+            Err(e) => return map_err(e),
+        }
+    }
+    let (co, as_) = match s.on(&id, &keys) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let t = match co.set_steps(&as_[0], &id, steps_of(&a.steps("steps"))) {
-        Ok(t) => t,
+    let mut owners = as_[1..].iter();
+    for st in steps.iter_mut() {
+        if !trim(&st.owner).is_empty() {
+            st.owner = owners.next().cloned().unwrap_or_default();
+        }
+    }
+    let (t, notices) = match co.set_steps_notice(&as_[0], &id, steps) {
+        Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    let names = s.roster();
+    let mut told = String::new();
+    for nt in notices {
+        told.push_str(&s.told(&s.tell(&c.sender, nt), &names));
+    }
     let (d, n) = t.progress();
     let mut b = format!(
-        "{} has {n} steps, {d} done. Tick them with board_step as you go.\n",
+        "{} has {n} steps, {d} done. Tick them with board_step as you go.{told}\n",
         t.short_ref()
     );
     for st in &t.steps {
@@ -1323,9 +1365,14 @@ pub(crate) fn board_steps(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         } else {
             "[ ]"
         };
+        let owner = if st.owner.is_empty() {
+            String::new()
+        } else {
+            format!(" (owner: {})", names.who(&st.owner))
+        };
         let _ = writeln!(
             b,
-            "- {mark} {} {}",
+            "- {mark} {} {}{owner}",
             one_line(&st.id, 20),
             quoted(&st.text, MAX_FIELD_RUNES)
         );
@@ -1338,6 +1385,7 @@ const STEP_ARGS: &[(&str, Ty)] = &[
     ("step_id", Ty::Str),
     ("done", Ty::OptBool),
     ("doing", Ty::OptBool),
+    ("owner", Ty::OptStr),
 ];
 
 pub(crate) fn board_step(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -1355,26 +1403,52 @@ pub(crate) fn board_step(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         );
     }
     let (done, doing) = (a.opt_bool("done"), a.opt_bool("doing"));
-    if done.is_none() && doing.is_none() {
+    let owner = a.opt_str("owner").map(|o| trim(&o).to_string());
+    if done.is_none() && doing.is_none() && owner.is_none() {
         return err_text(
-            "give done (true ticks it, false unticks it) or doing (true makes it the current step).",
+            "give done (true ticks it, false unticks it), doing (true makes it the current step) or owner (the agent doing it; empty takes it off them).",
         );
     }
-    let (co, as_) = match s.on(&id, std::slice::from_ref(&c.sender.key)) {
+    let mut keys = vec![c.sender.key.clone()];
+    if let Some(o) = owner.as_deref().filter(|o| !o.is_empty()) {
+        match s.assignee(o) {
+            Ok(k) => keys.push(k),
+            Err(e) => return map_err(e),
+        }
+    }
+    let (co, as_) = match s.on(&id, &keys) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let t = match co.set_step(
-        &as_[0],
-        &id,
-        trim(a.str("step_id")),
-        StepUpdate { done, doing },
-    ) {
-        Ok(t) => t,
-        Err(e) => return map_err(e),
-    };
+    let sid = trim(a.str("step_id"));
+    let names = s.roster();
+    let mut told = String::new();
+    let mut t = None;
+    if let Some(o) = &owner {
+        let key = if o.is_empty() { "" } else { as_[1].as_str() };
+        match co.set_step_owner(&as_[0], &id, sid, key) {
+            Ok((got, ns)) => {
+                for nt in ns {
+                    told.push_str(&s.told(&s.tell(&c.sender, nt), &names));
+                }
+                t = Some(got);
+            }
+            Err(e) => return map_err(e),
+        }
+    }
+    if done.is_some() || doing.is_some() {
+        match co.set_step(&as_[0], &id, sid, StepUpdate { done, doing }) {
+            Ok(got) => t = Some(got),
+            Err(e) => return map_err(e),
+        }
+    }
+    let t = t.expect("one change was asked");
     let (d, n) = t.progress();
-    format!("{}: steps {d}/{n} done.\n{}", t.short_ref(), s.line(&t))
+    format!(
+        "{}: steps {d}/{n} done.{told}\n{}",
+        t.short_ref(),
+        s.line(&t)
+    )
 }
 
 // --- board_watch / board_unwatch ---

@@ -28,7 +28,7 @@ pub(crate) enum Ty {
     OptInt,
     /// `[]string`.
     Strs,
-    /// `[]stepArg`: a string or `{id, text, done, doing}` each.
+    /// `[]stepArg`: a string or `{id, text, done, doing, owner}` each.
     Steps,
     /// `[]struct{...}` decoded strictly with these fields.
     Structs(&'static [(&'static str, Ty)]),
@@ -41,6 +41,8 @@ pub(crate) struct StepArg {
     pub text: String,
     pub done: bool,
     pub doing: bool,
+    /// The agent doing the step, by name or key (card #86).
+    pub owner: String,
 }
 
 /// A decoded value.
@@ -282,7 +284,7 @@ fn step(v: &Value, path: &[&str]) -> Result<StepArg, String> {
         _ => return Err(format!("argument {} should be struct", path.join("."))),
     }
     let Value::Object(kv) = v else { unreachable!() };
-    let names = ["id", "text", "done", "doing"];
+    let names = ["id", "text", "done", "doing", "owner"];
     let mut err: Option<String> = None;
     for (k, val) in kv {
         let key = k.text.as_str();
@@ -296,9 +298,10 @@ fn step(v: &Value, path: &[&str]) -> Result<StepArg, String> {
             (_, Value::Null) => {}
             ("id", Value::String(s)) => st.id = s.text.clone(),
             ("text", Value::String(s)) => st.text = s.text.clone(),
+            ("owner", Value::String(s)) => st.owner = s.text.clone(),
             ("done", Value::Bool(b)) => st.done = *b,
             ("doing", Value::Bool(b)) => st.doing = *b,
-            ("id" | "text", _) => {
+            ("id" | "text" | "owner", _) => {
                 err.get_or_insert_with(|| bad("a string"));
             }
             _ => {

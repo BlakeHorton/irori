@@ -1908,3 +1908,56 @@ fn test_skipping_a_handed_ask_passes_it_on() {
         "{ns:?}"
     );
 }
+
+/// Step owners (card #86): board_steps and board_step name the agent doing
+/// a step, which wakes it and makes it a co-holder until the step is done.
+#[test]
+fn test_step_owners() {
+    let h = new_harness();
+    let (a, b) = (call_a(), call_b());
+    let out = h.okj(&a, "board_create", json!({"title": "two halves"}));
+    let id = created_id(&out);
+    h.okj(&a, "board_join", json!({"task_id": id}));
+    let out = h.okj(
+        &a,
+        "board_steps",
+        json!({"task_id": id, "steps": [
+            {"text": "server half"},
+            {"text": "window half", "owner": "beta"},
+        ]}),
+    );
+    has(&out, &["Woke: beta", "s2 \"window half\" (owner: beta"]);
+    has(
+        &h.ok(&a, "board", "{}"),
+        &["with beta (dev1/bbbbbbbb-2222-4222-8222-222222222222) (s2) on steps"],
+    );
+    // beta ticks its own step, not someone else's.
+    h.failsj(
+        &b,
+        "board_step",
+        json!({"task_id": id, "step_id": "s1", "done": true}),
+        &["tick a step"],
+    );
+    h.okj(
+        &b,
+        "board_step",
+        json!({"task_id": id, "step_id": "s2", "done": true}),
+    );
+    let out = h.ok(&a, "board", "{}");
+    assert!(!out.contains("on steps"), "done drops the co-holder: {out}");
+    // board_step owner= gives a step out; empty takes it back.
+    has(
+        &h.okj(
+            &a,
+            "board_step",
+            json!({"task_id": id, "step_id": "s1", "owner": "beta"}),
+        ),
+        &["Woke: beta", "with beta"],
+    );
+    let out = h.okj(
+        &a,
+        "board_step",
+        json!({"task_id": id, "step_id": "s1", "owner": ""}),
+    );
+    assert!(!out.contains("on steps"), "{out}");
+}

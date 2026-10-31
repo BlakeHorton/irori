@@ -1712,12 +1712,27 @@ pub(crate) fn sync_holder(t: &mut Task) {
     t.assigned.retain(|a| holders.contains(a));
     let offered = t.assigned.clone();
     t.handoffs.retain(|k, _| offered.contains(k));
+    sync_co_holders(t);
     if t.holders.is_empty() {
         t.holder.clear();
         return;
     }
     t.holder = t.holders[0].clone();
     t.returned = None;
+}
+
+/// Derives co_holders: owners of open steps who don't hold the card,
+/// sorted (card #86).
+pub(crate) fn sync_co_holders(t: &mut Task) {
+    let mut co: Vec<String> = t
+        .steps
+        .iter()
+        .filter(|s| !s.done && !s.owner.is_empty() && !t.holders.contains(&s.owner))
+        .map(|s| s.owner.clone())
+        .collect();
+    co.sort();
+    co.dedup();
+    t.co_holders = co;
 }
 
 pub(crate) fn is_holder(t: &Task, key: &str) -> bool {

@@ -101,12 +101,18 @@ export function sampleHolder(working: AgentRef[]): CardHolder {
   return CardHolder({ who, state, others: working.length - 1 })
 }
 
-type StepSeed = [text: string, done: boolean, doing?: boolean]
+type StepSeed = [text: string, done: boolean, doing?: boolean, owner?: string]
 
 function steps(seeds: StepSeed[]): Step[] {
   return seeds.map(
-    ([text, done, doing], i) =>
-      Step({ id: `s${i + 1}`, text, done, doing: doing || undefined })
+    ([text, done, doing, owner], i) =>
+      Step({
+        id: `s${i + 1}`,
+        text,
+        done,
+        doing: doing || undefined,
+        owner: owner || undefined,
+      })
   )
 }
 
@@ -689,7 +695,9 @@ export function sampleCards(now: Date): CardDetail[] {
       pinRank: 1,
       repoKey: "remote:github.com/sample-org/example-app",
       goal: "My laptop and desktop share one roster, cards and wakes.",
-      working: [otter],
+      // sample-heron owns the Sync step, so it's on the card until that
+      // step is done (card #86).
+      working: [otter, AgentRef({ ...heron, steps: ["s3"] })],
       watching: [badger],
       // sample-otter and sample-wren (on the MacBook) are messaging each
       // other about it: the tile's talk bubble (card #22).
@@ -702,7 +710,7 @@ export function sampleCards(now: Date): CardDetail[] {
       steps: steps([
         ["Design", true],
         ["Identity and pairing", false, true],
-        ["Sync", false],
+        ["Sync", false, false, heron.key],
         ["Cross-device wakes and files", false],
       ]),
       links: [

@@ -83,6 +83,9 @@ crate::go_struct! {
         pub text: String = "text",
         pub done: bool = "done",
         pub doing: bool = "doing" "omit",
+        /// The agent doing this step, a co-holder of the card while the
+        /// step is open (card #86).
+        pub owner: String = "owner" "omit",
     }
 }
 
@@ -294,6 +297,10 @@ pub struct Task {
     /// haven't taken it up (card #85).
     #[serde(skip_serializing_if = "omit")]
     pub handoffs: BTreeMap<String, String>,
+    /// Agents that own an open step and don't hold the card: they hear it
+    /// like a holder until their steps are done (card #86). Derived.
+    #[serde(skip_serializing_if = "omit")]
+    pub co_holders: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub shared: bool,
     pub created_by: String,
@@ -560,6 +567,8 @@ pub struct MessageEntry {
 
 /// Why a Notice exists.
 pub const NOTICE_ASSIGNED: &str = "assigned";
+/// An agent was given a step (card #86).
+pub const NOTICE_STEP_OWNER: &str = "step_owner";
 pub const NOTICE_COMMENT: &str = "comment";
 pub const NOTICE_UNBLOCKED: &str = "unblocked";
 pub const NOTICE_RETURNED: &str = "returned";

@@ -9,7 +9,7 @@ use irori_identity::owner;
 use store::{Event, kinds};
 
 use super::error::{Result, bad_state, invalid, not_allowed, not_found, subtask};
-use super::fold::{Fold, Touch, WatchLine, line_of, restore_state, take_up};
+use super::fold::{Fold, Touch, WatchLine, line_of, restore_state, sync_co_holders, take_up};
 use super::links::parse_link;
 use super::rows::*;
 use super::types::*;
@@ -257,6 +257,8 @@ pub(crate) fn new_steps(input: &[Step]) -> Vec<Step> {
             text: s.text.clone(),
             done: s.done,
             doing: s.doing,
+            // board_create gives no owners; board_steps does (card #86).
+            owner: String::new(),
         })
         .collect()
 }
@@ -757,6 +759,7 @@ impl Fold {
                 t.updated_at = when;
                 t.updated_by = p.by.clone();
                 take_up(t, &p.by);
+                sync_co_holders(t);
                 let (d, n) = t.progress();
                 let what = format!("{} ({d}/{n} done)", steps_change(&was, &t.steps));
                 let ti = Touch::of(t);
@@ -782,6 +785,10 @@ impl Fold {
                         doing: p.doing,
                     },
                 );
+                if let Some(o) = &p.owner {
+                    t.steps[i].owner = trim_space(o).to_string();
+                }
+                sync_co_holders(t);
                 let after = t.steps[i].clone();
                 let when = at(p.at);
                 t.updated_at = when;
@@ -795,6 +802,10 @@ impl Fold {
                     format!("started “{}”", after.text)
                 } else if !after.doing && before.doing {
                     format!("paused “{}”", after.text)
+                } else if after.owner != before.owner && !after.owner.is_empty() {
+                    format!("gave “{}” to {}", after.text, after.owner)
+                } else if after.owner != before.owner {
+                    format!("took {} off “{}”", before.owner, after.text)
                 } else {
                     String::new()
                 };
@@ -1474,6 +1485,7 @@ impl Fold {
                 text: s.text.clone(),
                 done: s.done,
                 doing: s.doing,
+                owner: self.check_owner(&s.owner)?,
             });
         }
         if out == t.steps {
@@ -1509,12 +1521,13 @@ impl Fold {
             return Err(invalid("a step can't be done and in progress"));
         }
         let t = self.open_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("tick a step of task {id}")));
-        }
         let Some(i) = t.steps.iter().position(|s| s.id == sid) else {
             return Err(not_found(format!("task {id} has no step {}", quote(sid))));
         };
+        // A step's owner may tick its own step (card #86).
+        if !self.may_manage(&t, &by) && t.steps[i].owner != by {
+            return Err(not_allowed(format!("tick a step of task {id}")));
+        }
         if apply_step(&t.steps, i, u) == t.steps {
             return Ok(t);
         }
@@ -1529,9 +1542,134 @@ impl Fold {
                 doing: u.doing,
                 by: by.clone(),
                 at,
+                ..TaskStepRow::default()
             },
         )?;
         Ok(self.tasks[id].clone())
+    }
+
+    /// A step owner: an agent's key, or "" for none. The person and Irori
+    /// don't own steps.
+    pub(crate) fn check_owner(&self, owner: &str) -> Result<String> {
+        let o = trim_space(owner).to_string();
+        if o.is_empty() {
+            return Ok(o);
+        }
+        check_key(&o)?;
+        if self.is_owner(&o) || o == SWEEPER {
+            return Err(invalid("a step's owner is an agent, not the person"));
+        }
+        Ok(o)
+    }
+
+    /// Gives step `sid` of card `id` to `owner` ("" takes it off anyone);
+    /// whoever may set the card's steps may (card #86).
+    pub(crate) fn set_step_owner(
+        &mut self,
+        by: &str,
+        id: &str,
+        sid: &str,
+        owner: &str,
+    ) -> Result<(Task, Vec<Notice>)> {
+        let by = caller(by)?;
+        let sid = trim_space(sid);
+        let owner = self.check_owner(owner)?;
+        let t = self.open_task(id)?.clone();
+        if !self.may_manage(&t, &by) {
+            return Err(not_allowed(format!("give a step of task {id} to someone")));
+        }
+        let Some(s) = t.steps.iter().find(|s| s.id == sid) else {
+            return Err(not_found(format!("task {id} has no step {}", quote(sid))));
+        };
+        if s.owner == owner {
+            return Ok((t, Vec::new()));
+        }
+        let at = self.stamp();
+        self.write(
+            &by,
+            kinds::TASK_STEP,
+            &TaskStepRow {
+                task_id: id.into(),
+                step_id: sid.into(),
+                owner: Some(owner),
+                by: by.clone(),
+                at,
+                ..TaskStepRow::default()
+            },
+        )?;
+        let after = self.tasks[id].clone();
+        let ns = self.owner_notices(&by, &t, &after);
+        Ok((after, ns))
+    }
+
+    /// [`Self::set_steps`] and a notice for each agent it newly gives a
+    /// step to.
+    pub(crate) fn set_steps_notice(
+        &mut self,
+        by: &str,
+        id: &str,
+        input: Vec<Step>,
+    ) -> Result<(Task, Vec<Notice>)> {
+        let before = self.open_task(id)?.clone();
+        let after = self.set_steps(by, id, input)?;
+        let by = trim_space(by).to_string();
+        let ns = self.owner_notices(&by, &before, &after);
+        Ok((after, ns))
+    }
+
+    /// One notice per agent that owns an open step on `after` it didn't
+    /// own on `before`: woken when idle, else at its next turn.
+    fn owner_notices(&self, by: &str, before: &Task, after: &Task) -> Vec<Notice> {
+        let mut by_owner: Vec<(String, Vec<&Step>)> = Vec::new();
+        for s in after
+            .steps
+            .iter()
+            .filter(|s| !s.done && !s.owner.is_empty())
+        {
+            let had = before
+                .steps
+                .iter()
+                .any(|o| o.id == s.id && o.owner == s.owner);
+            if had || s.owner == by || self.is_owner(&s.owner) {
+                continue;
+            }
+            match by_owner.iter_mut().find(|(o, _)| *o == s.owner) {
+                Some((_, v)) => v.push(s),
+                None => by_owner.push((s.owner.clone(), vec![s])),
+            }
+        }
+        by_owner
+            .into_iter()
+            .map(|(o, ss)| {
+                let list: Vec<String> = ss
+                    .iter()
+                    .map(|s| format!("{} {}", s.id, quote(&s.text)))
+                    .collect();
+                let holder = if after.holder.is_empty() {
+                    "nobody".to_string()
+                } else {
+                    after.holder.clone()
+                };
+                Notice {
+                    kind: NOTICE_STEP_OWNER.into(),
+                    task_id: after.id.clone(),
+                    reference: format!("task:{}", after.id),
+                    title: after.title.clone(),
+                    to: vec![o.clone()],
+                    by: by.into(),
+                    wake: self.idle(&o),
+                    text: format!(
+                        "{by} gave you {} on {} ({}): {}. You hear the card like a holder until your steps are done; tick each with board_step. {holder} holds the card.{}",
+                        if ss.len() == 1 { "a step" } else { "steps" },
+                        quote(&after.title),
+                        after.refs(),
+                        list.join(", "),
+                        deeper(&after.id)
+                    ),
+                    ..Notice::default()
+                }
+            })
+            .collect()
     }
 
     // ---- watch ----

@@ -363,6 +363,9 @@ pub struct Step {
     pub done: bool,
     #[specta(optional)]
     pub doing: bool,
+    /// The agent doing the step (card #86).
+    #[specta(optional)]
+    pub owner: String,
 }
 
 /// coord.BlockedBy.

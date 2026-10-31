@@ -415,6 +415,26 @@ impl Coord {
     pub fn edit_task(&self, by: &str, id: &str, e: TaskEdit) -> Result<Task> {
         self.lock().edit_task(by, id, e)
     }
+    /// [`Self::set_steps`] with a notice for each agent newly given a step
+    /// (card #86).
+    pub fn set_steps_notice(
+        &self,
+        by: &str,
+        id: &str,
+        steps: Vec<Step>,
+    ) -> Result<(Task, Vec<Notice>)> {
+        self.lock().set_steps_notice(by, id, steps)
+    }
+    /// Gives a step to an agent ("" takes it off anyone) (card #86).
+    pub fn set_step_owner(
+        &self,
+        by: &str,
+        id: &str,
+        step: &str,
+        owner: &str,
+    ) -> Result<(Task, Vec<Notice>)> {
+        self.lock().set_step_owner(by, id, step, owner)
+    }
     pub fn set_steps(&self, by: &str, id: &str, steps: Vec<Step>) -> Result<Task> {
         self.lock().set_steps(by, id, steps)
     }
