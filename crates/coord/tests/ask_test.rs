@@ -39,6 +39,20 @@ fn post_ask(e: &Env, text: &str) -> (Task, Notice) {
     .unwrap()
 }
 
+/// An ask posted while no agent is idle: unclaimed, for the take lock's
+/// own tests (claims, rows from other devices).
+fn post_unheard(e: &Env, text: &str) -> (Task, Notice) {
+    e.c.post_ask(
+        USER,
+        NewAsk {
+            text: text.into(),
+            ..NewAsk::default()
+        },
+        &[],
+    )
+    .unwrap()
+}
+
 fn ask_of(c: &Coord, id: &str) -> Ask {
     c.get_task(id)
         .and_then(|t| t.ask)
@@ -50,7 +64,7 @@ fn sec() -> Duration {
 }
 
 #[test]
-fn test_post_ask_tells_every_free_agent() {
+fn test_post_ask_hands_it_to_one_idle_agent() {
     let e = Env::new();
     e.ros.set(CAROL, "busy");
     let (tk, n) = post_ask(
@@ -66,24 +80,25 @@ fn test_post_ask_tells_every_free_agent() {
     let a = ask_of(&e.c, &tk.id);
     assert!(
         a.owner == "dev-a"
-            && a.told == 2
-            && a.reason == TAKE_POSTED
-            && a.taker.is_empty()
+            && a.told == 1
+            && a.reason == TAKE_HANDED
+            && a.taker == ALICE
+            && a.handed
             && !a.unclaimed,
         "{a:?}"
     );
     assert!(
         n.kind == NOTICE_ASK
             && n.person
-            && n.to == [ALICE, BOB]
-            && n.text.contains(&format!("ask_claim #{}", tk.short))
+            && n.to == [ALICE]
+            && n.text.contains(&format!("board_leave #{}", tk.short))
             && n.wake,
         "{n:?}"
     );
     assert_eq!(
         n.text,
         format!(
-            "The person asks the room (#1, task:{id}):\nWhy is the build slow on the Mac?\nIt was fine last week.\nIf you can take it on now, ask_claim #1: one agent takes it, and you hear if someone else got there first. If you're busy, leave it.\nshow task:{id} for the card, its comments and links.",
+            "The person asks the room (#1, task:{id}), and Irori handed it to you:\nWhy is the build slow on the Mac?\nIt was fine last week.\nYou hold it: no ask_claim needed. Talk it through with the person on the card first if it isn't clear what they want, then ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #1 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:{id} for the card, its comments and links.",
             id = tk.id
         )
     );
@@ -110,7 +125,7 @@ fn test_post_ask_tells_every_free_agent() {
 #[test]
 fn test_two_local_claims_one_taker() {
     let e = Env::new();
-    let (tk, _) = post_ask(&e, "Fix the flaky test");
+    let (tk, _) = post_unheard(&e, "Fix the flaky test");
     let res: Vec<Result<ClaimResult>> = std::thread::scope(|s| {
         let hs: Vec<_> = [ALICE, BOB]
             .into_iter()
@@ -159,34 +174,42 @@ fn test_taker_gone_hands_it_back() {
     assert!(e.c.ask_claim(ALICE, &tk.id, sec()).unwrap().mine);
     e.ros.set(ALICE, "");
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(ask_of(&e.c, &tk.id).taker == ALICE && ns.is_empty());
+    assert!(
+        ask_of(&e.c, &tk.id).taker == ALICE && ns.is_empty(),
+        "{:?} {ns:?}",
+        ask_of(&e.c, &tk.id)
+    );
     e.clk.add(GONE_GRACE + sec());
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
     let a = ask_of(&e.c, &tk.id);
-    assert!(a.taker.is_empty() && a.reason == TAKE_GONE, "{a:?}");
+    assert!(
+        a.taker == BOB && a.handed && a.heard == [ALICE, BOB],
+        "{a:?}"
+    );
     assert!(
         ns.len() == 1
             && ns[0].kind == NOTICE_ASK
-            && ns[0].to == [BOB, CAROL]
+            && ns[0].to == [BOB]
             && ns[0].text.contains("went away"),
         "{ns:?}"
     );
     assert!(e.c.ask_claim(BOB, &tk.id, sec()).unwrap().mine);
+    assert!(!ask_of(&e.c, &tk.id).handed);
     e.c.leave(BOB, &tk.id, BOB).unwrap();
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
     let a = ask_of(&e.c, &tk.id);
-    assert!(a.taker.is_empty() && a.reason == TAKE_RELEASED);
+    assert!(a.taker == CAROL && a.handed, "{a:?}");
     assert!(ns.len() == 1 && ns[0].to == [CAROL], "{ns:?}");
     let c2 = e.reopen();
     c2.sweep_asks(&agents(&e)).unwrap();
-    assert!(ask_of(&c2, &tk.id).taker.is_empty());
+    assert_eq!(ask_of(&c2, &tk.id).taker, CAROL);
 }
 
 #[test]
 fn test_offline_taker_keeps_it() {
     let e = Env::new();
     const REMOTE: &str = "dev-b/far-session";
-    let (tk, _) = post_ask(&e, "Check the Mac's disk");
+    let (tk, _) = post_unheard(&e, "Check the Mac's disk");
     let at = hlc_at(plus(fixed_now(), mins(1)));
     e.remote(
         "dev-b",
@@ -213,42 +236,56 @@ fn test_offline_taker_keeps_it() {
     e.clk.add(Duration::from_secs(3600));
     e.c.sweep_asks(&offline).unwrap();
     assert_eq!(ask_of(&e.c, &tk.id).taker, REMOTE);
-    e.c.sweep_asks(&agents(&e)).unwrap();
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
     let a = ask_of(&e.c, &tk.id);
-    assert!(a.taker.is_empty() && a.reason == TAKE_GONE);
+    assert!(a.taker == ALICE && a.handed, "{a:?}");
+    assert!(ns.len() == 1 && ns[0].text.contains("went away"), "{ns:?}");
 }
 
 #[test]
 fn test_unclaimed_and_ask_again() {
     let e = Env::new();
-    let (tk, _) = post_ask(&e, "Tidy the README");
-    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(ns.is_empty() && !ask_of(&e.c, &tk.id).unclaimed);
-    e.clk.add(ASK_UNCLAIMED);
-    e.c.sweep_asks(&agents(&e)).unwrap();
-    let a = ask_of(&e.c, &tk.id);
-    assert!(a.unclaimed && a.reason == TAKE_UNCLAIMED);
-    let n = e.rows(kinds::TAKE_STATE).len();
-    e.c.sweep_asks(&agents(&e)).unwrap();
-    assert_eq!(e.rows(kinds::TAKE_STATE).len(), n);
-    e.c.ask_again(USER, &tk.id).unwrap();
-    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(ns.len() == 1 && ns[0].wake && ns[0].to.len() == 3, "{ns:?}");
-    let a = ask_of(&e.c, &tk.id);
-    assert!(!a.unclaimed && a.reason == TAKE_REOPENED);
-    assert!(e.c.ask_claim(CAROL, &tk.id, sec()).unwrap().mine);
     for k in [ALICE, BOB, CAROL] {
         e.ros.set(k, "busy");
     }
-    let (t2, n2) = post_ask(&e, "Nobody around");
-    let a = ask_of(&e.c, &t2.id);
-    assert!(a.unclaimed && a.told == 0 && n2.to.is_empty());
+    let (tk, n) = post_ask(&e, "Tidy the README");
+    let a = ask_of(&e.c, &tk.id);
+    assert!(
+        a.unclaimed && a.told == 0 && a.taker.is_empty() && n.to.is_empty(),
+        "{a:?}"
+    );
+    let rows = e.rows(kinds::TAKE_STATE).len();
+    // Nothing changed, nothing written, however long it waits.
+    e.clk.add(Duration::from_secs(3600));
+    assert!(e.c.sweep_asks(&agents(&e)).unwrap().is_empty());
+    assert_eq!(e.rows(kinds::TAKE_STATE).len(), rows);
+    // An agent going idle gets it.
     e.ros.set(BOB, "idle");
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [BOB] && ns[0].wake, "{ns:?}");
+    let a = ask_of(&e.c, &tk.id);
     assert!(
-        ns.len() == 1 && ns[0].to == [BOB] && ask_of(&e.c, &t2.id).told == 1,
+        a.taker == BOB && a.handed && !a.unclaimed && a.told == 1,
+        "{a:?}"
+    );
+    // BOB gives it back and nobody else is idle: unclaimed, BOB not told again.
+    e.c.leave(BOB, &tk.id, BOB).unwrap();
+    assert!(e.c.sweep_asks(&agents(&e)).unwrap().is_empty());
+    let a = ask_of(&e.c, &tk.id);
+    assert!(
+        a.taker.is_empty() && a.unclaimed && a.heard == [BOB],
+        "{a:?}"
+    );
+    // The person's "Wake them": everyone may hear it again.
+    e.c.ask_again(USER, &tk.id).unwrap();
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [BOB] && ns[0].wake, "{ns:?}");
+    assert!(
+        ns[0].text.contains("the person wants it picked up"),
         "{ns:?}"
     );
+    let a = ask_of(&e.c, &tk.id);
+    assert!(a.taker == BOB && a.handed && a.heard == [BOB], "{a:?}");
 }
 
 #[test]
@@ -323,7 +360,9 @@ fn test_ask_outcomes() {
     );
     e.c.set_task_state(ALICE, &card.id, COMPLETED, "done")
         .unwrap();
+    e.ros.set(ALICE, "busy");
     let (edit, _) = post_ask(&e, "docs should mention Windows");
+    assert_eq!(ask_of(&e.c, &edit.id).taker, BOB);
     e.c.ask_claim(BOB, &edit.id, sec()).unwrap();
     e.c.ask_close(
         BOB,
@@ -379,7 +418,7 @@ fn test_ask_outcomes() {
 #[test]
 fn test_take_rows_from_the_wrong_device_and_old_claims() {
     let e = Env::new();
-    let (tk, _) = post_ask(&e, "who wants this");
+    let (tk, _) = post_unheard(&e, "who wants this");
     let at = hlc_at(plus(fixed_now(), mins(1)));
     e.remote(
         "dev-b",
@@ -508,26 +547,25 @@ fn test_take_rows_two_orders_and_the_loser_hears() {
 }
 
 #[test]
-fn test_person_comment_on_an_open_ask_goes_to_the_room() {
+fn test_person_comment_on_an_open_ask_goes_to_its_holder() {
     let e = Env::new();
     let (tk, _) = post_ask(&e, "check the logs");
     let (_, ns) =
         e.c.person_comment(USER, &tk.id, "also the cron ones", false, &[], None)
             .unwrap();
-    assert!(
-        ns.len() == 1 && ns[0].to.len() == 3 && ns[0].person && ns[0].text.contains("ask_claim"),
-        "{ns:?}"
-    );
-    assert!(ns[0].kind == NOTICE_ASK_COMMENT && ns[0].reference == format!("task:{}", tk.id));
-    e.c.ask_claim(ALICE, &tk.id, sec()).unwrap();
-    assert!(
-        !e.c.stale_notice(&ns[0].reference, BOB).is_empty()
-            && e.c.stale_notice(&ns[0].reference, ALICE).is_empty()
-    );
-    let (_, ns) =
-        e.c.person_comment(USER, &tk.id, "thanks", false, &[], None)
-            .unwrap();
     assert!(ns.len() == 1 && ns[0].to == [ALICE], "{ns:?}");
+    // The person's comment isn't the holder acting on it: still handed.
+    assert!(e.c.sweep_asks(&agents(&e)).unwrap().is_empty());
+    assert!(ask_of(&e.c, &tk.id).handed);
+    // Nobody idle: the room is nobody, and nobody is told.
+    for k in [ALICE, BOB, CAROL] {
+        e.ros.set(k, "busy");
+    }
+    let (t2, _) = post_ask(&e, "and the disk");
+    let (_, ns) =
+        e.c.person_comment(USER, &t2.id, "the big one", false, &[], None)
+            .unwrap();
+    assert!(ns.iter().all(|n| n.to.is_empty()), "{ns:?}");
 }
 
 #[test]
@@ -535,7 +573,7 @@ fn test_a_takers_close_before_the_take_on_a_third_device() {
     let persons: KeyFn =
         Arc::new(|k: &str| k == "user:dev-a" || k == "user:dev-b" || k == "user:dev-c");
     let owner = Env::with("dev-a", Some(persons.clone()));
-    let (tk, _) = post_ask(&owner, "the deploy is flaky");
+    let (tk, _) = post_unheard(&owner, "the deploy is flaky");
     const FAR: &str = "dev-b/far-session";
     let actor = format!("agent:{FAR}");
     let at = hlc_at(plus(fixed_now(), mins(1)));
@@ -749,46 +787,28 @@ fn test_edits_need_the_taker() {
 }
 
 #[test]
-fn test_late_tells_wake_only_in_the_persons_window() {
+fn test_a_given_back_ask_goes_to_the_next_idle_agent() {
     let e = Env::new();
     e.ros.set(BOB, "busy");
     e.ros.set(CAROL, "busy");
-    let (tk, n) =
-        e.c.post_ask(
-            USER,
-            NewAsk {
-                text: "wake for this".into(),
-                wake: true,
-                ..NewAsk::default()
-            },
-            &agents(&e),
-        )
-        .unwrap();
+    let (tk, n) = post_ask(&e, "wake for this");
     assert!(n.wake && n.to == [ALICE]);
+    // Held by ALICE: an agent going idle hears nothing.
     e.ros.set(BOB, "idle");
-    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(ns.len() == 1 && ns[0].wake && ns[0].to == [BOB], "{ns:?}");
-    e.clk.add(ASK_UNCLAIMED + sec());
-    e.ros.set(CAROL, "idle");
-    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(
-        ns.len() == 1 && !ns[0].wake && ns[0].to == [CAROL],
-        "{ns:?}"
-    );
-    e.c.ask_claim(ALICE, &tk.id, sec()).unwrap();
+    assert!(e.c.sweep_asks(&agents(&e)).unwrap().is_empty());
     e.c.leave(ALICE, &tk.id, ALICE).unwrap();
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
     assert!(
-        ns.len() == 1 && ns[0].wake && ns[0].text.contains("gave it back"),
+        ns.len() == 1 && ns[0].wake && ns[0].to == [BOB] && ns[0].text.contains("gave it back"),
         "{ns:?}"
     );
-    // The agent that gave it back isn't told (and woken) again as a late joiner.
-    e.ros.set(ALICE, "idle");
+    // The agent that gave it back isn't handed it again.
+    e.c.leave(BOB, &tk.id, BOB).unwrap();
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(
-        ns.iter().all(|n| !n.to.contains(&ALICE.to_string())),
-        "{ns:?}"
-    );
+    assert!(ns.is_empty(), "{ns:?}");
+    e.ros.set(CAROL, "idle");
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [CAROL], "{ns:?}");
 }
 
 #[test]
@@ -801,7 +821,7 @@ fn test_a_failed_sweep_keeps_the_retell() {
     assert!(e.c.sweep_asks(&agents(&e)).is_err());
     e.st.hold_appends(0);
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert!(ns.len() == 1 && ns[0].to == [BOB, CAROL], "{ns:?}");
+    assert!(ns.len() == 1 && ns[0].to == [BOB], "{ns:?}");
 }
 
 #[test]
@@ -810,7 +830,9 @@ fn test_ask_line() {
     let (tk, _) = post_ask(&e, "look");
     assert_eq!(
         e.c.get_task(&tk.id).unwrap().ask_line(),
-        "the person asked the room; 3 agents told, nobody has taken it: ask_claim takes it"
+        format!(
+            "the person asked the room; Irori handed it to {ALICE}, who holds it (ask_close ends it with what it became; board_leave passes it on)"
+        )
     );
     e.c.ask_claim(ALICE, &tk.id, sec()).unwrap();
     assert_eq!(

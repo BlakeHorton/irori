@@ -77,6 +77,7 @@ describe("asks", () => {
     expect(askLine(ask({ state: "waiting" }))).toBe("Waiting for MacBook to hand it out")
     expect(askLine(ask({ state: "unclaimed" }))).toBe("Nobody took this yet")
     expect(askLine(ask({ state: "taken", taker: agent("idle", { name: "sample-heron" }) }))).toBe("sample-heron took it")
+    expect(askLine(ask({ state: "handed", taker: agent("idle", { name: "sample-heron" }) }))).toBe("Handed to sample-heron")
   })
   test("only an ask without an outcome is open", () => {
     expect(openAsk({ ask: ask({}) })).toBe(true)

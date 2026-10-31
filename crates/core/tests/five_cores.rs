@@ -1172,7 +1172,8 @@ fn a_board_ask_reaches_bob() {
                 && d.mode == inbox::mode::WAKE
                 && d.message.from.key.starts_with("board:")
                 && d.message.text.contains("asks the room")
-                && d.message.text.contains(&format!("ask_claim {short}"))
+                && d.message.text.contains("Irori handed it to you")
+                && d.message.text.contains(&format!("board_leave {short}"))
         })
     });
     // A kick doesn't tell it twice.
@@ -1188,8 +1189,8 @@ fn a_board_ask_reaches_bob() {
         .count();
     assert_eq!(heard, 1);
 
-    // Bob's agent takes it: its claim crosses to Alice's device, which
-    // writes the take, and the take comes back.
+    // Bob's agent holds it (#91); its claim crosses to Alice's device,
+    // which writes the take, and the take comes back.
     let stop = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|sc| {
         sc.spawn(|| {

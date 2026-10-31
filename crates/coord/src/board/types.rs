@@ -238,6 +238,10 @@ pub struct Ask {
     pub since: GoTime,
     #[serde(skip_serializing_if = "omit")]
     pub unclaimed: bool,
+    /// Irori handed it to taker, which hasn't acted on it yet: it moves on
+    /// if taker passes, ends its turn without touching it, or goes away.
+    #[serde(skip_serializing_if = "omit")]
+    pub handed: bool,
     #[serde(skip_serializing_if = "omit")]
     pub waiting: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
@@ -395,6 +399,12 @@ impl Task {
                 s.push_str(&format!(" (task:{})", o.task));
             }
             return s;
+        }
+        if !a.taker.is_empty() && a.handed {
+            return format!(
+                "the person asked the room; Irori handed it to {}, who holds it (ask_close ends it with what it became; board_leave passes it on)",
+                a.taker
+            );
         }
         if !a.taker.is_empty() {
             return format!(

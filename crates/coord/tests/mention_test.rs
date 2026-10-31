@@ -371,6 +371,10 @@ fn agents(e: &Env) -> Vec<coord::roster::AgentCard> {
     e.ros.agents()
 }
 
+fn ask_of(c: &Coord, id: &str) -> coord::Ask {
+    c.get_task(id).and_then(|t| t.ask).unwrap()
+}
+
 #[test]
 fn an_ask_with_mentions_goes_only_to_them() {
     let e = Env::new();
@@ -394,26 +398,52 @@ fn an_ask_with_mentions_goes_only_to_them() {
         "{}",
         n.text
     );
+    // Handed to it, as any ask is to one agent (#91): it holds it.
     let a = t.ask.clone().unwrap();
     assert_eq!((a.told, a.heard.clone()), (1, vec![BOB.to_string()]));
+    assert_eq!(a.taker, BOB);
     assert_eq!(a.mentions, [m(BOB, "bob")]);
-    // No late arrivals: a newly idle agent isn't told.
+    // An agent going idle isn't told: the ask names only bob.
     e.ros.set(CAROL, "idle");
     e.clk.add(secs(5));
     let ns = e.c.sweep_asks(&agents(&e)).unwrap();
     assert!(ns.is_empty(), "{ns:?}");
-    // Wake them re-tells only the mentioned.
-    e.c.ask_again(USER, &t.id).unwrap();
-    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
-    assert_eq!(ns.len(), 1, "{ns:?}");
-    assert_eq!(ns[0].to, [BOB]);
-    assert!(ns[0].wake);
-    // The person's comment while nobody took it reaches the same agent.
+    // The person's comment reaches the agent holding it.
     let (_, ns) =
         e.c.person_comment(USER, &t.id, "any luck?", false, &[], None)
             .unwrap();
-    assert_eq!(ns[0].kind, NOTICE_ASK_COMMENT);
     assert_eq!(ns[0].to, [BOB]);
+    // Given back, it goes to nobody it doesn't name.
+    e.c.leave(BOB, &t.id, BOB).unwrap();
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.iter().all(|n| !n.to.contains(&CAROL.to_string())), "{ns:?}");
+    assert!(ask_of(&e.c, &t.id).taker.is_empty());
+}
+
+#[test]
+fn an_ask_naming_two_is_handed_on_in_their_order() {
+    let e = Env::new();
+    e.ros.set(BOB, "busy");
+    e.ros.set(CAROL, "idle");
+    let (t, n) =
+        e.c.post_ask(
+            USER,
+            NewAsk {
+                text: "@carol or @bob: why is the Mac build slow?".into(),
+                mentions: vec![m(CAROL, "carol"), m(BOB, "bob")],
+                ..NewAsk::default()
+            },
+            &agents(&e),
+        )
+        .unwrap();
+    // The first named holds it; idle alice, never named, hears nothing.
+    assert_eq!(n.to, [CAROL]);
+    assert!(n.text.contains("the next agent it names"), "{}", n.text);
+    assert_eq!(t.ask.clone().unwrap().taker, CAROL);
+    e.c.leave(CAROL, &t.id, CAROL).unwrap();
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [BOB], "{ns:?}");
+    assert_eq!(ask_of(&e.c, &t.id).taker, BOB);
 }
 
 #[test]

@@ -101,6 +101,7 @@ export const AskState = {
   Waiting: "waiting",
   Unclaimed: "unclaimed",
   Taken: "taken",
+  Handed: "handed",
   Closed: "closed",
 } as const
 
@@ -160,6 +161,8 @@ export function askLine(a: CardAsk): string {
   switch (a.state) {
     case AskState.Taken:
       return `${a.taker ? displayName(a.taker) : "An agent"} took it`
+    case AskState.Handed:
+      return `Handed to ${a.taker ? displayName(a.taker) : "an agent"}`
     case AskState.Waiting:
       return `Waiting for ${plainLine(a.owner) || "the device it was posted from"} to hand it out`
     case AskState.Unclaimed:

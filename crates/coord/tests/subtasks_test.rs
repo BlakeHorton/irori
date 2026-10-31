@@ -367,10 +367,7 @@ fn test_subtask_changes_reach_the_parents_holder() {
 fn test_asks_and_subtasks() {
     let e = Env::new();
     let p = e.c.create_task(ALICE, nt("parent")).unwrap();
-    let agents = {
-        use coord::roster::Agents as _;
-        e.ros.agents()
-    };
+    // Posted while nobody is idle, so BOB can claim it below.
     let (ask, _) =
         e.c.post_ask(
             USER,
@@ -378,7 +375,7 @@ fn test_asks_and_subtasks() {
                 text: "can someone look at the login flow?".into(),
                 ..NewAsk::default()
             },
-            &agents,
+            &[],
         )
         .unwrap();
     want_err(

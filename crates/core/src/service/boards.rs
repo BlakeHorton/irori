@@ -1705,14 +1705,27 @@ impl Services {
         Ok((self.private_task(t), self.own_ask_notice(&b, n)))
     }
 
-    /// Board coords' sweep notices and asks' timed rounds, routed like the
-    /// private board's (Go `sweepBoards`).
+    /// Board coords' sweep notices and asks, routed like the private
+    /// board's (Go `sweepBoards`).
     pub(crate) fn sweep_boards(&self) -> std::result::Result<(), String> {
+        self.sweep_boards_with(true)
+    }
+
+    /// Only the boards' asks: handed out and on (#91).
+    pub(crate) fn sweep_board_asks(&self) -> std::result::Result<(), String> {
+        self.sweep_boards_with(false)
+    }
+
+    fn sweep_boards_with(&self, notices: bool) -> std::result::Result<(), String> {
         let mut errs = Vec::new();
         for b in self.boards.list() {
-            let (mut ns, err) = b.coord().sweep_notices_partial();
-            if let Err(e) = err {
-                errs.push(e.to_string());
+            let mut ns = Vec::new();
+            if notices {
+                let (n, err) = b.coord().sweep_notices_partial();
+                if let Err(e) = err {
+                    errs.push(e.to_string());
+                }
+                ns = n;
             }
             let (asks, aerr) = b.coord().sweep_asks_partial(&self.board_ask_agents(&b));
             if let Err(e) = aerr {

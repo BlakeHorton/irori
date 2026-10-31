@@ -172,9 +172,9 @@ fn set_receive(c: &Core, board: &str, preset: &str) {
         .unwrap();
 }
 
-/// §9: Alice's ask on the board reaches Bob's free agents as a message from
-/// Alice, woken when she asked for a wake, once per round however often
-/// her sweep widens it.
+/// §9, #91: Alice's ask on the board is handed to one of Bob's idle agents,
+/// as a message from Alice, woken; it moves on to the next only when that
+/// one lets it go or goes away, each hand-out told once.
 #[test]
 fn a_board_ask_reaches_the_other_persons_free_agents() {
     let t = two_people();
@@ -205,14 +205,20 @@ fn a_board_ask_reaches_the_other_persons_free_agents() {
     assert_eq!(m.ref_, format!("task:{}", ask.id));
     assert_eq!(d.mode, mode::WAKE, "she asked for a wake: {d:?}");
     assert!(
-        m.text.contains("asks the room") && m.text.contains("ask_claim mlg#"),
+        m.text.contains("asks the room")
+            && m.text.contains("Irori handed it to you")
+            && m.text.contains("board_leave mlg#"),
         "{}",
         m.text
     );
     assert!(bridged(t.b(), &t.rb.key_b).is_empty(), "beta wasn't told");
 
-    // The sweep tells beta too, in the same round: alpha hears it once.
+    // Alpha holds it: beta going idle hears nothing.
     co.sweep_asks(&[idle(&b1), idle(&b2)]).unwrap();
+    t.sync();
+    settle_bridged(t.b(), &t.rb.key_b, 0);
+    // Alpha went away: it moves on to beta, and alpha heard it once.
+    co.sweep_asks(&[idle(&b2)]).unwrap();
     t.sync();
     wait_bridged(t.b(), &t.rb.key_b, 1);
     settle_bridged(t.b(), &t.rb.key_a, 1);

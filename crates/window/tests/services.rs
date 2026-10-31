@@ -150,7 +150,9 @@ fn asks_and_repos() {
             .unwrap();
     assert!(res.task.ask.is_some());
     let cards = r.w.cards();
-    assert_eq!(cards[0].ask.as_ref().unwrap().state, "open");
+    // Handed to one idle agent (#91), or open when none is.
+    let state = cards[0].ask.as_ref().unwrap().state.clone();
+    assert!(state == "handed" || state == "unclaimed", "{state}");
     let closed = r.w.close_ask(&res.task.id, "never mind").unwrap();
     assert!(closed.ask.unwrap().outcome.is_some());
     // The sessions' cwd is a plain folder: no repo.

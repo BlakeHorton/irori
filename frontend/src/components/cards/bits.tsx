@@ -224,7 +224,7 @@ export function HolderLine({
 
 // AskLine stands in for the holder line on an open ask: "3 agents heard
 // it", "Waiting for the MacBook to hand it out", "Nobody took this yet",
-// or who took it.
+// who Irori handed it to, or who took it.
 export function AskLine({
   ask,
   className,
@@ -244,9 +244,12 @@ export function AskLine({
         className
       )}
     >
-      {ask.state === AskState.Taken && (
+      {(ask.state === AskState.Taken || ask.state === AskState.Handed) && (
         <span
-          className="inline-block size-[7px] shrink-0 rounded-full bg-success"
+          className={cn(
+            "inline-block size-[7px] shrink-0 rounded-full",
+            ask.state === AskState.Taken ? "bg-success" : "bg-info"
+          )}
           aria-hidden
         />
       )}

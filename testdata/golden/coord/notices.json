@@ -58,16 +58,16 @@
  {
   "step": "ask",
   "kind": "ask",
-  "to": "dev-a/alice-session,dev-a/bob-session,dev-a/carol-session",
+  "to": "dev-a/alice-session",
   "wake": true,
-  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4):\nLook at this\nplease\nIf you can take it on now, ask_claim #2: one agent takes it, and you hear if someone else got there first. If you're busy, leave it.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
+  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), and Irori handed it to you:\nLook at this\nplease\nYou hold it: no ask_claim needed. Talk it through with the person on the card first if it isn't clear what they want, then ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #2 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
  },
  {
   "step": "ask sweep 2",
   "kind": "ask",
-  "to": "dev-a/bob-session,dev-a/carol-session",
+  "to": "dev-a/bob-session",
   "wake": true,
-  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), again: the agent that took it went away:\nLook at this\nplease\nIf you can take it on now, ask_claim #2: one agent takes it, and you hear if someone else got there first. If you're busy, leave it.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
+  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), and Irori handed it to you (the agent that took it went away):\nLook at this\nplease\nYou hold it: no ask_claim needed. Talk it through with the person on the card first if it isn't clear what they want, then ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #2 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
  },
  {
   "step": "returned 2",

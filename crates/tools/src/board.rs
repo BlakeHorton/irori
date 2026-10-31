@@ -514,7 +514,7 @@ pub(crate) fn board(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     );
     group(
         &mut b,
-        "Asks you took (ask_close each with what it became)",
+        "Asks you hold (ask_close each with what it became; board_leave passes one on)",
         &took,
         &mut cut,
     );
@@ -1511,7 +1511,7 @@ pub(crate) fn board_leave(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     };
     if ask_open(&t) {
         return format!(
-            "You gave the ask {} back; the device that hands it out tells the room again.",
+            "You gave the ask {} back; Irori hands it to the next idle agent.",
             t.short_ref()
         );
     }
