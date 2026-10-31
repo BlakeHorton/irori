@@ -144,7 +144,7 @@ export function StatePill({ card }: { card: CardSummary }) {
   if (card.holder.state === Holding.HoldAssigned)
     return (
       <Badge variant="slate" className="rounded-full">
-        Assigned
+        Offered
       </Badge>
     )
   return (
@@ -167,7 +167,7 @@ export function holderText(h: CardHolder): string {
     case Holding.HoldWaiting:
       return `Waiting for ${who}${more}: the hand-over hasn't reached it yet`
     case Holding.HoldAssigned:
-      return `Assigned to ${who}${more}, not taken up yet`
+      return `Offered to ${who}${more}, not taken up yet`
     case Holding.HoldActive:
       return `${who}${more} · active`
     case Holding.HoldIdle:

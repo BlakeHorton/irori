@@ -566,3 +566,139 @@ fn test_show_subtasks() {
 {sh}"
     );
 }
+
+/// A parent with two subtasks: ALICE holds the parent, BOB the first kid,
+/// CAROL the second. Notices from the setup are drained.
+fn split_env() -> (Env, Task, Task, Task) {
+    let e = Env::new();
+    let p = e.c.create_task(ALICE, nt("parent")).unwrap();
+    e.c.claim_task(ALICE, &p.id).unwrap();
+    let kid = |title: &str| {
+        e.c.create_task(
+            ALICE,
+            NewTask {
+                title: title.into(),
+                parent: p.id.clone(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap()
+    };
+    let (k1, k2) = (kid("one"), kid("two"));
+    e.c.claim_task(BOB, &k1.id).unwrap();
+    e.c.claim_task(CAROL, &k2.id).unwrap();
+    e.c.sweep_notices().unwrap();
+    (e, p, k1, k2)
+}
+
+/// The parent digest ALICE gets from this sweep, if any.
+fn parent_digest(e: &Env, p: &Task) -> Option<Notice> {
+    e.c.sweep_notices()
+        .unwrap()
+        .into_iter()
+        .find(|n| n.task_id == p.id && n.to.iter().any(|t| t == ALICE))
+}
+
+fn ask(q: &str, on: Option<BlockedBy>) -> NewBlocker {
+    NewBlocker {
+        question: q.into(),
+        blocked_by: on,
+        ..NewBlocker::default()
+    }
+}
+
+#[test]
+fn test_parent_holder_hears_steps_at_next_turn() {
+    let (e, p, k1, _) = split_env();
+    e.c.set_steps(BOB, &k1.id, vec![step("a"), step("b")])
+        .unwrap();
+    let n = parent_digest(&e, &p).expect("a digest for the parent holder");
+    assert!(!n.wake, "steps don't wake: {n:?}");
+}
+
+#[test]
+fn test_parent_holder_woken_by_a_blocker_for_the_person() {
+    let (e, p, k1, k2) = split_env();
+    e.c.raise(BOB, &k1.id, ask("Ship it?", None)).unwrap();
+    let n = parent_digest(&e, &p).expect("a digest");
+    assert!(n.wake, "a question for the person wakes: {n:?}");
+    let on_person = BlockedBy {
+        kind: "person".into(),
+        ..BlockedBy::default()
+    };
+    e.c.raise(CAROL, &k2.id, ask("Which port?", Some(on_person)))
+        .unwrap();
+    assert!(parent_digest(&e, &p).expect("a digest").wake);
+}
+
+#[test]
+fn test_parent_holder_not_woken_by_a_blocker_on_another_card() {
+    let (e, p, k1, k2) = split_env();
+    let on_task = BlockedBy {
+        kind: "task".into(),
+        reference: k2.id.clone(),
+    };
+    e.c.raise(BOB, &k1.id, ask("Waits on two", Some(on_task)))
+        .unwrap();
+    let n = parent_digest(&e, &p).expect("a digest");
+    assert!(!n.wake, "waiting on a card isn't for the person: {n:?}");
+}
+
+#[test]
+fn test_parent_holder_woken_by_a_failure() {
+    let (e, p, k1, _) = split_env();
+    e.c.set_task_state(BOB, &k1.id, "failed", "the build broke")
+        .unwrap();
+    let n = parent_digest(&e, &p).expect("a digest");
+    assert!(n.wake, "{n:?}");
+    assert!(n.text.contains("failed"), "{}", n.text);
+}
+
+#[test]
+fn test_parent_holder_woken_when_the_last_subtask_finishes() {
+    let (e, p, k1, k2) = split_env();
+    e.c.set_task_state(BOB, &k1.id, "completed", "").unwrap();
+    let n = parent_digest(&e, &p).expect("a digest");
+    assert!(!n.wake, "one of two done doesn't wake: {n:?}");
+    e.c.set_task_state(CAROL, &k2.id, "canceled", "not needed")
+        .unwrap();
+    let n = parent_digest(&e, &p).expect("a digest");
+    assert!(n.wake, "the last one ending wakes: {n:?}");
+}
+
+#[test]
+fn test_parent_holder_not_woken_by_their_own_change() {
+    let (e, p, k1, k2) = split_env();
+    e.c.set_task_state(CAROL, &k2.id, "completed", "").unwrap();
+    e.c.sweep_notices().unwrap();
+    // ALICE (who made the card) finishes the last one herself: no line
+    // about her own change, so nothing wakes her.
+    e.c.set_task_state(ALICE, &k1.id, "completed", "").unwrap();
+    assert_eq!(get(&e.c, &k1.id).state, "completed");
+    assert!(parent_digest(&e, &p).is_none());
+}
+
+#[test]
+fn test_parent_watcher_not_woken() {
+    let (e, p, k1, _) = split_env();
+    e.c.watch(BOB, &p.id).unwrap();
+    e.c.watch(CAROL, &p.id).unwrap();
+    e.c.sweep_notices().unwrap();
+    e.c.set_task_state(BOB, &k1.id, "failed", "").unwrap();
+    let ns = e.c.sweep_notices().unwrap();
+    assert!(
+        ns.iter()
+            .any(|n| n.task_id == p.id && n.to.iter().any(|t| t == CAROL)),
+        "the watcher still hears: {ns:?}"
+    );
+    for n in ns.iter().filter(|n| n.task_id == p.id) {
+        if n.to.iter().any(|t| t != ALICE) {
+            assert!(!n.wake, "only the holder wakes: {n:?}");
+        }
+    }
+    assert!(
+        ns.iter()
+            .any(|n| n.task_id == p.id && n.wake && n.to == vec![ALICE.to_string()]),
+        "{ns:?}"
+    );
+}

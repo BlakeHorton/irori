@@ -9,7 +9,7 @@ use irori_identity::owner;
 use store::{Event, kinds};
 
 use super::error::{Result, bad_state, invalid, not_allowed, not_found, subtask};
-use super::fold::{Fold, Touch, WatchLine, line_of, restore_state};
+use super::fold::{Fold, Touch, WatchLine, line_of, restore_state, take_up};
 use super::links::parse_link;
 use super::rows::*;
 use super::types::*;
@@ -150,14 +150,21 @@ pub(crate) fn refresh_blocker(
         return;
     };
     let asked = t.blockers[i].asked.clone();
-    let mut cs: Vec<&Comment> = ids
-        .into_iter()
-        .flatten()
-        .filter_map(|id| comments.get(id))
-        .filter(|cm| cm.blocker_id == bid && !cm.pos().before(&asked))
-        .collect();
+    let mine = || {
+        ids.into_iter()
+            .flatten()
+            .filter_map(|id| comments.get(id))
+            .filter(|cm| cm.blocker_id == bid)
+    };
+    let mut cs: Vec<&Comment> = mine().filter(|cm| !cm.pos().before(&asked)).collect();
     cs.sort_by_key(|c| c.pos());
+    // The person's own words since the options were offered set them aside
+    // (card #90); a revision with new options brings options back.
+    let since = t.blockers[i].options_at.clone();
+    let aside = !t.blockers[i].options.is_empty()
+        && mine().any(|cm| cm.person && cm.pick <= 0 && !cm.pos().before(&since));
     let b = &mut t.blockers[i];
+    b.options_aside = aside;
     b.status = BLOCKER_OPEN.into();
     b.sent_to.clear();
     b.missing.clear();
@@ -393,6 +400,35 @@ impl Fold {
     /// The line goes in at its row's position; past MAX_ACTIVITY the
     /// lowest positions drop.
     pub(crate) fn touch_line(&mut self, t: &Touch, a: Activity, watch: bool, also: Vec<String>) {
+        self.touch_line_wake(t, a, watch, also, false);
+    }
+
+    /// A state row's line: always watched, and `wake` wakes the parent's
+    /// holders (card #89).
+    pub(crate) fn touch_parent(&mut self, t: &Touch, a: Activity, wake: bool) {
+        self.touch_line_wake(t, a, true, Vec::new(), wake);
+    }
+
+    /// Whether every subtask of `id`'s parent has ended, now that `id` has.
+    pub(crate) fn last_subtask(&self, id: &str) -> bool {
+        let Some(p) = self.tasks.get(id).and_then(|t| self.tasks.get(&t.parent)) else {
+            return false;
+        };
+        p.subtasks
+            .iter()
+            .all(|k| self.tasks.get(k).is_none_or(|kt| is_terminal(&kt.state)))
+    }
+
+    /// The line goes on t's activity and, when watched, on t's digest and
+    /// its open parent's digest; `wake` wakes the parent's holders.
+    fn touch_line_wake(
+        &mut self,
+        t: &Touch,
+        a: Activity,
+        watch: bool,
+        also: Vec<String>,
+        wake: bool,
+    ) {
         if a.what.is_empty() {
             return;
         }
@@ -417,7 +453,8 @@ impl Fold {
                     p.holders.clone(),
                 );
                 let line = format!("{} (part of {pref}): {what}", t.short_ref);
-                self.queue_watch(&pid, pw, &by, &line, ph);
+                let woken = if wake { ph.clone() } else { Vec::new() };
+                self.queue_watch_wake(&pid, pw, &by, &line, ph, woken);
             }
         }
     }
@@ -431,6 +468,19 @@ impl Fold {
         what: &str,
         also: Vec<String>,
     ) {
+        self.queue_watch_wake(id, has_watchers, by, what, also, Vec::new());
+    }
+
+    /// [`Self::queue_watch`], waking `wake` (a subset of `also`).
+    fn queue_watch_wake(
+        &mut self,
+        id: &str,
+        has_watchers: bool,
+        by: &str,
+        what: &str,
+        also: Vec<String>,
+        wake: Vec<String>,
+    ) {
         if self.replaying || !has_watchers && also.is_empty() {
             return;
         }
@@ -439,6 +489,7 @@ impl Fold {
             by: by.into(),
             what: what.into(),
             also,
+            wake,
         });
         if q.lines.len() > MAX_WATCH_PENDING {
             let n = q.lines.len() - MAX_WATCH_PENDING;
@@ -705,6 +756,7 @@ impl Fold {
                 let when = at(p.at);
                 t.updated_at = when;
                 t.updated_by = p.by.clone();
+                take_up(t, &p.by);
                 let (d, n) = t.progress();
                 let what = format!("{} ({d}/{n} done)", steps_change(&was, &t.steps));
                 let ti = Touch::of(t);
@@ -734,6 +786,7 @@ impl Fold {
                 let when = at(p.at);
                 t.updated_at = when;
                 t.updated_by = p.by.clone();
+                take_up(t, &p.by);
                 let mut what = if after.done && !before.done {
                     format!("ticked “{}”", after.text)
                 } else if !after.done && before.done {
@@ -813,14 +866,20 @@ impl Fold {
                     add(a, &mut who);
                 }
             }
-            let mut by_text: HashMap<String, usize> = HashMap::new();
+            let mut by_text: HashMap<(String, bool), usize> = HashMap::new();
             for r in who {
-                let lines: Vec<String> = q
+                let kept: Vec<&WatchLine> = q
                     .lines
                     .iter()
                     .filter(|l| {
                         !(l.by == r || !contains(&t.watchers, &r) && !contains(&l.also, &r))
                     })
+                    .collect();
+                // Someone else's line about a subtask that matters wakes
+                // the parent's holder; their own never does.
+                let wake = kept.iter().any(|l| contains(&l.wake, &r));
+                let lines: Vec<String> = kept
+                    .into_iter()
                     .map(|l| {
                         let actor = if l.by == SWEEPER {
                             "Irori"
@@ -834,11 +893,12 @@ impl Fold {
                     continue;
                 }
                 let text = watch_text(t, &lines, q.dropped);
-                if let Some(&i) = by_text.get(&text) {
+                let key = (text.clone(), wake);
+                if let Some(&i) = by_text.get(&key) {
                     out[i].to.push(r);
                     continue;
                 }
-                by_text.insert(text.clone(), out.len());
+                by_text.insert(key, out.len());
                 out.push(Notice {
                     kind: NOTICE_WATCHED.into(),
                     task_id: id.clone(),
@@ -847,6 +907,7 @@ impl Fold {
                     to: vec![r],
                     by: SWEEPER.into(),
                     text,
+                    wake,
                     ..Notice::default()
                 });
             }
@@ -1238,6 +1299,12 @@ impl Fold {
                 cut(&text, MAX_NOTICE_FIELD)
             );
             s.push_str(&picked_line(opt, &rec_by, rec));
+            if opt < 0 && !b.options.is_empty() {
+                s.push_str(&format!(
+                    "\nThe person answered in their own words, so the options you offered are set aside: their window shows only the thread and a reply box. Answer them in the thread (board_comment task_id={id} blocker_id={}). Once you can see the choices that fit now, revise with board_block task_id={id} blocker_id={} with new options and your recommendation marked, or none to keep it a conversation.",
+                    b.id, b.id
+                ));
+            }
             s.push_str(&format!(
                 "\nIt is not resolved yet. When you have what you need: board_unblock task_id={id} blocker_id={} note=\"<one line on what you will do now>\". If the answer doesn't settle it: board_comment task_id={id} blocker_id={} with what is still missing. If it is a question or changes what is being decided, answer it there, then resolve the blocker if that settles it, or revise it with board_block task_id={id} blocker_id={} with the question and options that fit now (or none); never offer the same options again.",
                 b.id, b.id, b.id
@@ -1323,6 +1390,15 @@ impl Fold {
         id: &str,
         input: CommentInput,
     ) -> Result<(Comment, Vec<Notice>)> {
+        if !trim_space(&input.verdict).is_empty() {
+            if !input.mentions.is_empty() {
+                return Err(invalid(
+                    "a verdict can't carry mentions: comment separately to mention someone",
+                ));
+            }
+            let (cm, n) = self.review_verdict(by, id, input)?;
+            return Ok((cm, vec![n]));
+        }
         let by = caller(by)?;
         let ms = self.check_mentions(&by, &input.mentions)?;
         let bid = trim_space(&input.blocker_id).to_string();
@@ -1554,6 +1630,75 @@ impl Fold {
     }
 
     /// The creator, any holder or a person.
+    /// board_edit: the holder, the creator or the person renames a card or
+    /// changes its objective or done-when, so it says what it is for now.
+    pub(crate) fn edit_task(&mut self, by: &str, id: &str, e: TaskEdit) -> Result<Task> {
+        let by = caller(by)?;
+        let title = e.title.map(|s| trim_space(&s).to_string());
+        let obj = e.objective.map(|s| trim_space(&s).to_string());
+        let done = e.done_when.map(|s| trim_space(&s).to_string());
+        if title.is_none() && obj.is_none() && done.is_none() {
+            return Err(invalid(
+                "give title, objective or done_when: what the card is now",
+            ));
+        }
+        if title.as_deref() == Some("") {
+            return Err(invalid("a card needs a title"));
+        }
+        if title
+            .as_deref()
+            .is_some_and(|t| runes(t) > super::MAX_TITLE)
+        {
+            return Err(invalid(format!(
+                "title longer than {} characters",
+                super::MAX_TITLE
+            )));
+        }
+        if [&obj, &done].iter().any(|x| {
+            x.as_deref()
+                .is_some_and(|v| runes(v) > super::MAX_OBJECTIVE)
+        }) {
+            return Err(invalid(format!(
+                "objective or done_when longer than {} characters",
+                super::MAX_OBJECTIVE
+            )));
+        }
+        let t = self.open_task(id)?.clone();
+        if !self.may_manage(&t, &by) {
+            return Err(not_allowed(format!(
+                "edit {}: only its holder, its creator or the person may",
+                t.short_ref()
+            )));
+        }
+        if t.open_ask().is_some() {
+            return Err(bad_state(format!(
+                "{} is an open ask: ask_close it with outcome card and the title it should have",
+                t.short_ref()
+            )));
+        }
+        let same = title.as_ref().is_none_or(|v| *v == t.title)
+            && obj.as_ref().is_none_or(|v| *v == t.objective)
+            && done.as_ref().is_none_or(|v| *v == t.done_criteria);
+        if same {
+            return Ok(t);
+        }
+        let at = self.stamp();
+        self.write(
+            &by,
+            self.ask_kind(kinds::TASK_EDITED),
+            &TaskEditedRow {
+                task_id: id.into(),
+                title,
+                objective: obj,
+                done_criteria: done,
+                by: by.clone(),
+                at,
+                ..TaskEditedRow::default()
+            },
+        )?;
+        Ok(self.tasks[id].clone())
+    }
+
     pub(crate) fn may_manage(&self, t: &Task, by: &str) -> bool {
         by == t.created_by || contains(&t.holders, by) || self.is_owner(by)
     }

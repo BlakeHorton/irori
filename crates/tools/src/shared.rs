@@ -88,10 +88,12 @@ const CARD_WRITES: &[&str] = &[
     "board_leave",
     "board_assign",
     "board_link",
+    "board_edit",
     "board_recommend",
     "board_split",
     "board_watch",
     "board_unwatch",
+    "wait",
 ];
 
 /// Arguments that name things rather than say them: not scrubbed.
@@ -844,7 +846,8 @@ fn review_to(to: &str) -> Result<String, String> {
 /// board_review (§10): asks another person's agent, or each other
 /// person's dedicated reviewer, to review a PR a shared card links. The
 /// review itself is the reviewer's own `gh`; Irori never posts reviews or
-/// merges.
+/// merges. On a private card (#88) it asks one of the person's own agents
+/// to review the card's work, PR or not.
 pub(crate) fn board_review(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let a = match decode(raw, REVIEW_ARGS) {
         Ok(a) => a,
@@ -855,6 +858,9 @@ pub(crate) fn board_review(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Err(m) => return m,
     };
     let pr = trim(a.str("pr"));
+    if s.shared().and_then(|sb| sb.board_of(&id)).is_none() {
+        return own_review(s, c, &id, pr, trim(a.str("to")));
+    }
     if pr.is_empty() {
         return err_text("give pr: the pull request the card links, as board_link added it.");
     }
@@ -882,6 +888,40 @@ pub(crate) fn board_review(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         one_line(pr, 200),
         s.short_of(&id),
         b.visible_to()
+    )
+}
+
+/// board_review on a private card: `to` names one of the person's agents,
+/// who is woken once and answers with board_comment verdict=….
+fn own_review(s: &Inner, c: &Caller, id: &str, pr: &str, to: &str) -> String {
+    if to.is_empty() {
+        return err_text(
+            "give to: the agent to review it, by name or key (see the agents tool). On your own board nobody reviews by default.",
+        );
+    }
+    let to = match s.assignee(to) {
+        Ok(k) => k,
+        Err(e) => return map_err(e),
+    };
+    let (co, as_) = match s.on(id, &[c.sender.key.clone(), to.clone()]) {
+        Ok(v) => v,
+        Err(e) => return map_err(e),
+    };
+    let (_, notice) = match co.request_review(&as_[0], id, pr, &as_[1]) {
+        Ok(v) => v,
+        Err(e) => return map_err(e),
+    };
+    let n = s.roster();
+    format!(
+        "Asked {} to review {}{}: the card shows the review as requested until they answer with board_comment verdict=approved or verdict=changes. You are woken only if they ask for changes.{}",
+        n.who(&to),
+        s.short_of(id),
+        if pr.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", one_line(pr, 200))
+        },
+        s.told(&s.tell(&c.sender, notice), &n)
     )
 }
 

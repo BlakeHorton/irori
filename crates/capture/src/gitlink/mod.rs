@@ -3,6 +3,7 @@
 //! §3 "Linking", "Committer", "IsCommitCommand"). Git is reached through
 //! the [`Git`] trait so tests can use real temp repos or fakes.
 
+mod branch;
 mod classify;
 mod command;
 mod describe;
@@ -14,6 +15,7 @@ use gocompat::time::GoTime;
 use serde::Serialize;
 use sys::cancel::Cancel;
 
+pub use branch::{branch_ref_names, branch_tips, common_dir, moved_ref, read_ref, worktree_root};
 pub use classify::{classify, committer, under_root};
 pub use command::{is_commit_command, split_commands};
 pub use describe::{describe, parse_raw_z};

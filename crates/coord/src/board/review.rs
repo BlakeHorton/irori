@@ -4,6 +4,12 @@
 //! board or a repo. The review itself is posted by the reviewer's own
 //! `gh`; Irori never posts reviews or merges, and its state (reviewing,
 //! approved, changes requested) comes from the PR ledger, not from here.
+//!
+//! On the person's own board (#88) an agent asks another of their agents
+//! to review a card's work, with or without a PR. The reviewer is woken
+//! once and answers with a verdict comment (approved, or changes); the
+//! card shows each reviewer's state, and the holders are woken only when
+//! changes are asked.
 
 use std::collections::BTreeMap;
 
@@ -11,16 +17,45 @@ use gocompat::time::GoTime;
 use serde::Serialize;
 use store::{Event, kinds};
 
+use super::comments::check_comment;
 use super::error::{Result, invalid, not_allowed, not_found};
 use super::fold::Fold;
 use super::links::pr_link;
-use super::rows::{ReviewRequestedRow, ReviewReviewerRow, row};
+use super::rows::{ReviewRequestedRow, ReviewReviewerRow, TaskCommentRow, row};
 use super::types::*;
-use super::util::caller;
+use super::util::{caller, deeper, new_id};
 use crate::names::trim_space;
+use gocompat::quote::quote;
 
 /// A review request's notice kind.
 pub const NOTICE_REVIEW: &str = "review";
+
+/// A review's states on a private card (#88): asked and not yet answered,
+/// approved, or changes asked.
+pub const REVIEW_REQUESTED: &str = "requested";
+pub const VERDICT_APPROVED: &str = "approved";
+pub const VERDICT_CHANGES: &str = "changes";
+
+/// One reviewer's review of a card as it stands: their newest request
+/// and, when they answered it, their verdict.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Review {
+    pub reviewer: String,
+    /// Who asked (the newest request's asker).
+    pub from: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub pr: String,
+    /// requested, approved or changes.
+    pub state: String,
+    /// When it was asked, or answered.
+    pub at: GoTime,
+    /// The verdict comment, once there is one.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub comment_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub text: String,
+}
 
 /// One review request as folded.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -47,15 +82,18 @@ impl Fold {
                 let Some(p) = row::<ReviewRequestedRow>(&ev.payload) else {
                     return;
                 };
-                if !self.on_board || !self.tasks.contains_key(&p.task_id) || p.pr.is_empty() {
+                if !self.tasks.contains_key(&p.task_id) || self.on_board && p.pr.is_empty() {
                     return;
                 }
-                // An agent asks from a device of its person, and never asks
-                // its own person's agents to approve.
-                let theirs = p.to.is_empty() || self.person_of(&p.to) != self.person_of(&p.from);
-                if !p.from.starts_with(kinds::AGENT_ACTOR_PREFIX)
-                    || !self.may_write(&p.from, &ev.device_id)
-                    || !theirs
+                // An agent asks from a device of its person. On a shared
+                // board it never asks its own person's agents to approve;
+                // on its own board it names one of them (#88).
+                let theirs = if self.on_board {
+                    p.to.is_empty() || self.person_of(&p.to) != self.person_of(&p.from)
+                } else {
+                    self.is_agent_key(&p.to) && p.to != p.from
+                };
+                if !self.is_agent_key(&p.from) || !self.may_write(&p.from, &ev.device_id) || !theirs
                 {
                     self.ignore(&ev.device_id);
                     return;
@@ -151,28 +189,30 @@ impl Fold {
         pr: &str,
         to: &str,
     ) -> Result<(Vec<ReviewRequest>, Notice)> {
-        if !self.on_board {
-            return Err(invalid(
-                "review requests go to other people's agents on a shared board",
-            ));
-        }
         let by = caller(by)?;
-        if !by.starts_with(kinds::AGENT_ACTOR_PREFIX) {
+        if !self.is_agent_key(&by) {
             return Err(invalid("an agent asks for a review"));
         }
         let (pr, to) = (trim_space(pr).to_string(), trim_space(to).to_string());
         let Some(t) = self.tasks.get(id).cloned() else {
             return Err(not_found(format!("task {id}")));
         };
-        if !t
-            .links
-            .iter()
-            .any(|l| pr_link(l).is_some() && trim_space(&l.reference) == pr)
+        if self.on_board && pr.is_empty() {
+            return Err(invalid("give pr: the pull request the card links"));
+        }
+        if !pr.is_empty()
+            && !t
+                .links
+                .iter()
+                .any(|l| pr_link(l).is_some() && trim_space(&l.reference) == pr)
         {
             return Err(invalid(format!(
                 "{} doesn't link {pr}; board_link the PR first",
                 t.short_ref()
             )));
+        }
+        if !self.on_board {
+            return self.request_own_review(&by, &t, &pr, &to);
         }
         if !to.is_empty() && self.person_of(&to) == self.person_of(&by) {
             return Err(not_allowed(format!(
@@ -224,6 +264,240 @@ impl Fold {
             ..Notice::default()
         };
         Ok((out, n))
+    }
+
+    /// [`Fold::request_review`] on the person's own board (#88): one of
+    /// their agents, named in `to`, reviews the card's work; the PR is
+    /// optional. The reviewer is woken once.
+    fn request_own_review(
+        &mut self,
+        by: &str,
+        t: &Task,
+        pr: &str,
+        to: &str,
+    ) -> Result<(Vec<ReviewRequest>, Notice)> {
+        if to.is_empty() {
+            return Err(invalid(
+                "name the agent to review it in to: on your own board nobody is the reviewer by default",
+            ));
+        }
+        if !self.is_agent_key(to) {
+            return Err(invalid("an agent reviews: name one of your agents in to"));
+        }
+        if to == by {
+            return Err(invalid(
+                "ask another agent: a review is a second pair of eyes",
+            ));
+        }
+        let at = self.stamp();
+        let row = ReviewRequestedRow {
+            task_id: t.id.clone(),
+            pr: pr.into(),
+            from: by.into(),
+            to: to.into(),
+            at,
+        };
+        self.write(by, kinds::REVIEW_REQUESTED, &row)?;
+        let short = t.short_ref();
+        let what = if pr.is_empty() {
+            "its work".to_string()
+        } else {
+            pr.to_string()
+        };
+        let n = Notice {
+            kind: NOTICE_REVIEW.into(),
+            task_id: t.id.clone(),
+            reference: format!("task:{}", t.id),
+            title: t.title.clone(),
+            to: vec![to.into()],
+            by: by.into(),
+            wake: true,
+            text: format!(
+                "{by} asks you to review {} ({short}): {what}. Look at the work, then answer on the card: board_comment task_id={short} verdict=approved, or verdict=changes saying what needs changing.{}",
+                quote(&t.title),
+                deeper(&t.id)
+            ),
+            ..Notice::default()
+        };
+        let r = ReviewRequest {
+            task_id: t.id.clone(),
+            pr: pr.into(),
+            from: by.into(),
+            to: to.into(),
+            at,
+        };
+        Ok((vec![r], n))
+    }
+
+    /// An agent's key: `agent:<cardId>` on a shared board; on the private
+    /// board any session key that isn't the person's.
+    fn is_agent_key(&self, k: &str) -> bool {
+        if self.on_board {
+            return k.starts_with(kinds::AGENT_ACTOR_PREFIX);
+        }
+        !k.is_empty()
+            && !self.is_owner(k)
+            && !k.starts_with(kinds::PERSON_ACTOR_PREFIX)
+            && k != super::util::SWEEPER
+    }
+
+    /// Whether a comment row is a verdict that counts: on the person's own
+    /// board, from an agent asked to review that card, approved or changes.
+    pub(crate) fn verdict_counts(&self, p: &TaskCommentRow) -> bool {
+        !self.on_board
+            && (p.verdict == VERDICT_APPROVED || p.verdict == VERDICT_CHANGES)
+            && p.msg_id.is_empty()
+            && p.blocker_id.is_empty()
+            && self
+                .reviews
+                .get(&p.task_id)
+                .is_some_and(|rs| rs.iter().any(|r| r.to == p.by))
+    }
+
+    /// A reviewer's verdict (#88): a comment on the card, approved or
+    /// changes. The holders and whoever asked hear it; they are woken only
+    /// when changes are asked.
+    pub(crate) fn review_verdict(
+        &mut self,
+        by: &str,
+        id: &str,
+        input: CommentInput,
+    ) -> Result<(Comment, Notice)> {
+        let verdict = trim_space(&input.verdict).to_ascii_lowercase();
+        if verdict != VERDICT_APPROVED && verdict != VERDICT_CHANGES {
+            return Err(invalid("verdict is approved or changes"));
+        }
+        if self.on_board {
+            return Err(invalid(
+                "a verdict answers a review on your own board; on a shared card the review is posted on the PR with gh",
+            ));
+        }
+        if !trim_space(&input.blocker_id).is_empty() {
+            return Err(invalid(
+                "a verdict is its own comment, not a reply on a blocker",
+            ));
+        }
+        let (by, text) = check_comment(by, &input.text, &input.files)?;
+        let t = self.any_task(id)?.clone();
+        let askers: Vec<String> = self
+            .reviews
+            .get(id)
+            .map(|rs| {
+                rs.iter()
+                    .filter(|r| r.to == by)
+                    .map(|r| r.from.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if askers.is_empty() {
+            return Err(not_allowed(format!(
+                "nobody asked you to review {}; give your view as a plain comment",
+                t.short_ref()
+            )));
+        }
+        let changes = verdict == VERDICT_CHANGES;
+        let at = self.stamp();
+        let cid = new_id(&at);
+        let actor = self.actor_for(&by);
+        let cm = self.write_comment(
+            &actor,
+            TaskCommentRow {
+                task_id: id.into(),
+                comment_id: cid.clone(),
+                by: by.clone(),
+                text: text.clone(),
+                wake: changes || input.wake,
+                at,
+                attachments: input.files.clone(),
+                verdict: verdict.clone(),
+                ..TaskCommentRow::default()
+            },
+        )?;
+        let nt = self.tasks[id].clone();
+        let mut to = self.recipients(&nt, &by);
+        for a in askers {
+            if a != by && !to.contains(&a) {
+                to.push(a);
+            }
+        }
+        let head = if changes {
+            format!(
+                "{by} asks for changes on {} ({})",
+                quote(&t.title),
+                t.refs()
+            )
+        } else {
+            format!("{by} approved {} ({})", quote(&t.title), t.refs())
+        };
+        let tail = if changes {
+            "\nMake the changes, then board_review again to ask for another look."
+        } else {
+            ""
+        };
+        let n = Notice {
+            kind: NOTICE_COMMENT.into(),
+            task_id: id.into(),
+            reference: format!("comment:{cid}"),
+            title: t.title.clone(),
+            by: by.clone(),
+            to,
+            wake: changes || input.wake,
+            attachments: input.files,
+            text: format!("{head}:\n{text}{tail}{}", deeper(id)),
+            ..Notice::default()
+        };
+        Ok((cm, n))
+    }
+
+    /// A card's reviews, one per reviewer in the order first asked: the
+    /// newest request, answered by a verdict at or after it.
+    pub(crate) fn reviews_of(&self, id: &str) -> Vec<Review> {
+        let Some(rs) = self.reviews.get(id) else {
+            return Vec::new();
+        };
+        let mut out: Vec<Review> = Vec::new();
+        for r in rs {
+            if r.to.is_empty() {
+                continue;
+            }
+            match out.iter_mut().find(|v| v.reviewer == r.to) {
+                Some(v) if v.at.unix_nano() <= r.at.unix_nano() => {
+                    v.from = r.from.clone();
+                    v.pr = r.pr.clone();
+                    v.at = r.at;
+                }
+                Some(_) => {}
+                None => out.push(Review {
+                    reviewer: r.to.clone(),
+                    from: r.from.clone(),
+                    pr: r.pr.clone(),
+                    state: REVIEW_REQUESTED.into(),
+                    at: r.at,
+                    ..Review::default()
+                }),
+            }
+        }
+        if self.on_board {
+            return out;
+        }
+        let ids = self.by_task.get(id).cloned().unwrap_or_default();
+        for v in &mut out {
+            let asked = v.at.unix_nano();
+            let newest = ids
+                .iter()
+                .filter_map(|c| self.comments.get(c))
+                .filter(|c| {
+                    c.by == v.reviewer && !c.verdict.is_empty() && c.at.unix_nano() >= asked
+                })
+                .max_by_key(|c| c.at.unix_nano());
+            if let Some(c) = newest {
+                v.state = c.verdict.clone();
+                v.at = c.at;
+                v.comment_id = c.id.clone();
+                v.text = c.text.clone();
+            }
+        }
+        out
     }
 
     /// A person dedicating one of their own agents as their reviewer for

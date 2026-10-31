@@ -601,5 +601,7 @@ pub struct Comment {
     pub unheard: bool,
     #[specta(optional)]
     pub mentions: Vec<Mention>,
+    #[specta(optional)]
+    pub verdict: String,
     pub device: String,
 }

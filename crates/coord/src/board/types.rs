@@ -2,6 +2,8 @@
 //! Field order and `omitempty` are Go's: the GUI and API read these, and
 //! the replay goldens compare their bytes with Go's.
 
+use std::collections::BTreeMap;
+
 use gocompat::time::GoTime;
 use serde::Serialize;
 
@@ -181,6 +183,11 @@ pub struct Blocker {
     pub sent_to: String,
     #[serde(skip_serializing_if = "omit")]
     pub missing: Vec<String>,
+    /// The person answered in their own words since these options were
+    /// offered (card #90): they are set aside, kept for the record, until
+    /// a revision offers new ones.
+    #[serde(skip_serializing_if = "omit")]
+    pub options_aside: bool,
     /// The row's reason: Task.reason while this is the first open item.
     #[serde(skip)]
     pub(crate) reason: String,
@@ -299,6 +306,10 @@ pub struct Task {
     pub holders: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub assigned: Vec<String>,
+    /// Hand-off notes by assignee, kept while they're offered the card and
+    /// haven't taken it up (card #85).
+    #[serde(skip_serializing_if = "omit")]
+    pub handoffs: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "omit")]
     pub shared: bool,
     pub created_by: String,
@@ -517,6 +528,9 @@ pub struct Comment {
     pub unheard: bool,
     #[serde(skip_serializing_if = "omit")]
     pub mentions: Vec<Mention>,
+    /// A reviewer's verdict on a private card: approved or changes.
+    #[serde(skip_serializing_if = "omit")]
+    pub verdict: String,
     pub device: String,
     #[serde(skip)]
     pub hlc: u64,
@@ -566,6 +580,8 @@ pub const NOTICE_RETURNED: &str = "returned";
 pub const NOTICE_REOPENED: &str = "reopened";
 pub const NOTICE_ANSWERED: &str = "answered";
 pub const NOTICE_WATCHED: &str = "watched";
+/// A wait went off (card #87): always a wake.
+pub const NOTICE_WAIT: &str = "wait";
 pub const NOTICE_ASK: &str = "ask";
 pub const NOTICE_TAKEN: &str = "taken";
 pub const NOTICE_ASK_COMMENT: &str = "ask_comment";
@@ -752,6 +768,8 @@ pub struct CommentInput {
     pub blocker_id: String,
     pub missing: Vec<String>,
     pub mentions: Vec<Mention>,
+    /// A review verdict (#88): approved or changes; empty for a plain comment.
+    pub verdict: String,
 }
 
 /// SetStep's input; `None` leaves a field alone.
@@ -780,6 +798,14 @@ pub struct ClaimResult {
     pub mine: bool,
     pub pending: bool,
     pub owner: String,
+}
+
+/// board_edit's input: `None` leaves that field as it is.
+#[derive(Debug, Clone, Default)]
+pub struct TaskEdit {
+    pub title: Option<String>,
+    pub objective: Option<String>,
+    pub done_when: Option<String>,
 }
 
 /// ask_close's input.
@@ -816,4 +842,46 @@ pub struct SetAside {
     pub ignored: usize,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub ignored_by: std::collections::BTreeMap<String, usize>,
+}
+
+/// One open wait (card #87): `by` is woken once when task `task_id`
+/// reaches a state in `until`, or when `branch` of `repo` moves off the
+/// shas it had (`refs`, "<ref>=<sha>"). See waits.rs.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wait {
+    pub id: String,
+    pub by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub task_id: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub until: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub from_state: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub repo: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub root: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub branch: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub refs: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub note: String,
+    pub at: GoTime,
+    pub expires: GoTime,
+}
+
+/// What a new wait waits on (the `wait` tool's arguments, resolved).
+#[derive(Debug, Clone, Default)]
+pub struct WaitSpec {
+    pub task_id: String,
+    pub until: Vec<String>,
+    pub repo: String,
+    pub root: String,
+    pub branch: String,
+    /// "<ref>=<sha>" for each ref of the branch as it is now; empty sha
+    /// when the ref doesn't exist yet.
+    pub refs: Vec<String>,
+    pub note: String,
 }

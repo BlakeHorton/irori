@@ -262,6 +262,9 @@ impl Fold {
         line(&mut b, "repo", &t.repo_key);
         line(&mut b, "holders", &t.holders.join(", "));
         line(&mut b, "assigned, not claimed yet", &t.assigned.join(", "));
+        for (to, note) in &t.handoffs {
+            line(&mut b, &format!("hand-off note for {to}"), note);
+        }
         line(
             &mut b,
             "created",
@@ -281,6 +284,29 @@ impl Fold {
             line(&mut b, "blocked", &bl);
         }
         line(&mut b, "watching", &t.watchers.join(", "));
+        // Waits (card #87): who waits on this card, and what its holders
+        // wait on.
+        let on_it: Vec<String> = self
+            .waits
+            .values()
+            .filter(|w| w.task_id == t.id)
+            .map(|w| format!("{} until {}", w.by, super::waits::until_text(&w.until)))
+            .collect();
+        line(&mut b, "waited on by", &on_it.join(", "));
+        let theirs: Vec<String> = self
+            .waits
+            .values()
+            .filter(|w| t.holders.contains(&w.by) && !is_terminal(&t.state))
+            .map(|w| {
+                let r = self
+                    .tasks
+                    .get(&w.task_id)
+                    .map(|x| x.short_ref())
+                    .unwrap_or_default();
+                format!("{} waits on {}", w.by, super::waits::wait_line(w, &r))
+            })
+            .collect();
+        line(&mut b, "waiting", &theirs.join("; "));
         line(&mut b, "scope", &t.scope.join(", "));
         line(&mut b, "note", &t.note);
         if !t.steps.is_empty() {
@@ -346,6 +372,12 @@ impl Fold {
                 for f in &bl.attachments {
                     let _ = writeln!(b, "  file: {}", describe(f));
                 }
+                if bl.open() && bl.options_aside {
+                    let _ = writeln!(
+                        b,
+                        "  options set aside: the person answered in their own words; revise with board_block blocker_id for new ones (the earlier ones follow)"
+                    );
+                }
                 for (i, o) in bl.options.iter().enumerate() {
                     if o.recommended {
                         let _ = write!(
@@ -373,6 +405,24 @@ impl Fold {
         }
         if !t.done_criteria.is_empty() {
             let _ = writeln!(b, "\ndone when:\n{}", t.done_criteria);
+        }
+        let reviews = self.reviews_of(&t.id);
+        if !self.on_board && !reviews.is_empty() {
+            b.push_str("\nreviews:\n");
+            for r in &reviews {
+                let state = match r.state.as_str() {
+                    super::review::VERDICT_CHANGES => "changes asked",
+                    s => s,
+                };
+                let _ = write!(b, "- {} (asked by {}): {state}", r.reviewer, r.from);
+                if !r.pr.is_empty() {
+                    let _ = write!(b, " [{}]", r.pr);
+                }
+                if !r.comment_id.is_empty() {
+                    let _ = write!(b, " (comment:{})", r.comment_id);
+                }
+                b.push('\n');
+            }
         }
         if !t.links.is_empty() {
             b.push_str("\nlinks:\n");
@@ -425,6 +475,9 @@ impl Fold {
                 }
                 if cm.gone {
                     text.push_str(" (recipient gone, left on the card)");
+                }
+                if !cm.verdict.is_empty() {
+                    let _ = write!(who, " (review: {})", cm.verdict);
                 }
                 if !cm.blocker_id.is_empty() {
                     // The person's answer on a blocker, or an agent's reply on it.

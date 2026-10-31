@@ -466,6 +466,7 @@ fn ts_shapes_match_the_json() {
         "note",
         "steps",
         "blockers",
+        "reviews",
         "prs",
         "links",
         "recent",
@@ -474,6 +475,7 @@ fn ts_shapes_match_the_json() {
         "threadEarlier",
         "historyTrimmed",
         "subtaskList",
+        "waits",
     ] {
         summary.as_object_mut().unwrap().remove(k);
     }

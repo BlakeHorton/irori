@@ -107,6 +107,10 @@ kinds! {
     TASK_STEPS = "task.steps" => Replicated, Accepts;
     TASK_STEP = "task.step" => Replicated, Accepts;
     TASK_WATCHED = "task.watched" => Replicated, Accepts;
+    /// Waits (card #87): one-shot wakes on a task's state or a branch.
+    WAIT_CREATED = "wait.created" => Replicated, Accepts;
+    WAIT_FIRED = "wait.fired" => Replicated, Accepts;
+    WAIT_CANCELED = "wait.canceled" => Replicated, Accepts;
     LEASE_ACQUIRED = "lease.acquired" => Replicated, Accepts;
     LEASE_RELEASED = "lease.released" => Replicated, Accepts;
     LEASE_REFUSED = "lease.refused" => Replicated, Accepts;

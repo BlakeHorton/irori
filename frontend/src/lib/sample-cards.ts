@@ -17,6 +17,7 @@ import {
   CardResolution,
   CardSubtask,
   CardThreadItem,
+  CardWait,
   Holding,
 } from "./models"
 import {
@@ -207,6 +208,12 @@ export function sampleCards(now: Date): CardDetail[] {
       goal: "Tagged release with final notes and an installer on the release page.",
       working: [otter],
       watching: [heron],
+      // Waits (card #87): wren is woken when this card is done; otter, on
+      // it, waits for main to move.
+      waits: [
+        CardWait({ id: "sample-wait-1", who: wren, text: "until done", onThis: true }),
+        CardWait({ id: "sample-wait-2", who: otter, text: "branch main moves" }),
+      ],
       updatedAt: at(18),
       steps: steps([
         ["Boat batch merged (#206, #207)", true],
@@ -464,8 +471,10 @@ export function sampleCards(now: Date): CardDetail[] {
           resolved: null,
           // Answered: the person's question back went to the raiser, so
           // it waits on sample-badger (a grey "Waiting on agent" card).
+          // Their own words set the options aside (card #90).
           state: "answered",
           sentTo: badger,
+          optionsAside: true,
           thread: [
             CardThreadItem({
               id: "sample-2-b1-a1",
@@ -655,13 +664,20 @@ export function sampleCards(now: Date): CardDetail[] {
       title: "Back up the out/ folder before the re-run",
       repoKey: "remote:github.com/sample-org/example-app",
       goal: "A copy of out/ somewhere safe, so the re-run can overwrite it.",
-      working: [AgentRef({ ...heron, assigned: true, waiting: true })],
+      working: [
+        AgentRef({
+          ...heron,
+          assigned: true,
+          waiting: true,
+          handoff: "out/ is about 40 GB: copy it to the external drive, then start the re-run.",
+        }),
+      ],
       updatedAt: at(2),
       recent: [
         CardActivity({
           at: at(2),
           who: otter,
-          text: "sample-otter assigned it to sample-heron",
+          text: "sample-otter assigned it to sample-heron: out/ is about 40 GB: copy it to the external drive, then start the re-run.",
         }),
       ],
     }),

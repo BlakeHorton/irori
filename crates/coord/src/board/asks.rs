@@ -652,11 +652,11 @@ impl Fold {
             let Some(t) = self.tasks.get(&p.task_id) else {
                 return (false, String::new());
             };
-            if t.ask.is_none() {
-                return (
-                    p.by == t.created_by || contains(&t.holders, &p.by),
-                    String::new(),
-                );
+            let manages = p.by == t.created_by || contains(&t.holders, &p.by);
+            // A card that was an ask edits like any card once the ask is
+            // closed (board_edit), so a later holder may rename it too.
+            if t.ask.is_none() || (manages && t.open_ask().is_none()) {
+                return (manages, String::new());
             }
             ask = t.id.clone();
         }

@@ -3,7 +3,7 @@
   "step": "assign",
   "kind": "assigned",
   "to": "dev-a/bob-session",
-  "wake": false,
+  "wake": true,
   "text": "dev-a/alice-session assigned you a task: \"Fix \\\"it\\\" <now>\" (#1, task:01M5W19VG0QRM302EPRQ06D00R).\nObjective: obj & more\nDone when: dc\nClaim it to start.\nshow task:01M5W19VG0QRM302EPRQ06D00R for the card, its comments and links."
  },
  {

@@ -30,6 +30,7 @@ mod subtasks;
 mod tasks;
 mod types;
 mod util;
+mod waits;
 
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::{Duration, Instant};
@@ -57,9 +58,15 @@ pub use resource::{
     RESOURCE_NAMED, RESOURCE_PATH, RESOURCE_PORT, Resource, check_repo_key, normalize_glob,
     normalize_resource, overlaps, parse_resource,
 };
-pub use review::{NOTICE_REVIEW, ReviewRequest};
+pub use review::{
+    NOTICE_REVIEW, REVIEW_REQUESTED, Review, ReviewRequest, VERDICT_APPROVED, VERDICT_CHANGES,
+};
 pub use short::{parse_ref, parse_short, short_suffix};
 pub use types::*;
+pub use waits::{
+    MAX_WAITS, UNTIL_BLOCKED, UNTIL_CHANGED, UNTIL_DONE, UNTIL_UNBLOCKED, WAIT_CARD_GONE,
+    WAIT_EXPIRED, WAIT_GONE, WAIT_TTL, until_text, wait_line,
+};
 
 use crate::roster::{AgentCard, Agents};
 use fold::Sub;
@@ -98,6 +105,8 @@ pub const MAX_ASIDE: usize = 2048;
 
 pub(crate) const MAX_TITLE: usize = 200;
 pub(crate) const MAX_OBJECTIVE: usize = 8000;
+/// A hand-off note on board_assign (card #85).
+pub(crate) const MAX_HANDOFF_NOTE: usize = 2000;
 pub(crate) const MAX_SCOPE: usize = 64;
 
 /// The state row's note when a card is reopened.
@@ -283,11 +292,15 @@ impl Coord {
     }
     /// The v0.2 assign (the creator, a holder or a person).
     pub fn assign_task(&self, by: &str, id: &str, to: &str) -> Result<Task> {
-        self.lock().assign(by, id, to, false).map(|(t, _)| t)
+        self.lock().assign(by, id, to, false, "").map(|(t, _)| t)
     }
     /// Assign with the wide rule, and the notice for `to`.
     pub fn assign(&self, by: &str, id: &str, to: &str) -> Result<(Task, Notice)> {
-        self.lock().assign_notice(by, id, to)
+        self.lock().assign_notice(by, id, to, "")
+    }
+    /// [`Self::assign`] with a hand-off note (card #85).
+    pub fn hand_off(&self, by: &str, id: &str, to: &str, note: &str) -> Result<(Task, Notice)> {
+        self.lock().assign_notice(by, id, to, note)
     }
     pub fn set_task_state(&self, by: &str, id: &str, s: &str, note: &str) -> Result<Task> {
         self.lock().set_task_state(by, id, s, note)
@@ -424,6 +437,10 @@ impl Coord {
         let ms = f.check_mentions(&by, mentions)?;
         f.mention_notice(&by, id, &ms, text, &format!("task:{id}"), "")
     }
+    /// Renames a card or changes its objective or done-when (board_edit).
+    pub fn edit_task(&self, by: &str, id: &str, e: TaskEdit) -> Result<Task> {
+        self.lock().edit_task(by, id, e)
+    }
     pub fn set_steps(&self, by: &str, id: &str, steps: Vec<Step>) -> Result<Task> {
         self.lock().set_steps(by, id, steps)
     }
@@ -435,6 +452,26 @@ impl Coord {
     }
     pub fn unwatch(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().watch(by, id, false)
+    }
+    /// Registers a wait (card #87): `by` is woken once when it fires.
+    pub fn create_wait(&self, by: &str, spec: WaitSpec) -> Result<Wait> {
+        self.lock().create_wait(by, spec)
+    }
+    /// Cancels one of `by`'s open waits.
+    pub fn cancel_wait(&self, by: &str, id: &str) -> Result<Wait> {
+        self.lock().cancel_wait(by, id)
+    }
+    /// Open waits, oldest first; `by` empty for everyone's.
+    pub fn waits(&self, by: &str) -> Vec<Wait> {
+        self.lock().waits_of(by)
+    }
+    /// Open branch waits of this device's agents, for the core to check.
+    pub fn branch_waits(&self) -> Vec<Wait> {
+        self.lock().branch_waits()
+    }
+    /// Queues a wait to fire with `what` at the next sweep (a branch moved).
+    pub fn fire_wait(&self, id: &str, what: &str) {
+        self.lock().fire_wait(id, what)
     }
     /// A task's newest activity lines, newest first (`None`: no such task).
     pub fn activity(&self, id: &str) -> Option<Vec<Activity>> {
@@ -569,6 +606,10 @@ impl Coord {
     /// A card's review requests, oldest first.
     pub fn reviews(&self, id: &str) -> Vec<ReviewRequest> {
         self.lock().reviews.get(id).cloned().unwrap_or_default()
+    }
+    /// A card's reviews, one per reviewer, with each one's state (#88).
+    pub fn reviews_of(&self, id: &str) -> Vec<Review> {
+        self.lock().reviews_of(id)
     }
     /// A member's dedicated reviewer for repo, else for the board.
     pub fn reviewer(&self, person: &str, repo: &str) -> String {

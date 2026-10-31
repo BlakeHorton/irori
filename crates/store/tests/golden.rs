@@ -72,12 +72,15 @@ fn board_name(b: Board) -> &'static str {
     }
 }
 
-/// Kinds added after the Go port (shared boards stage 2), which Go's
-/// table can't list: board logs accept them.
-const SINCE_GO: [&str; 3] = [
+/// Kinds added after the Go port (shared boards stage 2, waits on card
+/// #87), which Go's table can't list: board logs accept them.
+const SINCE_GO: [&str; 6] = [
     kinds::BOARD_ASK_REQUESTED,
     kinds::BOARD_ASK_STATE,
     kinds::BOARD_ASK_EDITED,
+    kinds::WAIT_CREATED,
+    kinds::WAIT_FIRED,
+    kinds::WAIT_CANCELED,
 ];
 
 #[test]

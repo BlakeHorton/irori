@@ -46,7 +46,7 @@ describe("workLabel", () => {
     expect(workLabel(card(TaskState.Completed, [agent("busy")]))).toBe("")
   })
   test("assigned holders say so", () => {
-    expect(workLabel(card(TaskState.Working, [agent("idle", { assigned: true })]))).toBe("assigned")
+    expect(workLabel(card(TaskState.Working, [agent("idle", { assigned: true })]))).toBe("offered")
     expect(
       workLabel(card(TaskState.Working, [agent("idle", { assigned: true, waiting: true })]))
     ).toBe("not picked up")

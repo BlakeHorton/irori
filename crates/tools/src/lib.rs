@@ -57,6 +57,7 @@ mod observe;
 mod room;
 mod shared;
 mod specs;
+mod waits;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -230,7 +231,7 @@ pub(crate) struct Inner {
 const CALLER_READS: [&str; 6] = ["inbox", "timeline", "overview", "search", "show", "board"];
 
 fn handlers() -> HashMap<&'static str, Handler> {
-    let list: [(&'static str, Handler); 41] = [
+    let list: [(&'static str, Handler); 45] = [
         ("agents", observe::agents),
         ("events", observe::events),
         ("send", messages::send),
@@ -253,6 +254,7 @@ fn handlers() -> HashMap<&'static str, Handler> {
         ("board_assign", board::board_assign),
         ("board_status", board::board_status),
         ("board_link", board::board_link),
+        ("board_edit", board::board_edit),
         ("board_steps", board::board_steps),
         ("board_step", board::board_step),
         ("board_recommend", board::board_recommend),
@@ -272,6 +274,9 @@ fn handlers() -> HashMap<&'static str, Handler> {
         ("join", join),
         ("notify", notify::notify),
         ("attachment_get", attachments::attachment_get),
+        ("wait", waits::wait),
+        ("waits", waits::waits),
+        ("wait_cancel", waits::wait_cancel),
     ];
     list.into_iter().collect()
 }

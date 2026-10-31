@@ -2170,6 +2170,7 @@ impl Services {
     }
 
     fn sweep_coord(self: &Arc<Self>) -> Result<(), String> {
+        check_branch_waits(&self.coord);
         let (ns, err) = self.coord.sweep_notices_partial();
         let (asks, aerr) = self.coord.sweep_asks_partial(&self.ask_agents());
         for n in ns.iter().chain(asks.iter()) {
@@ -2289,4 +2290,50 @@ fn server_addr(home: Option<&home::Server>, servers: &mesh::Servers) -> String {
         .map(|row| row.outside())
         .find(|a| !a.is_empty())
         .unwrap_or_default()
+}
+
+/// Card #87's branch waits: reads each waited branch's refs (a file read,
+/// no git) and queues the wait to fire when one moved, with the new tip's
+/// subject so the waiter needn't go and look. The coord sweep that
+/// follows writes wait.fired and wakes the waiter.
+fn check_branch_waits(co: &coord::Coord) {
+    for w in co.branch_waits() {
+        let Some(now) = capture::gitlink::branch_tips(&w.root, &w.branch) else {
+            continue;
+        };
+        let Some((name, old, new)) = capture::gitlink::moved_ref(&w.refs, &now) else {
+            continue;
+        };
+        let short = |s: &str| s[..s.len().min(7)].to_string();
+        let subject = commit_subject(&w.root, &new);
+        let which = name
+            .trim_start_matches("refs/")
+            .replacen("heads/", "", 1)
+            .replacen("remotes/", "", 1);
+        let mut what = if old.is_empty() {
+            format!("{which} appeared at {}", short(&new))
+        } else {
+            format!("{which} moved from {} to {}", short(&old), short(&new))
+        };
+        if !subject.is_empty() {
+            what.push_str(&format!(" ({subject})"));
+        }
+        co.fire_wait(&w.id, &what);
+    }
+}
+
+/// The subject line of `sha` in the repo at `root`, "" when git can't say.
+fn commit_subject(root: &str, sha: &str) -> String {
+    let args: Vec<String> = ["-C", root, "log", "-1", "--format=%s", sha]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    match capture::gitexec::run(&Cancel::new(), Duration::from_secs(5), &args, &[]) {
+        Ok((out, _)) => String::from_utf8_lossy(&out)
+            .trim()
+            .chars()
+            .take(120)
+            .collect(),
+        Err(_) => String::new(),
+    }
 }

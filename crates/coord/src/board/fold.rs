@@ -23,6 +23,23 @@ use crate::names::trim_space;
 use crate::roster::Agents;
 
 /// Release reasons in lease.released rows.
+/// How much of a hand-off note the thread line quotes.
+const MAX_HANDOFF_LINE: usize = 300;
+
+/// An assignee who acts on the card as itself (a step tick, a comment)
+/// has taken it up (card #85): it stops being only offered.
+pub(crate) fn take_up(t: &mut Task, by: &str) -> bool {
+    if !contains(&t.assigned, by) {
+        return false;
+    }
+    t.assigned = remove_str(&t.assigned, by);
+    sync_holder(t);
+    if t.state == SUBMITTED {
+        t.state = WORKING.into();
+    }
+    true
+}
+
 pub const REASON_RELEASED: &str = "released";
 pub const REASON_STOLEN: &str = "stolen";
 pub const REASON_HOLDER_GONE: &str = "holder_gone";
@@ -43,13 +60,14 @@ const CLOCK_SKEW: Duration = Duration::from_secs(120);
 pub const SUB_BUFFER: usize = 64;
 
 /// The row prefixes coord folds.
-pub const FOLLOW_KINDS: [&str; 6] = [
+pub const FOLLOW_KINDS: [&str; 7] = [
     "task.",
     "lease.",
     "blocker.",
     "take.",
     "board.ask.",
     "review.",
+    "wait.",
 ];
 
 /// Whether coord folds `kind`.
@@ -77,6 +95,10 @@ pub(crate) struct WatchLine {
     pub by: String,
     pub what: String,
     pub also: Vec<String>,
+    /// Recipients this line wakes instead of telling at their next turn: a
+    /// split card's parent holders, for a subtask's person blocker, failure
+    /// or the last subtask finishing (card #89).
+    pub wake: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -178,6 +200,15 @@ pub struct Fold {
     pub(crate) step_seq: HashMap<String, i64>,
     pub(crate) activity: HashMap<String, Vec<Activity>>,
     pub(crate) watchq: BTreeMap<String, WatchQueue>,
+    /// Open waits by id (card #87), the queue of those to fire with what
+    /// happened, and the ids fired or canceled (a late wait.created for
+    /// one of them is not folded back in).
+    pub(crate) waits: BTreeMap<String, Wait>,
+    pub(crate) waitq: Vec<(String, String)>,
+    pub(crate) waits_done: HashSet<String>,
+    /// The state each open task wait last saw, so the sweep catches a
+    /// move that came by another path than task.status (or while off).
+    pub(crate) wait_seen: HashMap<String, String>,
 
     pub(crate) claims: Vec<ShortClaim>,
     pub(crate) claimed: HashSet<String>,
@@ -281,6 +312,10 @@ impl Fold {
             step_seq: HashMap::new(),
             activity: HashMap::new(),
             watchq: BTreeMap::new(),
+            waits: BTreeMap::new(),
+            waitq: Vec::new(),
+            waits_done: HashSet::new(),
+            wait_seen: HashMap::new(),
             claims: Vec::new(),
             claimed: HashSet::new(),
             short_groups: BTreeMap::new(),
@@ -473,6 +508,10 @@ impl Fold {
                 if !engaged && !contains(&t.assigned, &p.to) {
                     t.assigned.push(p.to.clone());
                 }
+                let note = trim_space(&p.note).to_string();
+                if !engaged && !note.is_empty() {
+                    t.handoffs.insert(p.to.clone(), note.clone());
+                }
                 sync_holder(&mut t);
                 t.updated_at = at(p.at);
                 t.updated_by = p.by.clone();
@@ -484,7 +523,11 @@ impl Fold {
                     &ti,
                     when,
                     &p.by,
-                    &format!("assigned it to {}", p.to),
+                    &if note.is_empty() {
+                        format!("assigned it to {}", p.to)
+                    } else {
+                        format!("assigned it to {}: {}", p.to, cut(&note, MAX_HANDOFF_LINE))
+                    },
                     true,
                     Vec::new(),
                 );
@@ -653,6 +696,7 @@ impl Fold {
             | kinds::TASK_STEP
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
+            kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
             kinds::TASK_PARENT => {
                 let Some(p) = row::<TaskParentRow>(&ev.payload) else {
@@ -922,8 +966,18 @@ impl Fold {
         if !raised.is_empty() {
             super::cards::refresh_blocker(&self.comments, self.by_task.get(&t.id), &mut t, &raised);
         }
+        let person_blocker = !raised.is_empty() && !revised && {
+            t.blockers
+                .iter()
+                .find(|b| b.id == raised)
+                .is_some_and(|b| b.on.as_ref().is_none_or(|o| o.kind == BLOCKED_ON_PERSON))
+        };
         self.tasks.insert(p.task_id.clone(), t);
-        self.touch_line(&ti, line, true, Vec::new());
+        let wake = person_blocker
+            || p.state == FAILED && was != FAILED
+            || is_terminal(&p.state) && !is_terminal(&was) && self.last_subtask(&p.task_id);
+        self.touch_parent(&ti, line, wake);
+        self.waits_on_status(&p.task_id, &was, &p.state);
         self.note(Change {
             kind: TASK_CHANGED.into(),
             task_id: p.task_id,
@@ -984,6 +1038,9 @@ impl Fold {
             ..Comment::default()
         };
         cm.unheard = p.unheard && person;
+        if self.verdict_counts(&p) {
+            cm.verdict = p.verdict.clone();
+        }
         if !primary && !p.held {
             cm.passed = p.text.clone();
         }
@@ -998,6 +1055,11 @@ impl Fold {
         t.comments += 1;
         if primary {
             t.updated_at = cm_at;
+        }
+        // An assignee's own comment takes the card up (card #85); a
+        // recorded message or someone else's comment doesn't.
+        if primary && p.msg_id.is_empty() && !person {
+            take_up(t, &cm_by);
         }
         let ti = Touch::of(t);
         if !p.blocker_id.is_empty() {
@@ -1264,6 +1326,9 @@ impl Fold {
             if self.live(l, now) {
                 tracked.insert(l.lease.holder.clone());
             }
+        }
+        for w in self.waits.values() {
+            tracked.insert(w.by.clone());
         }
         self.first_absent.retain(|k, _| tracked.contains(k));
         for k in tracked {
@@ -1648,6 +1713,8 @@ pub(crate) fn add_holder(t: &mut Task, who: &str) {
 pub(crate) fn sync_holder(t: &mut Task) {
     let holders = t.holders.clone();
     t.assigned.retain(|a| holders.contains(a));
+    let offered = t.assigned.clone();
+    t.handoffs.retain(|k, _| offered.contains(k));
     if t.holders.is_empty() {
         t.holder.clear();
         return;

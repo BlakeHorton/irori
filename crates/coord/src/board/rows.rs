@@ -53,6 +53,8 @@ crate::go_struct! {
         pub to: String = "to",
         pub by: String = "by",
         pub at: GoTime = "at",
+        /// The hand-off note (card #85): what's done, where, what's next.
+        pub note: String = "note" "omit",
     }
 }
 
@@ -146,6 +148,8 @@ crate::go_struct! {
         pub missing: Vec<String> = "missing" "omit",
         pub unheard: bool = "unheard" "omit",
         pub mentions: Vec<Mention> = "mentions" "omit",
+        /// A review verdict on a private card (#88): approved or changes.
+        pub verdict: String = "verdict" "omit",
     }
 }
 
@@ -434,6 +438,50 @@ crate::go_struct! {
     pub struct ReviewReviewerRow {
         pub reviewer: String = "reviewer",
         pub repo_key: String = "repoKey" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    /// wait.created (card #87): `by` asks to be woken once when task
+    /// `task_id` reaches a state in `until`, or when `branch` of `repo`
+    /// moves off the shas in `refs` ("<ref>=<sha>", as seen at creation).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct WaitCreatedRow {
+        pub id: String = "id",
+        pub by: String = "by",
+        pub task_id: String = "taskId" "omit",
+        pub until: Vec<String> = "until" "omit",
+        pub from_state: String = "fromState" "omit",
+        pub repo: String = "repo" "omit",
+        pub root: String = "root" "omit",
+        pub branch: String = "branch" "omit",
+        pub refs: Vec<String> = "refs" "omit",
+        pub note: String = "note" "omit",
+        pub at: GoTime = "at",
+        pub expires: GoTime = "expires",
+    }
+}
+
+crate::go_struct! {
+    /// wait.fired: the wait went off once; `what` is what happened.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct WaitFiredRow {
+        pub id: String = "id",
+        pub what: String = "what",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    /// wait.canceled: by its waiter, or by Irori when the waiter's session
+    /// is gone or the wait expired (`reason`).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct WaitCanceledRow {
+        pub id: String = "id",
+        pub reason: String = "reason" "omit",
         pub by: String = "by",
         pub at: GoTime = "at",
     }

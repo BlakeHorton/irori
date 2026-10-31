@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use coord::{
     BlockedBy, Blocker, BlockerAnswer, BlockerOption, BoardFilter, BoardView, Card, Comment,
-    CommentInput, Coord, Link, NewBlocker, NewSubtask, NewTask, Step, StepUpdate, Task,
+    CommentInput, Coord, Link, NewBlocker, NewSubtask, NewTask, Step, StepUpdate, Task, TaskEdit,
 };
 use gocompat::time::GoTime;
 
@@ -187,7 +187,7 @@ impl Inner {
             .map(|h| {
                 let mut w = n.who(h);
                 if t.assigned.contains(h) {
-                    w += " (assigned, not taken up)";
+                    w += " (offered, not taken up yet)";
                 }
                 w
             })
@@ -210,6 +210,36 @@ impl Inner {
         if !t.watchers.is_empty() {
             let ws: Vec<String> = t.watchers.iter().map(|w| n.who(w)).collect();
             b += &format!("; watched by {}", ws.join(", "));
+        }
+        // Waits (card #87): who waits on this card, and what its holders
+        // wait on.
+        if let Ok((co, _)) = self.on(&t.id, &[]) {
+            let all = co.waits("");
+            let on_it: Vec<String> = all
+                .iter()
+                .filter(|w| w.task_id == t.id)
+                .map(|w| format!("{} (until {})", n.who(&w.by), coord::until_text(&w.until)))
+                .collect();
+            if !on_it.is_empty() {
+                b += &format!("; waited on by {}", on_it.join(", "));
+            }
+            if !coord::is_terminal(&t.state) {
+                let theirs: Vec<String> = all
+                    .iter()
+                    .filter(|w| t.holders.contains(&w.by))
+                    .map(|w| {
+                        let r = if w.task_id.is_empty() {
+                            String::new()
+                        } else {
+                            self.short_of(&w.task_id)
+                        };
+                        one_line(&coord::wait_line(w, &r), 120)
+                    })
+                    .collect();
+                if !theirs.is_empty() {
+                    b += &format!("; waiting on {}", theirs.join(", "));
+                }
+            }
         }
         b += &format!("; updated {}\n", ago(now, &t.updated_at));
         if let Some(r) = &t.rollup {
@@ -317,6 +347,10 @@ impl Inner {
                 for f in &bl.attachments {
                     b += &format!("    file: {} (attachment_get)\n", describe_coord(f));
                 }
+                if bl.options_aside {
+                    b += "    options set aside: the person answered in their own words; answer in the thread, then revise with board_block blocker_id\n";
+                }
+                let opts = if bl.options_aside { &[][..] } else { opts };
                 for (j, o) in opts.iter().enumerate() {
                     b += &format!(
                         "    {}. {} ({})",
@@ -335,7 +369,7 @@ impl Inner {
                     }
                     b += "\n";
                 }
-                if opts.len() < bl.options.len() {
+                if !bl.options_aside && opts.len() < bl.options.len() {
                     b += &format!("    (+{} more answers)\n", bl.options.len() - opts.len());
                 }
             }
@@ -710,6 +744,7 @@ const COMMENT_ARGS: &[(&str, Ty)] = &[
     ("blocker_id", Ty::Str),
     ("missing", Ty::Strs),
     ("mention", Ty::Strs),
+    ("verdict", Ty::Str),
 ];
 
 pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -725,6 +760,10 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         return err_text("give the comment text.");
     }
     let bid = trim(a.str("blocker_id")).to_string();
+    let verdict = gocompat::text::to_lower_str(trim(a.str("verdict")));
+    if !verdict.is_empty() && !bid.is_empty() {
+        return err_text("a verdict is its own comment: give verdict or blocker_id, not both.");
+    }
     let missing = a.strs("missing");
     if !missing.is_empty() && bid.is_empty() {
         return err_text("missing needs blocker_id: which blocker's answer it is missing from.");
@@ -755,6 +794,7 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             blocker_id: bid.clone(),
             missing,
             mentions: logm,
+            verdict: verdict.clone(),
         },
     ) {
         Ok(v) => v,
@@ -781,8 +821,13 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         );
     }
     let n = s.roster();
+    let verdict_note = match verdict.as_str() {
+        "" => "",
+        coord::VERDICT_CHANGES => " (verdict: changes asked)",
+        _ => " (verdict: approved)",
+    };
     let mut out = format!(
-        "Commented comment:{} on {}{}.",
+        "Commented comment:{} on {}{verdict_note}{}.",
         cm.id,
         s.short_of(&cm.task_id),
         attached_line(&files)
@@ -1477,7 +1522,7 @@ pub(crate) fn board_leave(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     )
 }
 
-const ASSIGN_ARGS: &[(&str, Ty)] = &[("task_id", Ty::Str), ("to", Ty::Str)];
+const ASSIGN_ARGS: &[(&str, Ty)] = &[("task_id", Ty::Str), ("to", Ty::Str), ("note", Ty::Str)];
 
 pub(crate) fn board_assign(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let a = match decode(raw, ASSIGN_ARGS) {
@@ -1500,7 +1545,7 @@ pub(crate) fn board_assign(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let (t, notice) = match co.assign(&as_[0], &id, &as_[1]) {
+    let (t, notice) = match co.hand_off(&as_[0], &id, &as_[1], trim(a.str("note"))) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
@@ -1625,6 +1670,47 @@ pub(crate) fn board_link(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Err(e) => return map_err(e),
     };
     format!("Linked {}.\n{}", t.short_ref(), s.line(&t))
+}
+
+// --- board_edit ---
+
+const EDIT_ARGS: &[(&str, Ty)] = &[
+    ("task_id", Ty::Str),
+    ("title", Ty::OptStr),
+    ("objective", Ty::OptStr),
+    ("done_when", Ty::OptStr),
+];
+
+pub(crate) fn board_edit(s: &Inner, c: &Caller, raw: &[u8]) -> String {
+    let a = match decode(raw, EDIT_ARGS) {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+    let id = match s.task_id(a.str("task_id")) {
+        Ok(id) => id,
+        Err(m) => return m,
+    };
+    let e = TaskEdit {
+        title: a.opt_str("title"),
+        objective: a.opt_str("objective"),
+        done_when: a.opt_str("done_when"),
+    };
+    if e.title.is_none() && e.objective.is_none() && e.done_when.is_none() {
+        return err_text("give title, objective or done_when: what the card is for now.");
+    }
+    let (co, as_) = match s.on(&id, std::slice::from_ref(&c.sender.key)) {
+        Ok(v) => v,
+        Err(e) => return map_err(e),
+    };
+    let t = match co.edit_task(&as_[0], &id, e) {
+        Ok(t) => t,
+        Err(e) => return map_err(e),
+    };
+    format!(
+        "Edited {}; its thread says what changed. If the plan changed too, give it new steps with board_steps.\n{}",
+        t.short_ref(),
+        s.line(&t)
+    )
 }
 
 // --- leases ---

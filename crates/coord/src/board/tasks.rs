@@ -263,6 +263,7 @@ impl Fold {
         id: &str,
         to: &str,
         wide: bool,
+        note: &str,
     ) -> Result<(Task, bool)> {
         let (by, to) = (trim_space(by).to_string(), trim_space(to).to_string());
         if by.is_empty() || to.is_empty() {
@@ -288,6 +289,7 @@ impl Fold {
                 to,
                 by: by.clone(),
                 at,
+                note: note.into(),
             },
         )?;
         Ok((self.tasks[id].clone(), true))

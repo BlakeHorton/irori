@@ -146,6 +146,8 @@ export type AgentRef = {
 	where: string,
 	assigned?: boolean,
 	waiting?: boolean,
+	/**  The hand-off note it was offered the card with (card #85). */
+	handoff?: string,
 	device?: string,
 	deviceId?: string,
 	color?: string,
@@ -362,6 +364,12 @@ export type CardBlocker = {
 	attachments: FileRef[],
 	sentTo?: AgentRef | null,
 	missing: string[],
+	/**
+	 *  The person answered in their own words since the options were
+	 *  offered (card #90): the window folds them under "Earlier options"
+	 *  and shows a reply box until a revision offers new ones.
+	 */
+	optionsAside: boolean,
 	thread: CardThreadItem[],
 };
 
@@ -381,6 +389,7 @@ export type CardDetail = {
 	note: string,
 	steps: Step[],
 	blockers: CardBlocker[],
+	reviews: CardReview[],
 	prs: CardPR[],
 	links: Link[],
 	recent: CardActivity[],
@@ -389,6 +398,11 @@ export type CardDetail = {
 	threadEarlier: number,
 	historyTrimmed: boolean,
 	subtaskList: CardSubtask[],
+	/**
+	 *  Waits (card #87): agents waiting on this card, and what this card's
+	 *  holders wait on.
+	 */
+	waits: CardWait[],
 	onBoard?: CardBoard | null,
 	sharedTo?: SharedCopy | null,
 } & CardSummary;
@@ -464,6 +478,18 @@ export type CardResolution = {
 	note: string,
 };
 
+/**  One reviewer's review of a private card (#88). */
+export type CardReview = {
+	reviewer: AgentRef,
+	askedBy: AgentRef,
+	/**  requested, approved or changes. */
+	state: string,
+	at: string,
+	pr: string,
+	/**  The verdict comment's text, once there is one. */
+	text: string,
+};
+
 /**  One row of a parent's subtask list. */
 export type CardSubtask = {
 	id: string,
@@ -535,6 +561,18 @@ export type CardThreadItem = {
 	mentions?: CardMention[],
 };
 
+/**
+ *  One wait shown on a card page (card #87): `who` waits; `on_this` when
+ *  it waits on this card, else it is one of this card's holders waiting on
+ *  something else (`text`: "#12 until done", "branch main moves").
+ */
+export type CardWait = {
+	id: string,
+	who: AgentRef,
+	text: string,
+	onThis: boolean,
+};
+
 /**  presence.Change. */
 export type Change = {
 	kind: ChangeKind,
@@ -563,6 +601,7 @@ export type Comment = {
 	missing?: string[],
 	unheard?: boolean,
 	mentions?: Mention[],
+	verdict?: string,
 	device: string,
 };
 
