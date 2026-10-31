@@ -213,8 +213,13 @@ export function MentionTextarea({
       p >= 0 &&
       v.length === value.length + 1 &&
       v.slice(0, p) + v.slice(p + 1) === value
-    if (!disabledMentions && typed && endsMention.test(v[p]))
+    if (!disabledMentions && typed && endsMention.test(v[p])) {
       next = settle(value, p, next, cands)
+      // Settled by punctuation ("@oak,"): the list is done, or Enter
+      // would put "@oak " over the comma.
+      const t = tokenAt(value, p, names)
+      if (next !== mentions && t) setDismissed(t.start)
+    }
     // Pasted text (or Ctrl+Z bringing a mention back): each exact,
     // unique name in what came in counts as picked.
     if (!disabledMentions && !typed && v.length > value.length) {
