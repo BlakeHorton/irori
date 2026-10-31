@@ -7,7 +7,6 @@ import { MessageDialog } from "@/components/cards/message-dialog"
 import { AskBox } from "@/components/cards/ask-box"
 import {
   asFilter,
-  BoardBar,
   CardGrid,
   DoneGrid,
   EmptyCards,
@@ -33,6 +32,9 @@ import { onOpen } from "@/lib/settings"
 import { nameLookup, useGone, useHeld } from "@/lib/talk"
 import { UpdateBanner } from "@/updater"
 import { BoardCanvas, useBoardView, ViewSwitch } from "@/components/canvas/switch"
+import { BoardPage } from "@/components/boards/board-page"
+import { BoardsPage } from "@/components/boards/boards-page"
+import { go, Home, sectionFromHash, type Section } from "@/lib/nav"
 
 // PageState is the history entry of a card's page. fromGrid: the grid is
 // the entry behind it, so Back is the browser's back.
@@ -82,7 +84,15 @@ export function App() {
   const [filter, setFilter] = useState<Filter>(() =>
     asFilter(previewFlag("filter"))
   )
-  const done = useDoneCards(filter === "done")
+  // Where the window is (card #96): Home (your own cards), Boards, or one
+  // board's page; in the address so back and forward move between them.
+  // ?boards in the preview starts on Boards.
+  const [section, setSection] = useState<Section>(() =>
+    previewFlag("boards") !== null ? { kind: "boards" } : sectionFromHash(window.location.hash)
+  )
+  // A board page's own tab (All, Needs a decision, Closed).
+  const [boardTab, setBoardTab] = useState<"all" | "decide" | "done">("all")
+  const done = useDoneCards(filter === "done" || boardTab === "done")
   // List or Canvas (card #93): the grid, or the board as a flow chart.
   const [view, setView] = useBoardView()
   const [open, setOpen] = useState(() => cardFromHash(window.location.hash))
@@ -158,6 +168,7 @@ export function App() {
       window.location.pathname + window.location.search
     )
     setOpen("")
+    setSection(Home)
   }, [])
 
   useEffect(() => {
@@ -165,6 +176,11 @@ export function App() {
       const id = cardFromHash(window.location.hash)
       setOpen(id)
       if (id) setLast(id)
+      // A card's page keeps the section behind it; anything else names one.
+      else {
+        setSection(sectionFromHash(window.location.hash))
+        setBoardTab("all")
+      }
     }
     window.addEventListener("popstate", onPop)
     return () => window.removeEventListener("popstate", onPop)
@@ -252,22 +268,27 @@ export function App() {
     [openCard, openHeld]
   )
 
-  const chips = deviceChips(cards)
+  // Home is your own cards; a board's live on its page (card #96).
+  const homeCards = cards.filter((c) => c.scope !== "board")
+  const boardDecide = cards.filter((c) => c.scope === "board" && c.openBlockers > 0)
+  const homeDone = { ...done, cards: done.cards.filter((c) => c.scope !== "board") }
+  const chips = deviceChips(homeCards)
   // A device filter whose device has no cards left, or a board filter whose
   // board is gone, falls back to All.
   const active: Filter =
     (filter.startsWith("device:") && !chips.some((d) => filter === `device:${d.id}`)) ||
-    (filter.startsWith("board:") && !boards.some((b) => filter === `board:${b.boardId}`))
+    filter.startsWith("board:") ||
+    filter === "mine"
       ? "all"
       : filter
-  const { shown, context } = shownCards(cards, active)
+  const { shown, context } = shownCards(homeCards, active)
   // The Pinned group: pinned cards in their order, each pinned parent with
   // its subtasks (as BoardService.Cards lists them).
   const pinnedGroup = shown.filter(
     (c) => c.pinned || (c.parent && shown.some((p) => p.id === c.parent?.id && p.pinned))
   )
   const inPinned = new Set(pinnedGroup.map((c) => c.id))
-  const decide = cards.filter((c) => c.openBlockers > 0).length
+  const decide = homeCards.filter((c) => c.openBlockers > 0).length
   // cardLabel names the card a held message is about: "#28", else "a card"
   // (one not on this board, or not loaded).
   const cardLabel = (ref: string) => {
@@ -283,6 +304,8 @@ export function App() {
         roster={roster}
         held={held.held.length}
         onHeld={() => openHeld("")}
+        section={open ? null : section}
+        boardsNeedYou={boardDecide.length}
       />
       <main className="mx-auto flex max-w-[1920px] flex-col gap-3.5 px-4 pt-[18px] pb-10 sm:px-6">
         <UpdateBanner />
@@ -305,9 +328,25 @@ export function App() {
             onBack={back}
             onOpen={openCard}
           />
+        ) : section.kind === "boards" ? (
+          <BoardsPage cards={cards} />
+        ) : section.kind === "board" ? (
+          <BoardPage
+            key={section.id}
+            boardId={section.id}
+            cards={cards}
+            done={done}
+            tab={boardTab}
+            onTab={setBoardTab}
+            view={view}
+            onView={setView}
+            selected={last}
+            onOpen={openCard}
+            now={now}
+          />
         ) : loading && cards.length === 0 ? (
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
-        ) : cards.length === 0 && filter !== "done" ? (
+        ) : homeCards.length === 0 && filter !== "done" ? (
           <>
             <AskBox onAsked={setLast} />
             <FilterBar
@@ -316,6 +355,7 @@ export function App() {
               decide={0}
               only={["all", "done"]}
             />
+            <BoardsNeedYou cards={boardDecide} boards={boards} />
             <EmptyCards />
           </>
         ) : (
@@ -331,16 +371,17 @@ export function App() {
                 filter={active}
                 onFilter={setFilter}
                 decide={decide}
+                only={["all", "decide", "done"]}
               />
               <DeviceBar filter={active} onFilter={setFilter} devices={chips} />
-              <BoardBar filter={active} onFilter={setFilter} boards={boards} />
               <span className="ml-auto">
                 <ViewSwitch view={view} onView={setView} />
               </span>
             </div>
+            <BoardsNeedYou cards={boardDecide} boards={boards} />
             {filter === "done" ? (
               <DoneGrid
-                done={done}
+                done={homeDone}
                 selected={last}
                 onSelect={openCard}
                 now={now}
@@ -409,6 +450,35 @@ export function App() {
         />
       )}
     </div>
+  )
+}
+
+// BoardsNeedYou keeps a board's decisions from hiding off Home: one line
+// per board with cards waiting on the person, opening that board.
+function BoardsNeedYou({
+  cards,
+  boards,
+}: {
+  cards: { board?: string | null }[]
+  boards: { boardId: string; name: string }[]
+}) {
+  const by = new Map<string, number>()
+  for (const c of cards) if (c.board) by.set(c.board, (by.get(c.board) ?? 0) + 1)
+  if (!by.size) return null
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12.5px] text-muted-foreground">
+      <span>Waiting on you on your boards:</span>
+      {[...by].map(([id, n]) => (
+        <button
+          key={id}
+          type="button"
+          className="text-destructive underline-offset-2 hover:underline"
+          onClick={() => go({ kind: "board", id })}
+        >
+          {boards.find((b) => b.boardId === id)?.name || "a board"} ({n})
+        </button>
+      ))}
+    </p>
   )
 }
 

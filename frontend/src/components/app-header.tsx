@@ -2,18 +2,25 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SettingsMenu } from "@/components/settings/settings-menu"
 import type { Roster } from "@/lib/irori"
+import { go, type Section } from "@/lib/nav"
 
-// AppHeader is the top bar: the product mark, this device, the version,
-// the Held list (with how many messages wait on the person) and the
-// settings.
+// AppHeader is the top bar: the product mark, Home | Boards (card #96),
+// this device, the version, the Held list (with how many messages wait on
+// the person) and the settings.
 export function AppHeader({
   roster,
   held,
   onHeld,
+  section,
+  boardsNeedYou = 0,
 }: {
   roster: Roster
   held: number
   onHeld: () => void
+  // Where the window is; null on a card's page (neither is current).
+  section?: Section | null
+  // Cards on boards waiting on the person, shown on Boards.
+  boardsNeedYou?: number
 }) {
   const { device, version, source, agents } = roster
   const busy = agents.filter((a) => a.status === "busy").length
@@ -29,6 +36,29 @@ export function AppHeader({
             囲炉裏
           </span>
         </div>
+        <nav className="ml-2 flex items-center gap-1" aria-label="Sections">
+          <Button
+            size="sm"
+            variant={section?.kind === "home" ? "secondary" : "ghost"}
+            aria-current={section?.kind === "home" ? "page" : undefined}
+            onClick={() => go({ kind: "home" })}
+          >
+            Home
+          </Button>
+          <Button
+            size="sm"
+            variant={section && section.kind !== "home" ? "secondary" : "ghost"}
+            aria-current={section && section.kind !== "home" ? "page" : undefined}
+            onClick={() => go({ kind: "boards" })}
+          >
+            Boards
+            {boardsNeedYou > 0 && (
+              <Badge variant="destructive" className="tabular-nums" title="Cards on your boards waiting on you">
+                {boardsNeedYou}
+              </Badge>
+            )}
+          </Button>
+        </nav>
         {source === "sample" && (
           <Badge variant="warning" title="Not connected to the Irori app">
             Sample data

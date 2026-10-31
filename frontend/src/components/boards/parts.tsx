@@ -2,13 +2,6 @@ import { useEffect, useState, type FormEvent } from "react"
 
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   AutonomyPresets,
@@ -18,11 +11,8 @@ import {
   inviteOpen,
   MaxBoardName,
   suggestTag,
-  useBoards,
-  useInvite,
   validTag,
   type BoardSettings,
-  type BoardSummary,
   type InviteStatus,
 } from "@/lib/boards"
 import { copyText } from "@/lib/clipboard"
@@ -31,82 +21,15 @@ import { plainLine, shortRepo } from "@/lib/irori"
 import { errorText } from "@/lib/talk"
 import { cn } from "@/lib/utils"
 
-// BoardsDialog is Settings → Boards (design/v0.5-shared-boards.md §8): each
-// board with its name, tag and one status dot (amber with its warning lines
-// when something is wrong: §6.3-6.5); Rename (owners), Invite someone (an
-// owner's ready board, with what happens next; else why not, card #96),
-// Leave (every one of your devices; "Leaving…" with Forget now while
-// other people are on it, §4.4) and Forget (this device only); New
-// board; and Join with an invite. An open invite takes the dialog over
-// until it ends (§4.1, B4).
-export function BoardsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { boards, error, reload } = useBoards()
-  const { invite, setInvite } = useInvite(open)
-  const showInvite = !!invite && invite.state !== ""
-  const homeOff = useHomeOff(open)
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-3 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Boards</DialogTitle>
-          <DialogDescription>
-            A board is a set of cards you share with other people, apart from
-            My devices. Make one per project; anyone can be on as many boards
-            as they like. Boards are private: only the people invited see
-            them.
-          </DialogDescription>
-        </DialogHeader>
-        {showInvite ? (
-          <InvitePanel
-            s={invite}
-            onClose={() => {
-              setInvite(null)
-              void reload()
-            }}
-          />
-        ) : (
-          <>
-            {boards.length > 0 && (
-              <ul className="grid gap-2" aria-label="Your boards">
-                {boards.map((b) => (
-                  <BoardRow
-                    key={b.boardId}
-                    board={b}
-                    onChanged={reload}
-                    onInvite={setInvite}
-                  />
-                ))}
-              </ul>
-            )}
-            {boards.some((b) => b.owner && b.ready && !b.leaving) && (
-              <InviteHow homeOff={homeOff} />
-            )}
-            {boards.length === 0 && (
-              <p className="text-[13px] text-muted-foreground">
-                No boards yet. Make one below, then invite people to it; or
-                join one with an invite link someone sent you.
-              </p>
-            )}
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            <NewBoard taken={boards.map((b) => b.tag)} onMade={reload} />
-            <JoinInvite onJoined={setInvite} />
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
+// The pieces of the Boards pages (card #96; design/v0.5-shared-boards.md
+// §8): New board, Join with an invite, an open invite either side, how an
+// invite works, and a board's settings (members, what reaches my agents,
+// what my agents may do, reviewers).
 
 // useHomeOff says this device's home server is off while it could run
 // one: an invite link then only reaches someone who can reach this device
 // directly (no third-party relays, architecture.md §7.1).
-function useHomeOff(open: boolean): boolean {
+export function useHomeOff(open: boolean): boolean {
   const [off, setOff] = useState(false)
   useEffect(() => {
     if (!open) return
@@ -122,223 +45,9 @@ function useHomeOff(open: boolean): boolean {
   return off
 }
 
-function BoardRow({
-  board: b,
-  onChanged,
-  onInvite,
-}: {
-  board: BoardSummary
-  onChanged: () => Promise<void>
-  onInvite: (s: InviteStatus) => void
-}) {
-  const [renaming, setRenaming] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const [name, setName] = useState(b.name)
-  const [error, setError] = useState<string | null>(null)
-  const rename = async (e: FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    try {
-      await actions.rename(b.boardId, name)
-      setRenaming(false)
-      await onChanged()
-    } catch (err) {
-      setError(errorText(err))
-    }
-  }
-  const cards = b.cards === 1 ? "1 card" : `${b.cards} cards`
-  const devices = b.devices === 1 ? "1 device" : `${b.devices} devices`
-  return (
-    <li className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1 text-[13px]">
-      <span
-        className={cn(
-          "size-2 rounded-full",
-          b.ready && !b.warnings?.length ? "bg-success" : "bg-warning"
-        )}
-        aria-hidden
-        title={
-          b.warnings?.[0] ?? (b.ready ? "Ready" : "Its cards are still arriving from your other device")
-        }
-      />
-      {renaming ? (
-        <form className="flex min-w-0 gap-1.5" onSubmit={rename}>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={MaxBoardName}
-            aria-label="Board name"
-            className="h-7 text-[13px]"
-            autoFocus
-          />
-          <Button type="submit" size="sm" disabled={!name.trim()}>
-            Save
-          </Button>
-        </form>
-      ) : (
-        <span className="min-w-0 truncate">
-          <span className="text-ink">{plainLine(b.name) || "(unnamed)"}</span>{" "}
-          <span className="font-mono text-xs text-muted-foreground">{plainLine(b.tag)}#</span>{" "}
-          <small className="text-xs text-muted-foreground">
-            {b.leaving
-              ? "Leaving…"
-              : b.ready
-                ? `${cards} · ${devices}`
-                : "arriving from your other device"}
-          </small>
-          {b.tagClash && (
-            <small className="block text-xs text-destructive">
-              Another board is also {plainLine(b.tag)}#: its refs need the card's id.
-            </small>
-          )}
-          {b.warnings?.map((w, i) => (
-            <small key={i} className="block text-xs text-warning">
-              {plainLine(w)}
-            </small>
-          ))}
-        </span>
-      )}
-      <span className="flex items-center gap-1.5">
-        {renaming ? (
-          <Button variant="ghost" size="sm" onClick={() => setRenaming(false)}>
-            Cancel
-          </Button>
-        ) : (
-          b.owner && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
-                Rename
-              </Button>
-            </>
-          )
-        )}
-        {b.leaving ? (
-          <ConfirmButton
-            label="Forget now"
-            variant="destructive"
-            confirmLabel="Forget it now"
-            question={
-              <>
-                Forget <b>{plainLine(b.name)}</b> on every one of your devices
-                now? The others may not hear that you left until one of their
-                devices next reaches yours, which may be never.
-              </>
-            }
-            onConfirm={async () => {
-              await actions.forgetNow(b.boardId)
-              await onChanged()
-            }}
-          />
-        ) : (
-          <ConfirmButton
-            label="Leave"
-            variant="destructive"
-            confirmLabel="Leave the board"
-            question={
-              b.people.length > 1 ? (
-                <>
-                  Leave <b>{plainLine(b.name)}</b>? It goes from every one of
-                  your devices once another member's Irori has your leave, and
-                  nothing you write there counts after it. Coming back needs a
-                  new invite.
-                </>
-              ) : (
-                <>
-                  Leave <b>{plainLine(b.name)}</b>? It goes from every one of
-                  your devices, with its cards. Coming back needs a new board.
-                </>
-              )
-            }
-            onConfirm={async () => {
-              await actions.leave(b.boardId)
-              await onChanged()
-            }}
-          />
-        )}
-      </span>
-      <span className="col-start-2 col-end-4 flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1">
-          Visible to: {b.people.map(plainLine).join(", ")}
-        </span>
-        {b.ready && !b.leaving && (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-expanded={showSettings}
-            onClick={() => setShowSettings((v) => !v)}
-          >
-            {showSettings ? "Hide settings" : "Settings"}
-          </Button>
-        )}
-        <ConfirmButton
-          label="Forget here"
-          confirmLabel="Forget on this device"
-          question={
-            <>
-              Forget <b>{plainLine(b.name)}</b> on this device only? Its file
-              goes from here; your other devices keep it.
-            </>
-          }
-          onConfirm={async () => {
-            await actions.forget(b.boardId)
-            await onChanged()
-          }}
-        />
-      </span>
-      {!b.leaving && (
-        <InviteStrip
-          board={b}
-          onInvite={async () => {
-            setError(null)
-            try {
-              onInvite(await actions.invite(b.boardId))
-            } catch (err) {
-              setError(errorText(err))
-            }
-          }}
-        />
-      )}
-      {showSettings && <BoardSettingsPanel boardId={b.boardId} onChanged={onChanged} />}
-      {error && <span className="col-start-2 col-end-4 text-xs text-destructive">{error}</span>}
-    </li>
-  )
-}
-
-// InviteStrip is how people get onto a board (card #96): on a board you
-// own, a clear Invite button with what happens next; otherwise the reason
-// there is none.
-function InviteStrip({
-  board: b,
-  onInvite,
-}: {
-  board: BoardSummary
-  onInvite: () => void
-}) {
-  if (!b.owner)
-    return (
-      <p className="col-start-2 col-end-4 text-xs text-muted-foreground">
-        Only an owner can invite people to this board: ask one of them.
-      </p>
-    )
-  if (!b.ready)
-    return (
-      <p className="col-start-2 col-end-4 text-xs text-muted-foreground">
-        You can invite people once its cards have arrived from your other
-        device.
-      </p>
-    )
-  return (
-    <div className="col-start-2 col-end-4 flex items-center gap-2">
-      <Button size="sm" onClick={onInvite}>
-        Invite someone
-      </Button>
-      <span className="text-xs text-muted-foreground">to {plainLine(b.name) || "this board"}</span>
-    </div>
-  )
-}
-
 // InviteHow says once, under the boards, what an invite does, and why the
 // link may not reach far (card #96).
-function InviteHow({ homeOff }: { homeOff: boolean }) {
+export function InviteHow({ homeOff }: { homeOff: boolean }) {
   return (
     <div className="grid gap-1 border-l-2 border-primary/60 pl-2.5 text-xs text-muted-foreground">
       <p>
@@ -360,7 +69,7 @@ function InviteHow({ homeOff }: { homeOff: boolean }) {
 
 // NewBoard makes a board: a name, and the short tag its cards' refs carry
 // ("tag#12"), suggested from the name until it is typed.
-function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Promise<void> }) {
+export function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Promise<void> }) {
   const [name, setName] = useState("")
   const [tag, setTag] = useState("")
   const [typedTag, setTypedTag] = useState(false)
@@ -424,7 +133,7 @@ function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Promise<vo
 }
 
 // JoinInvite is Join with an invite: the irori-invite: link someone sent.
-function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }) {
+export function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }) {
   const [link, setLink] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -467,7 +176,7 @@ function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }) {
 // InvitePanel is the open invite, either side (§4.1, B4). The inviter
 // sends the link, then types the five words the invitee reads aloud; both
 // read out each other's fingerprint from their own screen.
-function InvitePanel({ s, onClose }: { s: InviteStatus; onClose: () => void }) {
+export function InvitePanel({ s, onClose }: { s: InviteStatus; onClose: () => void }) {
   const open = inviteOpen(s)
   const host = s.role === "host"
   const board = plainLine(s.boardName) || "the board"
@@ -702,7 +411,7 @@ function Reviewers({
 // BoardSettingsPanel is a board opened (§8): its members, what reaches your
 // agents from other people on it (§7.2), and what your agents may do there
 // (§7.3). Only the person changes these, here.
-function BoardSettingsPanel({
+export function BoardSettingsPanel({
   boardId,
   onChanged,
 }: {
@@ -731,7 +440,7 @@ function BoardSettingsPanel({
   }
   if (!s) {
     return error ? (
-      <p className="col-start-2 col-end-4 text-xs text-destructive">{error}</p>
+      <p className="text-xs text-destructive">{error}</p>
     ) : null
   }
   const others = s.members.filter((m) => !m.me)
@@ -739,7 +448,7 @@ function BoardSettingsPanel({
   const receiveHint = ReceivePresets.find((p) => p.value === s.receive)?.hint
   const autonomyHint = AutonomyPresets.find((p) => p.value === s.autonomy)?.hint
   return (
-    <div className="col-start-2 col-end-4 grid gap-3 rounded-md border border-border p-3 text-xs">
+    <div className="grid gap-3 text-xs">
       <section className="grid gap-1" aria-label="Members">
         <span className="font-semibold text-ink">Members</span>
         <ul className="grid gap-0.5">

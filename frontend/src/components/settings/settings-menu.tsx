@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from "react"
 import { BellIcon, LaptopIcon, LayersIcon, SettingsIcon } from "lucide-react"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
-import { BoardsDialog } from "@/components/settings/boards-dialog"
+import { go } from "@/lib/nav"
 import { DevicesDialog } from "@/components/settings/devices-dialog"
 import { Button } from "@/components/ui/button"
 import {
@@ -29,9 +29,6 @@ export function SettingsMenu() {
   const [open, setOpen] = useState(() => previewFlag("settings") !== null)
   const [devicesOpen, setDevicesOpen] = useState(
     () => previewFlag("devices") !== null
-  )
-  const [boardsOpen, setBoardsOpen] = useState(
-    () => previewFlag("boards") !== null
   )
   const s = useSettings(open)
 
@@ -148,10 +145,10 @@ export function SettingsMenu() {
               size="sm"
               onClick={() => {
                 setOpen(false)
-                setBoardsOpen(true)
+                go({ kind: "boards" })
               }}
             >
-              Manage…
+              Open…
             </Button>
           </div>
           <div className="border-t border-border pt-3">
@@ -172,7 +169,6 @@ export function SettingsMenu() {
         </PopoverContent>
       </Popover>
       <DevicesDialog open={devicesOpen} onOpenChange={setDevicesOpen} />
-      <BoardsDialog open={boardsOpen} onOpenChange={setBoardsOpen} />
     </>
   )
 }

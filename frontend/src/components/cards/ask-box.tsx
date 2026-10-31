@@ -28,12 +28,19 @@ import { errorText } from "@/lib/talk"
 // An @mention (card #77) narrows it: only the agents it names hear it,
 // woken, in any repo, so the repo chip steps aside too. Mentions work on
 // your own board only.
-export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
+// board, on a board's page (card #96), starts the ask on that board.
+export function AskBox({
+  onAsked,
+  board: onPage = "",
+}: {
+  onAsked: (id: string) => void
+  board?: string
+}) {
   const [text, setText] = useDraft("ask/room")
   const [mentions, setMentions] = useMentionsDraft("ask/room")
   const [repo, setRepo] = useState("")
   const [repos, setRepos] = useState<AskRepo[]>([])
-  const [board, setBoard] = useState("")
+  const [board, setBoard] = useState(onPage)
   const { boards } = useBoards()
   const shared = boards.filter((b) => b.ready && !b.leaving)
   // A board that went away (forgotten, left) falls back to the private room.
