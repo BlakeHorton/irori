@@ -393,6 +393,35 @@ impl Fold {
     /// The line goes in at its row's position; past MAX_ACTIVITY the
     /// lowest positions drop.
     pub(crate) fn touch_line(&mut self, t: &Touch, a: Activity, watch: bool, also: Vec<String>) {
+        self.touch_line_wake(t, a, watch, also, false);
+    }
+
+    /// A state row's line: always watched, and `wake` wakes the parent's
+    /// holders (card #89).
+    pub(crate) fn touch_parent(&mut self, t: &Touch, a: Activity, wake: bool) {
+        self.touch_line_wake(t, a, true, Vec::new(), wake);
+    }
+
+    /// Whether every subtask of `id`'s parent has ended, now that `id` has.
+    pub(crate) fn last_subtask(&self, id: &str) -> bool {
+        let Some(p) = self.tasks.get(id).and_then(|t| self.tasks.get(&t.parent)) else {
+            return false;
+        };
+        p.subtasks
+            .iter()
+            .all(|k| self.tasks.get(k).is_none_or(|kt| is_terminal(&kt.state)))
+    }
+
+    /// The line goes on t's activity and, when watched, on t's digest and
+    /// its open parent's digest; `wake` wakes the parent's holders.
+    fn touch_line_wake(
+        &mut self,
+        t: &Touch,
+        a: Activity,
+        watch: bool,
+        also: Vec<String>,
+        wake: bool,
+    ) {
         if a.what.is_empty() {
             return;
         }
@@ -417,7 +446,8 @@ impl Fold {
                     p.holders.clone(),
                 );
                 let line = format!("{} (part of {pref}): {what}", t.short_ref);
-                self.queue_watch(&pid, pw, &by, &line, ph);
+                let woken = if wake { ph.clone() } else { Vec::new() };
+                self.queue_watch_wake(&pid, pw, &by, &line, ph, woken);
             }
         }
     }
@@ -431,6 +461,19 @@ impl Fold {
         what: &str,
         also: Vec<String>,
     ) {
+        self.queue_watch_wake(id, has_watchers, by, what, also, Vec::new());
+    }
+
+    /// [`Self::queue_watch`], waking `wake` (a subset of `also`).
+    fn queue_watch_wake(
+        &mut self,
+        id: &str,
+        has_watchers: bool,
+        by: &str,
+        what: &str,
+        also: Vec<String>,
+        wake: Vec<String>,
+    ) {
         if self.replaying || !has_watchers && also.is_empty() {
             return;
         }
@@ -439,6 +482,7 @@ impl Fold {
             by: by.into(),
             what: what.into(),
             also,
+            wake,
         });
         if q.lines.len() > MAX_WATCH_PENDING {
             let n = q.lines.len() - MAX_WATCH_PENDING;
@@ -813,14 +857,20 @@ impl Fold {
                     add(a, &mut who);
                 }
             }
-            let mut by_text: HashMap<String, usize> = HashMap::new();
+            let mut by_text: HashMap<(String, bool), usize> = HashMap::new();
             for r in who {
-                let lines: Vec<String> = q
+                let kept: Vec<&WatchLine> = q
                     .lines
                     .iter()
                     .filter(|l| {
                         !(l.by == r || !contains(&t.watchers, &r) && !contains(&l.also, &r))
                     })
+                    .collect();
+                // Someone else's line about a subtask that matters wakes
+                // the parent's holder; their own never does.
+                let wake = kept.iter().any(|l| contains(&l.wake, &r));
+                let lines: Vec<String> = kept
+                    .into_iter()
                     .map(|l| {
                         let actor = if l.by == SWEEPER {
                             "Irori"
@@ -834,11 +884,12 @@ impl Fold {
                     continue;
                 }
                 let text = watch_text(t, &lines, q.dropped);
-                if let Some(&i) = by_text.get(&text) {
+                let key = (text.clone(), wake);
+                if let Some(&i) = by_text.get(&key) {
                     out[i].to.push(r);
                     continue;
                 }
-                by_text.insert(text.clone(), out.len());
+                by_text.insert(key, out.len());
                 out.push(Notice {
                     kind: NOTICE_WATCHED.into(),
                     task_id: id.clone(),
@@ -847,6 +898,7 @@ impl Fold {
                     to: vec![r],
                     by: SWEEPER.into(),
                     text,
+                    wake,
                     ..Notice::default()
                 });
             }

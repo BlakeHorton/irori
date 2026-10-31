@@ -77,6 +77,10 @@ pub(crate) struct WatchLine {
     pub by: String,
     pub what: String,
     pub also: Vec<String>,
+    /// Recipients this line wakes instead of telling at their next turn: a
+    /// split card's parent holders, for a subtask's person blocker, failure
+    /// or the last subtask finishing (card #89).
+    pub wake: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -922,8 +926,17 @@ impl Fold {
         if !raised.is_empty() {
             super::cards::refresh_blocker(&self.comments, self.by_task.get(&t.id), &mut t, &raised);
         }
+        let person_blocker = !raised.is_empty() && !revised && {
+            t.blockers
+                .iter()
+                .find(|b| b.id == raised)
+                .is_some_and(|b| b.on.as_ref().is_none_or(|o| o.kind == BLOCKED_ON_PERSON))
+        };
         self.tasks.insert(p.task_id.clone(), t);
-        self.touch_line(&ti, line, true, Vec::new());
+        let wake = person_blocker
+            || p.state == FAILED && was != FAILED
+            || is_terminal(&p.state) && !is_terminal(&was) && self.last_subtask(&p.task_id);
+        self.touch_parent(&ti, line, wake);
         self.note(Change {
             kind: TASK_CHANGED.into(),
             task_id: p.task_id,
