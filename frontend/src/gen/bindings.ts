@@ -17,8 +17,8 @@ export const commands = {
 	inboxHeldHistory: (limit: number) => __TAURI_INVOKE<Delivery[]>("inbox_held_history", { limit }),
 	inboxCounts: () => __TAURI_INVOKE<InboxCounts>("inbox_counts"),
 	inboxGet: (deliveryId: string) => __TAURI_INVOKE<Delivery>("inbox_get", { deliveryId }),
-	inboxSend: (to: string, repo: string, text: string) => __TAURI_INVOKE<Message>("inbox_send", { to, repo, text }),
-	inboxReply: (deliveryId: string, text: string) => __TAURI_INVOKE<null>("inbox_reply", { deliveryId, text }),
+	inboxSend: (to: string, repo: string, text: string, mentions: Mention[]) => __TAURI_INVOKE<SendResult>("inbox_send", { to, repo, text, mentions }),
+	inboxReply: (deliveryId: string, text: string, mentions: Mention[]) => __TAURI_INVOKE<MentionOutcome[]>("inbox_reply", { deliveryId, text, mentions }),
 	inboxMarkRead: (deliveryId: string) => __TAURI_INVOKE<null>("inbox_mark_read", { deliveryId }),
 	inboxRelease: (deliveryId: string) => __TAURI_INVOKE<null>("inbox_release", { deliveryId }),
 	inboxDismiss: (deliveryId: string) => __TAURI_INVOKE<null>("inbox_dismiss", { deliveryId }),
@@ -30,11 +30,11 @@ export const commands = {
 	boardCard: (id: string) => __TAURI_INVOKE<CardDetail>("board_card", { id }),
 	boardDoneCards: (limit: number, before: string) => __TAURI_INVOKE<DonePage>("board_done_cards", { limit, before }),
 	boardMessage: (taskId: string, msgId: string) => __TAURI_INVOKE<CardMessage>("board_message", { taskId, msgId }),
-	boardComment: (id: string, text: string, tell: string) => __TAURI_INVOKE<CommentResult>("board_comment", { id, text, tell }),
-	boardAnswer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean) => __TAURI_INVOKE<AnswerResult>("board_answer", { taskId, blockerId, option, text, wake }),
+	boardComment: (id: string, text: string, tell: string, mentions: Mention[]) => __TAURI_INVOKE<CommentResult>("board_comment", { id, text, tell, mentions }),
+	boardAnswer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: Mention[]) => __TAURI_INVOKE<AnswerResult>("board_answer", { taskId, blockerId, option, text, wake, mentions }),
 	boardResolveBlocker: (taskId: string, blockerId: string, note: string) => __TAURI_INVOKE<AnswerResult>("board_resolve_blocker", { taskId, blockerId, note }),
-	boardAsk: (text: string, repoKey: string, wake: boolean, boardId: string) => __TAURI_INVOKE<TaskResult>("board_ask", { text, repoKey, wake, boardId }),
-	boardAskWithFiles: (text: string, repoKey: string, wake: boolean, files: UploadFile[], boardId: string) => __TAURI_INVOKE<TaskResult>("board_ask_with_files", { text, repoKey, wake, files, boardId }),
+	boardAsk: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_ask", { text, repoKey, wake, boardId, mentions }),
+	boardAskWithFiles: (text: string, repoKey: string, wake: boolean, files: UploadFile[], boardId: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_ask_with_files", { text, repoKey, wake, files, boardId, mentions }),
 	boardAskAgain: (id: string) => __TAURI_INVOKE<null>("board_ask_again", { id }),
 	boardAskRepos: () => __TAURI_INVOKE<AskRepo[]>("board_ask_repos"),
 	boardCloseAsk: (id: string, note: string) => __TAURI_INVOKE<Task>("board_close_ask", { id, note }),
@@ -43,6 +43,7 @@ export const commands = {
 	boardPin: (id: string, pinned: boolean) => __TAURI_INVOKE<null>("board_pin", { id, pinned }),
 	boardMovePin: (id: string, before: string) => __TAURI_INVOKE<null>("board_move_pin", { id, before }),
 	boardReopen: (id: string) => __TAURI_INVOKE<TaskResult>("board_reopen", { id }),
+	boardMentionCandidates: () => __TAURI_INVOKE<MentionCandidate[]>("board_mention_candidates"),
 	boardsList: () => __TAURI_INVOKE<BoardSummary[]>("boards_list"),
 	boardsCreate: (name: string, tag: string) => __TAURI_INVOKE<BoardSummary>("boards_create", { name, tag }),
 	boardsRename: (boardId: string, name: string) => __TAURI_INVOKE<BoardSummary>("boards_rename", { boardId, name }),
@@ -156,6 +157,7 @@ export type AgentRef = {
 export type AnswerResult = {
 	card: CardDetail,
 	told: Told,
+	mentioned?: MentionOutcome[],
 };
 
 /**  coord.Ask. */
@@ -171,6 +173,7 @@ export type Ask = {
 	unclaimed?: boolean,
 	waiting?: string[],
 	outcome?: Outcome,
+	mentions?: Mention[],
 };
 
 /**  One choice on the ask box's repo chip. */
@@ -339,6 +342,7 @@ export type CardAsk = {
 	wake: boolean,
 	outcome?: Outcome | null,
 	outcomeRef: string,
+	mentions?: CardMention[],
 };
 
 /**  One blocker item, open or resolved. */
@@ -392,6 +396,13 @@ export type CardHolder = {
 	who: AgentRef,
 	state: Holding,
 	others: number,
+};
+
+/**  A mention on a thread item, with the agent as the window knows it now. */
+export type CardMention = {
+	name: string,
+	who: AgentRef,
+	gone: boolean,
 };
 
 /**  A message on a card's thread in full, for the person. */
@@ -514,6 +525,7 @@ export type CardThreadItem = {
 	attachments?: FileRef[],
 	unheard?: boolean,
 	pending?: string[],
+	mentions?: CardMention[],
 };
 
 /**  presence.Change. */
@@ -544,6 +556,7 @@ export type Comment = {
 	missing?: string[],
 	unheard?: boolean,
 	device: string,
+	mentions?: Mention[],
 };
 
 /**  Comment's answer. */
@@ -552,6 +565,7 @@ export type CommentResult = {
 	told: Told,
 	answers: AgentRef[],
 	watching: AgentRef[],
+	mentioned?: MentionOutcome[],
 };
 
 /**  inbox.Delivery. */
@@ -720,6 +734,29 @@ export type Link = {
 /**  coord.LinkKind. */
 export type LinkKind = "url" | "path" | "commit";
 
+/**  coord.Mention: one agent a comment, ask, answer or message names (card #77). */
+export type Mention = {
+	key: string,
+	name: string,
+	gone?: boolean,
+};
+
+/**  One row of the mention picker. */
+export type MentionCandidate = {
+	who: AgentRef,
+	cwd: string,
+	repo: string,
+};
+
+/**  One mention's outcome after a send. */
+export type MentionOutcome = {
+	key: string,
+	name: string,
+	/**  "woke" | "held" | "gone" | "unknown" | "failed" */
+	state: string,
+	note?: string,
+};
+
 /**  inbox.Message. */
 export type Message = {
 	id: string,
@@ -735,6 +772,7 @@ export type Message = {
 	ref?: string,
 	notice?: boolean,
 	attachments?: FileRef[],
+	mentions?: Mention[],
 };
 
 /**  inbox.Mode (the wake policy). */
@@ -849,6 +887,12 @@ export type RosterChange = {
 	agents: AgentCard[],
 };
 
+/**  inbox_send's answer: the message and each mention's outcome. */
+export type SendResult = {
+	message: Message,
+	mentioned: MentionOutcome[],
+};
+
 /**  inbox.Sender. */
 export type Sender = {
 	key: string,
@@ -943,6 +987,7 @@ export type Task = {
 export type TaskResult = {
 	task: Task,
 	told: Told,
+	mentioned?: MentionOutcome[],
 };
 
 /**  coord.TaskState. */

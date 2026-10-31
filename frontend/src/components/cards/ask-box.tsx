@@ -4,11 +4,12 @@ import { PaperclipIcon, XIcon } from "lucide-react"
 import { FileKindIcon } from "@/components/attachments"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
+import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { useBoards } from "@/lib/boards"
 import { cards, MaxComment, MaxUploadFiles, type AskRepo } from "@/lib/cards"
-import { useDraft } from "@/lib/drafts"
+import { useDraft, useMentionsDraft } from "@/lib/drafts"
+import { askingLine, notDelivered } from "@/lib/mentions"
 import { errorText } from "@/lib/talk"
 
 // AskBox is the person talking to the room (docs/design/board.md "Asks"):
@@ -24,8 +25,12 @@ import { errorText } from "@/lib/talk"
 // #59): every member's free agents hear it, the other people's through
 // their own devices. A board's agents carry no repo, and a board ask takes
 // no files yet, so both chips step aside for it.
+// An @mention (card #77) narrows it: only the agents it names hear it,
+// woken, in any repo, so the repo chip steps aside too. Mentions work on
+// your own board only.
 export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
   const [text, setText] = useDraft("ask/room")
+  const [mentions, setMentions] = useMentionsDraft("ask/room")
   const [repo, setRepo] = useState("")
   const [repos, setRepos] = useState<AskRepo[]>([])
   const [board, setBoard] = useState("")
@@ -33,6 +38,8 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
   const shared = boards.filter((b) => b.ready && !b.leaving)
   // A board that went away (forgotten, left) falls back to the private room.
   const onBoard = shared.some((b) => b.boardId === board) ? board : ""
+  // A board ask takes no mentions in v1.
+  const targeted = onBoard ? [] : mentions
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const picker = useRef<HTMLInputElement>(null)
@@ -72,17 +79,23 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
     try {
       const res = onBoard
         ? await cards.ask(text, "", true, [], onBoard)
-        : await cards.ask(text, repo, true, files)
+        : await cards.ask(text, targeted.length ? "" : repo, true, files, "", targeted)
       // On a board the other people's agents are told by their own
       // devices: count every agent the ask's round names.
       const n = onBoard ? (res.task.ask?.told ?? 0) : (res.told.to?.length ?? 0)
+      const missed = notDelivered(res.mentioned)
       setLine({
-        text:
-          n === 0
+        text: targeted.length
+          ? n === 0
+            ? `Nobody you mentioned could hear it; it stays first on the board. ${missed}`.trim()
+            : `Woke ${n} ${n === 1 ? "agent" : "agents"} you mentioned; one of them takes it. ${missed}`.trim()
+          : n === 0
             ? "Nobody is free to hear it yet; it stays first on the board."
             : `Woke ${n} ${n === 1 ? "agent" : "agents"}; one of them takes it.`,
+        error: !!missed && n === 0,
       })
       setText("")
+      setMentions([])
       setFiles([])
       onAsked(res.task.id)
     } catch (err) {
@@ -106,13 +119,18 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
       }}
     >
       <div className="flex items-start gap-2 p-1.5 glass-panel">
-        <Textarea
+        <MentionTextarea
           autoSize
           rows={1}
           value={text}
+          mentions={mentions}
+          disabledMentions={
+            onBoard ? "Mentions work on your own board's asks" : undefined
+          }
           maxLength={MaxComment}
-          onChange={(e) => {
-            setText(e.target.value)
+          onChange={(v, ms) => {
+            setText(v)
+            setMentions(ms)
             setLine(null)
           }}
           onPaste={(e) => {
@@ -131,8 +149,10 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
               e.currentTarget.form?.requestSubmit()
             }
           }}
-          placeholder="Ask the room…"
-          aria-label="Ask every free agent"
+          placeholder="Ask the room… (@ to ask one agent)"
+          aria-label={
+            targeted.length ? askingLine(targeted) : "Ask every free agent"
+          }
           className="max-h-40 min-h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-transparent"
           // readOnly, not disabled: disabling the focused box would blur it,
           // and the next ask would need a click back in.
@@ -162,7 +182,15 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
               ]}
             />
           )}
-          {!onBoard && repos.length > 0 && (
+          {targeted.length > 0 && (
+            <span
+              className="max-w-56 truncate text-xs text-muted-foreground"
+              title="Only the agents you mention hear it, in any repo"
+            >
+              {askingLine(targeted)}
+            </span>
+          )}
+          {!onBoard && !targeted.length && repos.length > 0 && (
             <ChoiceSelect
               label="Which agents hear it"
               size="sm"

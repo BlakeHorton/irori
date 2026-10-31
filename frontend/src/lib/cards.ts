@@ -11,6 +11,7 @@ import {
   AnswerResult,
   AskRepo,
   CardAsk,
+  CardMention,
   CardMessage,
   CardResolution,
   CardSummary,
@@ -18,6 +19,7 @@ import {
   CommentResult,
   DonePage,
   Holding,
+  MentionCandidate,
   Told,
   TaskResult,
   UploadFile,
@@ -33,12 +35,13 @@ import {
   LinkKind,
   TaskState,
   type Link,
+  type Mention,
   type Step,
 } from "./models"
-import { inHost, inWails, plainLine } from "./irori"
+import { EventRosterChanged, inHost, inWails, plainLine } from "./irori"
 import { safeHref } from "./rich"
 import { EventInboxChanged, useLatest } from "./talk"
-import { NoteItem, sampleCards, sampleYou } from "./sample-cards"
+import { NoteItem, sampleAgents, sampleCards, sampleYou } from "./sample-cards"
 
 export type {
   AgentRef,
@@ -48,6 +51,7 @@ export type {
   CardActivity,
   CardBlocker,
   CardDetail,
+  CardMention,
   CardMessage,
   CardHolder,
   CardOption,
@@ -58,6 +62,8 @@ export type {
   CardThreadItem,
   CommentResult,
   Link,
+  Mention,
+  MentionCandidate,
   Step,
   Told,
 }
@@ -236,13 +242,17 @@ async function uploadOf(f: File): Promise<UploadFile> {
 
 // sampleAsk is BoardService.Ask on the sample: a new ask first in the
 // grid, heard by the sample's idle agents.
-function sampleAsk(text: string, repoKey: string, wake: boolean): TaskResult {
+function sampleAsk(text: string, repoKey: string, wake: boolean, mentions: Mention[]): TaskResult {
   const t = text.trim()
   if (!t) throw new Error("coord: invalid input: an empty comment")
   const now = new Date().toISOString()
   const cs = sampleState()
   const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
-  const heard = ["sample-heron"]
+  // With mentions, only the agents it names hear it.
+  const named = sampleMentions(mentions)
+  const heard = mentions.length
+    ? named.filter((m) => !m.gone).map((m) => m.who.key)
+    : ["sample-heron"]
   const first = t.split(/\r?\n/)[0].replace(/\s+/g, " ")
   const c = {
     ...cs[0],
@@ -274,11 +284,54 @@ function sampleAsk(text: string, repoKey: string, wake: boolean): TaskResult {
     threadEarlier: 0,
     historyTrimmed: false,
     updatedAt: now,
-    ask: CardAsk({ state: AskState.Open, told: heard.length, owner: "This PC", wake, taker: null, outcome: null }),
+    ask: CardAsk({
+      state: AskState.Open,
+      told: heard.length,
+      owner: "This PC",
+      wake,
+      taker: null,
+      outcome: null,
+      mentions: named.length ? named : undefined,
+    }),
   } as CardDetail
   sample = [c, ...cs]
   sampleChanged()
-  return TaskResult({ task: { id: c.id } as TaskResult["task"], told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }) })
+  return TaskResult({
+    task: { id: c.id } as TaskResult["task"],
+    told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }),
+    mentioned: sampleOutcomes(named),
+  })
+}
+
+// sampleMentions are the person's mentions as the sample's thread shows
+// them: the agent as the sample knows it, gone if it left (or isn't one).
+function sampleMentions(mentions: readonly Mention[]): CardMention[] {
+  const agents = Object.values(sampleAgents)
+  return mentions.map((m) => {
+    const who = agents.find((a) => a.key === m.key)
+    return CardMention({
+      name: m.name,
+      who: who ?? { key: m.key, name: m.name, status: "gone", live: false, where: "" },
+      gone: !who || who.status === "gone",
+    })
+  })
+}
+
+// sampleOutcomes is each mention's outcome on the sample: a gone agent
+// isn't delivered; the others are woken.
+function sampleOutcomes(named: readonly CardMention[]) {
+  return named.map((m) => ({ key: m.who.key, name: m.name, state: m.gone ? "gone" : "woke" }))
+}
+
+// sampleCandidates are BoardService.MentionCandidates on the sample.
+function sampleCandidates(): MentionCandidate[] {
+  return Object.values(sampleAgents).map((who) =>
+    MentionCandidate({
+      who,
+      cwd: who.device ? "~/projects/irori" : "C:\\Users\\sample\\projects\\example-app",
+      repo: who.device ? "irori" : "example-app",
+    })
+  )
 }
 
 // samplePin and sampleMovePin are BoardService.Pin and MovePin on the
@@ -453,10 +506,12 @@ function sampleAnswer(
   blockerId: string,
   option: number,
   text: string,
-  wake: boolean
+  wake: boolean,
+  mentions: Mention[]
 ): AnswerResult {
   const c = sampleCard(id)
   if (blockerId === NoteItem) return sampleAnswerNote(c, option, text, wake)
+  const named = sampleMentions(option >= 0 ? [] : mentions)
   const b = sampleBlocker(c, blockerId)
   const answer = option >= 0 ? b.options[option]?.answer : text.trim()
   if (!answer) throw new Error("coord: invalid input: an answer needs text")
@@ -471,6 +526,7 @@ function sampleAnswer(
       to: b.raisedBy,
       text: answer,
       blockerId: b.id,
+      mentions: named.length ? named : undefined,
     }),
   ]
   c.thread = sampleThreadLine(c, now, `You answered blocker ${b.id}`, b.id)
@@ -494,6 +550,7 @@ function sampleAnswer(
       ),
       mode: wake ? "wake" : "next_turn",
     }),
+    mentioned: sampleOutcomes(named),
   })
 }
 
@@ -653,14 +710,19 @@ function sampleAnswerNote(
 // sampleComment is BoardService.Comment on the sample: the person's
 // comment at the end of the thread, heard by the live agents on the card
 // (watchers answer only if asked); with none, it is unheard.
-function sampleComment(id: string, text: string, wake: boolean): CommentResult {
+function sampleComment(id: string, text: string, wake: boolean, mentions: Mention[]): CommentResult {
   const c = sampleCard(id)
   const t = text.trim()
   if (!t) throw new Error("coord: invalid input: an empty comment")
   const now = new Date().toISOString()
   const answers = c.working.filter((w) => w.live)
   const watching = c.watching.filter((w) => w.live)
-  const unheard = !answers.length && !watching.length
+  const named = sampleMentions(mentions)
+  const unheard = !answers.length && !watching.length && !named.some((m) => !m.gone)
+  // A mentioned agent watches the card (never holds it).
+  for (const m of named)
+    if (!m.gone && ![...c.working, ...c.watching].some((w) => w.key === m.who.key))
+      c.watching = [...c.watching, m.who]
   c.thread = [
     ...c.thread,
     CardThreadItem({
@@ -670,6 +732,7 @@ function sampleComment(id: string, text: string, wake: boolean): CommentResult {
       who: sampleYou,
       text: t,
       unheard,
+      mentions: named.length ? named : undefined,
     }),
   ]
   c.updatedAt = now
@@ -681,6 +744,7 @@ function sampleComment(id: string, text: string, wake: boolean): CommentResult {
     }),
     answers,
     watching,
+    mentioned: sampleOutcomes(named),
   })
 }
 
@@ -697,10 +761,11 @@ export const cards = {
     blockerId: string,
     option: number,
     text: string,
-    wake = true
+    wake = true,
+    mentions: Mention[] = []
   ): Promise<AnswerResult> {
-    if (inWails()) return BoardService.Answer(id, blockerId, option, text, wake)
-    return sampleAnswer(id, blockerId, option, text, wake)
+    if (inWails()) return BoardService.Answer(id, blockerId, option, text, wake, mentions)
+    return sampleAnswer(id, blockerId, option, text, wake, mentions)
   },
 
   // resolveBlocker is "Mark resolved": the person's answer stands, with
@@ -717,11 +782,17 @@ export const cards = {
   // comment puts the person's comment on card id's thread. Its holders
   // (else its creator) are asked to answer it on the card and its
   // watchers hear it too; wake (the default) wakes whoever answers now
-  // instead of at their next turn.
-  async comment(id: string, text: string, wake = true): Promise<CommentResult> {
+  // instead of at their next turn. Each of mentions (picked in the box)
+  // is woken whatever wake says, and watches the card.
+  async comment(
+    id: string,
+    text: string,
+    wake = true,
+    mentions: Mention[] = []
+  ): Promise<CommentResult> {
     if (inWails())
-      return BoardService.Comment(id, text, wake ? "wake" : "next_turn")
-    return sampleComment(id, text, wake)
+      return BoardService.Comment(id, text, wake ? "wake" : "next_turn", mentions)
+    return sampleComment(id, text, wake, mentions)
   },
 
   // ask posts the person's prompt to the room: every free agent hears it
@@ -731,13 +802,15 @@ export const cards = {
   // that takes it fetches them (card #25).
   // boardId posts it to that shared board instead (v0.5 §9): every
   // member's free agents hear it. A board ask names no repo and takes no
-  // files.
+  // files. With mentions it goes only to the agents they name, woken, in
+  // any repo.
   async ask(
     text: string,
     repoKey = "",
     wake = false,
     files: File[] = [],
-    boardId = ""
+    boardId = "",
+    mentions: Mention[] = []
   ): Promise<TaskResult> {
     if (files.length > MaxUploadFiles)
       throw new Error(`at most ${MaxUploadFiles} files`)
@@ -747,16 +820,17 @@ export const cards = {
         `${big.name} is over ${MaxUpload >> 20} MiB; ask an agent to attach it from disk`
       )
     if (inWails()) {
-      if (!files.length) return BoardService.Ask(text, repoKey, wake, boardId)
+      if (!files.length) return BoardService.Ask(text, repoKey, wake, boardId, mentions)
       return BoardService.AskWithFiles(
         text,
         repoKey,
         wake,
         await Promise.all(files.map(uploadOf)),
-        boardId
+        boardId,
+        mentions
       )
     }
-    return sampleAsk(text, repoKey, wake)
+    return sampleAsk(text, repoKey, wake, mentions)
   },
 
   // askAgain is Wake them on an ask nobody took.
@@ -830,6 +904,13 @@ export const cards = {
       AskRepo({ repoKey: "remote:github.com/sample-org/example-app", label: "example-app" }),
       AskRepo({ repoKey: "remote:github.com/sample-org/irori", label: "irori" }),
     ]
+  },
+
+  // mentionCandidates are the agents the @ picker offers: every device's
+  // roster, gone ones included.
+  async mentionCandidates(): Promise<MentionCandidate[]> {
+    if (inWails()) return (await BoardService.MentionCandidates()) ?? []
+    return sampleCandidates()
   },
 
   // message opens a message on card id's thread in full: the text the
@@ -1200,4 +1281,44 @@ export function cardFromHash(hash: string): string {
   } catch {
     return ""
   }
+}
+
+// The @ picker's candidates, shared by every box: read the first time a
+// box needs them and again on each roster change.
+let candidates: MentionCandidate[] = []
+let candidatesOff: (() => void) | null = null
+const candidateListeners = new Set<() => void>()
+
+function loadCandidates() {
+  cards
+    .mentionCandidates()
+    .then((cs) => {
+      candidates = cs
+      for (const fn of candidateListeners) fn()
+    })
+    .catch(() => {})
+}
+
+// useMentionCandidates is the picker's rows; active false (a box whose
+// popover hasn't opened yet) reads nothing.
+export function useMentionCandidates(active = true): MentionCandidate[] {
+  const [list, setList] = useState(candidates)
+  useEffect(() => {
+    if (!active) return
+    const fn = () => setList(candidates)
+    const first = !candidateListeners.size
+    candidateListeners.add(fn)
+    if (first) {
+      if (inWails()) candidatesOff = Events.On(EventRosterChanged, loadCandidates)
+      loadCandidates()
+    } else fn()
+    return () => {
+      candidateListeners.delete(fn)
+      if (!candidateListeners.size) {
+        candidatesOff?.()
+        candidatesOff = null
+      }
+    }
+  }, [active])
+  return list
 }
