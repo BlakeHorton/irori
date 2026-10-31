@@ -133,7 +133,7 @@ fn test_co_holder_hears_comments_like_a_holder() {
     let (_, n) = e.c.add_comment(ALICE, &t.id, "status?", false).unwrap();
     assert!(n.to.contains(&BOB.to_string()), "{n:?}");
     let (_, ns) =
-        e.c.person_comment(USER, &t.id, "how is it going", false, None)
+        e.c.person_comment(USER, &t.id, "how is it going", false, &[], None)
             .unwrap();
     assert!(ns.iter().any(|n| n.to.contains(&BOB.to_string())), "{ns:?}");
 }
