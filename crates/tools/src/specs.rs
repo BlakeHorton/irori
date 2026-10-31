@@ -38,7 +38,7 @@ Messages and Board notices reach you inside <irori-message trust=\"untrusted\"> 
 pub const ASK_INSTRUCTIONS: &str = "An ask is the person talking to the room: work to start now, not backlog. Irori hands each ask to one \
 idle agent, which holds it as it wakes (no ask_claim needed). If one comes to you and you can't take it on now, board_leave it and \
 it goes to the next idle agent; ending your turn without touching it does the same. \
-Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first (board_comment). \
+Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first (board_comment); if it needs a choice only the person can make, ask_close it as a card first (it stays yours), then raise one board_block per question on that card. \
 Then ask_close it with what it became: a card (it becomes the card, and you hold it), a change to an existing card, an answer \
 (you answered the person's question), or nothing, with one line on why. If your answer asks the person something, don't close \
 in the same step: wait for their reply on the card first.";
@@ -74,7 +74,7 @@ pub const BOARD_INSTRUCTIONS: &str = concat!(
     "An ask is the person talking to the room: work to start now, not backlog. Irori hands each ask to one idle agent, ",
     "which holds it as it wakes (no ask_claim needed). If one comes to you and you can't take it on now, board_leave it and ",
     "it goes to the next idle agent; ending your turn without touching it does the same. ",
-    "Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first (board_comment). ",
+    "Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first (board_comment); if it needs a choice only the person can make, ask_close it as a card first (it stays yours), then raise one board_block per question on that card. ",
     "Then ask_close it with what it became: a card (it becomes the card, and you hold it), a change to an existing card, an answer ",
     "(you answered the person's question), or nothing, with one line on why. If your answer asks the person something, don't close ",
     "in the same step: wait for their reply on the card first."

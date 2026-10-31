@@ -60,14 +60,14 @@
   "kind": "ask",
   "to": "dev-a/alice-session",
   "wake": true,
-  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), and Irori handed it to you:\nLook at this\nplease\nYou hold it: no ask_claim needed. Talk it through with the person on the card first if it isn't clear what they want, then ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #2 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
+  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), and Irori handed it to you:\nLook at this\nplease\nYou hold it: no ask_claim needed. If it isn't clear what they want, talk it through with them on the card first. If it needs a choice only the person can make, ask_close it as a card first (it stays yours), then raise one board_block per question on that card. Otherwise ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #2 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
  },
  {
   "step": "ask sweep 2",
   "kind": "ask",
   "to": "dev-a/bob-session",
   "wake": true,
-  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), and Irori handed it to you (the agent that took it went away):\nLook at this\nplease\nYou hold it: no ask_claim needed. Talk it through with the person on the card first if it isn't clear what they want, then ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #2 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
+  "text": "The person asks the room (#2, task:01M5W19VG02AHXJWDFEVA5FJN4), and Irori handed it to you (the agent that took it went away):\nLook at this\nplease\nYou hold it: no ask_claim needed. If it isn't clear what they want, talk it through with them on the card first. If it needs a choice only the person can make, ask_close it as a card first (it stays yours), then raise one board_block per question on that card. Otherwise ask_close it with what it became: a card, a change to another card, or nothing. If you can't take it on now, board_leave #2 and it goes to the next idle agent; ending your turn without touching it does the same.\nshow task:01M5W19VG02AHXJWDFEVA5FJN4 for the card, its comments and links."
  },
  {
   "step": "returned 2",
