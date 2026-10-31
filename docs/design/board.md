@@ -282,6 +282,328 @@ There are no blocker or step sections until it becomes a card. There is no new v
   - an older device's `task.claimed` on an open ask is ignored;
   - each outcome's rows and fold.
 
+## Mentions
+
+*2026-10-31, card #77, decision 38. Stephen: "mention agents by their name with @, and componentry for me to autofill the agent name: a little popover shows as I type, filtered as I type, and I can hit tab to enter that menu and keep tabbing through until I find the agent I want."*
+
+A mention is `@name` in the text plus the agent's key beside it. The text stays readable; the key decides who hears. Names aren't unique, and agents come and go (some never come back), so nothing is ever delivered by looking a name up when a key was given.
+
+### What a mention does
+
+- **It wakes.** The mentioned agent gets its own notice, kind `mentioned`, always with Wake, whoever wrote it and whatever the comment's own Tell was (`next_turn` or `none`). An idle agent told at its next turn never hears it, which is the failure mentions exist to fix. The per-pair rate limit, the block list, allowlist mode, Pause all and the hop limit apply as to any delivery (decision 37); the result says when one held it.
+- **One notice each.** A mentioned agent that also holds or watches the card hears only the mention notice, not the holder's or watcher's one. Holders and watchers that aren't mentioned hear as today ("Comments from the app").
+- **On a card it watches, never holds.** The writer's device writes `task.watched {taskId, who: <mentioned key>, watching: true, by: <writer>}` for each mentioned agent that doesn't already hold or watch the card. The `task.watched` fold reads only `who`, so older Cores fold it too. Coord's `watch` keeps its own rule (only agents watch themselves); mentions use a new internal path that writes the row for someone else.
+- **The notice text** names the card and the writer, carries the text (cut as comment notices are), and ends with one of:
+  - held card: "<holders> hold it; answer on the card with board_comment if it asks you."
+  - nobody holds it: "Nobody holds it. If the work is yours, board_join it; else answer on the card with board_comment."
+  - an open ask: "It is an ask nobody has taken: if you can take it on now, ask_claim it."
+  - a finished card: "It is <state>; answer on the card with board_comment if it asks you."
+- **Gone agents.** An agent that is gone (out of the roster, or `status` gone; an agent on an offline device is not gone, and its device gets the delivery when it is back) is stored with `gone: true`, not delivered and not made a watcher. The result says "not delivered: <name> is gone". The thread shows it greyed and struck through.
+- **Self, the person and Irori** are never mentioned: the writer's own key, a `user:` key and `irori` are dropped without a word.
+- **At most 10 mentions** per comment, ask or message; more is refused ("mention at most 10 agents").
+- **`unheard`** on the comment is false when any mention was delivered.
+
+### Asks
+
+An ask with mentions goes only to the agents it names, woken, idle or not, in any repo (the repo chip and the Wake toggle don't apply). `told` is how many were sent, and `heard` is that set, so the person's comment on it while nobody has taken it (`ask_comment`) reaches the same agents. One of them takes it with `ask_claim`, as usual; the take lock doesn't change. There are no late arrivals: the owner's sweep tells nobody new about an ask with mentions. A re-announcement (Wake them, a taker that gave it back or went away) goes to the mentioned agents still around, with Wake. If every mentioned agent is gone, `told` is 0 and `unclaimed` is written at once, as today. An ask without mentions is unchanged.
+
+### Direct messages
+
+A mention in a message (the window's reply, or an agent's `send` or `reply`) gives each mentioned agent other than the recipient its own message from the same sender: reason `mentioned`, `parentId` the original's id, the same `ref`, and the text headed "<sender> mentioned you in a message to <recipient>:". It is a plain message, not a notice, sent with mode `wake`, so its reply goes back to the sender. The original's `message.sent` row carries `mentions`. When the message names a card (`task_id`, or a reply that keeps a `task:` ref), its card entry carries `mentions` and the mentioned agents become watchers of the card.
+
+### Agents mention too
+
+The tools that write text take an optional `mention`: `board_comment`, `board_block` (the question, or a revision), `board_unblock` (the note), `send` and `reply`. `ask_claim` writes no text; `ask_close` writes an outcome, not a comment, so neither takes it (talking on an ask is `board_comment`).
+
+Resolution, against the roster of every paired device (the same set the `agents` tool reads):
+- **`mention` items** are keys or names. An item that equals a roster key is that agent, gone or not. Any other item is a name, resolved as below.
+- **`@name` in the text.** An `@` at the start of the text or after whitespace or `(` starts a token. The token is the longest name of a live agent that follows the `@`, compared ignoring case, and it must end at the end of the text, whitespace, or one of `.,;:!?)'"`. Names may hold spaces (a session the person renamed), so the match is by roster name, not by the next space. An `@` followed by no live agent's name, a single-word run such as `@cedar2` included, is an unknown name. `a@b.com` is not a token.
+- **A name** matches live agents only (not gone), across every device, by exact name ignoring case. One match: delivered. Several: ambiguous, not delivered, and the result lists each candidate's key, device and cwd so the agent can mention by key. None: unknown, not delivered.
+- **Gone** applies only to a key given in `mention`: stored with `gone: true`, not delivered.
+- Ambiguous and unknown names store nothing; the text keeps the `@name` as written.
+
+The tool result adds one line after the usual "who heard" lines, only when there were mentions:
+
+```
+Mentioned: cedar (woke), lotus on Mac (woke). Not delivered: fern is gone; maple is ambiguous: mention one by key (agent:abc on PC, C:\x\irori; agent:def on Mac, ~/irori); "@cedr" names no live agent.
+```
+
+Held deliveries read "held by <reason>" in place of "woke", and rate-limited ones "not sent: <error>".
+
+The tool descriptions gain: "To bring in another agent, mention it: @name in text (its exact name from the agents tool), or its name or key in mention. A mention wakes that agent now and, on a card, makes it a watcher (never a holder). Use it when you need that agent, not to copy it in. An ambiguous or unknown name isn't delivered; the result says which, with the keys to pick from." `board_comment`'s description adds: "A blocker reply with a mention still goes back to the person, and the mentioned agent hears it." `BoardInstructions` gains the first two sentences.
+
+### Shared boards
+
+v1 mentions your own agents only, on any card, private or shared. On a shared card, the window and tools map each mentioned key to its board form with `Core::board_key`, coord delivers and adds the watcher in the board log as on a private card, and the notice goes to your agent through your own inbox as any board notice does.
+
+The `mentions` field never goes in a board log. `task.comment` and `task.created` are on the board allow-list as whole kinds (`store/src/kinds.rs`; the list is per kind, not per field), so the fold clears `mentions` (and `ask.mentions`) on every row it writes while `on_board`, in the comment and ask writers, before `write_as`. On a shared card the comment therefore reads as plain `@name` on every device, yours included, and a gone mention isn't recorded there. Why: other people's devices can't resolve your agents' keys, the board-log row shapes stay as they are for every member's Core, and a private side-row joined into a board card's thread would be a second store for a v1 that needs none. An ask on a shared board refuses mentions in v1: "mentions work on an ask on your own board; on a shared board, ask the room". Mentioning other people's agents is later work.
+
+### In the window
+
+**One component, `MentionTextarea`** (`frontend/src/components/common/mention-textarea.tsx`), wraps `Textarea` and is used by every site:
+
+```ts
+type Mention = { key: string; name: string; gone?: boolean } // bindings' Mention
+function MentionTextarea(props: Omit<React.ComponentProps<typeof Textarea>, "value" | "onChange"> & {
+  value: string
+  mentions: Mention[]
+  onChange: (value: string, mentions: Mention[]) => void
+  candidates: MentionCandidate[]   // from useMentionCandidates()
+  disabledMentions?: string        // set: no popover; the reason shows as its title
+}): JSX.Element
+```
+
+The site's own `onKeyDown` (Enter sends) is passed through and runs only when the popover didn't handle the key.
+
+**Keyboard.**
+- Typing `@` at the start of the text or after whitespace or `(` opens the popover, anchored at the caret, listing candidates whose name contains the text after `@` (ignoring case; names that start with it first). The text after `@` up to the caret is the query; a space ends it unless a candidate's name still matches with the space in it. Focus stays in the textarea.
+- With the popover open and nothing highlighted, the first row is the default.
+- **Tab** moves the highlight into the list (the first row), and each further Tab goes to the next, wrapping. **Shift+Tab** goes back. **Up** and **Down** also move, wrapping.
+- **Enter** (or Tab, then Enter) inserts the highlighted row's `@<name> ` in place of `@query`, records `{key, name}`, and closes the popover. While the popover is open, Enter never sends the form: `MentionTextarea` calls `preventDefault` and `stopPropagation` and doesn't call the site's `onKeyDown`. While an IME is composing (`nativeEvent.isComposing`), every key goes to the IME.
+- **Esc** closes the popover and keeps the typed text. It doesn't close the dialog or card page around it (the event stops there). The popover reopens on the next `@`.
+- **Clicking** a row inserts it, as Enter does. A click outside closes the popover.
+- **No matches**: the popover shows "No agent named <query>"; Enter then sends as usual and Tab moves focus as usual.
+- **Typing the exact name**: when the query equals one live candidate's name exactly (ignoring case) and no other, typing a space, or sending, records it as if picked.
+- **Removing text drops the key.** After every change, a mention is kept only while at least one `@<its name>` is still in the text (exact, case as inserted). Pasted text records nothing.
+- **Caret anchoring**: the popover uses `PopoverContent` from `components/ui/popover.tsx`, opened in controlled mode with no trigger, and its Positioner's `anchor` is a virtual element whose `getBoundingClientRect` is the caret's: measured with a hidden mirror `div` that copies the textarea's font, padding, width and wrapping, holds the text up to the caret, and ends in a marker `span`. The popup must not take focus (`initialFocus` off, no focus trap), and the list is `role="listbox"` with `aria-activedescendant` on the textarea.
+- **Rows** show the agent through the existing `Face` (`components/cards/faces.tsx`, so #79's faces arrive by themselves), its name, its device chip in the device colour, and its cwd's last part or repo label, so two agents with one name tell apart. Live agents come first (this device's, then the others', by name), then gone ones, greyed, last 20 at most. A gone row can be picked; it is stored and not delivered.
+
+**Candidates.** `useMentionCandidates()` (`lib/cards.ts`) reads `BoardService.MentionCandidates()` when the popover first opens and again on `roster:changed`, and returns a sample list outside Tauri.
+
+**Sites.**
+- Ask box (`cards/ask-box.tsx`): the prompt. With a shared board picked, `disabledMentions` is "Mentions work on your own board's asks".
+- Card comment box (`cards/card-detail.tsx`, `CommentBox`).
+- Blocker answer (`cards/card-detail.tsx`, the answer form's `Input`): becomes a `MentionTextarea` with `autoSize rows={1}`, Enter sends as now.
+- Message reply (`cards/message-dialog.tsx`).
+- Not these: the ask's Close note, the Close-by-hand note and the resolve note (notes beside a state, not messages anyone hears), `held-dialog.tsx` (no free text), and `App.tsx` (no text box).
+
+**The thread.** `CardThreadItem.mentions` lists the item's mentions with the agent as the window knows it now. `thread.tsx` (and the ask's goal text, from `CardAsk.mentions`) renders each `@<name>` span that matches a mention's name as a chip: the device colour (`deviceVar(who.color)`), the name, and the agent's Face on hover. A mention with `gone`, or whose agent is gone now, renders greyed and struck through, titled "<name> is gone; not delivered". An `@word` that matches no mention stays plain text. Rich text (`RichText`, `RichLine`) gains a `mentions` prop and splits text runs around the spans before its other rules, never inside code.
+
+**The result.** After a send, a mention that wasn't delivered shows under the box for a few seconds, as other send errors do: "Not delivered: fern is gone." Delivered ones show nothing extra.
+
+### Contract
+
+The exact shapes the builders code against. Rust first, then the TypeScript that `cargo xtask bindings` generates in `frontend/src/gen/bindings.ts` (checked by `sh scripts/check.sh`).
+
+**coord** (`crates/coord`)
+
+```rust
+// board/types.rs (new). go_struct!: serde names as given, "omit" skips the default.
+crate::go_struct! {
+    /// One agent a comment, ask, answer or message names (card #77).
+    #[derive(Debug, Clone, Default, PartialEq, Eq)]
+    pub struct Mention {
+        /// The agent's key in the log's own form (agent:<cardId> on a board).
+        pub key: String = "key",
+        /// The name as it was written, for the @name in the text.
+        pub name: String = "name",
+        /// Gone when written: stored, never delivered.
+        pub gone: bool = "gone" "omit",
+    }
+}
+// It also derives Deserialize (it is read back from rows).
+
+pub const NOTICE_MENTIONED: &str = "mentioned";
+pub const MAX_MENTIONS: usize = 10;
+
+// rows.rs, gained fields (written only off a board, see Shared boards):
+TaskCommentRow { …, pub mentions: Vec<Mention> = "mentions" "omit" }
+AskField       { …, pub mentions: Vec<Mention> = "mentions" "omit" }
+
+// types.rs, gained fields:
+Comment      { …, #[serde(skip_serializing_if = "omit")] pub mentions: Vec<Mention> }
+Ask          { …, #[serde(skip_serializing_if = "omit")] pub mentions: Vec<Mention> }
+CommentInput { …, pub mentions: Vec<Mention> }
+BlockerAnswer{ …, pub mentions: Vec<Mention> }
+NewAsk       { …, pub mentions: Vec<Mention> }
+MessageEntry { …, pub mentions: Vec<Mention> }
+
+// Coord (board/mod.rs), changed signatures. The mention notice is its own
+// Notice in the Vec: kind NOTICE_MENTIONED, wake true, `to` the mentioned keys
+// without gone ones, and those keys left out of every other notice.
+pub fn comment_on(&self, by: &str, id: &str, input: CommentInput)
+    -> Result<(Comment, Vec<Notice>)>;           // was (Comment, Notice); [0] is the old notice
+pub fn person_comment(&self, by: &str, id: &str, text: &str, wake: bool,
+    mentions: &[Mention], around: Option<&dyn Fn(&str) -> bool>)
+    -> Result<(Comment, Vec<Notice>)>;           // gained `mentions`
+pub fn answer(&self, by: &str, id: &str, blocker_id: &str, a: BlockerAnswer)
+    -> Result<(Task, Vec<Notice>)>;              // was (Task, Notice); [0] is the old notice
+pub fn post_ask(&self, by: &str, input: NewAsk, agents: &[AgentCard])
+    -> Result<(Task, Notice)>;                   // unchanged; with input.mentions the
+                                                 // notice goes to them, wake true
+// new: the writer makes others watchers (task.watched {who, by: writer}).
+pub fn watch_for(&self, by: &str, id: &str, who: &[String]) -> Result<Task>;
+
+// mentions.rs (new module, used by tools and the window).
+pub struct Miss {
+    pub name: String,            // as written, without the @
+    pub reason: String,          // "ambiguous" | "unknown"
+    pub candidates: Vec<String>, // keys, for ambiguous
+}
+pub struct Resolved {
+    pub mentions: Vec<Mention>,  // deduped by key, in text order, at most MAX_MENTIONS
+    pub misses: Vec<Miss>,
+}
+/// Resolves `given` (keys or names) and the @name tokens in `text` against
+/// `agents` (every device's roster), dropping `author`, `user:` keys and irori.
+pub fn resolve(agents: &[roster::AgentCard], author: &str, text: &str, given: &[String]) -> Resolved;
+```
+
+**inbox** (`crates/inbox`)
+
+```rust
+// lib.rs, gained field on Message (the message.sent row):
+#[serde(skip_serializing_if = "Vec::is_empty", default)]
+pub mentions: Vec<coord::Mention>,   // or an inbox-local twin with the same JSON
+pub const REASON_MENTIONED: &str = "mentioned";
+```
+
+**window** (`crates/window`): new types
+
+```rust
+// ts.rs: the mirror of coord::Mention, also the commands' input.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+pub struct Mention {
+    pub key: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub gone: bool,               // ignored on input; the window decides
+}
+// ts::Comment, ts::Ask gain:
+#[specta(optional)] pub mentions: Vec<Mention>,
+
+// cards.rs
+/// A mention on a thread item, with the agent as the window knows it now.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+pub struct CardMention {
+    pub name: String,             // as written
+    pub who: AgentRef,
+    pub gone: bool,               // stored gone, or gone now
+}
+CardThreadItem { …, #[serde(skip_serializing_if = "Vec::is_empty")] #[specta(optional)] pub mentions: Vec<CardMention> }
+CardAsk        { …, #[serde(skip_serializing_if = "Vec::is_empty")] #[specta(optional)] pub mentions: Vec<CardMention> }
+
+// board.rs
+/// One mention's outcome after a send.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+pub struct MentionOutcome {
+    pub key: String,              // "" for unknown
+    pub name: String,
+    /// "woke" | "held" | "gone" | "unknown" | "failed"
+    pub state: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub note: String,             // the hold reason or the error
+}
+/// One row of the mention picker.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+pub struct MentionCandidate {
+    pub who: AgentRef,            // name, status, live, where, device, color
+    pub cwd: String,
+    pub repo: String,             // repo_label(repoKey), or ""
+}
+// gained field (all three), skipped when empty:
+CommentResult { …, #[serde(skip_serializing_if = "Vec::is_empty")] #[specta(optional)] pub mentioned: Vec<MentionOutcome> }
+TaskResult    { …, same `mentioned` }
+AnswerResult  { …, same `mentioned` }
+
+// inbox.rs (new)
+#[derive(Debug, Clone, Default, Serialize, Type)]
+pub struct SendResult {
+    #[specta(type = ts::Message)]
+    pub message: inbox::Message,
+    pub mentioned: Vec<MentionOutcome>,
+}
+```
+
+A key the window gets that isn't in the roster comes back `unknown`; a key whose agent is gone is stored with `gone` and comes back `gone`. The window passes the person's mentions straight to coord (it never parses the text).
+
+**Tauri commands** (`crates/window/src/commands.rs`): changed and new
+
+```rust
+pub async fn board_comment(w: W<'_>, id: String, text: String, tell: String,
+    mentions: Vec<ts::Mention>) -> R<CommentResult>;
+pub async fn board_answer(w: W<'_>, task_id: String, blocker_id: String, option: i64,
+    text: String, wake: bool, mentions: Vec<ts::Mention>) -> R<AnswerResult>;
+pub async fn board_ask(w: W<'_>, text: String, repo_key: String, wake: bool,
+    board_id: String, mentions: Vec<ts::Mention>) -> R<TaskResult>;
+pub async fn board_ask_with_files(w: W<'_>, text: String, repo_key: String, wake: bool,
+    files: Vec<UploadFile>, board_id: String, mentions: Vec<ts::Mention>) -> R<TaskResult>;
+pub async fn inbox_send(w: W<'_>, to: String, repo: String, text: String,
+    mentions: Vec<ts::Mention>) -> R<SendResult>;              // was R<Typed<Message, ts::Message>>
+pub async fn inbox_reply(w: W<'_>, delivery_id: String, text: String,
+    mentions: Vec<ts::Mention>) -> R<Vec<MentionOutcome>>;     // was R<()>
+// new; added to the command list in lib.rs
+pub async fn board_mention_candidates(w: W<'_>) -> R<Vec<MentionCandidate>>;
+```
+
+**TypeScript** (generated `frontend/src/gen/bindings.ts`)
+
+```ts
+boardComment: (id: string, text: string, tell: string, mentions: Mention[]) =>
+  __TAURI_INVOKE<CommentResult>("board_comment", { id, text, tell, mentions }),
+boardAnswer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: Mention[]) =>
+  __TAURI_INVOKE<AnswerResult>("board_answer", { taskId, blockerId, option, text, wake, mentions }),
+boardAsk: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: Mention[]) =>
+  __TAURI_INVOKE<TaskResult>("board_ask", { text, repoKey, wake, boardId, mentions }),
+boardAskWithFiles: (text: string, repoKey: string, wake: boolean, files: UploadFile[], boardId: string, mentions: Mention[]) =>
+  __TAURI_INVOKE<TaskResult>("board_ask_with_files", { text, repoKey, wake, files, boardId, mentions }),
+inboxSend: (to: string, repo: string, text: string, mentions: Mention[]) =>
+  __TAURI_INVOKE<SendResult>("inbox_send", { to, repo, text, mentions }),
+inboxReply: (deliveryId: string, text: string, mentions: Mention[]) =>
+  __TAURI_INVOKE<MentionOutcome[]>("inbox_reply", { deliveryId, text, mentions }),
+boardMentionCandidates: () =>
+  __TAURI_INVOKE<MentionCandidate[]>("board_mention_candidates"),
+
+export type Mention = { key: string, name: string, gone?: boolean };
+export type CardMention = { name: string, who: AgentRef, gone: boolean };
+export type MentionOutcome = { key: string, name: string, state: string, note?: string };
+export type MentionCandidate = { who: AgentRef, cwd: string, repo: string };
+export type SendResult = { message: Message, mentioned: MentionOutcome[] };
+// gained:
+Comment        { …, mentions?: Mention[] }
+Ask            { …, mentions?: Mention[] }
+CardThreadItem { …, mentions?: CardMention[] }
+CardAsk        { …, mentions?: CardMention[] }
+CommentResult  { …, mentioned?: MentionOutcome[] }
+TaskResult     { …, mentioned?: MentionOutcome[] }
+AnswerResult   { …, mentioned?: MentionOutcome[] }
+```
+
+Gateways that change with them: `lib/host.ts` (`BoardService.Comment/Answer/Ask/AskWithFiles` gain `mentions`, new `BoardService.MentionCandidates`, `InboxService.Send/Reply` gain `mentions`), `lib/cards.ts` (`cards.comment/answer/ask` gain a trailing `mentions: Mention[] = []`, and their `sample*` twins keep them on the sample thread), `lib/talk.ts` (`talk.send/reply` gain `mentions`), and `src/gen/models.ts` (regenerated).
+
+**Agent tools** (`crates/tools/src/specs.json`): each of `board_comment`, `board_block`, `board_unblock`, `send` and `reply` gains
+
+```json
+"mention": {
+  "type": "array",
+  "items": { "type": "string" },
+  "maxItems": 10,
+  "description": "Agents to bring in: each an agent's name or key from the agents tool. Each is woken now and, on a card, becomes a watcher (never a holder). @name in text works too, for an exact, unique name."
+}
+```
+
+and the description sentences above. The arg tables in `tools/src/board.rs` and `messages.rs` gain `("mention", Ty::Strs)`; each handler calls `coord::mentions::resolve(&roster, caller, text, &mention)` before writing, passes `mentions` on, routes the `mentioned` notice with the others, and appends the "Mentioned: … Not delivered: …" line. `specs.json` is the tool list the mod and Grok read, so the edit there is the whole change; update the tool-text goldens (`crates/tools/tests/golden.rs`) where results change.
+
+### Build list
+
+- **coord:** `Mention`, the row and type fields, `mentions.rs` with `resolve`; the `mentioned` notice in `comment_on`, `person_comment`, `answer`, `record_message` and `post_ask`; `watch_for`; the ask's `mentions` in the fold, `heard`, the sweep's late arrivals and re-announcements; clearing `mentions` on rows written `on_board`.
+- **inbox:** `Message.mentions`, the `mentioned` copies.
+- **window:** the types and commands above, `board_mention_candidates`, `CardThreadItem.mentions` and `CardAsk.mentions`; regenerate the bindings.
+- **tools:** the `mention` arg and resolution on the five tools, the result line, the descriptions and `BoardInstructions`.
+- **frontend:** `MentionTextarea`, `useMentionCandidates`, the four sites, chips in `RichText`/`RichLine` and the thread, the gateways and samples.
+- **Tests:**
+  - the person mentions an idle agent on a card it doesn't hold: it is woken with the card, becomes a watcher, not a holder; the holders hear as before;
+  - a mentioned holder hears once, by the mention notice;
+  - an unheld card's mention notice says to `board_join` it;
+  - an agent's `@cedar` resolves across devices; two live agents named cedar: not delivered, both keys listed; `@nobody`: unknown; a gone key in `mention`: stored `gone`, not delivered;
+  - `@name` with a space in the name, trailing punctuation, `a@b.com` (not a token);
+  - an ask with mentions tells only them, woken; the sweep tells nobody new; Wake them re-tells only them;
+  - a comment with mentions on a shared card: the board-log row has no `mentions`, the agent is woken and watches;
+  - a shared-board ask with mentions is refused;
+  - removing `@name` from the box drops its key; Enter with the popover open inserts and doesn't send; Esc keeps the text.
+
 ## Links out
 
 - A card can carry links: a URL (Linear, Notion, a GitHub issue or PR), a repo path, or a commit.
