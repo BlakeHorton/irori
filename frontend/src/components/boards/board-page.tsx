@@ -261,6 +261,15 @@ function BoardHead({ board: b, onChanged }: { board: BoardSummary; onChanged: ()
   )
 }
 
+// inviteError is a failed Invite in plain words: the mesh's own errors
+// ("mesh: transport closed") mean Irori isn't online to make a link.
+function inviteError(err: unknown): string {
+  const t = errorText(err)
+  if (/^mesh:|transport closed|not connected|no relay/i.test(t))
+    return "Irori couldn't make an invite link: this device isn't connected right now. Check your network (or that Irori is running), then try Invite again."
+  return t
+}
+
 // PeoplePanel is who is on the board and how to get more people on it:
 // Invite someone (an owner, once the board is ready) with how an invite
 // works, else why there is no Invite; then the members and the board's
@@ -301,7 +310,7 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
                     try {
                       setInvite(await actions.invite(b.boardId))
                     } catch (err) {
-                      setError(errorText(err))
+                      setError(inviteError(err))
                     }
                   }}
                 >

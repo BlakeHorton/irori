@@ -445,6 +445,7 @@ export function BoardSettingsPanel({
   }
   const others = s.members.filter((m) => !m.me)
   const amOwner = s.members.some((m) => m.me && m.owner)
+  const owners = s.members.filter((m) => m.owner).length
   const receiveHint = ReceivePresets.find((p) => p.value === s.receive)?.hint
   const autonomyHint = AutonomyPresets.find((p) => p.value === s.autonomy)?.hint
   return (
@@ -470,17 +471,35 @@ export function BoardSettingsPanel({
                 </span>
                 {amOwner && (
                   <span className="ml-auto flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        void save(() =>
-                          actions.setRole(boardId, m.personId, m.owner ? "member" : "owner")
-                        )
-                      }
-                    >
-                      {m.owner ? "Make a member" : "Make an owner"}
-                    </Button>
+                    {m.me ? (
+                      // Your own row: stepping down is confirmed, and only
+                      // offered while another owner stays (a board needs one).
+                      owners > 1 && (
+                        <ConfirmButton
+                          label="Step down"
+                          confirmLabel="Step down to member"
+                          question={
+                            <>
+                              Step down to a member? You can no longer invite, remove people or change
+                              roles here; another owner would have to make you an owner again.
+                            </>
+                          }
+                          onConfirm={() => save(() => actions.setRole(boardId, m.personId, "member"))}
+                        />
+                      )
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          void save(() =>
+                            actions.setRole(boardId, m.personId, m.owner ? "member" : "owner")
+                          )
+                        }
+                      >
+                        {m.owner ? "Make a member" : "Make an owner"}
+                      </Button>
+                    )}
                     {!m.me && (
                       <ConfirmButton
                         label="Remove"
