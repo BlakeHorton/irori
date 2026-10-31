@@ -278,7 +278,8 @@ fn hand_off() -> Result<(), String> {
     Ok(())
 }
 
-/// The window (Go gui.go:136-148): title `Irori`, 1100×720, background
+/// The window (Go gui.go:136-148): title `Irori` (hidden in the macOS
+/// title bar), 1100×720, background
 /// RGB(233,238,248) so it doesn't flash, URL `/`; hidden at a login launch.
 fn main_window(app: &AppHandle, startup: bool) -> tauri::Result<()> {
     let b = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::default())
@@ -287,6 +288,11 @@ fn main_window(app: &AppHandle, startup: bool) -> tauri::Result<()> {
         .background_color(tauri::window::Color(233, 238, 248, 255))
         .center()
         .visible(!startup);
+    // macOS draws the title in the title bar, where it is hard to read and
+    // repeats the header's Irori (#76). Hide it there; the window keeps the
+    // title for the Dock, the Window menu and Mission Control.
+    #[cfg(target_os = "macos")]
+    let b = b.hidden_title(true);
     // A test copy keeps its WebView2 profile in its own data dir instead
     // of %LOCALAPPDATA%\<instance id>.
     #[cfg(windows)]
