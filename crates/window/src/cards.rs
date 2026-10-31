@@ -983,7 +983,8 @@ impl Window {
         });
         let mut out = Vec::with_capacity(tasks.len());
         let placed = co.positions();
-        for t in &tasks {
+        // Threads (card #116) live in their own panel, not the grid.
+        for t in tasks.iter().filter(|t| !crate::threads::is_thread(t)) {
             let mut s = card_summary(t, &p);
             s.pos = pos_of(&placed, &t.id);
             let mut last = t.updated_at;
@@ -1079,7 +1080,7 @@ impl Window {
         let mut done: Vec<(Task, Option<usize>)> = co
             .list_tasks(&coord::TaskFilter::default())
             .into_iter()
-            .filter(|t| terminal(t))
+            .filter(|t| terminal(t) && !crate::threads::is_thread(t))
             .map(|t| (t, None))
             .collect();
         let boards: Vec<_> = self

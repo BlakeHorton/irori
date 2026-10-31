@@ -114,7 +114,7 @@ fn invalid(detail: &str) -> String {
 }
 
 impl Window {
-    fn user_key(&self) -> String {
+    pub(crate) fn user_key(&self) -> String {
         self.core.user_sender().key
     }
 
@@ -285,6 +285,7 @@ impl Window {
                     repo_key: trim(repo_key).into(),
                     wake,
                     mentions: plan.log.clone(),
+                    thread: false,
                 },
                 &agents,
             )

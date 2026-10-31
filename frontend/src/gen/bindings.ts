@@ -48,6 +48,12 @@ export const commands = {
 	 *  free agent or to the agent picked.
 	 */
 	boardCreate: (input: NewCardInput) => __TAURI_INVOKE<TaskResult>("board_create", { input }),
+	/**  The header box's message as a thread (card #116). */
+	boardStartThread: (text: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions }),
+	/**  The Threads panel: open threads, then the newest resolved. */
+	boardThreads: () => __TAURI_INVOKE<ThreadSummary[]>("board_threads"),
+	/**  Resolve on a thread: the person is done with it. */
+	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
 	boardCommentModify: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify", { id, commentId }),
 	/**  Cancel on a comment held for editing: it goes out as it was. */
@@ -1104,6 +1110,30 @@ export type TaskResult = {
 
 /**  coord.TaskState. */
 export type TaskState = "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" | "blocked";
+
+/**  One thread in the panel. */
+export type ThreadSummary = {
+	id: string,
+	short: string,
+	title: string,
+	/**  What the person asked, in full. */
+	text: string,
+	/**
+	 *  waiting (for an answer), handed (to one idle agent), answered or
+	 *  resolved.
+	 */
+	state: string,
+	/**  Who heard it first, and who it was handed to. */
+	told: AgentRef[],
+	/**  The agents that answered. */
+	answeredBy: AgentRef[],
+	replies: number,
+	/**  The newest reply, by anyone. */
+	lastBy?: AgentRef | null,
+	lastText?: string,
+	at: string,
+	updatedAt: string,
+};
 
 /**  Who an action's notice went to. */
 export type Told = {

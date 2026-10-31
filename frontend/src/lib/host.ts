@@ -141,6 +141,10 @@ export const BoardService = {
   MovePin: (id: string, before: string) => done(commands.boardMovePin(id, before)),
   Place: (id: string, x: number, y: number) => done(commands.boardPlace(id, x, y)),
   Create: (input: B.NewCardInput) => call(commands.boardCreate(input)),
+  StartThread: (text: string, mentions: B.Mention[]) =>
+    call(commands.boardStartThread(text, mentions)),
+  Threads: () => call(commands.boardThreads()),
+  ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),
   CommentModifyCancel: (id: string, commentId: string) =>

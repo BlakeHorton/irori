@@ -685,6 +685,11 @@ impl Fold {
             by: by.clone(),
             ..Notice::default()
         };
+        if t.open_ask().is_some_and(|a| a.thread) {
+            let mut ns = self.thread_follow_up(&t, &by, &text, &cid, around)?;
+            ns.extend(mn);
+            return Ok((cm, ns));
+        }
         if room && !answer.is_empty() {
             let mut a = base;
             a.kind = NOTICE_ASK_COMMENT.into();

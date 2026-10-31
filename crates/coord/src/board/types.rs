@@ -272,6 +272,10 @@ pub struct Ask {
     /// The agents the ask went to; empty: the room.
     #[serde(skip_serializing_if = "omit")]
     pub mentions: Vec<Mention>,
+    /// A thread (card #116): a conversation with the room, not a card. It
+    /// stays open until the person resolves it.
+    #[serde(skip_serializing_if = "omit")]
+    pub thread: bool,
 }
 
 impl Ask {
@@ -429,6 +433,19 @@ impl Task {
                 s.push_str(&format!(" (task:{})", o.task));
             }
             return s;
+        }
+        if a.thread {
+            return match a.reason.as_str() {
+                "answered" => "the person's thread, answered: it stays open until the person resolves it; answer their follow-ups with board_comment".into(),
+                _ if !a.taker.is_empty() => format!(
+                    "the person's thread; Irori handed it to {}: answer it with board_comment (board_leave passes it on)",
+                    a.taker
+                ),
+                _ => format!(
+                    "the person's thread, not answered yet ({} told): answer it with board_comment if you can",
+                    a.told
+                ),
+            };
         }
         if !a.taker.is_empty() && a.handed {
             return format!(
@@ -835,6 +852,9 @@ pub struct NewAsk {
     pub wake: bool,
     /// Set: the ask goes only to these agents, woken.
     pub mentions: Vec<Mention>,
+    /// A thread (card #116): the agents on the cards it names and the ones
+    /// it mentions hear it first; one idle agent after a quiet spell.
+    pub thread: bool,
 }
 
 /// ask_claim's answer.

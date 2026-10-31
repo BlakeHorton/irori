@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 
 import { AppHeader } from "@/components/app-header"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
+import { ThreadsPanel } from "@/components/cards/threads-panel"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
@@ -26,7 +35,10 @@ import {
   useCard,
   useCards,
   useDoneCards,
+  useThreads,
 } from "@/lib/cards"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
 import { useNow, useRoster } from "@/lib/irori"
 import { previewFlag } from "@/lib/preview"
@@ -120,6 +132,51 @@ export function App() {
   const [heldFrom, setHeldFrom] = useState("")
   // New card (card #116): its dialog is open.
   const [newCard, setNewCard] = useState(false)
+  // Threads (card #116): the panel beside the Board, the thread unfolded
+  // in it, and whether the person hid it (kept across launches).
+  const { threads: threadList } = useThreads()
+  // ?thread=<id> opens one (the browser preview's way in).
+  const [thread, setThread] = useState(
+    () => new URLSearchParams(window.location.search).get("thread") ?? ""
+  )
+  const [threadsHidden, setThreadsHidden] = useState(() => {
+    try {
+      return localStorage.getItem("irori.threadsHidden") === "1"
+    } catch {
+      return false
+    }
+  })
+  const hideThreads = (hidden: boolean) => {
+    setThreadsHidden(hidden)
+    try {
+      localStorage.setItem("irori.threadsHidden", hidden ? "1" : "0")
+    } catch {
+      // A private window keeps it for this run only.
+    }
+  }
+  const openThreads = threadList.filter((t) => t.state !== "resolved").length
+  const showThreads = !threadsHidden && (threadList.length > 0 || !!thread)
+  const startedThread = (id: string) => {
+    setThread(id)
+    hideThreads(false)
+  }
+  const withThreads = (main: ReactNode) =>
+    showThreads ? (
+      <div className="flex items-start gap-4">
+        <div className="grid min-w-0 flex-1 gap-3.5">{main}</div>
+        <div className="sticky top-[72px] max-h-[calc(100svh-88px)] w-[380px] shrink-0 overflow-y-auto">
+          <ThreadsPanel
+            threads={threadList}
+            open={thread}
+            onOpen={setThread}
+            onHide={() => hideThreads(true)}
+            now={now}
+          />
+        </div>
+      </div>
+    ) : (
+      main
+    )
   const held = useHeld(heldOpen && heldTab === "history")
   const name = nameLookup(
     roster.agents.map((a): [string, string] => [a.key, a.name]),
@@ -361,15 +418,19 @@ export function App() {
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
         ) : homeCards.length === 0 && filter !== "done" ? (
           <>
-            <AskBox onAsked={setLast} />
-            <FilterBar
-              filter={filter}
-              onFilter={setFilter}
-              decide={0}
-              only={["all", "done"]}
-            />
-            <BoardsNeedYou cards={boardDecide} boards={boards} />
-            <EmptyCards />
+            <AskBox onAsked={setLast} onThread={startedThread} />
+            {withThreads(
+              <>
+                <FilterBar
+                  filter={filter}
+                  onFilter={setFilter}
+                  decide={0}
+                  only={["all", "done"]}
+                />
+                <BoardsNeedYou cards={boardDecide} boards={boards} />
+                <EmptyCards />
+              </>
+            )}
           </>
         ) : (
           <>
@@ -378,7 +439,10 @@ export function App() {
                 setLast(id)
                 setFilter("all")
               }}
+              onThread={startedThread}
             />
+            {withThreads(
+            <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <FilterBar
                 filter={active}
@@ -387,7 +451,22 @@ export function App() {
                 only={["all", "decide", "done"]}
               />
               <DeviceBar filter={active} onFilter={setFilter} devices={chips} />
-              <span className="ml-auto">
+              <span className="ml-auto flex items-center gap-2">
+                {!showThreads && threadList.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => hideThreads(false)}
+                    title="Show the Threads panel"
+                  >
+                    Threads
+                    {openThreads > 0 && (
+                      <Badge variant="slate" className="tabular-nums">
+                        {openThreads}
+                      </Badge>
+                    )}
+                  </Button>
+                )}
                 <ViewSwitch view={view} onView={setView} />
               </span>
             </div>
@@ -432,6 +511,8 @@ export function App() {
               <p className="px-1 text-[12.5px] text-muted-foreground">
                 Nothing here with this filter.
               </p>
+            )}
+            </>
             )}
           </>
         )}

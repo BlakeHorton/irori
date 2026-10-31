@@ -7,7 +7,13 @@ import { ChoiceSelect } from "@/components/common/choice-select"
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
-import { cards, MaxComment, MaxUploadFiles, type AskRepo } from "@/lib/cards"
+import {
+  cards,
+  MaxComment,
+  MaxUploadFiles,
+  threads,
+  type AskRepo,
+} from "@/lib/cards"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
 import { askingLine, composing, notDelivered } from "@/lib/mentions"
 import { errorText } from "@/lib/talk"
@@ -31,9 +37,13 @@ import { errorText } from "@/lib/talk"
 // your own board only.
 export function AskBox({
   onAsked,
+  onThread,
   board: onPage = "",
 }: {
   onAsked: (id: string) => void
+  // On your own board the box starts a thread (card #116): onThread gets
+  // it, for the Threads panel to open.
+  onThread?: (id: string) => void
   board?: string
 }) {
   const [text, setText] = useDraft("ask/room")
@@ -49,12 +59,16 @@ export function AskBox({
     : ""
   // A board ask takes no mentions in v1.
   const targeted = onBoard ? [] : mentions
+  // Your own board's box starts a thread, not an ask (card #116); a shared
+  // board's page keeps the ask.
+  const thread = !onBoard && !!onThread
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const picker = useRef<HTMLInputElement>(null)
   const addFiles = (list: FileList | File[] | null | undefined) => {
     const add = Array.from(list ?? [])
-    if (!add.length) return
+    // A thread takes no files yet (card #116).
+    if (!add.length || thread) return
     setFiles((fs) => [...fs, ...add].slice(0, MaxUploadFiles))
     setLine(null)
   }
@@ -85,6 +99,26 @@ export function AskBox({
     }
     setBusy(true)
     setLine(null)
+    if (thread) {
+      try {
+        const res = await threads.start(text, mentions)
+        const n = res.told.to?.length ?? 0
+        setLine({
+          text:
+            n === 0
+              ? "Sent. No agent is free yet: the first to go idle answers it."
+              : `Sent to ${n === 1 ? "1 agent" : `${n} agents`}. If nobody answers in 45s, an idle agent picks it up.`,
+        })
+        setText("")
+        setMentions([])
+        onThread?.(res.task.id)
+      } catch (err) {
+        setLine({ text: errorText(err), error: true })
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     try {
       const res = onBoard
         ? await cards.ask(text, "", true, [], onBoard)
@@ -160,9 +194,17 @@ export function AskBox({
               e.currentTarget.form?.requestSubmit()
             }
           }}
-          placeholder="Ask the room… (@ to ask one agent, # for a card)"
+          placeholder={
+            thread
+              ? "Ask about anything… (# a card, @ an agent)"
+              : "Ask the room… (@ to ask one agent, # for a card)"
+          }
           aria-label={
-            targeted.length ? askingLine(targeted) : "Ask every free agent"
+            thread
+              ? "Start a thread"
+              : targeted.length
+                ? askingLine(targeted)
+                : "Ask every free agent"
           }
           className="max-h-40 min-h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-transparent"
           // readOnly, not disabled: disabling the focused box would blur it,
@@ -173,7 +215,7 @@ export function AskBox({
         {/* The controls ride the box's first line (h-9, its min height)
             whatever their own heights, and stay up top as it grows. */}
         <div className="flex h-9 shrink-0 items-center gap-2">
-          {targeted.length > 0 && (
+          {!thread && targeted.length > 0 && (
             <span
               className="max-w-56 truncate text-xs text-muted-foreground"
               title="Only the agents you mention hear it, in any repo"
@@ -181,7 +223,7 @@ export function AskBox({
               {askingLine(targeted)}
             </span>
           )}
-          {!onBoard && !targeted.length && repos.length > 0 && (
+          {!thread && !onBoard && !targeted.length && repos.length > 0 && (
             <ChoiceSelect
               label="Which agents hear it"
               size="sm"
@@ -205,6 +247,7 @@ export function AskBox({
               e.target.value = ""
             }}
           />
+          {!thread && (
           <Button
             type="button"
             size="icon-sm"
@@ -217,13 +260,14 @@ export function AskBox({
           >
             <PaperclipIcon />
           </Button>
+          )}
           <Button
             type="submit"
             size="sm"
             className="shrink-0"
             disabled={busy || !text.trim()}
           >
-            {busy ? "Asking…" : "Ask"}
+            {busy ? (thread ? "Sending…" : "Asking…") : thread ? "Send" : "Ask"}
           </Button>
         </div>
       </div>

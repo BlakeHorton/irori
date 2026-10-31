@@ -241,6 +241,7 @@ impl Fold {
             } else {
                 a.mentions.clone()
             },
+            thread: a.thread && !self.on_board,
             ..Ask::default()
         });
     }
@@ -741,7 +742,8 @@ impl Fold {
                 ask: Some(AskField {
                     wake: true,
                     repo_key: repo_key.clone(),
-                    mentions,
+                    mentions: mentions.clone(),
+                    thread: input.thread,
                 }),
                 by: by.clone(),
                 at,
@@ -763,9 +765,30 @@ impl Fold {
                 },
             )?;
         }
+        // A thread goes first to the agents it names (card #116); with
+        // none, it is handed out like any ask.
+        let t = self.tasks[&id].clone();
+        if input.thread {
+            let heard = self.thread_hearers(&text, &mentions);
+            if !heard.is_empty() {
+                self.write_take(
+                    &id,
+                    TakeStateRow {
+                        reason: TAKE_POSTED.into(),
+                        told: heard.len() as i64,
+                        heard: heard.clone(),
+                        since: at,
+                        ..TakeStateRow::default()
+                    },
+                )?;
+                let t = self.tasks[&id].clone();
+                let mut n = super::threads::thread_notice(&t, &heard);
+                n.attachments = input.files;
+                return Ok((t, n));
+            }
+        }
         // Irori hands it to one idle agent, which holds it as it wakes: no
         // race on ask_claim, one turn spent. Nobody idle: it waits for one.
-        let t = self.tasks[&id].clone();
         let free = self.free_agents(&t, agents, &self.handed_elsewhere(&id));
         let pick: Vec<String> = free.into_iter().take(1).collect();
         self.write_take(
@@ -787,6 +810,9 @@ impl Fold {
         )?;
         let t = self.tasks[&id].clone();
         let mut n = match pick.first() {
+            Some(k) if t.ask.as_ref().is_some_and(|a| a.thread) => {
+                super::threads::thread_hand_notice(&t, k, &[])
+            }
             Some(k) => hand_notice(&t, k, ""),
             None => ask_notice(&t, &[], true, ""),
         };
@@ -867,6 +893,7 @@ impl Fold {
         // not gone. Like any ask it is handed to one at a time (#91).
         if let Some(ask) = &t.ask
             && !ask.mentions.is_empty()
+            && !ask.thread
         {
             for m in &ask.mentions {
                 let here = roster
@@ -912,7 +939,7 @@ impl Fold {
     }
 
     /// Writes the owner's take.state for ask `id`.
-    fn write_take(&mut self, id: &str, mut r: TakeStateRow) -> Result<()> {
+    pub(crate) fn write_take(&mut self, id: &str, mut r: TakeStateRow) -> Result<()> {
         r.task_id = id.into();
         r.at = self.stamp();
         if r.since.is_zero()
@@ -1080,10 +1107,17 @@ impl Fold {
             .collect();
         let res = (|| -> Result<()> {
             for id in &ids {
+                if self.thread_sweep(id, &now)? {
+                    continue;
+                }
                 let a = self.tasks[id].ask.clone().unwrap_or_default();
                 if !a.taker.is_empty() && a.handed {
                     match self.handed_state(id, &a, &in_roster) {
                         Handed::Waits => continue,
+                        Handed::Touched if a.thread => {
+                            self.write_thread_answered(id, &a)?;
+                            continue;
+                        }
                         Handed::Touched => {
                             self.write_take(
                                 id,
@@ -1200,7 +1234,11 @@ impl Fold {
                     )?;
                     let t = self.tasks[id].clone();
                     let why = ag.as_ref().map(|g| g.why.as_str()).unwrap_or_default();
-                    out.push(hand_notice(&t, pick, why));
+                    if a.thread {
+                        out.push(super::threads::thread_hand_notice(&t, pick, &a.heard));
+                    } else {
+                        out.push(hand_notice(&t, pick, why));
+                    }
                     continue;
                 }
                 // Nobody idle to hand it to: it waits, and goes out the
@@ -1412,6 +1450,12 @@ impl Fold {
             return Err(bad_state(format!("{} isn't an open ask", t.short_ref())));
         };
         let person = self.is_owner(&by);
+        if !person && a.thread {
+            return Err(not_allowed(format!(
+                "{} is the person's thread: they resolve it",
+                t.short_ref()
+            )));
+        }
         if !person && (a.taker.is_empty() || a.taker != by) {
             if a.taker.is_empty() {
                 return Err(not_allowed(format!("ask_claim {} first", t.short_ref())));

@@ -976,7 +976,15 @@ const name = displayName
 // comment goes to the agents on the card (BoardService.Comment), and the
 // line under it says who heard. Wake is on by default: a comment from the
 // app is asked now.
-function CommentBox({ cardId }: { cardId: string }) {
+// reply makes it a thread's reply box (card #116): a reply always wakes
+// the agents in the thread, so the Wake switch steps aside.
+export function CommentBox({
+  cardId,
+  reply = false,
+}: {
+  cardId: string
+  reply?: boolean
+}) {
   const [text, setText] = useDraft(`${cardId}/comment`)
   const [mentions, setMentions] = useMentionsDraft(`${cardId}/comment`)
   const [missed, setMissed] = useMissed()
@@ -1032,23 +1040,31 @@ function CommentBox({ cardId }: { cardId: string }) {
             e.currentTarget.form?.requestSubmit()
           }
         }}
-        placeholder="Comment on the card (@ to bring in an agent, # for a card)"
-        aria-label="Your comment on the card"
+        placeholder={
+          reply
+            ? "Reply… (@ an agent, # a card)"
+            : "Comment on the card (@ to bring in an agent, # for a card)"
+        }
+        aria-label={reply ? "Your reply" : "Your comment on the card"}
         className="max-h-48 min-h-10 bg-card"
         disabled={busy}
       />
       <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Switch
-            size="sm"
-            checked={wake}
-            disabled={busy}
-            onCheckedChange={(v) => setWake(v)}
-          />
-          Wake now
-        </label>
+        {reply ? (
+          <span />
+        ) : (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Switch
+              size="sm"
+              checked={wake}
+              disabled={busy}
+              onCheckedChange={(v) => setWake(v)}
+            />
+            Wake now
+          </label>
+        )}
         <Button type="submit" size="sm" disabled={busy}>
-          {busy ? "Sending…" : "Comment"}
+          {busy ? "Sending…" : reply ? "Reply" : "Comment"}
         </Button>
       </div>
       {heard &&

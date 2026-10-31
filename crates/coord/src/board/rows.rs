@@ -15,6 +15,8 @@ crate::go_struct! {
         pub wake: bool = "wake" "omit",
         pub repo_key: String = "repoKey" "omit",
         pub mentions: Vec<Mention> = "mentions" "omit",
+        /// A thread (card #116): a conversation, not a card.
+        pub thread: bool = "thread" "omit",
     }
 }
 

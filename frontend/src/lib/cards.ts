@@ -22,6 +22,7 @@ import {
   MentionCandidate,
   Told,
   TaskResult,
+  ThreadSummary,
   UploadFile,
   type AgentRef,
   type CardActivity,
@@ -71,6 +72,7 @@ export type {
   MentionCandidate,
   NewCardInput,
   Step,
+  ThreadSummary,
   Told,
 }
 export { Holding, LinkKind, NoteItem, TaskState }
@@ -188,8 +190,180 @@ let sample: CardDetail[] | null = null
 const sampleListeners = new Set<() => void>()
 
 function sampleState(): CardDetail[] {
-  sample ??= sampleCards(new Date())
+  if (!sample) {
+    sample = sampleCards(new Date())
+    sample = [...sampleThreadSeed(new Date()), ...sample]
+  }
   return sample
+}
+
+// ---- threads (card #116) ------------------------------------------------------
+
+// sampleThreadIds are the sample's threads: cards in the sample state (so
+// a thread opens like a card) kept off the grid, as BoardService.Cards
+// keeps the real ones.
+const sampleThreadIds = new Set<string>()
+const sampleThreadState = new Map<string, string>()
+
+// sampleThread is one of the sample's threads.
+function sampleThread(
+  id: string,
+  short: string,
+  text: string,
+  at: string,
+  thread: CardThreadItem[],
+  state: string
+): CardDetail {
+  sampleThreadIds.add(id)
+  sampleThreadState.set(id, state)
+  return {
+    id,
+    short,
+    shortWas: "",
+    title: text.split("\n")[0].slice(0, 80),
+    goal: text,
+    doneWhen: "",
+    note: "",
+    state: TaskState.Submitted,
+    repoKey: "",
+    scope: "",
+    scopeLabel: "",
+    steps: [],
+    blockers: [],
+    prs: [],
+    links: [],
+    comments: [],
+    working: [],
+    watching: [],
+    progress: { done: 0, total: 0 },
+    openBlockers: 0,
+    waiting: 0,
+    blockerQuestion: "",
+    recent: [],
+    thread,
+    threadEarlier: 0,
+    historyTrimmed: false,
+    updatedAt: at,
+    ask: null,
+  } as unknown as CardDetail
+}
+
+// sampleThreadSeed is the preview's two threads: one sample-heron
+// answered, one still in its quiet spell.
+function sampleThreadSeed(now: Date): CardDetail[] {
+  const ago = (s: number) => new Date(now.getTime() - s * 1000).toISOString()
+  return [
+    sampleThread(
+      "sample-thread-1",
+      "20",
+      "Is #3 still moving? And did anyone finish the release notes (#8)?",
+      ago(120),
+      [
+        CardThreadItem({
+          id: "sample-thread-1-a",
+          kind: "comment",
+          at: ago(60),
+          who: sampleAgents.heron,
+          text: "#3 is waiting on you: it needs your call on the lobby list (Steam or our relay). #8 is half done; I'll finish it after the build.",
+        }),
+      ],
+      "answered"
+    ),
+    sampleThread(
+      "sample-thread-2",
+      "21",
+      "Why is the Mac build slower than the PC's?",
+      ago(20),
+      [],
+      "waiting"
+    ),
+  ]
+}
+
+// sampleThreads is BoardService.Threads on the sample.
+function sampleThreads(): ThreadSummary[] {
+  const all = sampleState().filter((c) => sampleThreadIds.has(c.id))
+  const rows = all.map((c) => {
+    const replies = c.thread.filter((it) => it.kind === "comment")
+    const last = replies[replies.length - 1]
+    const agents = replies.filter((it) => it.who.key !== sampleYou.key)
+    const state = sampleThreadState.get(c.id) ?? "waiting"
+    return ThreadSummary({
+      id: c.id,
+      short: c.short,
+      title: c.title,
+      text: c.goal,
+      state:
+        state === "resolved" ? "resolved" : agents.length ? "answered" : state,
+      told: c.id === "sample-thread-1" ? [sampleAgents.heron] : [],
+      answeredBy: agents
+        .map((it) => it.who)
+        .filter((w, i, a) => a.findIndex((x) => x.key === w.key) === i),
+      replies: replies.length,
+      lastBy: last?.who,
+      lastText: last?.text ?? "",
+      at: c.updatedAt,
+      updatedAt: last?.at ?? c.updatedAt,
+    })
+  })
+  const t = (s: ThreadSummary) => Date.parse(s.updatedAt) || 0
+  const open = rows
+    .filter((r) => r.state !== "resolved")
+    .sort((a, b) => t(b) - t(a))
+  const done = rows
+    .filter((r) => r.state === "resolved")
+    .sort((a, b) => t(b) - t(a))
+  return [...open, ...done]
+}
+
+// threads is the Threads panel's side of the Board (card #116): the
+// header box starts one, the panel lists them, the person resolves them.
+// Replies go through cards.comment, like any card's.
+export const threads = {
+  async list(): Promise<ThreadSummary[]> {
+    if (inWails()) return (await BoardService.Threads()) ?? []
+    return sampleThreads()
+  },
+
+  // start is the header box's message as a thread: the agents on the
+  // cards it names (#12) and the ones it @mentions hear it first; after
+  // 45s with no answer, one idle agent gets it.
+  async start(text: string, mentions: Mention[] = []): Promise<TaskResult> {
+    if (inWails()) return BoardService.StartThread(text, mentions)
+    const t = text.trim()
+    if (!t) throw new Error("coord: invalid input: an empty comment")
+    const cs = sampleState()
+    const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
+    const id = `sample-thread-${Date.now()}`
+    sample = [
+      sampleThread(id, String(top + 1), t, new Date().toISOString(), [], "waiting"),
+      ...cs,
+    ]
+    sampleChanged()
+    return TaskResult({
+      task: { id } as TaskResult["task"],
+      told: Told({ to: [], mode: "wake" }),
+    })
+  },
+
+  async resolve(id: string): Promise<void> {
+    if (inWails()) return BoardService.ResolveThread(id)
+    sampleThreadState.set(id, "resolved")
+    sampleChanged()
+  },
+}
+
+// useThreads is the Threads panel's rows, fresh on every card change.
+export function useThreads(): {
+  threads: ThreadSummary[]
+  error: string | null
+} {
+  const { value, error, reload } = useLatest<ThreadSummary[]>(
+    threads.list,
+    []
+  )
+  useFresh(reload, error, true)
+  return { threads: value, error }
 }
 
 function sampleChanged() {
@@ -1201,7 +1375,7 @@ async function loadCards(): Promise<CardSummary[]> {
     const time = updated
     // As BoardService.Cards: the closed ones are on the Done tab.
     const live = sampleState()
-      .filter((c) => !over(c))
+      .filter((c) => !over(c) && !sampleThreadIds.has(c.id))
       .sort((a, b) => ask(b) - ask(a) || open(b) - open(a) || time(b) - time(a))
       .map(summary)
     // As BoardService.Cards: pinned first, in their order, each pinned
@@ -1270,7 +1444,7 @@ export const DonePageSize = 30
 async function loadDone(limit: number, before: string): Promise<DonePage> {
   if (inWails()) return BoardService.DoneCards(limit, before)
   const done = sampleState()
-    .filter(over)
+    .filter((c) => over(c) && !sampleThreadIds.has(c.id))
     .sort((a, b) => updated(b) - updated(a) || (a.id < b.id ? 1 : -1))
   const from = before ? done.findIndex((c) => c.id === before) + 1 : 0
   const page = done.slice(from, from + limit)

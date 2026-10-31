@@ -25,6 +25,7 @@ mod mention;
 mod mirror;
 mod offers;
 mod placed;
+mod threads;
 pub use offers::{OFFER_HANDED, OFFER_PASSED, OFFER_WAITING};
 mod resource;
 mod review;
@@ -67,6 +68,7 @@ pub use review::{
     NOTICE_REVIEW, REVIEW_REQUESTED, Review, ReviewRequest, VERDICT_APPROVED, VERDICT_CHANGES,
 };
 pub use short::{parse_ref, parse_short, short_suffix};
+pub use threads::{TAKE_ANSWERED, THREAD_QUIET};
 pub use types::*;
 pub use waits::{
     MAX_WAITS, UNTIL_BLOCKED, UNTIL_CHANGED, UNTIL_DONE, UNTIL_UNBLOCKED, WAIT_CARD_GONE,
@@ -764,6 +766,10 @@ impl Coord {
     }
     pub fn ask_close(&self, by: &str, id: &str, o: AskOutcome) -> Result<Task> {
         self.lock().ask_close(by, id, o)
+    }
+    /// The person resolves their thread (card #116): it closes, answered.
+    pub fn resolve_thread(&self, by: &str, id: &str) -> Result<Task> {
+        self.lock().resolve_thread(by, id)
     }
     pub fn ask_again(&self, by: &str, id: &str) -> Result<()> {
         self.lock().ask_again(by, id)

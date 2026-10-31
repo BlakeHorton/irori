@@ -743,3 +743,47 @@ fn new_card_from_the_app() {
     assert_eq!(res.told.mode, "wake");
     assert!(res.task.assigned.contains(&r.key_b));
 }
+
+/// Card #116: the header box starts a thread. It stays off the grid, shows
+/// in the Threads panel, goes to the agent on the card it names, and the
+/// person resolves it.
+#[test]
+fn a_thread_from_the_header_box() {
+    let r = Rig::new();
+    let t = held_task(&r);
+    let res =
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[])
+            .unwrap();
+    let id = res.task.id.clone();
+    assert_eq!(
+        res.told.to,
+        vec![r.key_a.clone()],
+        "alpha holds the card it names"
+    );
+    assert!(r.w.cards().iter().all(|c| c.id != id), "not in the grid");
+    let ts = r.w.threads();
+    assert_eq!(ts.len(), 1);
+    assert_eq!((ts[0].state.as_str(), ts[0].told.len()), ("waiting", 1));
+
+    r.w.core
+        .coord()
+        .add_comment(&r.key_a, &id, "Yes, half done.", false)
+        .unwrap();
+    let ts = r.w.threads();
+    assert_eq!(ts[0].state, "answered");
+    assert_eq!(ts[0].last_text, "Yes, half done.");
+    let c = r.w.comment(&id, "Thanks", "wake", &[]).unwrap();
+    assert_eq!(
+        c.told.to,
+        vec![r.key_a.clone()],
+        "follow-up goes to who answered"
+    );
+
+    r.w.resolve_thread(&id).unwrap();
+    assert_eq!(r.w.threads()[0].state, "resolved");
+    let done = r.w.done_cards(0, "").unwrap();
+    assert!(
+        done.cards.iter().all(|c| c.id != id),
+        "not in Closed either"
+    );
+}

@@ -385,6 +385,31 @@ pub async fn board_create(w: W<'_>, input: crate::new_card::NewCardInput) -> R<T
     w.create_card(input)
 }
 
+/// The header box's message as a thread (card #116).
+#[tauri::command]
+#[specta::specta]
+pub async fn board_start_thread(
+    w: W<'_>,
+    text: String,
+    mentions: Vec<crate::ts::Mention>,
+) -> R<TaskResult> {
+    w.start_thread(&text, &mentions)
+}
+
+/// The Threads panel: open threads, then the newest resolved.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_threads(w: W<'_>) -> R<Vec<crate::threads::ThreadSummary>> {
+    Ok(w.threads())
+}
+
+/// Resolve on a thread: the person is done with it.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_resolve_thread(w: W<'_>, id: String) -> R<()> {
+    w.resolve_thread(&id)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_move_pin(w: W<'_>, id: String, before: String) -> R<()> {
@@ -789,6 +814,9 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_pin,
             board_place,
             board_create,
+            board_start_thread,
+            board_threads,
+            board_resolve_thread,
             board_comment_modify,
             board_comment_modify_cancel,
             board_comment_modify_save,

@@ -611,6 +611,9 @@ pub(crate) fn ask_groups(v: &mut BoardView, viewer: &str, repo: &str) -> (Vec<Ca
         for cd in g.drain(..) {
             match cd.task.ask.as_ref().filter(|a| a.is_open()) {
                 None => keep.push(cd),
+                // The person's threads aren't work (card #116): agents hear
+                // them through notices and read them with show.
+                Some(a) if a.thread => {}
                 Some(a) if a.taker == viewer => mine.push(cd),
                 Some(a)
                     if a.taker.is_empty()
