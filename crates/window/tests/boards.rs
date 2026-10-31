@@ -317,3 +317,83 @@ fn member_actions_and_conflicts_in_the_window() {
     w.boards_leave(&mlg.board_id).unwrap();
     assert!(w.boards_list().iter().all(|b| b.board_id != mlg.board_id));
 }
+
+/// Card #115: Closed lists finished shared-board cards beside the private
+/// ones, each with its board chip, and one cursor pages across both; a
+/// withdrawn board card stays out, as it does in the grid.
+#[test]
+fn closed_holds_finished_board_cards() {
+    let r = Rig::new();
+    let w = &r.w;
+    let co = w.core.coord();
+    let me = w.core.user_sender().key;
+    for i in 0..2 {
+        let t = create(&r, &format!("private {i}"));
+        co.set_task_state(&me, &t.id, coord::COMPLETED, "").unwrap();
+    }
+    let mlg = w.boards_create("MLG", "mlg").unwrap();
+    let bco = w.core.board_coord(&mlg.board_id).unwrap();
+    let bme = w.core.board_key(&mlg.board_id, &me).unwrap();
+    let mut board_ids = Vec::new();
+    for (i, state) in [coord::COMPLETED, coord::CANCELED, coord::FAILED]
+        .into_iter()
+        .enumerate()
+    {
+        let t = bco
+            .create_task(
+                &bme,
+                coord::NewTask {
+                    title: format!("board {i}"),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        bco.set_task_state(&bme, &t.id, state, "").unwrap();
+        board_ids.push(t.id);
+    }
+    // Still open: never under Closed.
+    bco.create_task(
+        &bme,
+        coord::NewTask {
+            title: "open on the board".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let all = w.done_cards(0, "").unwrap();
+    assert_eq!(all.cards.len(), 5, "closed {:?}", all.cards);
+    for id in &board_ids {
+        let s = all
+            .cards
+            .iter()
+            .find(|s| &s.id == id)
+            .expect("a finished board card under Closed");
+        assert!(
+            s.scope == SCOPE_BOARD
+                && s.scope_label == "MLG"
+                && s.board == mlg.board_id
+                && s.tag == "mlg",
+            "board chip {s:?}"
+        );
+    }
+    assert_eq!(
+        all.cards.iter().filter(|s| s.scope == SCOPE_MINE).count(),
+        2
+    );
+
+    // Pages of 2 walk all five once, newest first.
+    let mut seen = Vec::new();
+    let mut next = String::new();
+    loop {
+        let p = w.done_cards(2, &next).unwrap();
+        assert!(p.cards.len() <= 2);
+        seen.extend(p.cards.iter().map(|s| s.id.clone()));
+        if p.next.is_empty() {
+            break;
+        }
+        next = p.next;
+    }
+    let want: Vec<String> = all.cards.iter().map(|s| s.id.clone()).collect();
+    assert_eq!(seen, want, "paging across private and board cards");
+}

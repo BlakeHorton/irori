@@ -1055,17 +1055,36 @@ impl Window {
             }
             cursor = Some((at, id.to_string()));
         }
-        let mut done: Vec<Task> = co
+        let terminal = |t: &Task| coord::is_terminal(coord::effective_state(t));
+        // Private closed cards, then every ready board's (#115): Closed
+        // holds them all, the way the grid's All holds every live card.
+        // A board card's `from` is its index in `boards`.
+        let mut done: Vec<(Task, Option<usize>)> = co
             .list_tasks(&coord::TaskFilter::default())
             .into_iter()
-            .filter(|t| coord::is_terminal(coord::effective_state(t)))
+            .filter(|t| terminal(t))
+            .map(|t| (t, None))
             .collect();
-        done.sort_by(|a, b| newer(&a.updated_at, &a.id, &b.updated_at, &b.id));
+        let boards: Vec<_> = self
+            .core
+            .board_list()
+            .into_iter()
+            .filter(|s| s.ready)
+            .filter_map(|s| self.core.board_coord(&s.board_id).ok().map(|c| (s, c)))
+            .collect();
+        for (i, (_, bc)) in boards.iter().enumerate() {
+            for t in bc.list_tasks(&coord::TaskFilter::default()) {
+                if !t.withdrawn && terminal(&t) {
+                    done.push((t, Some(i)));
+                }
+            }
+        }
+        done.sort_by(|(a, _), (b, _)| newer(&a.updated_at, &a.id, &b.updated_at, &b.id));
         if let Some((at, id)) = &cursor {
-            let i = done.partition_point(|t| {
+            let i = done.partition_point(|(t, _)| {
                 newer(&t.updated_at, &t.id, at, id) == std::cmp::Ordering::Less
             });
-            let i = if i < done.len() && done[i].id == *id && done[i].updated_at.equal(at) {
+            let i = if i < done.len() && done[i].0.id == *id && done[i].0.updated_at.equal(at) {
                 i + 1
             } else {
                 i
@@ -1074,7 +1093,7 @@ impl Window {
         }
         let mut out = DonePage::default();
         if done.len() > limit {
-            let last = &done[limit - 1];
+            let last = &done[limit - 1].0;
             out.next = format!(
                 "{} {}",
                 last.updated_at.utc().format_rfc3339_nano(),
@@ -1083,10 +1102,29 @@ impl Window {
             done.truncate(limit);
         }
         let p = self.people();
-        let refr = |id: &str| co.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
-        for t in &done {
-            let mut s = card_summary(t, &p);
-            s.ask = card_ask(t, &p, Some(&refr));
+        for (t, from) in done {
+            let s = match from {
+                None => {
+                    let refr =
+                        |id: &str| co.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
+                    let mut s = card_summary(&t, &p);
+                    s.ask = card_ask(&t, &p, Some(&refr));
+                    s
+                }
+                Some(i) => {
+                    let (b, bc) = &boards[i];
+                    let refr =
+                        |id: &str| bc.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
+                    let pt = self.priv_task(t);
+                    let mut s = card_summary(&pt, &p);
+                    s.ask = card_ask(&pt, &p, Some(&refr));
+                    s.scope = crate::boards::SCOPE_BOARD.into();
+                    s.scope_label = b.name.clone();
+                    s.board = b.board_id.clone();
+                    s.tag = b.tag.clone();
+                    s
+                }
+            };
             out.cards.push(s);
         }
         Ok(out)
