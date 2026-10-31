@@ -1,5 +1,5 @@
 import { LayersIcon, PinIcon } from "lucide-react"
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -293,29 +293,46 @@ export function CardGrid({
       />
     </div>
   )
+  // Masonry (card #113): each column stacks on its own, so a family's
+  // subtask tray only lengthens its column; cards go, in order, into
+  // whichever column is shortest. A family is its parent's tile with its
+  // subtasks as rows in a tray under it.
   return (
-    <section
-      aria-label={label}
-      className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3"
-    >
-      {familyGroups(cards).map((f) =>
-        f.kids.length === 0 ? (
-          tile(f.head)
-        ) : (
-          // A parent and its subtasks share one frame across the grid
-          // (card #97), so a family reads as one piece of work.
-          <div
-            key={f.head.id}
-            role="group"
-            aria-label={`#${plainLine(f.head.short)} and its subtasks`}
-            className="col-span-full grid grid-cols-[repeat(auto-fill,minmax(244px,1fr))] gap-3 rounded-xl border border-border/80 bg-muted/20 p-2"
-          >
-            {tile(f.head)}
-            {f.kids.map(tile)}
-          </div>
-        )
-      )}
-    </section>
+    <MasonryGrid
+      label={label}
+      items={familyGroups(cards).map((f) => ({
+        key: f.head.id,
+        node:
+          f.kids.length === 0 ? (
+            tile(f.head)
+          ) : (
+            <div
+              role="group"
+              aria-label={`#${plainLine(f.head.short)} and its subtasks`}
+              className="grid"
+            >
+              {tile(f.head)}
+              <div className="mx-2 grid overflow-hidden rounded-b-lg border border-t-0 border-border bg-muted/30">
+                {f.kids.map((k) => (
+                  <SubtaskDetailRow
+                    key={k.id}
+                    card={k}
+                    selected={k.id === selected}
+                    dim={context?.has(k.id) ?? false}
+                    onSelect={() => onSelect(k.id)}
+                  />
+                ))}
+                {f.head.progress.done > 0 && (
+                  <span className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
+                    <span aria-hidden className="text-success">✓</span>
+                    {f.head.progress.done} done
+                  </span>
+                )}
+              </div>
+            </div>
+          ),
+      }))}
+    />
   )
 }
 
@@ -640,5 +657,132 @@ function PartOf({ parent }: { parent: { short: string; title: string } }) {
     >
       part of #{plainLine(parent.short)}
     </span>
+  )
+}
+
+// SubtaskDetailRow is a subtask row with detail (card #113):
+// line one its ref, title and state; line two who's on it and how far;
+// a blocker's question under that.
+function SubtaskDetailRow({
+  card,
+  selected,
+  dim,
+  onSelect,
+}: {
+  card: CardSummary
+  selected: boolean
+  dim: boolean
+  onSelect: () => void
+}) {
+  const blocked = card.openBlockers > 0
+  const p = percent(card.progress)
+  const who = card.working
+  const tone = blocked ? "text-destructive" : who.length ? "text-primary" : "text-warning"
+  const whoLine = who.length ? (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <Faces who={who} />
+      <span className="truncate">{displayName(who[0])}</span>
+    </span>
+  ) : (
+    <span className="text-warning">nobody on it</span>
+  )
+  const bar =
+    p !== null ? (
+      <span className="flex items-center gap-1.5">
+        <span className="h-1 w-14 overflow-hidden rounded-full bg-border">
+          <span
+            className={cn("block h-full", blocked ? "bg-destructive" : "bg-primary")}
+            style={{ width: `${p}%` }}
+          />
+        </span>
+        <span className="tabular-nums">{p}%</span>
+      </span>
+    ) : null
+  return (
+    <button
+      type="button"
+      data-card={card.id}
+      onClick={onSelect}
+      aria-current={selected ? "true" : undefined}
+      className={cn(
+        "grid gap-1 border-b border-border/60 bg-background/40 px-3 py-2 text-left text-xs hover:bg-muted/60",
+        selected && "bg-muted/70",
+        dim && "opacity-60"
+      )}
+    >
+      <>
+          <span className="flex min-w-0 items-center gap-2">
+            <span aria-hidden className={cn("text-[10px]", tone)}>●</span>
+            <ShortRef card={card} />
+            <span className="min-w-0 flex-1 truncate text-ink">{plainLine(card.title)}</span>
+            <StatePill card={card} />
+          </span>
+          <span className="flex items-center gap-3 pl-4 text-[11px] text-muted-foreground">
+            {whoLine}
+            {bar}
+          </span>
+      </>
+      {blocked && card.blockerQuestion && (
+        <span className={"line-clamp-2 pl-4 text-[11px] text-destructive"}>
+          {plainLine(card.blockerQuestion)}
+        </span>
+      )}
+    </button>
+  )
+}
+
+// MasonryGrid lays items into as many 260px+ columns as fit; each item
+// goes, in order, to the shortest column so far (card #113).
+function MasonryGrid({ label, items }: { label: string; items: { key: string; node: ReactNode }[] }) {
+  const box = useRef<HTMLElement>(null)
+  const refs = useRef(new Map<string, HTMLDivElement>())
+  const [width, setWidth] = useState(0)
+  const [heights, setHeights] = useState<Record<string, number>>({})
+  const gap = 12
+  // Re-measured when the set of items changes, so new ones are observed.
+  const keys = items.map((it) => it.key).join(" ")
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    const measure = () => {
+      setWidth(el.clientWidth)
+      const h: Record<string, number> = {}
+      for (const [k, d] of refs.current) h[k] = d.offsetHeight
+      setHeights((old) => (JSON.stringify(old) === JSON.stringify(h) ? old : h))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    for (const d of refs.current.values()) ro.observe(d)
+    return () => ro.disconnect()
+  }, [keys])
+  const n = Math.max(1, Math.floor((width + gap) / (260 + gap)))
+  const cols: { key: string; node: ReactNode }[][] = Array.from({ length: n }, () => [])
+  const tall = new Array(n).fill(0)
+  for (const it of items) {
+    let c = 0
+    for (let i = 1; i < n; i++) if (tall[i] < tall[c]) c = i
+    cols[c].push(it)
+    tall[c] += (heights[it.key] ?? 200) + gap
+  }
+  return (
+    <section ref={box} aria-label={label} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+      {cols.map((col, i) => (
+        <div key={i} className="grid content-start gap-3">
+          {col.map((it) => (
+            <div
+              key={it.key}
+              ref={(d) => {
+                if (d) refs.current.set(it.key, d)
+                else refs.current.delete(it.key)
+              }}
+              className="grid"
+            >
+              {it.node}
+            </div>
+          ))}
+        </div>
+      ))}
+    </section>
   )
 }

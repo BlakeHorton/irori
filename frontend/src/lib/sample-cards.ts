@@ -860,6 +860,52 @@ export function sampleCards(now: Date): CardDetail[] {
         }),
       ],
     }),
+    // A bigger family (card #113's layout mockups): five subtasks, two of
+    // them done, one blocked, one nobody has picked up.
+    card({
+      id: "sample-card-20",
+      title: "Boat physics pass",
+      repoKey: "remote:github.com/sample-org/example-app",
+      goal: "Boats float, turn and dock the same on both PCs.",
+      working: [otter],
+      updatedAt: at(3),
+      subtasks: 5,
+      progress: { done: 2, total: 5 },
+      subtaskBlocked: "#24: Clamp the roll at 30°, or let big waves flip it?",
+    }),
+    card({
+      id: "sample-card-23",
+      title: "Buoyancy from the hull shape",
+      repoKey: "remote:github.com/sample-org/example-app",
+      working: [otter],
+      updatedAt: at(3),
+      parent: CardRef({ id: "sample-card-20", short: "20", title: "Boat physics pass" }),
+      steps: steps([["Sample points", true], ["Water height", true], ["Torque", false, true]]),
+    }),
+    card({
+      id: "sample-card-24",
+      title: "Roll limits in rough water",
+      repoKey: "remote:github.com/sample-org/example-app",
+      working: [lark],
+      updatedAt: at(9),
+      parent: CardRef({ id: "sample-card-20", short: "20", title: "Boat physics pass" }),
+      steps: steps([["Wave test scene", true], ["Pick a limit", false]]),
+      blockers: [
+        CardBlocker({
+          id: "b1", question: "Clamp the roll at 30°, or let big waves flip it?", context: "", raisedBy: lark, at: at(9),
+          options: [], state: "open", missing: [], thread: [], links: [], attachments: [],
+        }),
+      ],
+    }),
+    card({
+      id: "sample-card-25",
+      title: "Docking snaps to the pier",
+      repoKey: "remote:github.com/sample-org/example-app",
+      working: [],
+      updatedAt: at(20),
+      state: TaskState.Submitted,
+      parent: CardRef({ id: "sample-card-20", short: "20", title: "Boat physics pass" }),
+    }),
     card({
       id: "sample-card-5",
       title: "Sample notes export",
