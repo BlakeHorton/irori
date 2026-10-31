@@ -52,11 +52,31 @@ const hidden = "!size-1.5 !min-h-0 !min-w-0 !border-0 !bg-transparent"
 function CardNodeView({ data, selected }: NodeProps<Node<CardData>>) {
   return (
     <>
-      <Handle type="target" position={Position.Top} id="top" className={hidden} />
-      <Handle type="target" position={Position.Left} id="left" className={hidden} />
-      <Handle type="target" position={Position.Right} id="right" className={hidden} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className={hidden}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className={hidden}
+      />
+      <Handle
+        type="target"
+        position={Position.Right}
+        id="right"
+        className={hidden}
+      />
       <CardBody n={data.n} selected={selected} />
-      <Handle type="source" position={Position.Bottom} id="bottom" className={hidden} />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className={hidden}
+      />
     </>
   )
 }
@@ -65,7 +85,12 @@ function BlockerNodeView({ data }: NodeProps<Node<BlockerData>>) {
   return (
     <>
       <BlockerBody n={data.n} />
-      <Handle type="source" position={Position.Left} id="left" className={hidden} />
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="left"
+        className={hidden}
+      />
     </>
   )
 }
@@ -74,7 +99,12 @@ function AgentNodeView({ data }: NodeProps<Node<AgentData>>) {
   return (
     <>
       <AgentBody n={data.n} />
-      <Handle type="source" position={Position.Right} id="right" className={hidden} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className={hidden}
+      />
     </>
   )
 }
@@ -136,7 +166,10 @@ function toNodes(graph: CanvasProps["graph"], layout: Layout): Node[] {
   return out
 }
 
-const edgeStyle: Record<GraphEdge["kind"], { stroke: string; dash?: string; animated?: boolean }> = {
+const edgeStyle: Record<
+  GraphEdge["kind"],
+  { stroke: string; dash?: string; animated?: boolean }
+> = {
   subtask: { stroke: "var(--muted-foreground)" },
   blocker: { stroke: "var(--destructive)", dash: "4 4" },
   holder: { stroke: "var(--primary)", animated: true },
@@ -160,7 +193,12 @@ function toEdges(graph: CanvasProps["graph"]): Edge[] {
       type: e.kind === "subtask" ? "smoothstep" : "default",
       animated: s.animated,
       style: { stroke: s.stroke, strokeDasharray: s.dash, strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: s.stroke, width: 16, height: 16 },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: s.stroke,
+        width: 16,
+        height: 16,
+      },
     }
   })
 }
@@ -173,7 +211,10 @@ function absolute(nodes: Node[]): Record<string, Point> {
   for (const n of nodes) {
     const parent = n.parentId ? byId.get(n.parentId) : undefined
     out[n.id] = parent
-      ? { x: n.position.x + parent.position.x, y: n.position.y + parent.position.y }
+      ? {
+          x: n.position.x + parent.position.x,
+          y: n.position.y + parent.position.y,
+        }
       : n.position
   }
   return out
@@ -246,7 +287,12 @@ export default function Canvas({ graph, layout, onOpen }: CanvasProps) {
         nodesConnectable={false}
         elevateNodesOnSelect={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--border)" />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={22}
+          size={1}
+          color="var(--border)"
+        />
         <MiniMap
           pannable
           zoomable

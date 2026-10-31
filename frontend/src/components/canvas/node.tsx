@@ -1,35 +1,26 @@
 // Canvas showcase (card #80): the Irori bits each canvas draws a node with.
 // React Flow renders these components as they are; Excalidraw and pele
-// can't put React inside a node, so they take the same colours from
-// toneColor and the same text from nodeText.
+// can't put React inside a node, so they write their own text from the
+// same fields (stepsText) in matching colours.
 
 import { Faces } from "@/components/cards/faces"
-import { ProgressBar, StatePill, ShortRef, type Tone } from "@/components/cards/bits"
+import {
+  ProgressBar,
+  StatePill,
+  ShortRef,
+  type Tone,
+} from "@/components/cards/bits"
 import { deviceVar } from "@/lib/cards"
 import { cn } from "@/lib/utils"
 
 import type { AgentNode, BlockerNode, CardNode } from "./data"
 
-// toneColor is a status tone as a CSS colour, for canvases that paint
-// their own shapes (Excalidraw wants a literal; resolveColor reads it).
+// toneVar is a status tone as a CSS colour (the minimap, card edges).
 export const toneVar: Record<Tone, string> = {
   destructive: "var(--destructive)",
   success: "var(--success)",
   slate: "var(--muted-foreground)",
   info: "var(--info)",
-}
-
-// resolveColor turns a CSS variable into the colour it holds now, as
-// rgb(...), for libraries that can't take var(): Excalidraw stores literal
-// colours in its elements.
-export function resolveColor(css: string): string {
-  const probe = document.createElement("span")
-  probe.style.color = css
-  probe.style.display = "none"
-  document.body.appendChild(probe)
-  const c = getComputedStyle(probe).color
-  probe.remove()
-  return c || "#888"
 }
 
 // stepsText is "2/5 steps", or "" for a card without steps.
@@ -45,7 +36,7 @@ export function CardBody({ n, selected }: { n: CardNode; selected?: boolean }) {
   return (
     <div
       className={cn(
-        "glass-panel flex h-full w-full flex-col gap-2 border-l-2 p-3 text-left",
+        "flex h-full w-full flex-col gap-2 border-l-2 p-3 text-left glass-panel",
         selected && "ring-1 ring-primary"
       )}
       style={{ borderLeftColor: toneVar[n.tone] }}
@@ -56,7 +47,9 @@ export function CardBody({ n, selected }: { n: CardNode; selected?: boolean }) {
           <ShortRef card={n.card} />
         </span>
       </div>
-      <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">{n.label}</p>
+      <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">
+        {n.label}
+      </p>
       <div className="mt-auto flex items-center gap-2">
         {working.length > 0 && <Faces who={working} />}
         {watching.length > 0 && <Faces who={watching} watching />}
@@ -82,7 +75,9 @@ export function BlockerBody({ n }: { n: BlockerNode }) {
     <div
       className={cn(
         "flex h-full w-full flex-col justify-center gap-1 border px-3 py-2 text-left",
-        person ? "border-destructive/60 bg-destructive/10" : "border-warning/60 bg-warning/10"
+        person
+          ? "border-destructive/60 bg-destructive/10"
+          : "border-warning/60 bg-warning/10"
       )}
     >
       <span
@@ -93,14 +88,18 @@ export function BlockerBody({ n }: { n: BlockerNode }) {
       >
         {person ? "Needs you" : "Answered, waiting on agent"}
       </span>
-      <span className="line-clamp-2 text-xs leading-snug text-foreground">{n.label}</span>
+      <span className="line-clamp-2 text-xs leading-snug text-foreground">
+        {n.label}
+      </span>
     </div>
   )
 }
 
 // AgentBody is an agent (or the person) as a pill in its device colour.
 export function AgentBody({ n }: { n: AgentNode }) {
-  const tint = n.person ? "var(--person)" : deviceVar(n.agent.color) || "var(--primary)"
+  const tint = n.person
+    ? "var(--person)"
+    : deviceVar(n.agent.color) || "var(--primary)"
   return (
     <div
       className={cn(
@@ -116,7 +115,10 @@ export function AgentBody({ n }: { n: AgentNode }) {
     >
       <span
         className="size-2 shrink-0 rounded-full"
-        style={{ background: n.live || n.person ? "var(--success)" : "var(--muted-foreground)" }}
+        style={{
+          background:
+            n.live || n.person ? "var(--success)" : "var(--muted-foreground)",
+        }}
       />
       <span className="truncate">{n.person ? "you" : n.label}</span>
     </div>
@@ -125,7 +127,11 @@ export function AgentBody({ n }: { n: AgentNode }) {
 
 // openTarget is the card a click on a node opens: a card itself, a
 // blocker's card, nothing for an agent or group.
-export function openTarget(n: { kind: string; id: string; card?: unknown }): string | null {
+export function openTarget(n: {
+  kind: string
+  id: string
+  card?: unknown
+}): string | null {
   if (n.kind === "card") return n.id
   if (n.kind === "blocker") return (n as BlockerNode).card
   return null

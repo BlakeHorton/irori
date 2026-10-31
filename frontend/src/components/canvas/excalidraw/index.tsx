@@ -41,7 +41,10 @@ const tone: Record<CardNode["tone"], { stroke: string; fill: string }> = {
   slate: { stroke: "#868e96", fill: "#f8f9fa" },
   info: { stroke: "#1971c2", fill: "#e7f5ff" },
 }
-const line: Record<GraphEdge["kind"], { color: string; style: "solid" | "dashed" | "dotted" }> = {
+const line: Record<
+  GraphEdge["kind"],
+  { color: string; style: "solid" | "dashed" | "dotted" }
+> = {
   subtask: { color: "#495057", style: "solid" },
   blocker: { color: "#e03131", style: "dashed" },
   holder: { color: "#1971c2", style: "solid" },
@@ -55,7 +58,9 @@ const linkPrefix = "irori://card/"
 // cardText is what a card says on the whiteboard: ref and state, title,
 // then steps and who is on it.
 function cardText(n: CardNode): string {
-  const who = n.faces.filter((f) => f.role === "working").map((f) => (f.person ? "you" : f.name))
+  const who = n.faces
+    .filter((f) => f.role === "working")
+    .map((f) => (f.person ? "you" : f.name))
   const state = n.openBlockers
     ? `${n.openBlockers} blocker${n.openBlockers === 1 ? "" : "s"}`
     : n.card.working.length
@@ -64,11 +69,18 @@ function cardText(n: CardNode): string {
         ? "open"
         : n.state.replace(/_/g, " ")
   const title = n.label.length > 60 ? `${n.label.slice(0, 58)}…` : n.label
-  const foot = [stepsText(n.progress), who.join(", ")].filter(Boolean).join(" · ")
-  return [`${n.card.tag ?? ""}#${n.short} · ${state}`, title, foot].filter(Boolean).join("\n")
+  const foot = [stepsText(n.progress), who.join(", ")]
+    .filter(Boolean)
+    .join(" · ")
+  return [`${n.card.tag ?? ""}#${n.short} · ${state}`, title, foot]
+    .filter(Boolean)
+    .join("\n")
 }
 
-function toSkeleton({ graph, layout }: Pick<CanvasProps, "graph" | "layout">): ExcalidrawElementSkeleton[] {
+function toSkeleton({
+  graph,
+  layout,
+}: Pick<CanvasProps, "graph" | "layout">): ExcalidrawElementSkeleton[] {
   const els: ExcalidrawElementSkeleton[] = []
   for (const n of graph.nodes) {
     if (n.kind === "group") continue
@@ -95,7 +107,13 @@ function toSkeleton({ graph, layout }: Pick<CanvasProps, "graph" | "layout">): E
         fillStyle: "solid",
         roundness: { type: 3 },
         link: `${linkPrefix}${n.id}`,
-        label: { text: cardText(n), fontSize: 14, textAlign: "left", verticalAlign: "top", strokeColor: ink },
+        label: {
+          text: cardText(n),
+          fontSize: 14,
+          textAlign: "left",
+          verticalAlign: "top",
+          strokeColor: ink,
+        },
       })
     } else if (n.kind === "blocker") {
       const person = n.state === "open"
@@ -121,7 +139,11 @@ function toSkeleton({ graph, layout }: Pick<CanvasProps, "graph" | "layout">): E
         backgroundColor: n.person ? "#f3f0ff" : "#e7f5ff",
         fillStyle: "solid",
         opacity: n.live || n.person ? 100 : 50,
-        label: { text: n.person ? "you" : n.label, fontSize: 13, strokeColor: ink },
+        label: {
+          text: n.person ? "you" : n.label,
+          fontSize: 13,
+          strokeColor: ink,
+        },
       })
     }
   }
@@ -139,11 +161,20 @@ function toSkeleton({ graph, layout }: Pick<CanvasProps, "graph" | "layout">): E
           ? { x: a.x, y: a.y + as.h / 2 }
           : { x: a.x + as.w, y: a.y + as.h / 2 }
     const to =
-      e.kind === "blocker" ? { x: b.x + bs.w, y: b.y + bs.h / 2 } : { x: b.x, y: b.y + bs.h / 2 }
+      e.kind === "blocker"
+        ? { x: b.x + bs.w, y: b.y + bs.h / 2 }
+        : { x: b.x, y: b.y + bs.h / 2 }
     const pts: [number, number][] =
       e.kind === "subtask"
-        ? [[0, 0], [0, to.y - from.y], [to.x - from.x, to.y - from.y]]
-        : [[0, 0], [to.x - from.x, to.y - from.y]]
+        ? [
+            [0, 0],
+            [0, to.y - from.y],
+            [to.x - from.x, to.y - from.y],
+          ]
+        : [
+            [0, 0],
+            [to.x - from.x, to.y - from.y],
+          ]
     els.push({
       type: "arrow",
       x: from.x,
@@ -199,7 +230,13 @@ function toSkeleton({ graph, layout }: Pick<CanvasProps, "graph" | "layout">): E
 
 export default function Canvas({ graph, layout, onOpen }: CanvasProps) {
   const elements = useMemo(
-    () => convertToExcalidrawElements(toSkeleton({ graph, layout: withKept(layout, loadPositions("excalidraw")) })),
+    () =>
+      convertToExcalidrawElements(
+        toSkeleton({
+          graph,
+          layout: withKept(layout, loadPositions("excalidraw")),
+        })
+      ),
     [graph, layout]
   )
   const saveTimer = useRef<number | undefined>(undefined)
@@ -214,7 +251,8 @@ export default function Canvas({ graph, layout, onOpen }: CanvasProps) {
       const pos: Record<string, Point> = {}
       for (const el of els) {
         const id = (el.customData as { nodeId?: string } | undefined)?.nodeId
-        if (id && !el.isDeleted) pos[id] = { x: Math.round(el.x), y: Math.round(el.y) }
+        if (id && !el.isDeleted)
+          pos[id] = { x: Math.round(el.x), y: Math.round(el.y) }
       }
       const key = JSON.stringify(pos)
       if (key !== last.current) {
@@ -230,14 +268,20 @@ export default function Canvas({ graph, layout, onOpen }: CanvasProps) {
         key={elements.length}
         initialData={{
           elements,
-          appState: { viewBackgroundColor: "#ffffff", currentItemFontFamily: 5 },
+          appState: {
+            viewBackgroundColor: "#ffffff",
+            currentItemFontFamily: 5,
+          },
           scrollToContent: true,
         }}
         theme="dark"
         excalidrawAPI={(api) => {
           // Fit the whole board once it has mounted.
           requestAnimationFrame(() =>
-            api.scrollToContent(undefined, { fitToContent: true, animate: false })
+            api.scrollToContent(undefined, {
+              fitToContent: true,
+              animate: false,
+            })
           )
         }}
         onChange={onChange}
