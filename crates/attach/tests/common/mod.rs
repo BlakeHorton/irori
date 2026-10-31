@@ -23,6 +23,7 @@ pub struct Host {
     pub port: u16,
     pub server: irori_api::Server,
     stop: CancellationToken,
+    served: Option<tokio::task::JoinHandle<std::io::Result<()>>>,
 }
 
 impl Host {
@@ -38,11 +39,24 @@ impl Host {
         let port = ln.local_addr().unwrap().port();
         core.write_lockfile(port).expect("write the lockfile");
         let stop = CancellationToken::new();
-        {
+        let served = {
             let (srv, stop) = (server.clone(), stop.clone());
-            tokio::spawn(async move { srv.serve(ln, stop).await });
+            Some(tokio::spawn(async move { srv.serve(ln, stop).await }))
+        };
+        Host {
+            port,
+            server,
+            stop,
+            served,
         }
-        Host { port, server, stop }
+    }
+
+    /// Stops serving and waits for the server to let go of the Core.
+    pub async fn stop(mut self) {
+        self.stop.cancel();
+        if let Some(h) = self.served.take() {
+            let _ = h.await;
+        }
     }
 }
 
@@ -397,4 +411,46 @@ impl EvStream {
 
     /// Closes the client side.
     pub fn close(self) {}
+}
+
+impl Rig {
+    /// Stops this Core and its host and starts a new Core over the same data
+    /// and Claude dirs (an app restart or update): a new port, token and
+    /// lockfile, the old streams ended.
+    pub async fn restart(self) -> Rig {
+        let Rig {
+            core,
+            host,
+            data,
+            claude,
+            key_a,
+            key_b,
+            _dirs,
+        } = self;
+        host.stop().await;
+        let core = Arc::try_unwrap(core)
+            .ok()
+            .expect("the rig holds the only Core");
+        tokio::task::block_in_place(|| drop(core));
+        let core =
+            Arc::new(tokio::task::block_in_place(|| Core::start(options(&data, &claude))).unwrap());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !core.local_agents().iter().any(|c| c.key == key_a) {
+            assert!(
+                Instant::now() < deadline,
+                "presence never listed alpha again"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let host = Host::start(core.clone(), Duration::ZERO).await;
+        Rig {
+            core,
+            host,
+            data,
+            claude,
+            key_a,
+            key_b,
+            _dirs,
+        }
+    }
 }

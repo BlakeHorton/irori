@@ -4,7 +4,7 @@
 import type { AttachEvent, AttachView, Policy, ToolSpec, TrackedAppend } from '../types'
 
 /** Matches .claude-plugin/plugin.json; sent to `irori attach` and shown by /irori. */
-export const MOD_VERSION = '0.4.2'
+export const MOD_VERSION = '0.4.3'
 
 export const PLUGIN = 'irori'
 export const TOOL_PREFIX = 'mcp__irori__'
