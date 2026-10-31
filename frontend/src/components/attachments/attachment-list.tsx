@@ -3,7 +3,6 @@ import { cn } from "cn"
 import {
   DownloadIcon,
   ExternalLinkIcon,
-  FileIcon,
   ImageIcon,
   ImageOffIcon,
   LoaderCircleIcon,
@@ -33,6 +32,8 @@ import {
   type Loaded,
 } from "@/lib/attachments"
 import { plainLine } from "@/lib/irori"
+
+import { FileKindIcon } from "./file-kind-icon"
 
 // AttachmentList shows the files on a Board comment (card #14): images as
 // thumbnails that open full size (a big one loads on a click), everything
@@ -235,7 +236,11 @@ function FileChip({ file }: { file: FileRef }) {
   const name = fileName(file)
   return (
     <div className="flex max-w-full min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/40 py-1 pr-1 pl-2 text-sm">
-      <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+      <FileKindIcon
+        name={file.name}
+        mime={file.mime}
+        className="size-4 shrink-0 text-muted-foreground"
+      />
       <span className="min-w-0 truncate" title={name}>
         {name}
       </span>

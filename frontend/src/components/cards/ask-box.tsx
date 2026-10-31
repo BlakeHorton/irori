@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { PaperclipIcon, XIcon } from "lucide-react"
+
+import { FileKindIcon } from "@/components/attachments"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { Button } from "@/components/ui/button"
@@ -16,7 +18,8 @@ import { errorText } from "@/lib/talk"
 // Shift+Enter is a new line. It always wakes them: only idle agents hear
 // an ask, and an idle agent gets no next turn until someone types in its
 // window. The repo chip keeps it to one repo's agents. Files go with it: pick them with the clip, drop them
-// on the box, or paste a screenshot (card #25). The window stays on the
+// on the box, or paste a screenshot (card #25); pictures show as
+// thumbnails before they go, other files an icon for their kind (#73). The window stays on the
 // grid. The board chip posts it to a shared board instead (v0.5 §9, card
 // #59): every member's free agents hear it, the other people's through
 // their own devices. A board's agents carry no repo, and a board ask takes
@@ -72,9 +75,7 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
         : await cards.ask(text, repo, true, files)
       // On a board the other people's agents are told by their own
       // devices: count every agent the ask's round names.
-      const n = onBoard
-        ? (res.task.ask?.told ?? 0)
-        : (res.told.to?.length ?? 0)
+      const n = onBoard ? (res.task.ask?.told ?? 0) : (res.told.to?.length ?? 0)
       setLine({
         text:
           n === 0
@@ -104,7 +105,7 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
         if (!busy) addFiles(e.dataTransfer.files)
       }}
     >
-      <div className="glass-panel flex items-start gap-2 p-1.5">
+      <div className="flex items-start gap-2 p-1.5 glass-panel">
         <Textarea
           autoSize
           rows={1}
@@ -121,7 +122,11 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
             addFiles(e.clipboardData.files)
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
               e.preventDefault()
               e.currentTarget.form?.requestSubmit()
             }
@@ -147,7 +152,10 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
             className="w-auto shrink-0"
             choices={[
               { value: "", label: "My board" },
-              ...shared.map((b) => ({ value: b.boardId, label: b.name || b.tag })),
+              ...shared.map((b) => ({
+                value: b.boardId,
+                label: b.name || b.tag,
+              })),
             ]}
           />
         )}
@@ -197,24 +205,17 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
         </Button>
       </div>
       {files.length > 0 && (
-        <ul className="flex flex-wrap gap-1.5 px-1" aria-label="Files with the ask">
+        <ul
+          className="flex flex-wrap gap-2 px-1"
+          aria-label="Files with the ask"
+        >
           {files.map((f, i) => (
-            <li
-              key={`${i}-${f.name}`}
-              className="flex items-center gap-1 bg-secondary px-1.5 py-0.5 text-xs ring-1 ring-border"
-            >
-              <PaperclipIcon className="size-3 text-muted-foreground" aria-hidden />
-              <span className="max-w-48 truncate">{f.name || "pasted image"}</span>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground"
-                aria-label={`Remove ${f.name || "pasted image"}`}
-                disabled={busy}
-                onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))}
-              >
-                <XIcon className="size-3" />
-              </button>
-            </li>
+            <PendingFile
+              key={fileKey(f)}
+              file={f}
+              disabled={busy}
+              onRemove={() => setFiles((fs) => fs.filter((_, j) => j !== i))}
+            />
           ))}
         </ul>
       )}
@@ -231,5 +232,81 @@ export function AskBox({ onAsked }: { onAsked: (id: string) => void }) {
         </p>
       )}
     </form>
+  )
+}
+
+// fileKey keeps a pending file's row (and its preview) when another one
+// before it is removed.
+const keys = new WeakMap<File, string>()
+let nextKey = 0
+function fileKey(f: File): string {
+  let k = keys.get(f)
+  if (!k) keys.set(f, (k = `f${nextKey++}`))
+  return k
+}
+
+// Pictures the webview can draw: these show as a thumbnail before sending.
+const Previewable = /^image\/(png|jpe?g|gif|webp|bmp|avif|svg\+xml)$/i
+const MaxThumb = 32 << 20
+
+// PendingFile is one file waiting to go with the ask (card #73): a pasted
+// or picked picture shows itself, anything else an icon for its kind and
+// its name. Either one has an × to take it back off.
+function PendingFile({
+  file,
+  disabled,
+  onRemove,
+}: {
+  file: File
+  disabled: boolean
+  onRemove: () => void
+}) {
+  const name = file.name || "pasted image"
+  const image = Previewable.test(file.type) && file.size <= MaxThumb
+  // One object URL per file, let go when the file leaves the list.
+  const url = useMemo(
+    () => (image ? URL.createObjectURL(file) : null),
+    [file, image]
+  )
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url])
+  const remove = (
+    <button
+      type="button"
+      className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+      aria-label={`Remove ${name}`}
+      title="Remove"
+      disabled={disabled}
+      onClick={onRemove}
+    >
+      <XIcon className="size-3" />
+    </button>
+  )
+  if (image && url) {
+    return (
+      <li className="group relative" title={name}>
+        <img
+          src={url}
+          alt={name}
+          draggable={false}
+          className="h-20 max-w-40 min-w-12 rounded-md object-cover ring-1 ring-border"
+        />
+        <span className="absolute top-1 right-1 flex rounded-full bg-background/85 p-0.5 shadow-sm ring-1 ring-border">
+          {remove}
+        </span>
+      </li>
+    )
+  }
+  return (
+    <li className="flex h-8 items-center gap-1.5 rounded-md bg-secondary px-2 text-xs ring-1 ring-border">
+      <FileKindIcon
+        name={file.name}
+        mime={file.type}
+        className="size-4 shrink-0 text-muted-foreground"
+      />
+      <span className="max-w-48 truncate" title={name}>
+        {name}
+      </span>
+      {remove}
+    </li>
   )
 }

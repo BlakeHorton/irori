@@ -217,7 +217,7 @@ The taker (or the person) ends an ask with `ask_close`. `task.status` gains `out
 ### In the window
 
 **The prompt box.** It is one line at the top of the grid, left of the filter chips (and above `EmptyCards` on a fresh install). Placeholder: "Ask the room…". It grows to a few lines as you type. The rest:
-- It is the card comment composer (rich text, paste or drop files, Enter sends, Shift+Enter for a new line), lifted out of `CommentBox`.
+- It is the card comment composer (rich text, paste or drop files, which show as thumbnails or a file-kind icon before sending, Enter sends, Shift+Enter for a new line), lifted out of `CommentBox`.
 - **Wake** is a small toggle beside it, off by default (the spec, and the herd).
 - **A repo chip**, "Any repo" by default, picks from the repos the roster's agents are in. Stephen names a repo only when he wants to.
 
