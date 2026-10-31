@@ -320,6 +320,7 @@ Resolution, against the roster of every paired device (the same set the `agents`
 - **`@name` in the text.** An `@` at the start of the text or after whitespace or `(` starts a token. The token is the longest name of a live agent that follows the `@`, compared ignoring case, and it must end at the end of the text, whitespace, or one of `.,;:!?)'"`. Names may hold spaces (a session the person renamed), so the match is by roster name, not by the next space. An `@` followed by no live agent's name, a single-word run such as `@cedar2` included, is an unknown name. `a@b.com` is not a token.
 - **A name** matches live agents only (not gone), across every device, by exact name ignoring case. One match: delivered. Several: ambiguous, not delivered, and the result lists each candidate's key, device and cwd so the agent can mention by key. None: unknown, not delivered.
 - **Gone** applies only to a key given in `mention`: stored with `gone: true`, not delivered.
+- **A key-shaped item that isn't in the roster** (`agent:…`, a session key) is unknown, and its result reads "no agent has key <key>", not "names no live agent".
 - Ambiguous and unknown names store nothing; the text keeps the `@name` as written.
 
 The tool result adds one line after the usual "who heard" lines, only when there were mentions:
@@ -401,7 +402,7 @@ crate::go_struct! {
         pub gone: bool = "gone" "omit",
     }
 }
-// It also derives Deserialize (it is read back from rows).
+// Read back from rows through go_struct's GoDecode, as every row type is.
 
 pub const NOTICE_MENTIONED: &str = "mentioned";
 pub const MAX_MENTIONS: usize = 10;
@@ -470,7 +471,7 @@ pub struct Mention {
     #[specta(optional)]
     pub gone: bool,               // ignored on input; the window decides
 }
-// ts::Comment, ts::Ask gain:
+// ts::Comment, ts::Ask and ts::Message gain:
 #[specta(optional)] pub mentions: Vec<Mention>,
 
 // cards.rs
@@ -517,7 +518,7 @@ pub struct SendResult {
 }
 ```
 
-A key the window gets that isn't in the roster comes back `unknown`; a key whose agent is gone is stored with `gone` and comes back `gone`. The window passes the person's mentions straight to coord (it never parses the text).
+A key the window gets that isn't in the roster comes back `unknown`; a key whose agent is gone is stored with `gone` and comes back `gone`. The window passes the person's mentions straight to coord (it never parses the text). It routes the `mentioned` notice with `Core::route_notice`, which returns a `NoticeResult` per recipient, so it can report `woke`, `held` (with the hold in `note`) or `failed` (the error); the other notices keep going through `tell`. On a shared card each key is mapped with `Core::board_key`, which mints the agent's board card (`agent.card`) on first use; a key it can't map (the agent left the roster) comes back `gone`.
 
 **Tauri commands** (`crates/window/src/commands.rs`): changed and new
 
@@ -563,6 +564,7 @@ export type MentionCandidate = { who: AgentRef, cwd: string, repo: string };
 export type SendResult = { message: Message, mentioned: MentionOutcome[] };
 // gained:
 Comment        { …, mentions?: Mention[] }
+Message        { …, mentions?: Mention[] }
 Ask            { …, mentions?: Mention[] }
 CardThreadItem { …, mentions?: CardMention[] }
 CardAsk        { …, mentions?: CardMention[] }
@@ -588,7 +590,7 @@ and the description sentences above. The arg tables in `tools/src/board.rs` and 
 
 ### Build list
 
-- **coord:** `Mention`, the row and type fields, `mentions.rs` with `resolve`; the `mentioned` notice in `comment_on`, `person_comment`, `answer`, `record_message` and `post_ask`; `watch_for`; the ask's `mentions` in the fold, `heard`, the sweep's late arrivals and re-announcements; clearing `mentions` on rows written `on_board`.
+- **coord:** `Mention`, the row and type fields, `mentions.rs` with `resolve`; the `mentioned` notice in `comment_on`, `person_comment` and `answer`, and the mentioned recipients of `post_ask`; `record_message` only stores `MessageEntry.mentions` on the card entry (a message's mentioned agents get message copies, not a notice, and `watch_for` makes them watchers); `watch_for`; the ask's `mentions` in the fold, `heard`, the sweep's late arrivals and re-announcements; clearing `mentions` on rows written `on_board`.
 - **inbox:** `Message.mentions`, the `mentioned` copies.
 - **window:** the types and commands above, `board_mention_candidates`, `CardThreadItem.mentions` and `CardAsk.mentions`; regenerate the bindings.
 - **tools:** the `mention` arg and resolution on the five tools, the result line, the descriptions and `BoardInstructions`.
