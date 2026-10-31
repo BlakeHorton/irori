@@ -373,7 +373,8 @@ impl Fold {
                     },
                 )?;
                 if reason != WAIT_GONE {
-                    out.push(self.wait_notice(
+                    // Nothing happened: say so at its next turn, no wake.
+                    let mut n = self.wait_notice(
                         w,
                         &format!(
                             "Your wait on {} ended without firing: {}.",
@@ -384,7 +385,9 @@ impl Fold {
                                 "the card was deleted"
                             }
                         ),
-                    ));
+                    );
+                    n.wake = false;
+                    out.push(n);
                 }
                 continue;
             }

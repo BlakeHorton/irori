@@ -172,6 +172,7 @@ fn test_wait_lapses_when_the_waiter_is_gone_or_a_day_passes() {
     let got = waits(&ns);
     assert_eq!(got.len(), 1, "{ns:?}");
     assert!(got[0].text.contains("a day old"), "{}", got[0].text);
+    assert!(!got[0].wake, "a lapse needn't wake anyone");
     assert!(e.c.waits("").is_empty());
 }
 
