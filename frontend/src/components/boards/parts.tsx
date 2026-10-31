@@ -190,7 +190,7 @@ export function InvitePanel({ s, onClose }: { s: InviteStatus; onClose: () => vo
   const board = plainLine(s.boardName) || "the board"
   const peer = plainLine(s.peerName) || "them"
   return (
-    <section className="grid gap-3 text-[13px]" aria-label="Invite">
+    <section className="grid grid-cols-[minmax(0,1fr)] gap-3 text-[13px]" aria-label="Invite">
       <p className="font-semibold text-ink">
         {host ? `Inviting someone to ${board}` : `Joining ${board}`}
       </p>
@@ -239,12 +239,15 @@ function SendLink({ s }: { s: InviteStatus }) {
   const reach = useInviteReach(true)
   const until = s.expiresAt ? new Date(s.expiresAt) : null
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
       <p className="text-muted-foreground">
         Send this link to the person you're inviting. It works once{until ? `, until ${until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}.
       </p>
       <div className="flex gap-1.5">
-        <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
+        <code
+          className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs select-all"
+          title={s.link}
+        >
           {s.link}
         </code>
         <Button

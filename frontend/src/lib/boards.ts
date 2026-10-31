@@ -335,7 +335,8 @@ export const boards = {
         state: InviteState.Waiting,
         boardId: b.boardId,
         boardName: b.name,
-        link: "irori-invite:SAMPLE0SAMPLE0SAMPLE0SAMPLE0",
+        // As long as a real ticket (code, endpoint address, relay, fingerprint).
+        link: "irori-invite:" + "SAMPLE0".repeat(30),
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         myFingerprint: "3f2a 91c0 7be4 d018",
       })

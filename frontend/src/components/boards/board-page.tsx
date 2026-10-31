@@ -73,7 +73,7 @@ export function BoardPage({
   return (
     <div className="grid gap-3.5">
       <BoardHead board={b} onChanged={reload} />
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid min-w-0 gap-3.5">
           <AskBox board={boardId} onAsked={() => onTab("all")} />
           <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter cards">
@@ -281,7 +281,7 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
   const [error, setError] = useState<string | null>(null)
   const inviting = !!invite && invite.state !== ""
   return (
-    <aside className="glass-panel grid gap-3 p-4 text-[13px]" aria-label="People on this board">
+    <aside className="glass-panel grid grid-cols-[minmax(0,1fr)] gap-3 p-4 text-[13px]" aria-label="People on this board">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">People</h2>
       {inviting ? (
         <InvitePanel
