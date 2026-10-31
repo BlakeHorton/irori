@@ -60,7 +60,7 @@ const MAX_ASK_TITLE: usize = 80;
 const MAX_ASK_NOTICE: usize = 600;
 pub const MAX_OUTCOME: usize = 300;
 
-const YOU_HAVE_IT: &str = "Talk it through with the person on the card first if it isn't clear what they want, then ask_close it with what it became: a card, a change to another card, or nothing.";
+const YOU_HAVE_IT: &str = "If it isn't clear what they want, talk it through with them on the card first. If it needs a choice only the person can make, ask_close it as a card first (it stays yours), then raise one board_block per question on that card. Otherwise ask_close it with what it became: a card, a change to another card, or nothing.";
 
 #[derive(Debug, Clone)]
 pub(crate) struct TakeReq {

@@ -31,8 +31,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/target}"
 
-if [ ! -d "$root/frontend/dist" ]; then
-  (cd "$root/frontend" && bun install && bun run build) || exit 100
+# The app embeds frontend/dist and refuses to build a stale one.
+fe="$root/frontend"
+if [ ! -f "$fe/dist/index.html" ] ||
+  [ -n "$(find "$fe/src" "$fe/public" "$fe/index.html" -newer "$fe/dist/index.html" 2>/dev/null | head -1)" ]; then
+  (cd "$fe" && bun install && bun run build) || exit 100
 fi
 (cd "$root" && cargo build -q -p irori-app -p irori-dev) || exit 100
 

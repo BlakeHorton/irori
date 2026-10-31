@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { CardSummary } from "@/lib/models"
 import { TaskState } from "@/lib/models"
-import { asFilter, filters, matches, ofOutcome, outcomes, shownCards } from "./card-grid"
+import { asFilter, familyGroups, filters, matches, ofOutcome, outcomes, shownCards } from "./card-grid"
 
 const card = (state: TaskState, openBlockers = 0) =>
   CardSummary({ id: "c", state, openBlockers, scope: "mine" })
@@ -74,5 +74,22 @@ describe("shownCards", () => {
     const { shown, context } = shownCards(all, "decide")
     expect(shown.map((c) => c.id)).toEqual(["7", "9"])
     expect([...context]).toEqual(["7"])
+  })
+})
+
+describe("familyGroups (card #97)", () => {
+  const ref = (id: string) => ({ id, short: id, title: id })
+  const c = (id: string, parent?: string) =>
+    CardSummary({ id, state: TaskState.Working, scope: "mine", parent: parent ? ref(parent) : undefined })
+  const shape = (cs: CardSummary[]) => familyGroups(cs).map((f) => [f.head.id, ...f.kids.map((k) => k.id)])
+
+  test("a parent's subtasks join it, in list order, at its place", () => {
+    expect(shape([c("a"), c("p"), c("k1", "p"), c("b"), c("k2", "p")])).toEqual([["a"], ["p", "k1", "k2"], ["b"]])
+  })
+  test("a subtask whose parent isn't listed stays a card of its own", () => {
+    expect(shape([c("k", "gone"), c("a")])).toEqual([["k"], ["a"]])
+  })
+  test("a subtask listed before its parent still joins it", () => {
+    expect(shape([c("k", "p"), c("p")])).toEqual([["p", "k"]])
   })
 })

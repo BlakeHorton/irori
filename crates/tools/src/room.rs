@@ -48,8 +48,10 @@ pub(crate) fn ask_claim(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let r_ = r.task.short_ref();
     if r.mine {
         return format!(
-            "You have {r_}. Talk it through with the person on the card first (board_comment) if it isn't clear what \
-they want, then ask_close it with what it became: a card, a change to another card, an answer, or nothing.\n{}",
+            "You have {r_}. Its message is closed now, so answer on the card, not with reply. If it isn't clear what \
+they want, talk it through with them on the card (board_comment). If it needs a choice only the person can make, ask_close it \
+as a card first (it stays yours), then raise one board_block per question on that card. Otherwise ask_close it with what it \
+became: a card, a change to another card, an answer, or nothing.\n{}",
             s.card_line(&r.task, None, &n, &s.now())
         );
     }

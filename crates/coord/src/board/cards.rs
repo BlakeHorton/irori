@@ -964,7 +964,7 @@ impl Fold {
         if t.open_ask().is_some() {
             return Err(super::asks::ask_refusal(
                 t,
-                "ask the person on its thread (board_comment) rather than block it",
+                "a choice only the person can make goes on a card: ask_close it with outcome card (it stays yours), then board_block that card, one blocker per question; a question about what they meant goes on its thread (board_comment)",
             ));
         }
         let mut nb = self.check_blocker(bb.as_ref(), &t.id)?;
