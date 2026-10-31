@@ -252,54 +252,90 @@ export function CardGrid({
     const before = from < to ? (pins[to + 1]?.id ?? "") : target
     onMove(dragging, before)
   }
+  const tile = (c: CardSummary) => (
+    <div
+      key={c.id}
+      className={cn("grid", dragging === c.id && "opacity-50")}
+      draggable={!!onMove && !!c.pinned}
+      onDragStart={
+        onMove
+          ? (e) => {
+              setDragging(c.id)
+              e.dataTransfer.setData("text/plain", c.id)
+              e.dataTransfer.effectAllowed = "move"
+            }
+          : undefined
+      }
+      onDragEnd={onMove ? () => setDragging("") : undefined}
+      onDragOver={
+        onMove && dragging && c.pinned
+          ? (e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = "move"
+            }
+          : undefined
+      }
+      onDrop={
+        onMove && dragging && c.pinned
+          ? (e) => {
+              e.preventDefault()
+              drop(c.id)
+            }
+          : undefined
+      }
+    >
+      <CardTile
+        card={c}
+        selected={c.id === selected}
+        onSelect={() => onSelect(c.id)}
+        now={now}
+        dim={context?.has(c.id) ?? false}
+      />
+    </div>
+  )
   return (
     <section
       aria-label={label}
       className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3"
     >
-      {cards.map((c) => (
-        <div
-          key={c.id}
-          className={cn("grid", dragging === c.id && "opacity-50")}
-          draggable={!!onMove && !!c.pinned}
-          onDragStart={
-            onMove
-              ? (e) => {
-                  setDragging(c.id)
-                  e.dataTransfer.setData("text/plain", c.id)
-                  e.dataTransfer.effectAllowed = "move"
-                }
-              : undefined
-          }
-          onDragEnd={onMove ? () => setDragging("") : undefined}
-          onDragOver={
-            onMove && dragging && c.pinned
-              ? (e) => {
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = "move"
-                }
-              : undefined
-          }
-          onDrop={
-            onMove && dragging && c.pinned
-              ? (e) => {
-                  e.preventDefault()
-                  drop(c.id)
-                }
-              : undefined
-          }
-        >
-          <CardTile
-            card={c}
-            selected={c.id === selected}
-            onSelect={() => onSelect(c.id)}
-            now={now}
-            dim={context?.has(c.id) ?? false}
-          />
-        </div>
-      ))}
+      {familyGroups(cards).map((f) =>
+        f.kids.length === 0 ? (
+          tile(f.head)
+        ) : (
+          // A parent and its subtasks share one frame across the grid
+          // (card #97), so a family reads as one piece of work.
+          <div
+            key={f.head.id}
+            role="group"
+            aria-label={`#${plainLine(f.head.short)} and its subtasks`}
+            className="col-span-full grid grid-cols-[repeat(auto-fill,minmax(244px,1fr))] gap-3 rounded-xl border border-border/80 bg-muted/20 p-2"
+          >
+            {tile(f.head)}
+            {f.kids.map(tile)}
+          </div>
+        )
+      )}
     </section>
   )
+}
+
+// familyGroups groups the grid's cards: each subtask whose parent is in the
+// list joins its parent, in list order, at the parent's place; any other
+// card is a family of its own.
+export function familyGroups(
+  cards: CardSummary[]
+): { head: CardSummary; kids: CardSummary[] }[] {
+  const ids = new Set(cards.map((c) => c.id))
+  const kids = new Map<string, CardSummary[]>()
+  for (const c of cards) {
+    const p = c.parent?.id
+    if (p && p !== c.id && ids.has(p)) kids.set(p, [...(kids.get(p) ?? []), c])
+  }
+  return cards
+    .filter(
+      (c) => !(c.parent?.id && c.parent.id !== c.id && ids.has(c.parent.id))
+    )
+    .map((c) => ({ head: c, kids: kids.get(c.id) ?? [] }))
 }
 
 function CardTile({
