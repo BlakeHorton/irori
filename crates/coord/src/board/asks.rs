@@ -836,7 +836,9 @@ impl Fold {
             return Handed::Gone;
         };
         let dev = cmp_or_dev(&card.device_id, owner::device_of(&card.key));
-        if card.status == "gone"
+        // Not answering (#110): its wakes go unread, so a card or ask
+        // handed to it moves on as if it went away.
+        if !crate::roster::answers(&card.status)
             || card.device_state == "offline"
             || self
                 .revoked
@@ -867,7 +869,9 @@ impl Fold {
             && !ask.mentions.is_empty()
         {
             for m in &ask.mentions {
-                let here = roster.iter().any(|a| a.key == m.key && a.status != "gone");
+                let here = roster
+                    .iter()
+                    .any(|a| a.key == m.key && crate::roster::answers(&a.status));
                 if m.gone || !here || skip.contains(&m.key) || out.contains(&m.key) {
                     continue;
                 }
@@ -1271,7 +1275,9 @@ impl Fold {
         if self.local_key(taker) {
             return self.gone(taker, now);
         }
-        roster.get(taker).is_none_or(|a| a.status == "gone")
+        roster
+            .get(taker)
+            .is_none_or(|a| !crate::roster::answers(&a.status))
     }
 
     // ---- claim, close ----

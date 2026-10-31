@@ -21,6 +21,17 @@ pub const CONNECTED: &str = "connected";
 pub const RECENT: &str = "recent";
 pub const OFFLINE: &str = "offline";
 
+/// The status of a live, idle session whose wakes went unread (card #110):
+/// it shows as not answering, gets no new cards or asks, and a card handed
+/// to it moves on. Its host sets it; it travels in `agent.status` rows.
+pub const NOT_ANSWERING: &str = "unresponsive";
+
+/// Whether an agent with roster status `s` is there to answer: not gone
+/// and not [`NOT_ANSWERING`].
+pub fn answers(s: &str) -> bool {
+    s != "gone" && s != NOT_ANSWERING
+}
+
 const KINDS: [&str; 4] = [
     kinds::DEVICE_STARTED,
     kinds::AGENT_SEEN,

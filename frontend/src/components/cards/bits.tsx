@@ -185,6 +185,8 @@ export function holderText(h: CardHolder): string {
       return `${who}${more} · active`
     case Holding.HoldIdle:
       return `${who}${more} · idle`
+    case Holding.HoldSilent:
+      return `${who}${more} · isn't answering`
     case Holding.HoldOffline:
       return `${who}${more} · its device is offline`
     case Holding.HoldGone:
@@ -211,6 +213,7 @@ export function HolderLine({
     !!returned ||
     holder.state === Holding.HoldWaiting ||
     holder.state === Holding.HoldGone ||
+    holder.state === Holding.HoldSilent ||
     holder.state === Holding.HoldOffline
   return (
     <span

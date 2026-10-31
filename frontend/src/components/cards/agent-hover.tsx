@@ -78,7 +78,9 @@ function AgentSummary({
       ? "device offline"
       : !who.live
         ? "not running"
-        : who.status === "busy"
+        : who.status === "unresponsive"
+          ? "isn't answering"
+          : who.status === "busy"
           ? "working"
           : "idle"
   return (
@@ -90,6 +92,8 @@ function AgentSummary({
             className={
               gone || who.offline || !who.live
                 ? "text-xs text-muted-foreground"
+                : who.status === "unresponsive"
+                ? "text-xs text-warning"
                 : "text-xs text-success"
             }
           >

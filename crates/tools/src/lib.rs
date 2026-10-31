@@ -591,6 +591,9 @@ impl Names<'_> {
                 if c.status == "gone" {
                     return format!("{name} ({k}, gone)");
                 }
+                if c.status == coord::roster::NOT_ANSWERING {
+                    return format!("{name} ({k}, isn't answering)");
+                }
                 return format!("{name} ({k})");
             }
         }

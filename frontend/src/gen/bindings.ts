@@ -751,7 +751,9 @@ export type GoneSession = {
 export type HoldReason = "blocked" | "not_allowed" | "bypass_receiver" | "paused" | "hop_limit" | "unowned" | "member_wake" | "cross_person" | "member_lease";
 
 /**  What a card's holder is doing. */
-export type Holding = "nobody" | "person" | "waiting" | "assigned" | "active" | "idle" | "offline" | "gone";
+export type Holding = "nobody" | "person" | "waiting" | "assigned" | "active" | "idle" | 
+/**  Its session runs but leaves its wakes unread (card #110). */
+"silent" | "offline" | "gone";
 
 /**  The Home server section of Devices. */
 export type HomeServerView = {

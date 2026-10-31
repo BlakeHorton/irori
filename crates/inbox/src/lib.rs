@@ -174,6 +174,10 @@ pub const DIRECT_WINDOW: Duration = Duration::from_secs(10 * 60);
 /// loop long before this).
 pub const MAX_HOP: i64 = 50;
 pub const UNENGAGED_LIMIT: Duration = Duration::from_secs(10 * 60);
+/// How long a wake item may wait on an idle agent before Irori counts the
+/// agent as not answering (card #110). An idle session that reads its
+/// wakes takes one up within seconds.
+pub const NOT_ANSWERING_AFTER: Duration = Duration::from_secs(5 * 60);
 pub const GONE_GRACE: Duration = Duration::from_secs(3 * 60);
 pub const NO_CARD_GRACE: Duration = Duration::from_secs(10 * 60);
 pub const QUIET_LIMIT: Duration = Duration::from_secs(60 * 60);

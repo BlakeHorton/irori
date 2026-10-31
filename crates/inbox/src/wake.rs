@@ -410,6 +410,39 @@ impl Inbox {
         self.mutate(|b| b.turn_ended(agent, token, turn_id))
     }
 
+    /// Since when a wake item has waited on agent without being taken up,
+    /// when that is longer than `after` (card #110): the oldest open
+    /// delivery to agent that should wake it (not next-turn, not held or
+    /// deferred) still queued or delivered and not engaged. `None` while
+    /// wakes are paused, for an agent another device hosts, or when nothing
+    /// waits that long. Whether the agent is idle is the caller's to check:
+    /// a busy agent takes its wakes when its turn ends.
+    pub fn unanswered_since(&self, agent: &str, after: std::time::Duration) -> Option<GoTime> {
+        if agent.is_empty() {
+            return None;
+        }
+        self.read(|b| {
+            if b.pol.paused || !b.local(agent) {
+                return None;
+            }
+            let now = b.now();
+            let mut oldest: Option<GoTime> = None;
+            for d in b.open_recs() {
+                if d.d.to != agent
+                    || d.next_turn()
+                    || (d.d.state != crate::st::QUEUED && d.d.state != crate::st::DELIVERED)
+                {
+                    continue;
+                }
+                let since = d.waiting_since;
+                if oldest.is_none_or(|o| crate::tm::before(&since, &o)) {
+                    oldest = Some(since);
+                }
+            }
+            oldest.filter(|o| crate::tm::sub(&now, o) > crate::tm::d(after))
+        })
+    }
+
     /// The wake whose turn agent is in now, or `""`.
     pub fn running_wake(&self, agent: &str) -> String {
         self.read(|b| {

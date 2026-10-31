@@ -191,6 +191,8 @@ struct Services {
     agent_names: Arc<crate::agentnames::AgentNames>,
     members: Arc<Members>,
     names_kick: Arc<Kick>,
+    /// This device's agents that stopped answering their wakes (#110).
+    answering: Arc<crate::answering::Answering>,
     /// Kicked by roster and Board changes: asks are handed out and on by
     /// these events, never on a timer (#91).
     asks_kick: Arc<Kick>,
@@ -663,11 +665,17 @@ impl Core {
         };
         let names = Arc::new(Namer::new(&dir, &me));
         let agent_names = Arc::new(crate::agentnames::AgentNames::new(&dir));
+        // Idle sessions whose wakes go unread show as not answering (#110).
+        let answering = Arc::new(crate::answering::Answering::default());
         let mut popts = presence::Options {
             claude_dir: opts.claude_dir.to_string_lossy().into_owned(),
             device_id: me.clone(),
             repo_key: Some(repo_key.clone()),
             names: Some(names.clone()),
+            status: Some({
+                let a = answering.clone();
+                Arc::new(move |c: &presence::AgentCard| a.status(c))
+            }),
             watch: Some(Arc::new(fs_watch)),
             ..Default::default()
         };
@@ -993,6 +1001,7 @@ impl Core {
             agent_names,
             members,
             names_kick: Kick::new(),
+            answering,
             asks_kick: Kick::new(),
             colors,
             files,
@@ -1401,10 +1410,11 @@ impl Core {
                     {
                         logf(format_args!("inbox sweep: {e}"));
                     }
-                    if ct.take()
-                        && let Err(e) = s.sweep_coord()
-                    {
-                        logf(format_args!("coord sweep: {e}"));
+                    if ct.take() {
+                        s.check_answering();
+                        if let Err(e) = s.sweep_coord() {
+                            logf(format_args!("coord sweep: {e}"));
+                        }
                     }
                 }
             });
@@ -2279,6 +2289,25 @@ impl Services {
         }
         if let Err(e) = self.sweep_board_asks() {
             logf(format_args!("board asks: {e}"));
+        }
+    }
+
+    /// Looks for this device's idle agents whose wakes went unread (#110)
+    /// and has presence show them as not answering, so the roster, the
+    /// hand-outs and other devices see it. Clears as soon as one acts.
+    fn check_answering(&self) {
+        let (newly, changed) = self.answering.refresh(
+            &self.presence.snapshot(),
+            inbox::NOT_ANSWERING_AFTER,
+            |k, after| self.inbox.unanswered_since(k, after),
+        );
+        for k in &newly {
+            logf(format_args!(
+                "{k} isn't answering: a wake waited on it unread"
+            ));
+        }
+        if changed {
+            self.presence.rescan();
         }
     }
 

@@ -314,18 +314,27 @@ impl Fold {
         }
         let in_roster: HashMap<&str, &AgentCard> =
             agents.iter().map(|a| (a.key.as_str(), a)).collect();
+        // Cards posted here that never had a hand-out (posted before 0.7.1,
+        // put back on the Board by Irori, or with their offer row lost) go
+        // out too (card #110), as if just posted.
         let mut ids: Vec<(GoTime, String)> = self
             .tasks
             .values()
-            .filter(|t| t.live_offer().is_some() && owner::device_of(&t.created_by) == self.dev)
+            .filter(|t| {
+                (t.live_offer().is_some() || (t.offer.is_none() && offerable(t)))
+                    && owner::device_of(&t.created_by) == self.dev
+            })
             .map(|t| (t.created_at, t.id.clone()))
             .collect();
         // Oldest card first: it gets the agent idle longest.
         ids.sort_by(|a, b| gotime::cmp(&a.0, &b.0).then_with(|| a.1.cmp(&b.1)));
         let res = (|| -> Result<()> {
             for (_, id) in &ids {
-                let Some(o) = self.tasks[id].live_offer().cloned() else {
-                    continue;
+                let t = &self.tasks[id];
+                let o = match t.live_offer() {
+                    Some(o) => o.clone(),
+                    None if t.offer.is_none() && offerable(t) => Offer::default(),
+                    None => continue,
                 };
                 let mut heard = o.heard.clone();
                 let (was, why) = if !o.to.is_empty() {

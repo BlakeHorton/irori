@@ -100,6 +100,8 @@ pub enum Holding {
     Assigned,
     Active,
     Idle,
+    /// Its session runs but leaves its wakes unread (card #110).
+    Silent,
     Offline,
     Gone,
 }
@@ -936,6 +938,8 @@ pub(crate) fn holder_line(working: &[AgentRef]) -> CardHolder {
         Holding::Assigned
     } else if w.status == "gone" {
         Holding::Gone
+    } else if w.status == coord::roster::NOT_ANSWERING {
+        Holding::Silent
     } else if w.offline {
         Holding::Offline
     } else if w.status == "idle" {

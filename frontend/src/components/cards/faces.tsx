@@ -36,6 +36,7 @@ export function Face({
     who.where,
     who.device && `on ${who.device}`,
     gone && "gone",
+    who.status === "unresponsive" && "isn't answering",
     who.offline && "offline",
     who.conflict && `lease conflict on ${who.conflict}`,
   ]

@@ -1955,7 +1955,9 @@ impl super::Core {
 pub(crate) fn card_status(presence: Option<&str>) -> &'static str {
     match presence {
         None | Some("gone") => "gone",
-        Some("idle") => "idle",
+        // Not answering (#110) stays idle on a shared board: §2.4 has no
+        // word for it yet.
+        Some("idle") | Some(coord::roster::NOT_ANSWERING) => "idle",
         Some(_) => "active",
     }
 }

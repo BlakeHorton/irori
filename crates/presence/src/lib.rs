@@ -158,6 +158,9 @@ pub type OpenFn = Arc<dyn Fn(&Path) -> std::io::Result<std::fs::File> + Send + S
 pub type NowFn = Arc<dyn Fn() -> GoTime + Send + Sync>;
 /// Maps a cwd to its repo key (repo.Resolver.Key).
 pub type RepoKeyFn = Arc<dyn Fn(&str) -> String + Send + Sync>;
+/// A status to show for a live card instead of Claude Code's own, or "" to
+/// keep it (card #110: Irori marks an idle session whose wakes go unread).
+pub type StatusFn = Arc<dyn Fn(&AgentCard) -> String + Send + Sync>;
 
 /// Configures a [`Watcher`] (Go `Options`, plus the OS hooks Go keeps as
 /// unexported fields).
@@ -176,6 +179,9 @@ pub struct Options {
     pub repo_key: Option<RepoKeyFn>,
     /// Friendly names; None keeps the old fallback (ai-title, else folder).
     pub names: Option<Arc<dyn Namer>>,
+    /// Overrides a live card's status when it returns non-empty; it must
+    /// not block (it runs inside every scan). None keeps Claude Code's.
+    pub status: Option<StatusFn>,
     /// File events (core passes sys::fswatch); None polls every interval.
     pub watch: Option<WatchFn>,
     /// Process-exit waits; None is this OS's (Windows only so far).

@@ -1226,6 +1226,7 @@ impl Fold {
     fn sweep_rest(&mut self, now: &GoTime, out: &mut Vec<Notice>) -> Result<()> {
         let now = *now;
         self.return_gone(&now, out)?;
+        self.tell_not_answering(out)?;
         let todo: Vec<String> = self
             .tasks
             .values()
@@ -1297,13 +1298,92 @@ impl Fold {
         Ok(())
     }
 
-    /// Takes each holder of this device gone for HolderGrace off its cards.
-    fn return_gone(&mut self, now: &GoTime, out: &mut Vec<Notice>) -> Result<()> {
+    /// Says once on each open card a not-answering agent of this device
+    /// holds that it isn't answering (card #110), so the person sees it on
+    /// the card, and tells the card's poster when that is another live
+    /// agent. Told again only after it answered in between.
+    fn tell_not_answering(&mut self, out: &mut Vec<Notice>) -> Result<()> {
+        let mut mute = HashSet::new();
         let mut live = HashSet::new();
         if let Some(r) = &self.roster {
             for a in r.agents() {
-                if a.status != "gone" {
+                if a.status == crate::roster::NOT_ANSWERING && self.local_key(&a.key) {
+                    mute.insert(a.key);
+                } else if crate::roster::answers(&a.status) {
                     live.insert(a.key);
+                }
+            }
+        }
+        self.mute_told.retain(|(k, _)| mute.contains(k));
+        if mute.is_empty() {
+            return Ok(());
+        }
+        let mut todo: Vec<(String, String)> = Vec::new();
+        for t in self.tasks.values() {
+            if is_terminal(&t.state) || t.open_ask().is_some() {
+                continue;
+            }
+            for h in &t.holders {
+                let pair = (h.clone(), t.id.clone());
+                if mute.contains(h) && !self.mute_told.contains(&pair) {
+                    todo.push(pair);
+                }
+            }
+        }
+        todo.sort();
+        let mins = self.grace.as_secs().div_ceil(60);
+        let back = self.holder_grace.as_secs().div_ceil(60);
+        for (h, id) in todo {
+            let name = self.named(&h);
+            let text = format!(
+                "{name} isn't answering: a wake has waited on it unread, though its session still runs. Irori hands it no new cards or asks. Any agent can take this card over with board_join after {mins} minutes; after {back} it goes back on the Board."
+            );
+            let at = self.stamp();
+            self.write_comment(
+                SWEEPER,
+                TaskCommentRow {
+                    task_id: id.clone(),
+                    comment_id: new_id(&at),
+                    by: SWEEPER.into(),
+                    text: text.clone(),
+                    at,
+                    ..TaskCommentRow::default()
+                },
+            )?;
+            self.mute_told.insert((h.clone(), id.clone()));
+            let t = self.tasks[&id].clone();
+            let poster = t.created_by.clone();
+            if poster != h && !self.is_owner(&poster) && live.contains(&poster) {
+                out.push(Notice {
+                    kind: NOTICE_RETURNED.into(),
+                    task_id: id.clone(),
+                    reference: format!("task:{id}"),
+                    title: t.title.clone(),
+                    by: SWEEPER.into(),
+                    to: vec![poster],
+                    text: format!(
+                        "{name}, which holds your card {} ({}), isn't answering. Take it over with board_join after {mins} minutes, or leave it: after {back} it goes back on the Board.{}",
+                        quote(&t.title),
+                        t.refs(),
+                        deeper(&id)
+                    ),
+                    ..Notice::default()
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Takes each holder of this device gone for HolderGrace off its cards.
+    fn return_gone(&mut self, now: &GoTime, out: &mut Vec<Notice>) -> Result<()> {
+        let mut live = HashSet::new();
+        let mut mute = HashSet::new();
+        if let Some(r) = &self.roster {
+            for a in r.agents() {
+                if crate::roster::answers(&a.status) {
+                    live.insert(a.key);
+                } else if a.status == crate::roster::NOT_ANSWERING {
+                    mute.insert(a.key);
                 }
             }
         }
@@ -1329,6 +1409,11 @@ impl Fold {
                 }
                 let t = self.tasks[&id].clone();
                 let last = t.holders.len() == 1;
+                let went = if mute.contains(&h) {
+                    "stopped answering"
+                } else {
+                    "went away"
+                };
                 let creator = t.created_by.clone();
                 let person =
                     last && (self.is_owner(&creator) || creator == h || !live.contains(&creator));
@@ -1354,7 +1439,7 @@ impl Fold {
                         &TaskStateRow {
                             task_id: id.clone(),
                             state: SUBMITTED.into(),
-                            note: "nobody is on it: the agent working it went away".into(),
+                            note: format!("nobody is on it: the agent working it {went}"),
                             by: SWEEPER.into(),
                             at: *now,
                             ..TaskStateRow::default()
@@ -1370,9 +1455,10 @@ impl Fold {
                         by: SWEEPER.into(),
                         to: vec![creator],
                         text: format!(
-                            "Nobody is on {} ({}) any more: {h} went away, and it's open again. Take it with board_join, hand it on with board_assign, or close it with board_status.{}",
+                            "Nobody is on {} ({}) any more: {} {went}, and it's open again. Take it with board_join, hand it on with board_assign, or close it with board_status.{}",
                             quote(&t.title),
                             t.refs(),
+                            self.named(&h),
                             deeper(&id)
                         ),
                         ..Notice::default()

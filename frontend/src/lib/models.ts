@@ -32,6 +32,7 @@ export const Holding = {
   HoldAssigned: "assigned",
   HoldActive: "active",
   HoldIdle: "idle",
+  HoldSilent: "silent",
   HoldOffline: "offline",
   HoldGone: "gone",
 } as const satisfies Record<string, B.Holding | "">

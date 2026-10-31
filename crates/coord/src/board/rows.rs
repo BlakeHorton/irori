@@ -412,6 +412,14 @@ crate::go_struct! {
 }
 
 crate::go_struct! {
+    /// The key an `agent.gone` or `agent.seen` row names (card #110).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct GoneKeyRow {
+        pub key: String = "key",
+    }
+}
+
+crate::go_struct! {
     #[derive(Debug, Clone, Default, PartialEq)]
     pub struct TaskIdRow {
         pub task_id: String = "taskId",

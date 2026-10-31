@@ -480,6 +480,10 @@ pub(crate) struct Drec {
     pub host_checked: bool,
     pub wake_tries: i64,
     pub appended: bool,
+    /// When it last started waiting on its recipient to take it up: it
+    /// went queued or delivered from any other state, or to someone new.
+    /// A wake re-sent or delivered doesn't move it (card #110).
+    pub waiting_since: GoTime,
 }
 
 impl Drec {
@@ -1122,6 +1126,10 @@ impl Inner {
         d.moved_from = r.moved_from.clone();
         d.engaged_once = r.engaged_once;
         d.appended = r.appended && r.state == st::DELIVERED;
+        let waits = |x: &str| x == st::QUEUED || x == st::DELIVERED;
+        if waits(&r.state) && (!waits(&prev_state) || r.to != prev_to) {
+            d.waiting_since = at;
+        }
         d.d.updated_at = at;
         d.last_writer = ev.device_id.clone();
         let (id, msg_id, to, state) = (

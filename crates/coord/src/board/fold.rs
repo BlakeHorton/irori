@@ -219,6 +219,14 @@ pub struct Fold {
     pub(crate) next_order: u64,
     pub(crate) held: BTreeMap<String, LeaseRec>,
     pub(crate) first_absent: HashMap<String, GoTime>,
+    /// When each of this device's agents last went, from its `agent.gone`
+    /// row (cleared by a later `agent.seen`), read at replay: a holder that
+    /// went before the Core restarted counts as absent since then, not
+    /// since the restart (card #110; #81 stayed held across restarts).
+    pub(crate) gone_rows: HashMap<String, GoTime>,
+    /// (agent, card) pairs already told that the agent isn't answering
+    /// (card #110), while it still isn't.
+    pub(crate) mute_told: HashSet<(String, String)>,
     pub(crate) comments: HashMap<String, Comment>,
     pub(crate) by_task: HashMap<String, Vec<String>>,
     pub(crate) refusals: Vec<RefusalRec>,
@@ -334,6 +342,8 @@ impl Fold {
             next_order: 0,
             held: BTreeMap::new(),
             first_absent: HashMap::new(),
+            gone_rows: HashMap::new(),
+            mute_told: HashSet::new(),
             comments: HashMap::new(),
             by_task: HashMap::new(),
             refusals: Vec::new(),
@@ -407,7 +417,43 @@ impl Fold {
             f.after = evs[evs.len() - 1].cursor();
         }
         self.end_replay();
-        Ok(())
+        self.replay_gone(&st)
+    }
+
+    /// Reads when this device's agents went (`agent.gone`, undone by a
+    /// later `agent.seen`) into [`Fold::gone_rows`].
+    fn replay_gone(&mut self, st: &Store) -> Result<()> {
+        self.gone_rows.clear();
+        let mut f = store::Filter {
+            kinds: vec![kinds::AGENT_GONE.to_string(), kinds::AGENT_SEEN.to_string()],
+            limit: store::MAX_LIST_LIMIT,
+            ..store::Filter::default()
+        };
+        loop {
+            let evs = st
+                .list(&f)
+                .map_err(|e| Error::from(e).prefixed("coord: replay"))?;
+            for ev in &evs {
+                if ev.device_id != self.dev {
+                    continue;
+                }
+                let Some(k) = row::<GoneKeyRow>(&ev.payload).map(|r| r.key) else {
+                    continue;
+                };
+                if k.is_empty() {
+                    continue;
+                }
+                if ev.kind == kinds::AGENT_GONE {
+                    self.gone_rows.insert(k, gotime::hlc_wall(ev.hlc));
+                } else {
+                    self.gone_rows.remove(&k);
+                }
+            }
+            if (evs.len() as i64) < f.limit {
+                return Ok(());
+            }
+            f.after = evs[evs.len() - 1].cursor();
+        }
     }
 
     /// Folds one replay page.
@@ -1372,9 +1418,15 @@ impl Fold {
         let mut live = HashSet::new();
         let mut gone_at: HashMap<String, GoTime> = HashMap::new();
         for a in roster.agents() {
-            if a.status != "gone" {
+            // An agent not answering its wakes (#110) counts as away: its
+            // cards can be taken over, and go back on the Board after the
+            // holder grace, as a gone agent's do.
+            if crate::roster::answers(&a.status) {
                 live.insert(a.key);
-            } else if !a.updated_at.is_zero() && gotime::before(&a.updated_at, now) {
+            } else if a.status == "gone"
+                && !a.updated_at.is_zero()
+                && gotime::before(&a.updated_at, now)
+            {
                 gone_at.insert(a.key, a.updated_at);
             }
         }
@@ -1396,16 +1448,22 @@ impl Fold {
             tracked.insert(w.by.clone());
         }
         self.first_absent.retain(|k, _| tracked.contains(k));
+        for k in &live {
+            self.gone_rows.remove(k);
+        }
         for k in tracked {
             if self.is_owner(&k) || live.contains(&k) || !self.local_key(&k) {
                 self.first_absent.remove(&k);
                 continue;
             }
             let mut first = self.first_absent.get(&k).copied().unwrap_or(*now);
-            if let Some(g) = gone_at.get(&k)
-                && gotime::before(g, &first)
+            for g in [gone_at.get(&k), self.gone_rows.get(&k)]
+                .into_iter()
+                .flatten()
             {
-                first = *g;
+                if gotime::before(g, &first) {
+                    first = *g;
+                }
             }
             self.first_absent.insert(k, first);
         }

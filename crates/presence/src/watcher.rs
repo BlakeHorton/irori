@@ -338,6 +338,12 @@ impl Inner {
         }
         c.ai_title = t.ai.clone();
         (c.name, c.name_source) = self.name(s, &t);
+        if let Some(f) = &self.opts.status {
+            let over = f(&c);
+            if !over.is_empty() {
+                c.status = over;
+            }
+        }
         c
     }
 
