@@ -951,7 +951,7 @@ impl Server {
         } else if failed {
             s.reach = REACH_FORWARD.into();
             s.line = format!(
-                "Away from home your devices can't reach this PC. Turn on UPnP on your router, or forward TCP and UDP port {port} to {lan}."
+                "Away from home your devices can't reach this PC. Turn on UPnP on your router, or forward TCP and UDP port {port} to {lan} and enter your public address below."
             );
         } else {
             s.reach = REACH_HOME.into();

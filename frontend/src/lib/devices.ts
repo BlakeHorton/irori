@@ -291,7 +291,7 @@ export const devices = {
       awakeLine: on && sampleHome.awake ? "Keeping this PC awake" : undefined,
       line:
         on && outside && !publicAddr
-          ? "Away from home your devices can't reach this PC. Turn on UPnP on your router, or forward TCP and UDP port 24817 to 192.168.1.20."
+          ? "Away from home your devices can't reach this PC. Turn on UPnP on your router, or forward TCP and UDP port 24817 to 192.168.1.20 and enter your public address below."
           : undefined,
     })
     return sampleHome

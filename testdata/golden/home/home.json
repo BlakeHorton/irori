@@ -363,7 +363,7 @@
     },
     {
       "name": "failed",
-      "status": "{\"on\":true,\"outside\":true,\"running\":true,\"port\":N,\"reach\":\"forward\",\"line\":\"Away from home your devices can't reach this PC. Turn on UPnP on your router, or forward TCP and UDP port N to 127.0.0.1.\",\"awake\":true,\"awakeLine\":\"Keeping this PC awake\"}",
+      "status": "{\"on\":true,\"outside\":true,\"running\":true,\"port\":N,\"reach\":\"forward\",\"line\":\"Away from home your devices can't reach this PC. Turn on UPnP on your router, or forward TCP and UDP port N to 127.0.0.1 and enter your public address below.\",\"awake\":true,\"awakeLine\":\"Keeping this PC awake\"}",
       "row": "{\"v\":1,\"port\":N,\"lan\":[\"127.0.0.1\"],\"public\":null,\"via\":\"\",\"reach\":\"unmapped\",\"at\":0}"
     },
     {
