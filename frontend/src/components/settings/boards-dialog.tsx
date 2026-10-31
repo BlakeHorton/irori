@@ -276,7 +276,7 @@ function BoardRow({
 }
 
 // NewBoard makes a board: a name, and the short tag its cards' refs carry
-// ("mlg#12"), suggested from the name until it is typed.
+// ("tag#12"), suggested from the name until it is typed.
 function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Promise<void> }) {
   const [name, setName] = useState("")
   const [tag, setTag] = useState("")
@@ -309,7 +309,7 @@ function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Promise<vo
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={MaxBoardName}
-          placeholder="Name (MLG)"
+          placeholder="Board name"
           aria-label="New board's name"
           className="h-8 min-w-0 flex-1 text-[13px]"
         />
@@ -321,7 +321,7 @@ function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Promise<vo
           }}
           maxLength={16}
           placeholder="tag"
-          aria-label="New board's tag, for refs like mlg#12"
+          aria-label="New board's tag, the short name in card refs like tag#12"
           className="h-8 w-24 font-mono text-[13px]"
         />
         <Button type="submit" size="sm" className="h-8" disabled={busy || !name.trim() || !validTag(t) || clash}>
