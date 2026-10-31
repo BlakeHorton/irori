@@ -1303,6 +1303,11 @@ impl Fold {
     /// the card, and tells the card's poster when that is another live
     /// agent. Told again only after it answered in between.
     fn tell_not_answering(&mut self, out: &mut Vec<Notice>) -> Result<()> {
+        // Private Board only: a shared board's fold takes no comment from
+        // Irori, and this device's roster says nothing about its members.
+        if self.on_board {
+            return Ok(());
+        }
         let mut mute = HashSet::new();
         let mut live = HashSet::new();
         if let Some(r) = &self.roster {
