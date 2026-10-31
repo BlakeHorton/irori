@@ -1097,16 +1097,6 @@ export function percent(p: { done: number; total: number }): number | null {
   return Math.round((100 * p.done) / p.total)
 }
 
-// initials is a face's two letters: "sample-otter" -> "so", "Grok" -> "gr".
-export function initials(name: string): string {
-  const words = name
-    .replace(/^.*\//, "")
-    .split(/[\s\-_.:]+/)
-    .filter((w) => /[a-z0-9]/i.test(w))
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toLowerCase()
-  return (words[0] ?? "?").slice(0, 2).toLowerCase()
-}
-
 // displayName is who a face or line names: the roster name, else (for an
 // agent the roster no longer has) the session part of its key.
 export function displayName(r: AgentRef): string {
