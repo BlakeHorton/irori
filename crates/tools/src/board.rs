@@ -211,6 +211,36 @@ impl Inner {
             let ws: Vec<String> = t.watchers.iter().map(|w| n.who(w)).collect();
             b += &format!("; watched by {}", ws.join(", "));
         }
+        // Waits (card #87): who waits on this card, and what its holders
+        // wait on.
+        if let Ok((co, _)) = self.on(&t.id, &[]) {
+            let all = co.waits("");
+            let on_it: Vec<String> = all
+                .iter()
+                .filter(|w| w.task_id == t.id)
+                .map(|w| format!("{} (until {})", n.who(&w.by), coord::until_text(&w.until)))
+                .collect();
+            if !on_it.is_empty() {
+                b += &format!("; waited on by {}", on_it.join(", "));
+            }
+            if !coord::is_terminal(&t.state) {
+                let theirs: Vec<String> = all
+                    .iter()
+                    .filter(|w| t.holders.contains(&w.by))
+                    .map(|w| {
+                        let r = if w.task_id.is_empty() {
+                            String::new()
+                        } else {
+                            self.short_of(&w.task_id)
+                        };
+                        one_line(&coord::wait_line(w, &r), 120)
+                    })
+                    .collect();
+                if !theirs.is_empty() {
+                    b += &format!("; waiting on {}", theirs.join(", "));
+                }
+            }
+        }
         b += &format!("; updated {}\n", ago(now, &t.updated_at));
         if let Some(r) = &t.rollup {
             let mut ks = vec![];

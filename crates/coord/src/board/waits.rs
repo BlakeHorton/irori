@@ -147,7 +147,9 @@ impl Fold {
             }
             from_state = t.state.clone();
         } else if spec.refs.is_empty() {
-            return Err(invalid("a branch wait needs the branch's refs as they are now"));
+            return Err(invalid(
+                "a branch wait needs the branch's refs as they are now",
+            ));
         }
         let mine = self.waits.values().filter(|w| w.by == by).count();
         if mine >= MAX_WAITS {
@@ -296,7 +298,12 @@ impl Fold {
         if self.replaying || self.waits.is_empty() {
             return;
         }
-        let on: Vec<Wait> = self.waits.values().filter(|w| w.task_id == id).cloned().collect();
+        let on: Vec<Wait> = self
+            .waits
+            .values()
+            .filter(|w| w.task_id == id)
+            .cloned()
+            .collect();
         for w in &on {
             self.wait_seen.insert(w.id.clone(), now.to_string());
         }

@@ -7,9 +7,8 @@ use coord::*;
 use store::kinds;
 
 fn claimed(e: &Env) -> Task {
-    let t = e
-        .c
-        .create_task(
+    let t =
+        e.c.create_task(
             ALICE,
             NewTask {
                 title: "ship it".into(),
@@ -39,7 +38,10 @@ fn test_wait_fires_once_on_done() {
     let w = e.c.create_wait(BOB, on_task(&t.id, &["done"])).unwrap();
     assert_eq!(w.until, vec!["done"]);
     assert_eq!(w.from_state, WORKING);
-    assert!(waits(&e.c.sweep_notices().unwrap()).is_empty(), "nothing yet");
+    assert!(
+        waits(&e.c.sweep_notices().unwrap()).is_empty(),
+        "nothing yet"
+    );
 
     e.c.raise(
         ALICE,
@@ -50,9 +52,13 @@ fn test_wait_fires_once_on_done() {
         },
     )
     .unwrap();
-    assert!(waits(&e.c.sweep_notices().unwrap()).is_empty(), "blocked isn't done");
+    assert!(
+        waits(&e.c.sweep_notices().unwrap()).is_empty(),
+        "blocked isn't done"
+    );
 
-    e.c.set_task_state(ALICE, &t.id, COMPLETED, "shipped").unwrap();
+    e.c.set_task_state(ALICE, &t.id, COMPLETED, "shipped")
+        .unwrap();
     let ns = e.c.sweep_notices().unwrap();
     let got = waits(&ns);
     assert_eq!(got.len(), 1, "{ns:?}");
@@ -114,10 +120,22 @@ fn test_wait_cancel_and_limits() {
     let e = Env::new();
     let t = claimed(&e);
     // Not on your own card, not as a person, not a bad until.
-    want_err(e.c.create_wait(ALICE, on_task(&t.id, &["done"])), ErrorKind::Invalid);
-    want_err(e.c.create_wait(USER, on_task(&t.id, &["done"])), ErrorKind::Invalid);
-    want_err(e.c.create_wait(BOB, on_task(&t.id, &["soon"])), ErrorKind::Invalid);
-    want_err(e.c.create_wait(BOB, WaitSpec::default()), ErrorKind::Invalid);
+    want_err(
+        e.c.create_wait(ALICE, on_task(&t.id, &["done"])),
+        ErrorKind::Invalid,
+    );
+    want_err(
+        e.c.create_wait(USER, on_task(&t.id, &["done"])),
+        ErrorKind::Invalid,
+    );
+    want_err(
+        e.c.create_wait(BOB, on_task(&t.id, &["soon"])),
+        ErrorKind::Invalid,
+    );
+    want_err(
+        e.c.create_wait(BOB, WaitSpec::default()),
+        ErrorKind::Invalid,
+    );
 
     let w = e.c.create_wait(BOB, on_task(&t.id, &["done"])).unwrap();
     want_err(e.c.cancel_wait(CAROL, &w.id), ErrorKind::NotAllowed);
@@ -129,7 +147,10 @@ fn test_wait_cancel_and_limits() {
     for _ in 0..MAX_WAITS {
         e.c.create_wait(BOB, on_task(&t.id, &["failed"])).unwrap();
     }
-    want_err(e.c.create_wait(BOB, on_task(&t.id, &["failed"])), ErrorKind::NotAllowed);
+    want_err(
+        e.c.create_wait(BOB, on_task(&t.id, &["failed"])),
+        ErrorKind::NotAllowed,
+    );
 }
 
 #[test]
@@ -167,9 +188,8 @@ fn test_branch_wait_fires_when_the_core_says_so() {
         ),
         ErrorKind::Invalid,
     );
-    let w = e
-        .c
-        .create_wait(
+    let w =
+        e.c.create_wait(
             BOB,
             WaitSpec {
                 branch: "main".into(),

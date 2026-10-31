@@ -284,6 +284,29 @@ impl Fold {
             line(&mut b, "blocked", &bl);
         }
         line(&mut b, "watching", &t.watchers.join(", "));
+        // Waits (card #87): who waits on this card, and what its holders
+        // wait on.
+        let on_it: Vec<String> = self
+            .waits
+            .values()
+            .filter(|w| w.task_id == t.id)
+            .map(|w| format!("{} until {}", w.by, super::waits::until_text(&w.until)))
+            .collect();
+        line(&mut b, "waited on by", &on_it.join(", "));
+        let theirs: Vec<String> = self
+            .waits
+            .values()
+            .filter(|w| t.holders.contains(&w.by) && !is_terminal(&t.state))
+            .map(|w| {
+                let r = self
+                    .tasks
+                    .get(&w.task_id)
+                    .map(|x| x.short_ref())
+                    .unwrap_or_default();
+                format!("{} waits on {}", w.by, super::waits::wait_line(w, &r))
+            })
+            .collect();
+        line(&mut b, "waiting", &theirs.join("; "));
         line(&mut b, "scope", &t.scope.join(", "));
         line(&mut b, "note", &t.note);
         if !t.steps.is_empty() {

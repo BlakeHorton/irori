@@ -983,3 +983,49 @@ fn test_unnamed_session_gets_a_name_and_a_rename_wins() {
             })
     });
 }
+
+/// Card #87: a branch wait fires when the core's sweep sees the branch's
+/// ref move, and wakes the waiter once with the new tip.
+#[test]
+fn test_branch_wait_wakes_once() {
+    let r = Rig::new();
+    let co = r.core.coord();
+    let repo = tempfile::tempdir().unwrap();
+    let git = repo.path().join(".git");
+    std::fs::create_dir_all(git.join("refs/heads")).unwrap();
+    let a = "1".repeat(40);
+    let b = "2".repeat(40);
+    std::fs::write(git.join("refs/heads/main"), format!("{a}\n")).unwrap();
+    let root = repo.path().to_string_lossy().into_owned();
+    co.create_wait(
+        &r.key_b,
+        coord::WaitSpec {
+            branch: "main".into(),
+            root: root.clone(),
+            refs: capture::gitlink::branch_tips(&root, "main").unwrap(),
+            ..coord::WaitSpec::default()
+        },
+    )
+    .unwrap();
+    r.core.sweep_coord().unwrap();
+    assert!(r.notices_to(&r.key_b).is_empty(), "nothing moved yet");
+
+    std::fs::write(git.join("refs/heads/main"), format!("{b}\n")).unwrap();
+    r.core.sweep_coord().unwrap();
+    r.core.sweep_coord().unwrap();
+    let ns: Vec<_> = r
+        .notices_to(&r.key_b)
+        .into_iter()
+        .filter(|d| d.message.reason == "wait")
+        .collect();
+    assert!(
+        ns.len() == 1
+            && ns[0].mode == mode::WAKE
+            && ns[0]
+                .message
+                .text
+                .contains("main moved from 1111111 to 2222222"),
+        "{ns:?}"
+    );
+    assert!(co.branch_waits().is_empty());
+}
