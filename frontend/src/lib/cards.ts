@@ -217,6 +217,7 @@ function summary(c: CardDetail): CardSummary {
     progress: c.progress,
     openBlockers: c.openBlockers,
     blockerQuestion: c.blockerQuestion,
+    ready: c.ready,
     waiting: c.waiting,
     working: c.working,
     watching: c.watching,
@@ -628,6 +629,15 @@ function sampleAnswer(
   const answer = option >= 0 ? b.options[option]?.answer : text.trim()
   if (!answer) throw new Error("coord: invalid input: an answer needs text")
   const now = new Date().toISOString()
+  // As BoardService.Answer: Done on a done check closes the card (#112).
+  if (b.doneCheck && option >= 0) {
+    sampleResolve(c, b, answer, option, "", now)
+    c.state = TaskState.Completed
+    c.ready = undefined
+    c.updatedAt = now
+    sampleChanged()
+    return AnswerResult({ card: c, told: Told({ to: [], mode: "next_turn" }) })
+  }
   b.thread = [
     ...b.thread,
     CardThreadItem({
@@ -745,6 +755,7 @@ function sampleRecount(c: CardDetail) {
   c.openBlockers = needs.length
   c.waiting = open.length - needs.length
   c.blockerQuestion = needs[0]?.question ?? ""
+  c.ready = needs.some((x) => x.doneCheck) || undefined
 }
 
 // sampleMessage is BoardService.Message on the sample: a held message's

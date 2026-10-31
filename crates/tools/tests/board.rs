@@ -2023,3 +2023,28 @@ fn test_board_create_hands_an_unheld_card_to_one_free_agent() {
     let o = t.live_offer().unwrap();
     assert!(o.to.is_empty() && o.reason == coord::OFFER_PASSED, "{o:?}");
 }
+
+#[test]
+fn test_board_status_completed_waits_on_the_persons_done() {
+    DONE_CHECK.with(|c| c.set(true));
+    let h = new_harness();
+    let a = call_a();
+    let id = h.new_card(&a, json!({"title": "lexer"}));
+    h.okj(&a, "board_join", json!({"task_id": id}));
+    let out = h.okj(
+        &a,
+        "board_status",
+        json!({"task_id": id, "state": "completed", "note": "tabs kept"}),
+    );
+    has(
+        &out,
+        &[
+            "waits on the person to confirm it's done",
+            "done check b1",
+            "set completed again",
+        ],
+    );
+    has_not(&out, &["folds into Done", "is completed now"]);
+    let board = h.okj(&a, "board", json!({}));
+    has(&board, &["Is this done?"]);
+}

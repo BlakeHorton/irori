@@ -74,6 +74,9 @@ crate::go_struct! {
         pub on: Option<BlockedBy> = "on" "omit",
         pub links: Vec<Link> = "links" "omit",
         pub attachments: Vec<FileRef> = "attachments" "omit",
+        /// A done check (card #112): an agent says the card is done and the
+        /// person confirms it. Older folds ignore it: a plain blocker.
+        pub done_check: bool = "doneCheck" "omit",
     }
 }
 

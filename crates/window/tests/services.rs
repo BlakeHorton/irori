@@ -97,8 +97,25 @@ fn board_cards_and_answers() {
         "coord: no such task or lease: task \"nope\""
     );
 
+    // The agent says it's done: the card waits on the person's Done
+    // (card #112), shown as ready.
     co.set_task_state(&r.key_a, &t.id, coord::COMPLETED, "done")
         .unwrap();
+    let cards = r.w.cards();
+    assert_eq!(cards.len(), 1);
+    assert!(cards[0].ready);
+    let d = r.w.card(&t.id).unwrap();
+    let check = d
+        .blockers
+        .iter()
+        .find(|b| b.done_check)
+        .expect("a done check");
+    assert_eq!(check.question, coord::DONE_QUESTION);
+    assert_eq!(check.context, "done");
+    let check_id = check.id.clone();
+    // Done closes it, as the person.
+    let a = r.w.answer(&t.id, &check_id, 0, "", false, &[]).unwrap();
+    assert_eq!(a.card.summary.state, coord::COMPLETED);
     assert!(r.w.cards().is_empty());
     let done = r.w.done_cards(0, "").unwrap();
     assert_eq!(done.cards.len(), 1);
@@ -645,4 +662,33 @@ fn boards_set_reviewer() {
         r.w.boards_set_reviewer("no-such-board", &r.key_a, "")
             .is_err()
     );
+}
+
+#[test]
+fn not_done_goes_back_to_the_agent() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let t = co
+        .create_task(
+            &r.key_a,
+            coord::NewTask {
+                title: "Ship it".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    co.claim_task(&r.key_a, &t.id).unwrap();
+    co.set_task_state(&r.key_a, &t.id, coord::COMPLETED, "")
+        .unwrap();
+    let d = r.w.card(&t.id).unwrap();
+    let check = d.blockers.iter().find(|b| b.done_check).unwrap().id.clone();
+    // The person says why it isn't done: it stays open and the agent hears.
+    let a =
+        r.w.answer(&t.id, &check, -1, "the tests still fail", false, &[])
+            .unwrap();
+    assert_eq!(a.told.to, vec![r.key_a.clone()]);
+    assert_ne!(a.card.summary.state, coord::COMPLETED);
+    let cards = r.w.cards();
+    assert_eq!(cards.len(), 1);
+    assert!(!cards[0].ready, "answered: it is back with the agent");
 }

@@ -18,9 +18,9 @@ use super::util::{
     deeper, multiline, new_id, remove_str, runes,
 };
 use super::{
-    KEEP_RESOLVED, MAX_ANSWER, MAX_ATTACHMENTS, MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT,
-    MAX_MISSING, MAX_MISSING_TEXT, MAX_OPEN_BLOCKERS, MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION,
-    MAX_STEP_TEXT, MAX_STEPS, MAX_WHY,
+    DONE_ANSWER, DONE_CONTEXT, DONE_QUESTION, KEEP_RESOLVED, MAX_ANSWER, MAX_ATTACHMENTS,
+    MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT, MAX_MISSING, MAX_MISSING_TEXT, MAX_OPEN_BLOCKERS,
+    MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION, MAX_STEP_TEXT, MAX_STEPS, MAX_WHY,
 };
 use crate::names::trim_space;
 
@@ -583,6 +583,7 @@ impl Fold {
                 on: br.on.clone(),
                 links: capped(add_links(Vec::new(), &br.links), MAX_BLOCKER_LINKS),
                 attachments: capped(add_files(Vec::new(), &br.attachments), MAX_ATTACHMENTS),
+                done_check: br.done_check,
                 ..Blocker::default()
             };
             if br.replace {
@@ -942,7 +943,69 @@ impl Fold {
             return Err(not_allowed(format!("raise a blocker on task {id}")));
         }
         let bb = nb.blocked_by.clone();
-        self.raise_locked(&by, &t, &q, &q, &cx, opts, bb, false, now, links, nb.files)
+        self.raise_locked(
+            &by, &t, &q, &q, &cx, opts, bb, false, now, links, nb.files, false,
+        )
+    }
+
+    /// An agent's completed (card #112): the card waits on the person with
+    /// a done check. Done closes it; their words go back to the agent. An
+    /// earlier check on the card, open or answered, gives way to this one.
+    pub(crate) fn ask_done(&mut self, by: &str, t: &Task, note: &str) -> Result<Task> {
+        let earlier: Vec<String> = t
+            .blockers
+            .iter()
+            .filter(|b| b.open() && b.done_check)
+            .map(|b| b.id.clone())
+            .collect();
+        for bid in earlier {
+            self.answer(
+                by,
+                &t.id,
+                &bid,
+                BlockerAnswer {
+                    text: "asked again: ready for the person".into(),
+                    resolve: true,
+                    ..BlockerAnswer::default()
+                },
+            )?;
+        }
+        let t = self.open_task(&t.id)?.clone();
+        let now = self.stamp();
+        let cx = if note.is_empty() {
+            DONE_CONTEXT.to_string()
+        } else {
+            cut(note, MAX_CONTEXT)
+        };
+        let opts = clean_options(
+            &[BlockerOption {
+                answer: DONE_ANSWER.into(),
+                why: "Closes the card.".into(),
+                recommended: true,
+                ..BlockerOption::default()
+            }],
+            by,
+            now,
+        )?;
+        let bb = Some(BlockedBy {
+            kind: BLOCKED_ON_PERSON.into(),
+            reference: String::new(),
+        });
+        let (nt, _) = self.raise_locked(
+            by,
+            &t,
+            DONE_QUESTION,
+            DONE_QUESTION,
+            &cx,
+            opts,
+            bb,
+            false,
+            now,
+            Vec::new(),
+            Vec::new(),
+            true,
+        )?;
+        Ok(nt)
     }
 
     /// Checks bb and writes the blocked row that raises an item.
@@ -960,6 +1023,7 @@ impl Fold {
         now: GoTime,
         links: Vec<Link>,
         files: Vec<FileRef>,
+        done_check: bool,
     ) -> Result<(Task, Blocker)> {
         if t.open_ask().is_some() {
             return Err(super::asks::ask_refusal(
@@ -1015,6 +1079,7 @@ impl Fold {
             on: nb.clone(),
             links,
             attachments: files,
+            done_check,
             ..BlockerRow::default()
         };
         if reason_only

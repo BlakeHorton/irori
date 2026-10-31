@@ -197,6 +197,11 @@ pub struct CardSummary {
     pub progress: CardProgress,
     pub open_blockers: i64,
     pub blocker_question: String,
+    /// An agent says it's done and it waits on the person's Done (card
+    /// #112): the grid shows "Ready for you" for it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub ready: bool,
     pub waiting: i64,
     pub working: Vec<AgentRef>,
     pub watching: Vec<AgentRef>,
@@ -329,6 +334,11 @@ pub struct CardBlocker {
     /// offered (card #90): the window folds them under "Earlier options"
     /// and shows a reply box until a revision offers new ones.
     pub options_aside: bool,
+    /// A done check (card #112): the agent says it's done. Its one option,
+    /// Done, closes the card; own words say why not and go back to them.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub done_check: bool,
     pub thread: Vec<CardThreadItem>,
 }
 
@@ -767,6 +777,9 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
                 continue;
             }
             s.open_blockers += 1;
+            if bl.done_check {
+                s.ready = true;
+            }
             if s.open_blockers == 1 {
                 s.blocker_question = bl.question.clone();
             }
@@ -1312,6 +1325,7 @@ impl Window {
                 },
                 missing: bl.missing.clone(),
                 options_aside: bl.options_aside && bl.open(),
+                done_check: bl.done_check,
                 thread: by_blocker.remove(&bl.id).unwrap_or_default(),
                 links: bl.links.clone(),
                 attachments: bl.attachments.clone(),

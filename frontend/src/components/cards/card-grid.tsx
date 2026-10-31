@@ -430,7 +430,15 @@ function CardTile({
         {title}
       </span>
       {blocked && card.blockerQuestion && (
-        <span className="flex gap-1.5 text-xs text-destructive">
+        <span
+          className={cn(
+            "flex gap-1.5 text-xs",
+            // Ready for you (card #112) is good news: green, not red.
+            card.ready && card.openBlockers === 1
+              ? "text-success"
+              : "text-destructive"
+          )}
+        >
           <span aria-hidden>●</span>
           <span className="line-clamp-2">
             {plainLine(card.blockerQuestion)}

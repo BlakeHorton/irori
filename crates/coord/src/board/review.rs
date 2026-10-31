@@ -333,7 +333,7 @@ impl Fold {
 
     /// An agent's key: `agent:<cardId>` on a shared board; on the private
     /// board any session key that isn't the person's.
-    fn is_agent_key(&self, k: &str) -> bool {
+    pub(crate) fn is_agent_key(&self, k: &str) -> bool {
         if self.on_board {
             return k.starts_with(kinds::AGENT_ACTOR_PREFIX);
         }

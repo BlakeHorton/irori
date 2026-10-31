@@ -393,6 +393,11 @@ export type CardBlocker = {
 	 *  and shows a reply box until a revision offers new ones.
 	 */
 	optionsAside: boolean,
+	/**
+	 *  A done check (card #112): the agent says it's done. Its one option,
+	 *  Done, closes the card; own words say why not and go back to them.
+	 */
+	doneCheck?: boolean,
 	thread: CardThreadItem[],
 };
 
@@ -539,6 +544,11 @@ export type CardSummary = {
 	progress: CardProgress,
 	openBlockers: number,
 	blockerQuestion: string,
+	/**
+	 *  An agent says it's done and it waits on the person's Done (card
+	 *  #112): the grid shows "Ready for you" for it.
+	 */
+	ready?: boolean,
 	waiting: number,
 	working: AgentRef[],
 	watching: AgentRef[],

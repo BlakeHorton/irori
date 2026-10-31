@@ -20,7 +20,10 @@ export const ThreadKind = {
   Event: "event",
 } as const
 
-export type ThreadBadge = { label: string; tone: "warning" | "slate" }
+export type ThreadBadge = {
+  label: string
+  tone: "warning" | "slate" | "success"
+}
 
 // ThreadLabel is an entry's header: who wrote it, who a message went to,
 // the device it was written on ("" for this one) and its badges.
@@ -140,6 +143,9 @@ export function blockerChip(b: CardBlocker): ThreadBadge | null {
   }
   if (b.state === BlockerState.Replied)
     return { label: "Replied", tone: "warning" }
+  // A done check (card #112): the agent says it's done.
+  if (b.doneCheck && (b.state || BlockerState.Open) === BlockerState.Open)
+    return { label: "Ready for you", tone: "success" }
   if (
     (b.state || BlockerState.Open) === BlockerState.Open &&
     (b.thread ?? []).some(isRevision)

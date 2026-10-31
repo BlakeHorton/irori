@@ -191,6 +191,10 @@ pub struct Blocker {
     /// a revision offers new ones.
     #[serde(skip_serializing_if = "omit")]
     pub options_aside: bool,
+    /// A done check (card #112): the agent says it's done; only the
+    /// person's Done closes the card, and their words send it back.
+    #[serde(skip_serializing_if = "omit")]
+    pub done_check: bool,
     /// The row's reason: Task.reason while this is the first open item.
     #[serde(skip)]
     pub(crate) reason: String,

@@ -788,6 +788,7 @@ impl Core {
                     now: Some(now.clone()),
                     is_owner: Some(is_owner.clone()),
                     revoked: Some(revoked.clone()),
+                    done_check: true,
                     ..Default::default()
                 },
             )

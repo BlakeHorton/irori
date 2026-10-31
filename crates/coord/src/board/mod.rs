@@ -93,6 +93,12 @@ pub const MAX_DONE_CARD: i64 = 200;
 
 pub const MAX_QUESTION: usize = 200;
 pub const MAX_CONTEXT: usize = 800;
+/// A done check's question, its one answer, and its context when the
+/// agent gave no note (card #112).
+pub const DONE_QUESTION: &str = "Is this done?";
+pub const DONE_ANSWER: &str = "Done";
+pub const DONE_CONTEXT: &str =
+    "The agent says the work is done. Mark it done, or say why it isn't and it goes back to them.";
 pub const MAX_ANSWER: usize = 200;
 pub const MAX_WHY: usize = 400;
 pub const MAX_OWN_ANSWER: usize = 800;
@@ -141,6 +147,9 @@ pub struct Options {
     pub revoked: Option<KeyFn>,
     /// Fold a shared board's log.
     pub board: bool,
+    /// An agent's completed waits on the person's Done (card #112). The
+    /// app turns it on; off, completed closes the card as it always did.
+    pub done_check: bool,
     /// On a board, the person at this device's key.
     pub person: String,
     /// On a board, the member a `person:`/`agent:` key is.

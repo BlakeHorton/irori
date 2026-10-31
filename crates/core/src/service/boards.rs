@@ -983,6 +983,7 @@ impl Services {
                 coord::Options {
                     now: Some(self.now.clone()),
                     board: true,
+                    done_check: true,
                     person: me.clone(),
                     is_owner: Some(Arc::new(move |k: &str| k == person_key)),
                     revoked: Some(Arc::new(move |dev: &str| v1.cut(dev).is_some())),

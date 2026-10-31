@@ -34,7 +34,7 @@ These are carried in the board tools' descriptions and in a short block the mod 
 
 > The Irori Board is a shared scratch pad for live coordination between running agents and people: what you are working on now, what blocks you, and hand-offs. Keep cards short.
 > Do **not** use it for long-term information: plans, specs, decisions to remember, backlogs, meeting notes or documentation. Put those wherever this project or your instructions say (Linear, Notion, GitHub issues, the repo's docs, a knowledge base), and add a link on the card if it helps.
-> When a card's work is done, mark it done; don't keep it as a record.
+> When a card's work is done, set it completed: the person confirms it (Done) or says why not, and it comes back to you; don't keep it as a record.
 > Put new work up unheld and let Irori hand it out: it goes to one free agent at a time, and on to the next if that one can't take it. Don't pick someone off the roster, and don't take a card yourself while you hold one in progress: one card at a time (`board_join` refuses a second). `board_assign` only when one agent is clearly the right one (the person chose it, or it built the piece being changed). If Irori hands you a card, `board_join` it and start; if you can't take it on now, `board_leave` it and it goes to the next free agent.
 > A card the person posts or asks for is never backlog: it is work to start now (new work on an existing task, or new work to pick up immediately), so take it up or get it taken, don't leave it waiting.
 > When you take a card, give it steps and keep them ticked.
@@ -752,6 +752,17 @@ A card can have a **parent**. A parent's **subtasks** are ordinary cards: each h
 - *Any depth:* a tree needs a tree view and pushes the Board toward a tracker. One level answers "this grew, split it" and "these belong together".
 
 **Build** (after #3, in the order agreed with #16 on the cards): coord (`parent` on create, `task.parent`, the one-level rule, derived progress and state, refusals on parents, digest lines) and `CardSummary` (`Parent`, `Subtasks`), then the tools and instructions, then the grid order and the "part of" chip, the parent page's subtask list and the "part of" link. Tests: arrival-order convergence for links and the derived state, the two-level link from two devices, split moving every open step, cancel cascading. Live check: an agent splits a big card into a parent and three subtasks, two agents take subtasks, the grid shows them after the parent, and the parent's progress follows them.
+
+## Done checks
+
+Stephen, card #112, 2026-10-31: the person has the final say on whether a card is done.
+
+- **An agent's `completed` doesn't close the card.** coord raises a blocker on the person instead: "Is this done?", its context the agent's note (or a default line), one recommended option, Done. The row is an ordinary blocked `task.status` whose blocker carries `doneCheck: true`; older folds ignore the field and see a plain blocker. Coord does this only with `Options::done_check`, which the app turns on for the private board and shared boards; tests that predate it run without it.
+- **Who it applies to.** An agent key's `completed` (`is_agent_key`). The person's `completed` (Close it by hand, a Done pick), Irori's sweeper, a parent completing with its subtasks, and an ask's outcome all close directly. `failed` and `canceled` are unchanged.
+- **Done.** Picking it (`BoardService.Answer` with the option) resolves the check and writes `completed` as the person; the holder hears the resolution at its next turn.
+- **Not done.** The person's own words are an ordinary answer: the agent hears them (a woken or next-turn `answered` notice), the card shows "Waiting on agent", and the agent works on. When it sets `completed` again, the earlier check (open or answered) is resolved ("asked again") and a fresh one is raised, so one check waits on the person at a time.
+- **In the window.** The card's `ready` flag gives its pill "Ready for you" (green) when the check is the only thing waiting on the person; the check's chip says the same, its box is green, its own-words field says "Or say why it isn't done", and its button is Not done. It counts under Needs a decision like any blocker.
+- **Tools.** `board_status completed` from an agent answers that the card waits on the person's Done (naming the check), not that it folded into Done.
 
 ## Pinned cards
 

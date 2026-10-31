@@ -33,8 +33,11 @@ const barTone: Record<Tone, string> = {
 export function cardTone(card: {
   state: string
   openBlockers: number
+  ready?: boolean
   working: readonly unknown[]
 }): Tone {
+  // Ready for you (card #112): done but for your word, green.
+  if (card.ready && card.openBlockers === 1) return "success"
   if (card.state === TaskState.InputRequired || card.openBlockers > 0)
     return "destructive"
   if (card.state === TaskState.Completed) return "success"
@@ -93,6 +96,16 @@ export function StatePill({ card }: { card: CardSummary }) {
     return (
       <Badge variant="destructive">
         Needs your input
+      </Badge>
+    )
+  // An agent says it's done and only that waits on you (card #112).
+  if (card.ready && card.openBlockers === 1)
+    return (
+      <Badge
+        variant="success"
+        title="The agent says it's done: mark it Done, or say why it isn't"
+      >
+        Ready for you
       </Badge>
     )
   if (card.openBlockers > 0)

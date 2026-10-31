@@ -51,7 +51,7 @@ pub const BOARD_INSTRUCTIONS: &str = concat!(
     "what you are working on now, what blocks you, and hand-offs. Keep cards short. ",
     "Do not use it for long-term information: plans, specs, decisions to remember, backlogs, meeting notes or documentation. ",
     "Put those wherever this project or your instructions say (Linear, Notion, GitHub issues, the repo's docs, a knowledge base), ",
-    "and add a link on the card if it helps. When a card's work is done, mark it done; don't keep it as a record. ",
+    "and add a link on the card if it helps. When a card's work is done, set it completed: the person confirms it (Done) or says why not, and it comes back to you; don't keep it as a record. ",
     "Post a card for work others should see (the person's window shows only cards). Put new work up unheld and let Irori hand it out: ",
     "it goes to one free agent at a time, and on to the next if that one can't take it. Don't pick someone off the roster, and don't take a card yourself ",
     "while you hold one in progress: one card at a time (board_join refuses a second). board_assign only when one agent is clearly the right one: ",

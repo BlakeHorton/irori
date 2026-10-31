@@ -354,6 +354,15 @@ impl Fold {
             return Err(not_allowed(format!("change task {id}")));
         }
         let cascade = self.parent_state_refusal(&t, s)?;
+        // The person has the final say on done (card #112): an agent's
+        // completed raises a done check instead, and only the person's Done
+        // (or their own completed) closes the card. Everything else writes
+        // completed directly: the person (window, ask_close), Irori's
+        // sweeper, a parent completing with its subtasks (fold), and an
+        // ask's outcome (above).
+        if s == COMPLETED && self.done_check && self.is_agent_key(&by) {
+            return self.ask_done(&by, &t, &note);
+        }
         if t.state == s && t.note == note {
             return Ok(t);
         }

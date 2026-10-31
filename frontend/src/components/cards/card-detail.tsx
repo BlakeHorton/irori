@@ -1238,7 +1238,9 @@ function BlockerItem({
           placeholder={
             replying
               ? "Say more, or describe another option"
-              : b.options.length
+              : b.doneCheck
+                ? "Or say why it isn't done; it goes back to the agent"
+                : b.options.length
                 ? "Or answer in your own words"
                 : "Answer in your own words"
           }
@@ -1247,7 +1249,13 @@ function BlockerItem({
           disabled={busy}
         />
         <Button type="submit" disabled={busy}>
-          {busy ? "Sending…" : replying ? "Reply" : "Answer"}
+          {busy
+            ? "Sending…"
+            : replying
+              ? "Reply"
+              : b.doneCheck
+                ? "Not done"
+                : "Answer"}
         </Button>
       </form>
     </div>
@@ -1286,7 +1294,10 @@ function BlockerItem({
     <div
       className={cn(
         "grid gap-2 rounded-xl border p-3",
-        tone === "amber" && "border-destructive/30 bg-destructive/5",
+        tone === "amber" &&
+          (b.doneCheck
+            ? "border-success/40 bg-success/5"
+            : "border-destructive/30 bg-destructive/5"),
         tone === "grey" && "border-border bg-muted/30",
         (tone === "green" || tone === "closed") &&
           "border-border bg-muted/50 opacity-85"
@@ -1428,6 +1439,7 @@ function BlockerItem({
             told={told.told}
             raiser={b.raisedBy}
             sent={b.id === NoteItem ? undefined : told.resolved}
+            done={!!b.doneCheck}
           />
         )}
       {missed && <p className="text-xs text-destructive">{missed}</p>}
@@ -1516,10 +1528,13 @@ function ToldLine({
   told,
   raiser,
   sent,
+  done,
 }: {
   told: Told
   raiser: AgentRef
   sent?: boolean
+  // A done check (card #112): resolved means you said Done.
+  done?: boolean
 }) {
   if (told.error)
     return (
@@ -1530,7 +1545,9 @@ function ToldLine({
   if (sent === true)
     return (
       <p className="text-xs text-success">
-        Resolved: nobody is running to act on it.
+        {done
+          ? "Done: the card is closed."
+          : "Resolved: nobody is running to act on it."}
       </p>
     )
   if (sent === false)

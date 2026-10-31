@@ -1696,6 +1696,17 @@ pub(crate) fn board_status(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(t) => t,
         Err(e) => return map_err(e),
     };
+    // An agent's completed waits on the person's Done (card #112).
+    if st == coord::COMPLETED && t.state != coord::COMPLETED {
+        if let Some(b) = t.blockers.iter().find(|b| b.open() && b.done_check) {
+            return format!(
+                "{} waits on the person to confirm it's done (done check {}). Their Done closes it; if they say why it isn't done, you hear it as an answered blocker: fix it, then set completed again. Keep holding it until then.\n{}",
+                t.short_ref(),
+                one_line(&b.id, 20),
+                s.line(&t)
+            );
+        }
+    }
     let mut out = format!("{} is {} now.", t.short_ref(), t.state);
     if coord::is_terminal(&t.state) {
         out += " It folds into Done on the Board.";

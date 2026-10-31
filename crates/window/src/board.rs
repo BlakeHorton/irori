@@ -461,6 +461,35 @@ impl Window {
                 gocompat::quote::quote(blocker_id)
             ));
         };
+        // Done on a done check (card #112): resolve it and close the card,
+        // as the person.
+        if bl.done_check && bl.open() && option >= 0 {
+            let (_, ns) = co
+                .answer(
+                    &me,
+                    task_id,
+                    blocker_id,
+                    BlockerAnswer {
+                        pick: option + 1,
+                        resolve: true,
+                        mentions: plan.log.clone(),
+                        ..BlockerAnswer::default()
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            co.set_task_state(&me, task_id, coord::COMPLETED, "")
+                .map_err(|e| e.to_string())?;
+            let (ns, mentioned) = self.route_mentioned(ns, &plan);
+            let told = ns
+                .first()
+                .map(|n| self.tell(n, Tell::NextTurn))
+                .unwrap_or_default();
+            return Ok(AnswerResult {
+                card: self.card(task_id)?,
+                told,
+                mentioned,
+            });
+        }
         let mut a = BlockerAnswer {
             pick: option + 1,
             text: text.into(),

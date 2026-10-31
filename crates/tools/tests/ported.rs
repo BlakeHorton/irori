@@ -562,7 +562,7 @@ fn test_specs() {
             "Do not use it for long-term information",
             "Linear, Notion, GitHub issues",
             "add a link on the card",
-            "mark it done",
+            "set it completed: the person confirms it",
             "Coordinate about a card on the card",
         ],
     );

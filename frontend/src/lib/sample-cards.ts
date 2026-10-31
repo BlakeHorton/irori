@@ -168,6 +168,7 @@ export function sampleCards(now: Date): CardDetail[] {
       openBlockers: needs.length,
       waiting: open.length - needs.length,
       blockerQuestion: needs[0]?.question ?? "",
+      ready: needs.some((b) => b.doneCheck) || undefined,
     })
   }
 
@@ -686,6 +687,51 @@ export function sampleCards(now: Date): CardDetail[] {
           at: at(2),
           who: otter,
           text: "sample-otter assigned it to sample-heron: out/ is about 40 GB: copy it to the external drive, then start the re-run.",
+        }),
+      ],
+    }),
+    card({
+      // An agent says it's done (card #112): it waits on your Done, or
+      // your word on why it isn't.
+      id: "sample-card-12",
+      title: "Fix the boat clipping through the dock",
+      repoKey: "remote:github.com/sample-org/example-game",
+      goal: "Boats stop at the dock's edge instead of sliding into it.",
+      working: [otter],
+      updatedAt: at(1),
+      steps: steps([
+        ["Reproduce at the temple dock", true],
+        ["Widen the dock's collider", true],
+        ["Two-PC check", true],
+      ]),
+      blockers: [
+        CardBlocker({
+          id: "b1",
+          question: "Is this done?",
+          context:
+            "Widened the dock collider by 0.4 m and re-ran the two-PC check: no clipping in 20 dockings (#207).",
+          raisedBy: otter,
+          at: at(1),
+          doneCheck: true,
+          options: [
+            CardOption({
+              answer: "Done",
+              why: "Closes the card.",
+              by: otter,
+              at: at(1),
+              recommended: true,
+            }),
+          ],
+          resolved: null,
+          state: "open",
+          thread: [],
+        }),
+      ],
+      recent: [
+        CardActivity({
+          at: at(1),
+          who: otter,
+          text: "sample-otter raised a blocker",
         }),
       ],
     }),

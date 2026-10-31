@@ -169,6 +169,17 @@ describe("blockerChip", () => {
   const item = (over: Partial<CardBlocker>) =>
     CardBlocker({ id: "b1", raisedBy: otter, ...over })
 
+  test("an open done check is ready for you; answered, it went back", () => {
+    expect(blockerChip(item({ doneCheck: true, state: "open" }))).toEqual({
+      label: "Ready for you",
+      tone: "success",
+    })
+    expect(
+      blockerChip(item({ doneCheck: true, state: "answered", sentTo: otter }))
+        ?.label
+    ).toBe("Sent to sample-otter")
+  })
+
   test("answered says who it went to, and when they have ended", () => {
     expect(blockerChip(item({ state: "answered", sentTo: otter }))).toEqual({
       label: "Sent to sample-otter",
