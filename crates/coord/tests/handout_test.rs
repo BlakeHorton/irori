@@ -238,6 +238,7 @@ fn going_away_or_offline_hands_it_on() {
             ns.len() == 1 && ns[0].to == [BOB] && ns[0].text.contains("went away"),
             "{gone:?}: {ns:?}"
         );
+        assert_eq!(ask_of(&e.c, &tk.id).taker, BOB);
     }
 }
 
