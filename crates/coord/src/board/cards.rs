@@ -9,7 +9,7 @@ use irori_identity::owner;
 use store::{Event, kinds};
 
 use super::error::{Result, bad_state, invalid, not_allowed, not_found, subtask};
-use super::fold::{Fold, Touch, WatchLine, line_of, restore_state};
+use super::fold::{Fold, Touch, WatchLine, line_of, restore_state, take_up};
 use super::links::parse_link;
 use super::rows::*;
 use super::types::*;
@@ -756,6 +756,7 @@ impl Fold {
                 let when = at(p.at);
                 t.updated_at = when;
                 t.updated_by = p.by.clone();
+                take_up(t, &p.by);
                 let (d, n) = t.progress();
                 let what = format!("{} ({d}/{n} done)", steps_change(&was, &t.steps));
                 let ti = Touch::of(t);
@@ -785,6 +786,7 @@ impl Fold {
                 let when = at(p.at);
                 t.updated_at = when;
                 t.updated_by = p.by.clone();
+                take_up(t, &p.by);
                 let mut what = if after.done && !before.done {
                     format!("ticked “{}”", after.text)
                 } else if !after.done && before.done {

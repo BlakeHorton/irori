@@ -47,17 +47,18 @@ fn test_board_create_and_assign() {
         &[
             "Created #1 (task:",
             "Assigned to beta",
-            "Told at their next turn: beta",
+            // beta is idle, so the hand-off wakes it (card #85).
+            "Woke: beta",
             r#""Fix auth""#,
             "links: Linear ABC-123",
-            "beta (dev1/bbbbbbbb-2222-4222-8222-222222222222) (assigned, not taken up)",
+            "beta (dev1/bbbbbbbb-2222-4222-8222-222222222222) (offered, not taken up yet)",
         ],
     );
     let id = created_id(&out);
     let ns = h.notices(KEY_B);
     assert!(
         ns.len() == 1
-            && ns[0].mode == NEXT_TURN
+            && ns[0].mode == inbox::mode::WAKE
             && ns[0].message.ref_ == format!("task:{id}")
             && ns[0].message.from.key == KEY_A
             && ns[0].message.reason == coord::NOTICE_ASSIGNED,
@@ -81,7 +82,9 @@ fn test_board_create_and_assign() {
     h.failsj(&c, "board_join", json!({"task_id": id}), &["held by"]);
 
     // board_assign hands it on. gamma is in another repo, but a card that
-    // needs it shows on its own board wherever the card lives.
+    // needs it shows on its own board wherever the card lives. gamma is
+    // busy, so it hears at its next turn (card #85).
+    h.b.roster.set_status(KEY_C, "busy");
     has(
         &h.okj(&b, "board_assign", json!({"task_id": id, "to": "GAMMA"})),
         &[

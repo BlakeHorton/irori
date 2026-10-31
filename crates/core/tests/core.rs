@@ -233,10 +233,11 @@ fn test_board_tools_through_core() {
         "board_create",
         serde_json::json!({"title": "hand-off", "assign_to": r.key_b}),
     );
-    assert!(out.contains("Told at their next turn"), "create: {out}");
+    // beta is idle, so the hand-off wakes it (card #85).
+    assert!(out.contains("Woke: beta"), "create: {out}");
     let ns = r.notices_to(&r.key_b);
     assert!(
-        ns.len() == 1 && ns[0].mode == mode::NEXT_TURN && ns[0].message.from.key == r.key_a,
+        ns.len() == 1 && ns[0].mode == mode::WAKE && ns[0].message.from.key == r.key_a,
         "notices {ns:?}"
     );
     let out = call(

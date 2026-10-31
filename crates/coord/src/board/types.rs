@@ -2,6 +2,8 @@
 //! Field order and `omitempty` are Go's: the GUI and API read these, and
 //! the replay goldens compare their bytes with Go's.
 
+use std::collections::BTreeMap;
+
 use gocompat::time::GoTime;
 use serde::Serialize;
 
@@ -284,6 +286,10 @@ pub struct Task {
     pub holders: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub assigned: Vec<String>,
+    /// Hand-off notes by assignee, kept while they're offered the card and
+    /// haven't taken it up (card #85).
+    #[serde(skip_serializing_if = "omit")]
+    pub handoffs: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "omit")]
     pub shared: bool,
     pub created_by: String,

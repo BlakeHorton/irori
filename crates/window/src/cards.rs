@@ -56,6 +56,10 @@ pub struct AgentRef {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
     pub waiting: bool,
+    /// The hand-off note it was offered the card with (card #85).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub handoff: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub device: String,
@@ -671,6 +675,9 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
     for h in &t.holders {
         let mut r = p.ref_(h);
         r.assigned = t.assigned.contains(h);
+        if r.assigned {
+            r.handoff = t.handoffs.get(h).cloned().unwrap_or_default();
+        }
         r.waiting = r.assigned && p.unsent.contains(&unsent_key(h, &format!("task:{}", t.id)));
         s.working.push(r);
     }

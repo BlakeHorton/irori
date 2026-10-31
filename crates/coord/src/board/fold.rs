@@ -23,6 +23,23 @@ use crate::names::trim_space;
 use crate::roster::Agents;
 
 /// Release reasons in lease.released rows.
+/// How much of a hand-off note the thread line quotes.
+const MAX_HANDOFF_LINE: usize = 300;
+
+/// An assignee who acts on the card as itself (a step tick, a comment)
+/// has taken it up (card #85): it stops being only offered.
+pub(crate) fn take_up(t: &mut Task, by: &str) -> bool {
+    if !contains(&t.assigned, by) {
+        return false;
+    }
+    t.assigned = remove_str(&t.assigned, by);
+    sync_holder(t);
+    if t.state == SUBMITTED {
+        t.state = WORKING.into();
+    }
+    true
+}
+
 pub const REASON_RELEASED: &str = "released";
 pub const REASON_STOLEN: &str = "stolen";
 pub const REASON_HOLDER_GONE: &str = "holder_gone";
@@ -477,6 +494,10 @@ impl Fold {
                 if !engaged && !contains(&t.assigned, &p.to) {
                     t.assigned.push(p.to.clone());
                 }
+                let note = trim_space(&p.note).to_string();
+                if !engaged && !note.is_empty() {
+                    t.handoffs.insert(p.to.clone(), note.clone());
+                }
                 sync_holder(&mut t);
                 t.updated_at = at(p.at);
                 t.updated_by = p.by.clone();
@@ -488,7 +509,11 @@ impl Fold {
                     &ti,
                     when,
                     &p.by,
-                    &format!("assigned it to {}", p.to),
+                    &if note.is_empty() {
+                        format!("assigned it to {}", p.to)
+                    } else {
+                        format!("assigned it to {}: {}", p.to, cut(&note, MAX_HANDOFF_LINE))
+                    },
                     true,
                     Vec::new(),
                 );
@@ -1007,6 +1032,11 @@ impl Fold {
         t.comments += 1;
         if primary {
             t.updated_at = cm_at;
+        }
+        // An assignee's own comment takes the card up (card #85); a
+        // recorded message or someone else's comment doesn't.
+        if primary && p.msg_id.is_empty() && !person {
+            take_up(t, &cm_by);
         }
         let ti = Touch::of(t);
         if !p.blocker_id.is_empty() {
@@ -1657,6 +1687,8 @@ pub(crate) fn add_holder(t: &mut Task, who: &str) {
 pub(crate) fn sync_holder(t: &mut Task) {
     let holders = t.holders.clone();
     t.assigned.retain(|a| holders.contains(a));
+    let offered = t.assigned.clone();
+    t.handoffs.retain(|k, _| offered.contains(k));
     if t.holders.is_empty() {
         t.holder.clear();
         return;

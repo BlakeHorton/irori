@@ -52,6 +52,8 @@ crate::go_struct! {
         pub to: String = "to",
         pub by: String = "by",
         pub at: GoTime = "at",
+        /// The hand-off note (card #85): what's done, where, what's next.
+        pub note: String = "note" "omit",
     }
 }
 

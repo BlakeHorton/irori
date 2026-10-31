@@ -98,6 +98,8 @@ pub const MAX_ASIDE: usize = 2048;
 
 pub(crate) const MAX_TITLE: usize = 200;
 pub(crate) const MAX_OBJECTIVE: usize = 8000;
+/// A hand-off note on board_assign (card #85).
+pub(crate) const MAX_HANDOFF_NOTE: usize = 2000;
 pub(crate) const MAX_SCOPE: usize = 64;
 
 /// The state row's note when a card is reopened.
@@ -283,11 +285,15 @@ impl Coord {
     }
     /// The v0.2 assign (the creator, a holder or a person).
     pub fn assign_task(&self, by: &str, id: &str, to: &str) -> Result<Task> {
-        self.lock().assign(by, id, to, false).map(|(t, _)| t)
+        self.lock().assign(by, id, to, false, "").map(|(t, _)| t)
     }
     /// Assign with the wide rule, and the notice for `to`.
     pub fn assign(&self, by: &str, id: &str, to: &str) -> Result<(Task, Notice)> {
-        self.lock().assign_notice(by, id, to)
+        self.lock().assign_notice(by, id, to, "")
+    }
+    /// [`Self::assign`] with a hand-off note (card #85).
+    pub fn hand_off(&self, by: &str, id: &str, to: &str, note: &str) -> Result<(Task, Notice)> {
+        self.lock().assign_notice(by, id, to, note)
     }
     pub fn set_task_state(&self, by: &str, id: &str, s: &str, note: &str) -> Result<Task> {
         self.lock().set_task_state(by, id, s, note)

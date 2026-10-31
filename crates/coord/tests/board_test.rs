@@ -341,7 +341,8 @@ fn test_assign_permissions_and_notice() {
                 && n.kind == NOTICE_ASSIGNED
                 && n.reference == format!("task:{}", task.id)
                 && n.by == by
-                && !n.wake
+                // An idle agent in the roster is woken (card #85).
+                && n.wake == [ALICE, BOB, CAROL].contains(&to)
                 && n.title == "fix it",
             "{name}: {got:?} {n:?}"
         );

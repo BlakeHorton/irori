@@ -18,12 +18,12 @@ use super::resource::{RESOURCE_PATH, Resource, conflicts, normalize_resource, pa
 use super::rows::*;
 use super::types::*;
 use super::util::{
-    MAX_NOTICE_FIELD, SWEEPER, args, caller, check_key, contains, cut, deeper, multiline, new_id,
-    runes,
+    MAX_NOTICE_FIELD, SWEEPER, args, caller, check_key, check_text, contains, cut, deeper,
+    multiline, new_id, runes,
 };
 use super::{
-    DEFAULT_DONE_CARD, MAX_ATTACHMENTS, MAX_COMMENT, MAX_DONE_CARD, MAX_REASON, MAX_REF,
-    REOPEN_COMMENT_NOTE,
+    DEFAULT_DONE_CARD, MAX_ATTACHMENTS, MAX_COMMENT, MAX_DONE_CARD, MAX_HANDOFF_NOTE, MAX_REASON,
+    MAX_REF, REOPEN_COMMENT_NOTE,
 };
 use crate::gotime;
 use crate::names::trim_space;
@@ -128,8 +128,16 @@ impl Fold {
 
     // ---- assign, join, leave, share ----
 
-    pub(crate) fn assign_notice(&mut self, by: &str, id: &str, to: &str) -> Result<(Task, Notice)> {
-        let (t, wrote) = self.assign(by, id, to, true)?;
+    pub(crate) fn assign_notice(
+        &mut self,
+        by: &str,
+        id: &str,
+        to: &str,
+        note: &str,
+    ) -> Result<(Task, Notice)> {
+        let note = trim_space(note).to_string();
+        check_text("the hand-off note", &note, 0, MAX_HANDOFF_NOTE)?;
+        let (t, wrote) = self.assign(by, id, to, true, &note)?;
         if !wrote {
             return Ok((t, Notice::default()));
         }
@@ -141,6 +149,8 @@ impl Fold {
             reference: format!("task:{}", t.id),
             title: t.title.clone(),
             by: by.clone(),
+            // An idle assignee is woken; a busy one hears at its next turn.
+            wake: self.idle(&to),
             ..Notice::default()
         };
         if !self.is_owner(&to) && to != by {
@@ -163,12 +173,27 @@ impl Fold {
                 cut(&t.done_criteria, MAX_NOTICE_FIELD)
             ));
         }
+        if !note.is_empty() {
+            b.push_str(&format!(
+                "\nHand-off note: {}",
+                cut(&note, MAX_NOTICE_FIELD)
+            ));
+        }
         if contains(&t.assigned, &to) {
             b.push_str("\nClaim it to start.");
         }
         b.push_str(&deeper(&t.id));
         n.text = b;
         Ok((t, n))
+    }
+
+    /// Whether the roster shows `key` live and idle; unknown is not.
+    pub(crate) fn idle(&self, key: &str) -> bool {
+        self.roster.as_ref().is_some_and(|r| {
+            r.agents()
+                .iter()
+                .any(|a| a.key == key && a.status == "idle")
+        })
     }
 
     pub(crate) fn join(&mut self, by: &str, id: &str, who: &str) -> Result<Task> {

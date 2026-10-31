@@ -262,6 +262,9 @@ impl Fold {
         line(&mut b, "repo", &t.repo_key);
         line(&mut b, "holders", &t.holders.join(", "));
         line(&mut b, "assigned, not claimed yet", &t.assigned.join(", "));
+        for (to, note) in &t.handoffs {
+            line(&mut b, &format!("hand-off note for {to}"), note);
+        }
         line(
             &mut b,
             "created",

@@ -1231,7 +1231,7 @@ export function over(c: { state: string }): boolean {
 }
 
 // workLabel is the word beside a card's working faces, by the same rule
-// as its spinner: "working" only while busy says so; "assigned" or "not
+// as its spinner: "working" only while busy says so; "offered" or "not
 // picked up" before anyone took it up; nothing once the card is over;
 // else "on it" (held, but not working on it right now).
 export function workLabel(c: {
@@ -1242,7 +1242,7 @@ export function workLabel(c: {
   // A closed card has nobody working it, whatever its holders were.
   if (over(c) || !c.working.length) return ""
   if (c.working.every((w) => w.assigned))
-    return c.working.some((w) => w.waiting) ? "not picked up" : "assigned"
+    return c.working.some((w) => w.waiting) ? "not picked up" : "offered"
   if (busy(c)) return "working"
   return "on it"
 }

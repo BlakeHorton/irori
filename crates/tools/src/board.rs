@@ -187,7 +187,7 @@ impl Inner {
             .map(|h| {
                 let mut w = n.who(h);
                 if t.assigned.contains(h) {
-                    w += " (assigned, not taken up)";
+                    w += " (offered, not taken up yet)";
                 }
                 w
             })
@@ -1466,7 +1466,7 @@ pub(crate) fn board_leave(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     )
 }
 
-const ASSIGN_ARGS: &[(&str, Ty)] = &[("task_id", Ty::Str), ("to", Ty::Str)];
+const ASSIGN_ARGS: &[(&str, Ty)] = &[("task_id", Ty::Str), ("to", Ty::Str), ("note", Ty::Str)];
 
 pub(crate) fn board_assign(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let a = match decode(raw, ASSIGN_ARGS) {
@@ -1489,7 +1489,7 @@ pub(crate) fn board_assign(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let (t, notice) = match co.assign(&as_[0], &id, &as_[1]) {
+    let (t, notice) = match co.hand_off(&as_[0], &id, &as_[1], trim(a.str("note"))) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };

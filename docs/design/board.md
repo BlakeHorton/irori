@@ -67,6 +67,12 @@ Every card in the app (the main window's card, which is also where a notificatio
 - **A finished card comes back** (card #28): the person's comment on a done, canceled or failed card held by an agent still around reopens it first, a `task.status` row (working with its holders) with the note "reopened by the person's comment", then the comment; its holders hear as above, told it is open again. A finished card nobody holds, or whose holders have all gone, stays finished (it would sit Working with nobody on it), and the comment goes as before. A parent whose subtasks have all ended stays done (its state follows them). The card page of a finished card also has **Reopen** (`BoardService.Reopen`, `Coord.Reopen`): its creator, a holder or a person may; it writes the same row with the note "reopened", and its holders hear at their next turn (a `reopened` notice; with none, its creator if an agent); reopening a subtask of a finished parent brings the parent back first. The thread's line is "reopened it". Agents can `board_watch` a finished card too.
 - **The answer** is a `board_comment` by whoever was asked; it replicates like any comment and shows in every device's thread. Across devices the notice is a delivery to the other device's agent, which its host wakes (v0.4 §6.3).
 
+## Hand-offs
+
+*Card #85 (research 07 cases B1 and B2).* `board_assign task_id= to= note=` gives a card to another agent. The note is optional: it says what's done, where things are (branch, sha) and what comes next, and it's at most 2000 characters. It rides on the `task.assigned` row as `note`, which is omitted when empty, so older peers ignore it. The assignee is a holder that hasn't taken the card up yet (`assigned`). The card and the window show it as **offered to X**, with the note, until X takes it up. Taking it up means X claims it, writes a status, sets or ticks a step, or comments on it as itself. Leaving drops the offer. Comments from the person or another agent don't count, and neither do recorded messages. Once X has taken it up, the note stays on the thread line ("assigned it to X: <note>").
+
+The notice wakes the assignee when the roster shows it idle. A busy, offline or unknown assignee hears at its next turn. The same applies to `board_create assign_to=` and to `board_split`'s `assign_to`.
+
 ## Holders that go away
 
 *Card #16. Cards sat under "working" for hours, held by a session that had ended: the holder line only showed on cards without steps.*

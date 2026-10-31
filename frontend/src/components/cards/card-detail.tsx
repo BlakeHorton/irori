@@ -1526,7 +1526,7 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
                     waiting for it
                   </span>
                 ) : (
-                  <span>assigned</span>
+                  <span title={w.handoff || undefined}>offered, not taken up yet</span>
                 )
               ) : (
                 <PersonStatus card={detail} who={w} />
@@ -1535,6 +1535,11 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
               <span>watching</span>
             )}
           </span>
+          {role === "working" && w.assigned && w.handoff && (
+            <p className="col-span-3 whitespace-pre-wrap break-words pl-[30px] text-xs text-muted-foreground">
+              Hand-off note: {w.handoff}
+            </p>
+          )}
         </div>
       ))}
     </div>

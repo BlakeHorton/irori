@@ -145,6 +145,8 @@ export type AgentRef = {
 	where: string,
 	assigned?: boolean,
 	waiting?: boolean,
+	/**  The hand-off note it was offered the card with (card #85). */
+	handoff?: string,
 	device?: string,
 	deviceId?: string,
 	color?: string,
