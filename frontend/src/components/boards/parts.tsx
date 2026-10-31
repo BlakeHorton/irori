@@ -53,8 +53,8 @@ export function InviteHow({ homeOff }: { homeOff: boolean }) {
       <p>
         <span className="text-ink">How an invite works:</span> you invite a
         person, not a device. Send them the one-use link (good for an hour),
-        then read five words to each other on a call to check it's them. Their
-        other devices follow once they're in.
+        then they give you the five words their screen shows to check it's
+        them. Their other devices follow once they're in.
       </p>
       {homeOff && (
         <p className="text-warning">
@@ -166,7 +166,7 @@ export function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Paste the link, then get on a voice call with whoever sent it.
+        Paste the link, then give whoever sent it the five words you'll see.
       </p>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </form>
@@ -174,8 +174,8 @@ export function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }
 }
 
 // InvitePanel is the open invite, either side (§4.1, B4). The inviter
-// sends the link, then types the five words the invitee reads aloud; both
-// read out each other's fingerprint from their own screen.
+// sends the link, then types the five words the invitee gives them; both
+// check each other's fingerprint against their own screen.
 export function InvitePanel({ s, onClose }: { s: InviteStatus; onClose: () => void }) {
   const open = inviteOpen(s)
   const host = s.role === "host"
@@ -232,8 +232,7 @@ function SendLink({ s }: { s: InviteStatus }) {
   return (
     <div className="grid gap-2">
       <p className="text-muted-foreground">
-        Send this link to the person you're inviting, then get on a voice
-        call. It works once{until ? `, until ${until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}.
+        Send this link to the person you're inviting. It works once{until ? `, until ${until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}.
       </p>
       <div className="flex gap-1.5">
         <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
@@ -260,13 +259,13 @@ function Fingerprints({ s, peer }: { s: InviteStatus; peer: string }) {
       <dt className="text-muted-foreground">You</dt>
       <dd className="font-mono text-ink">{plainLine(s.myFingerprint)}</dd>
       <dd className="col-span-2 pt-1 text-muted-foreground">
-        Read your fingerprint aloud, and check that {peer} reads theirs as shown here.
+        Give {peer} your fingerprint, and check that theirs matches what's shown here.
       </dd>
     </dl>
   )
 }
 
-// TypeInviteWords is the inviter: the words the invitee reads aloud. The
+// TypeInviteWords is the inviter: the words the invitee gives them. The
 // invite goes on only when they match; two misses end it.
 function TypeInviteWords({ s, peer }: { s: InviteStatus; peer: string }) {
   const [words, setWords] = useState("")
@@ -284,11 +283,11 @@ function TypeInviteWords({ s, peer }: { s: InviteStatus; peer: string }) {
   }
   return (
     <form className="grid gap-1.5" onSubmit={submit}>
-      <p className="text-ink">Type the five words {peer} reads to you:</p>
+      <p className="text-ink">Type the five words {peer} gives you:</p>
       <Input
         value={words}
         onChange={(e) => setWords(e.target.value)}
-        aria-label={`The words ${peer} reads out`}
+        aria-label={`The words ${peer} gives you`}
         placeholder="Type the words, then Enter"
         className="h-8 font-mono text-[13px]"
         autoFocus
@@ -306,7 +305,7 @@ function TypeInviteWords({ s, peer }: { s: InviteStatus; peer: string }) {
 function ReadInviteWords({ s, peer }: { s: InviteStatus; peer: string }) {
   return (
     <div className="grid gap-1.5">
-      <p className="text-ink">Read these words to {peer}:</p>
+      <p className="text-ink">Give these words to {peer}:</p>
       <p className="rounded-md bg-muted px-3 py-2 font-mono text-[15px] text-ink">
         {(s.words ?? []).join(" ")}
       </p>

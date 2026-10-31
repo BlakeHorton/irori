@@ -352,7 +352,7 @@ export const boards = {
         role: "guest",
         state: InviteState.Words,
         boardName: "Sample board",
-        words: ["sample", "words", "read", "them", "aloud"],
+        words: ["sample", "words", "to", "give", "them"],
         peerName: "Sam",
         peerFingerprint: "3f2a 91c0 7be4 d018",
         myFingerprint: "a7d1 0c55 e29b 4f63",
