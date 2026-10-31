@@ -1,5 +1,7 @@
 import { useCallback, useState } from "react"
 
+import type { Mention } from "./mentions"
+
 // Drafts keeps what the person has typed on a card's page (a comment, a
 // blocker answer, a resolve note) outside the page, so leaving it (Esc,
 // Back, the browser's or the mouse's back) and coming back finds the text
@@ -28,4 +30,24 @@ export function useDraft(key: string): [string, (text: string) => void] {
     [key]
   )
   return [text, set]
+}
+
+// The mentions picked in a draft (card #77): the text keeps "@name", the
+// key lives here, so coming back to the box keeps who hears.
+const mentionDrafts = new Map<string, Mention[]>()
+
+// useMentionsDraft is useDraft for a box's mentions; key is the text's.
+export function useMentionsDraft(
+  key: string
+): [Mention[], (mentions: Mention[]) => void] {
+  const [mentions, setMentions] = useState(() => mentionDrafts.get(key) ?? [])
+  const set = useCallback(
+    (m: Mention[]) => {
+      if (m.length) mentionDrafts.set(key, m)
+      else mentionDrafts.delete(key)
+      setMentions(m)
+    },
+    [key]
+  )
+  return [mentions, set]
 }

@@ -13,6 +13,8 @@ import {
   State,
   type Delivery,
   type GoneSession,
+  type Mention,
+  type MentionOutcome,
   type Policy,
 } from "./models"
 import { inWails, parseTime, sessionShort } from "./irori"
@@ -150,11 +152,16 @@ function sampleSetState(id: string, state: State) {
 
 // Every action acts as the person at this device.
 export const talk = {
-  async send(to: string, repo: string, text: string): Promise<void> {
-    if (inWails()) {
-      await InboxService.Send(to, repo, text)
-      return
-    }
+  // send sends the person's message; each of mentions gets its own copy,
+  // woken. The answer is each mention's outcome.
+  async send(
+    to: string,
+    repo: string,
+    text: string,
+    mentions: Mention[] = []
+  ): Promise<MentionOutcome[]> {
+    if (inWails())
+      return (await InboxService.Send(to, repo, text, mentions)).mentioned ?? []
     const s = sampleState()
     const now = new Date().toISOString()
     const n = s.deliveries.length + 1
@@ -182,6 +189,7 @@ export const talk = {
       ...s.deliveries,
     ]
     sampleChanged()
+    return mentions.map((m) => ({ key: m.key, name: m.name, state: "woke" }))
   },
 
   // get reads one delivery: the message a notification's Open names.
@@ -190,15 +198,19 @@ export const talk = {
     return { ...sampleDelivery(id) } as Delivery
   },
 
-  // reply answers a message sent to the person; its sender is woken.
-  async reply(id: string, text: string): Promise<void> {
-    if (inWails()) {
-      await InboxService.Reply(id, text)
-      return
-    }
+  // reply answers a message sent to the person; its sender is woken, and
+  // so is each of mentions, with its own copy. The answer is each
+  // mention's outcome.
+  async reply(
+    id: string,
+    text: string,
+    mentions: Mention[] = []
+  ): Promise<MentionOutcome[]> {
+    if (inWails()) return (await InboxService.Reply(id, text, mentions)) ?? []
     sampleDelivery(id)
     if (!text.trim()) throw new Error("inbox: invalid input: write a reply")
     sampleSetState(id, State.Answered)
+    return mentions.map((m) => ({ key: m.key, name: m.name, state: "woke" }))
   },
 
   // markRead closes a message sent to the person without replying.

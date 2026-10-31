@@ -10,8 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+import { MentionTextarea } from "@/components/common/mention-textarea"
 import { parseTime, plainBlock, plainLine, relativeTime } from "@/lib/irori"
+import { notDelivered, type Mention } from "@/lib/mentions"
 import {
   errorText,
   holdText,
@@ -23,7 +24,9 @@ import {
 
 // MessageDialog is one message a notification's Open named (there is no
 // inbox in the window): a message Irori held, with Release and Dismiss, or
-// one an agent sent the person, in full, with Reply and Mark read.
+// one an agent sent the person, in full, with Reply and Mark read. A reply
+// can @mention other agents (card #77): each gets its own copy, woken. When
+// one wasn't delivered, the dialog stays open to say so.
 export function MessageDialog({
   id,
   name,
@@ -38,6 +41,8 @@ export function MessageDialog({
   const [d, setD] = useState<Delivery | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [reply, setReply] = useState("")
+  const [mentions, setMentions] = useState<Mention[]>([])
+  const [missed, setMissed] = useState("")
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -51,12 +56,21 @@ export function MessageDialog({
     }
   }, [id])
 
-  const act = async (fn: () => Promise<void>) => {
+  // act runs fn and closes, unless fn's answer says a mention wasn't
+  // delivered: then the reply has gone, and the dialog says who missed it.
+  const act = async (fn: () => Promise<unknown>) => {
     if (busy) return
     setBusy(true)
     setError(null)
     try {
-      await fn()
+      const res = await fn()
+      const line = Array.isArray(res) ? notDelivered(res) : ""
+      if (line) {
+        setReply("")
+        setMentions([])
+        setMissed(`Replied. ${line}`)
+        return
+      }
       onClose()
     } catch (err) {
       setError(errorText(err))
@@ -71,7 +85,7 @@ export function MessageDialog({
       setError("Write a reply first.")
       return
     }
-    void act(() => talk.reply(id, reply))
+    void act(() => talk.reply(id, reply, mentions))
   }
 
   const from = d
@@ -136,12 +150,16 @@ export function MessageDialog({
             {plainBlock(d.message.text)}
           </div>
         )}
-        {forYou && (
+        {forYou && !missed && (
           <form id="message-reply" onSubmit={submit}>
-            <Textarea
+            <MentionTextarea
               value={reply}
+              mentions={mentions}
               maxLength={MaxText}
-              onChange={(e) => setReply(e.target.value)}
+              onChange={(v, ms) => {
+                setReply(v)
+                setMentions(ms)
+              }}
               placeholder={`Reply to ${from}`}
               aria-label={`Your reply to ${from}`}
               autoSize
@@ -150,8 +168,9 @@ export function MessageDialog({
             />
           </form>
         )}
+        {missed && <p className="text-xs text-destructive">{missed}</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
-        {d && (held || forYou) && (
+        {d && (held || forYou) && !missed && (
           <DialogFooter>
             {held ? (
               <>

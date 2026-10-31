@@ -21,12 +21,13 @@ function PopoverContent({
   side = "bottom",
   sideOffset = 6,
   arrow = false,
+  anchor,
   children,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
+    "align" | "alignOffset" | "side" | "sideOffset" | "anchor"
   > & {
     /** Point a small glass arrow at the trigger. */
     arrow?: boolean
@@ -34,6 +35,7 @@ function PopoverContent({
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
+        anchor={anchor}
         align={align}
         alignOffset={alignOffset}
         side={side}

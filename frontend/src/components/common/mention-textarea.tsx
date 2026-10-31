@@ -1,0 +1,419 @@
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type KeyboardEvent,
+} from "react"
+import { flushSync } from "react-dom"
+
+import { Face } from "@/components/cards/faces"
+import { Popover, PopoverContent } from "@/components/ui/popover"
+import { Textarea } from "@/components/ui/textarea"
+import { deviceVar, useMentionCandidates } from "@/lib/cards"
+import { plainLine } from "@/lib/irori"
+import {
+  addMention,
+  filterCandidates,
+  insertMention,
+  isGone,
+  keepMentions,
+  menuKey,
+  moveHighlight,
+  settle,
+  tokenAt,
+  type Mention,
+  type MentionCandidate,
+  type Token,
+} from "@/lib/mentions"
+import { cn } from "@/lib/utils"
+
+type Props = Omit<ComponentProps<typeof Textarea>, "value" | "onChange"> & {
+  value: string
+  mentions: Mention[]
+  onChange: (value: string, mentions: Mention[]) => void
+  // The picker's rows; left out, the box reads them itself
+  // (useMentionCandidates) once it has focus.
+  candidates?: MentionCandidate[]
+  // Set: no picker, and the reason is the box's title.
+  disabledMentions?: string
+}
+
+// MentionTextarea is a Textarea with the @ picker (card #77,
+// docs/design/board.md "In the window"): typing "@" opens a list of agents
+// at the caret, filtered by what follows. Focus stays in the box. Tab
+// enters the list and steps through it (Shift+Tab back, Up and Down too),
+// Enter or a click puts "@name " in the text and records the agent's key,
+// Esc closes the list and keeps the text. While the list has rows, Enter
+// never reaches the site's own onKeyDown, so it doesn't send. Deleting the
+// "@name" drops its key.
+export function MentionTextarea({
+  value,
+  mentions,
+  onChange,
+  candidates: given,
+  disabledMentions,
+  onKeyDown,
+  onBlur,
+  onFocus,
+  onSelect,
+  title,
+  ...rest
+}: Props) {
+  const el = useRef<HTMLTextAreaElement>(null)
+  const [focused, setFocused] = useState(false)
+  const [wanted, setWanted] = useState(false)
+  const [caret, setCaret] = useState(0)
+  // dismissed is the token start Esc (or a click away) closed the list
+  // on; it stays closed for that token.
+  const [dismissed, setDismissed] = useState<number | null>(null)
+  // hi is the highlighted row for one token and query; -1 is none.
+  const [hi, setHi] = useState<{ at: string; i: number }>({ at: "", i: -1 })
+  const pendingCaret = useRef<number | null>(null)
+  const listId = useId()
+
+  const loaded = useMentionCandidates(!given && wanted)
+  const cands = given ?? loaded
+  const names = useMemo(() => cands.map((c) => c.who.name), [cands])
+
+  const token: Token | null =
+    focused && !disabledMentions ? tokenAt(value, caret, names) : null
+  // A dismissal lasts while its token does: once the token is gone (sent,
+  // deleted, cleared by the site) the next "@" opens the list again.
+  if (dismissed !== null && token?.start !== dismissed) setDismissed(null)
+  const open = !!token && token.start !== dismissed
+  const rows = useMemo(
+    () => (open && token ? filterCandidates(cands, token.query) : []),
+    [open, token?.query, cands] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const at = token ? `${token.start}:${token.query}` : ""
+  const highlight = hi.at === at ? hi.i : -1
+  const shown = rows.length ? (highlight < 0 ? 0 : highlight) : -1
+
+  // The caret goes after an inserted mention once React has put the text in.
+  useLayoutEffect(() => {
+    const c = pendingCaret.current
+    if (c === null || !el.current) return
+    pendingCaret.current = null
+    el.current.setSelectionRange(c, c)
+  })
+
+  // Esc closes the list and nothing else: not the dialog or card page
+  // around the box (their handlers run on window and document).
+  useEffect(() => {
+    if (!open || !token) return
+    const start = token.start
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing) return
+      e.preventDefault()
+      e.stopPropagation()
+      setDismissed(start)
+    }
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
+  }, [open, token?.start]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The list sits at the caret: a virtual element measured from a mirror
+  // of the box.
+  const anchor = useMemo(
+    () => ({
+      getBoundingClientRect: () =>
+        el.current ? caretRect(el.current, caret) : new DOMRect(),
+      get contextElement() {
+        return el.current ?? undefined
+      },
+    }),
+    [caret]
+  )
+
+  const sync = () => {
+    const t = el.current
+    if (t) setCaret(t.selectionStart ?? 0)
+  }
+
+  const pick = (row: MentionCandidate) => {
+    if (!token) return
+    const r = insertMention(value, token, caret, row.who.name)
+    const next = addMention(keepMentions(mentions, r.text), {
+      key: row.who.key,
+      name: row.who.name,
+    })
+    pendingCaret.current = r.caret
+    setCaret(r.caret)
+    // A name that another one starts with (oak, oak tree) would leave the
+    // list open on the new text; it is done.
+    setDismissed(token.start)
+    onChange(r.text, next)
+  }
+
+  const keyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const composing = e.nativeEvent.isComposing
+    const k = menuKey(
+      { key: e.key, shiftKey: e.shiftKey, isComposing: composing },
+      open,
+      rows.length
+    )
+    if (k === "next" || k === "prev") {
+      e.preventDefault()
+      e.stopPropagation()
+      setHi({
+        at,
+        i: moveHighlight(highlight, rows.length, k === "next" ? 1 : -1),
+      })
+      return
+    }
+    if (k === "pick") {
+      e.preventDefault()
+      e.stopPropagation()
+      pick(rows[shown])
+      return
+    }
+    if (k === "close") {
+      // The window listener has it; this keeps the site's handler out.
+      e.preventDefault()
+      e.stopPropagation()
+      if (token) setDismissed(token.start)
+      return
+    }
+    // Enter that sends: an exact, unique name at the caret counts as
+    // picked. flushSync, so the form's submit sees it.
+    if (e.key === "Enter" && !e.shiftKey && !composing && !disabledMentions) {
+      const next = settle(value, caret, mentions, cands)
+      if (next !== mentions) flushSync(() => onChange(value, next))
+    }
+    onKeyDown?.(e)
+  }
+
+  const change = (v: string, at: number) => {
+    let next = mentions
+    // A space typed after an exact, unique name counts as picking it.
+    const p = at - 1
+    if (
+      !disabledMentions &&
+      p >= 0 &&
+      v[p] === " " &&
+      v.length === value.length + 1 &&
+      v.slice(0, p) + v.slice(p + 1) === value
+    )
+      next = settle(value, p, next, cands)
+    onChange(v, keepMentions(next, v))
+  }
+
+  return (
+    <>
+      <Textarea
+        {...rest}
+        ref={el}
+        value={value}
+        title={disabledMentions || title}
+        onChange={(e) => {
+          const at = e.target.selectionStart ?? 0
+          setCaret(at)
+          if (e.target.value.includes("@")) setWanted(true)
+          change(e.target.value, at)
+        }}
+        onKeyDown={keyDown}
+        onSelect={(e) => {
+          sync()
+          onSelect?.(e)
+        }}
+        onFocus={(e) => {
+          setFocused(true)
+          setWanted(true)
+          sync()
+          onFocus?.(e)
+        }}
+        onBlur={(e) => {
+          setFocused(false)
+          setDismissed(null)
+          // Clicking Send blurs first: an exact name still counts.
+          if (!disabledMentions) {
+            const next = settle(value, caret, mentions, cands)
+            if (next !== mentions) onChange(value, next)
+          }
+          onBlur?.(e)
+        }}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={
+          open && shown >= 0 ? `${listId}-${shown}` : undefined
+        }
+        aria-autocomplete={disabledMentions ? undefined : "list"}
+      />
+      <Popover
+        open={open}
+        modal={false}
+        onOpenChange={(o, d) => {
+          if (o || !token) return
+          // A click back in the box only moves the caret.
+          if (d.reason === "outside-press" && d.event?.target === el.current)
+            return
+          if (d.reason === "outside-press" || d.reason === "escape-key")
+            setDismissed(token.start)
+        }}
+      >
+        <PopoverContent
+          anchor={anchor}
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          initialFocus={false}
+          finalFocus={false}
+          className="w-80 gap-0 p-1"
+        >
+          <div
+            role="listbox"
+            id={listId}
+            aria-label="Agents to mention"
+            className="grid max-h-72 overflow-y-auto"
+          >
+            {rows.length === 0 ? (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                No agent named {plainLine(token?.query ?? "")}
+              </p>
+            ) : (
+              rows.map((c, i) => (
+                <MentionRow
+                  key={c.who.key}
+                  id={`${listId}-${i}`}
+                  row={c}
+                  active={i === shown}
+                  explicit={i === highlight}
+                  onPick={() => pick(c)}
+                />
+              ))
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </>
+  )
+}
+
+// MentionRow is one agent in the picker: its face, name, device in the
+// device colour, and the repo (else the cwd's last part), so two agents
+// with one name tell apart. A gone one is greyed; it can still be picked
+// (stored, not delivered).
+function MentionRow({
+  id,
+  row,
+  active,
+  explicit,
+  onPick,
+}: {
+  id: string
+  row: MentionCandidate
+  active: boolean
+  explicit: boolean
+  onPick: () => void
+}) {
+  const { who } = row
+  const gone = isGone(who)
+  const tint = deviceVar(who.color)
+  const place = row.repo || lastPart(row.cwd)
+  return (
+    <div
+      id={id}
+      role="option"
+      aria-selected={active}
+      title={[plainLine(who.name), who.where, row.cwd, gone && "gone"]
+        .filter(Boolean)
+        .join(" · ")}
+      // Keep focus in the box.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onPick}
+      className={cn(
+        "flex min-w-0 cursor-pointer items-center gap-2 px-2 py-1.5 text-[13px]",
+        active &&
+          (explicit ? "bg-accent ring-1 ring-ring ring-inset" : "bg-muted/60"),
+        !active && "hover:bg-muted/40",
+        gone && "opacity-55"
+      )}
+    >
+      <Face who={who} className="shrink-0" />
+      <span
+        className={cn(
+          "min-w-0 truncate font-medium text-ink",
+          gone && "line-through"
+        )}
+      >
+        {plainLine(who.name)}
+      </span>
+      {who.where && (
+        <span
+          className="shrink-0 font-mono text-[10.5px] text-muted-foreground"
+          style={tint ? { color: tint } : undefined}
+        >
+          {plainLine(who.where)}
+        </span>
+      )}
+      <span className="ml-auto min-w-0 truncate text-right font-mono text-[10.5px] text-muted-foreground">
+        {gone ? "gone" : plainLine(place)}
+      </span>
+    </div>
+  )
+}
+
+function lastPart(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  return parts[parts.length - 1] ?? ""
+}
+
+// Mirror styles: what decides where text wraps in the box.
+const mirrored = [
+  "boxSizing",
+  "width",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "borderTopWidth",
+  "borderRightWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+  "borderStyle",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "fontVariant",
+  "letterSpacing",
+  "lineHeight",
+  "textTransform",
+  "textIndent",
+  "wordSpacing",
+  "tabSize",
+] as const
+
+// caretRect is the caret's box on screen: a hidden mirror div with the
+// box's font, padding, width and wrapping holds the text up to the caret
+// and ends in a marker span.
+function caretRect(t: HTMLTextAreaElement, pos: number): DOMRect {
+  const cs = getComputedStyle(t)
+  const div = document.createElement("div")
+  for (const p of mirrored) div.style[p] = cs[p]
+  div.style.position = "absolute"
+  div.style.visibility = "hidden"
+  div.style.top = "0"
+  div.style.left = "-9999px"
+  div.style.whiteSpace = "pre-wrap"
+  div.style.overflowWrap = "break-word"
+  div.style.overflow = "hidden"
+  div.textContent = t.value.slice(0, pos)
+  const mark = document.createElement("span")
+  mark.textContent = "​"
+  div.appendChild(mark)
+  document.body.appendChild(div)
+  const box = t.getBoundingClientRect()
+  const x =
+    box.left + parseFloat(cs.borderLeftWidth) + mark.offsetLeft - t.scrollLeft
+  const y =
+    box.top + parseFloat(cs.borderTopWidth) + mark.offsetTop - t.scrollTop
+  const h = mark.offsetHeight || parseFloat(cs.lineHeight) || 16
+  div.remove()
+  // Kept inside the box: a scrolled-away caret anchors at its edge.
+  const top = Math.min(Math.max(y, box.top), box.bottom - h)
+  return new DOMRect(x, top, 0, h)
+}

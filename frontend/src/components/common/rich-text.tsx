@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react"
 import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react"
 
-import { cards, LinkKind, type Link } from "@/lib/cards"
+import { Face } from "@/components/cards/faces"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  cards,
+  deviceVar,
+  LinkKind,
+  type CardMention,
+  type Link,
+} from "@/lib/cards"
 import { copyText } from "@/lib/clipboard"
 import { plainLine } from "@/lib/irori"
+import { isGone, splitMentions } from "@/lib/mentions"
 import { richBlocks, richInline, safeHref, type Inline } from "@/lib/rich"
 import { cn } from "@/lib/utils"
 
@@ -11,15 +20,19 @@ import { cn } from "@/lib/utils"
 // code and lists usable (lib/rich.ts): links open in the person's browser,
 // code has a one-click Copy, line breaks and lists keep their shape. Never
 // HTML. Set interactive false where it sits inside a button: links and
-// code then only look the part.
+// code then only look the part. mentions (card #77) turn each "@name"
+// they name into a chip; any other "@word" stays text, and code is never
+// split.
 export function RichText({
   text,
   className,
   interactive = true,
+  mentions,
 }: {
   text: string
   className?: string
   interactive?: boolean
+  mentions?: CardMention[]
 }) {
   const blocks = richBlocks(text)
   if (!blocks.length) return null
@@ -31,7 +44,7 @@ export function RichText({
             {b.lines.map((l, j) => (
               <span key={j}>
                 {j > 0 && <br />}
-                <Pieces pieces={l} interactive={interactive} />
+                <Pieces pieces={l} interactive={interactive} mentions={mentions} />
               </span>
             ))}
           </p>
@@ -46,7 +59,11 @@ export function RichText({
                   {it.marker === "*" || it.marker === "-" ? "•" : it.marker}
                 </span>
                 <span className="whitespace-pre-wrap">
-                  <Pieces pieces={it.inline} interactive={interactive} />
+                  <Pieces
+                    pieces={it.inline}
+                    interactive={interactive}
+                    mentions={mentions}
+                  />
                 </span>
               </li>
             ))}
@@ -61,26 +78,88 @@ export function RichText({
 export function RichLine({
   text,
   interactive = true,
+  mentions,
 }: {
   text: string
   interactive?: boolean
+  mentions?: CardMention[]
 }) {
-  return <Pieces pieces={richInline(text)} interactive={interactive} />
+  return (
+    <Pieces
+      pieces={richInline(text)}
+      interactive={interactive}
+      mentions={mentions}
+    />
+  )
 }
 
 function Pieces({
   pieces,
   interactive,
+  mentions,
 }: {
   pieces: Inline[]
   interactive: boolean
+  mentions?: CardMention[]
 }) {
   return pieces.map((p, i) => {
-    if (p.kind === "text") return <span key={i}>{p.text}</span>
+    if (p.kind === "text") {
+      if (!mentions?.length) return <span key={i}>{p.text}</span>
+      return (
+        <span key={i}>
+          {splitMentions(p.text, mentions).map((s, j) =>
+            s.kind === "text" ? (
+              s.text
+            ) : (
+              <MentionChip key={j} text={s.text} mention={s.mention} />
+            )
+          )}
+        </span>
+      )
+    }
     if (p.kind === "code")
       return <Code key={i} text={p.text} copy={interactive} />
     return <InlineLink key={i} link={p} interactive={interactive} />
   })
+}
+
+// MentionChip is one "@name" a mention names: in the agent's device
+// colour, its face on hover. Gone (stored gone, or gone now) is greyed and
+// struck through: it was never delivered.
+function MentionChip({ text, mention: m }: { text: string; mention: CardMention }) {
+  const gone = m.gone || isGone(m.who)
+  const tint = deviceVar(m.who.color)
+  const chip = (
+    <span
+      className={cn(
+        "rounded-sm px-0.5 font-medium",
+        gone
+          ? "text-muted-foreground line-through opacity-70"
+          : "bg-primary/10 text-primary"
+      )}
+      style={
+        !gone && tint
+          ? { color: tint, background: `color-mix(in oklch, ${tint} 14%, transparent)` }
+          : undefined
+      }
+      title={gone ? `${plainLine(m.name)} is gone; not delivered` : undefined}
+    >
+      {text}
+    </span>
+  )
+  if (gone) return chip
+  return (
+    <Tooltip>
+      <TooltipTrigger render={chip} />
+      <TooltipContent>
+        <Face who={m.who} noDot />
+        <span>
+          {plainLine(m.who.name || m.name)}
+          {m.who.where && ` · ${plainLine(m.who.where)}`}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 // InlineLink is a link in the text: what the agent wrote, its host in

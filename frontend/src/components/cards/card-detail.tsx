@@ -2,12 +2,12 @@ import { useState, type FormEvent, type ReactNode } from "react"
 import { ArrowLeftIcon, ExternalLinkIcon, PinIcon, PinOffIcon } from "lucide-react"
 
 import { ConfirmButton } from "@/components/common/confirm-button"
+import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import {
   agentBusy,
   BlockerState,
@@ -59,7 +59,8 @@ import { Thread } from "./thread"
 import { AttachmentList } from "@/components/attachments"
 import type { FileRef } from "@/lib/attachments"
 import { LinkChip, RichLine, RichText } from "@/components/common/rich-text"
-import { useDraft } from "@/lib/drafts"
+import { useDraft, useMentionsDraft } from "@/lib/drafts"
+import { useMissed } from "@/lib/mentions"
 import { useBoards, type BoardSummary } from "@/lib/boards"
 import { previewFlag } from "@/lib/preview"
 import { ShareButton, WithdrawButton } from "./share-dialog"
@@ -201,7 +202,11 @@ export function CardPage({
                 last={!hasBlockers}
               >
                 {detail.goal && (
-                  <RichText text={detail.goal} className="text-sm text-ink-2" />
+                  <RichText
+                    text={detail.goal}
+                    mentions={detail.ask?.mentions}
+                    className="text-sm text-ink-2"
+                  />
                 )}
                 {detail.onBoard && (
                   <p className="text-[12.5px] text-muted-foreground">
@@ -900,6 +905,8 @@ const name = displayName
 // app is asked now.
 function CommentBox({ cardId }: { cardId: string }) {
   const [text, setText] = useDraft(`${cardId}/comment`)
+  const [mentions, setMentions] = useMentionsDraft(`${cardId}/comment`)
+  const [missed, setMissed] = useMissed()
   const [wake, setWake] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -917,12 +924,14 @@ function CommentBox({ cardId }: { cardId: string }) {
     setBusy(true)
     setError(null)
     try {
-      const res = await cards.comment(cardId, text, wake)
+      const res = await cards.comment(cardId, text, wake, mentions)
       setHeard({
         line: heardLine(res.answers, res.watching, res.told.mode ?? ""),
         error: res.told.error,
       })
+      setMissed(res.mentioned)
       setText("")
+      setMentions([])
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -932,12 +941,14 @@ function CommentBox({ cardId }: { cardId: string }) {
 
   return (
     <form className="mt-1 grid gap-1.5" onSubmit={(e) => void submit(e)}>
-      <Textarea
+      <MentionTextarea
         autoSize
         value={text}
+        mentions={mentions}
         maxLength={MaxComment}
-        onChange={(e) => {
-          setText(e.target.value)
+        onChange={(v, ms) => {
+          setText(v)
+          setMentions(ms)
           setHeard(null)
         }}
         onKeyDown={(e) => {
@@ -948,7 +959,7 @@ function CommentBox({ cardId }: { cardId: string }) {
             e.currentTarget.form?.requestSubmit()
           }
         }}
-        placeholder="Comment on the card"
+        placeholder="Comment on the card (@ to bring in an agent)"
         aria-label="Your comment on the card"
         className="max-h-48 min-h-10 bg-card"
         disabled={busy}
@@ -975,6 +986,7 @@ function CommentBox({ cardId }: { cardId: string }) {
         ) : (
           <p className="text-xs text-muted-foreground">{heard.line}</p>
         ))}
+      {missed && <p className="text-xs text-destructive">{missed}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </form>
   )
@@ -1002,6 +1014,8 @@ function BlockerItem({
   onNoteAnswered: (answer: string, told: Told) => void
 }) {
   const [text, setText] = useDraft(`${cardId}/blocker/${b.id}`)
+  const [mentions, setMentions] = useMentionsDraft(`${cardId}/blocker/${b.id}`)
+  const [missed, setMissed] = useMissed()
   const [note, setNote] = useDraft(`${cardId}/resolve/${b.id}`)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1037,7 +1051,9 @@ function BlockerItem({
       setTold(
         own === null ? null : { told: res.told, resolved: !!after?.resolved }
       )
+      setMissed(res.mentioned)
       setText("")
+      setMentions([])
       setNote("")
       setAdding(false)
       setResolving(false)
@@ -1053,7 +1069,9 @@ function BlockerItem({
       setError("Write an answer first.")
       return
     }
-    void run(() => cards.answer(cardId, b.id, option, own), own)
+    // A picked option carries no text, so no mentions.
+    const ms = option < 0 ? mentions : []
+    void run(() => cards.answer(cardId, b.id, option, own, true, ms), own)
   }
 
   const submit = (e: FormEvent) => {
@@ -1084,11 +1102,25 @@ function BlockerItem({
           ))}
         </div>
       )}
-      <form className="flex gap-1.5" onSubmit={submit}>
-        <Input
+      <form className="flex items-start gap-1.5" onSubmit={submit}>
+        <MentionTextarea
+          autoSize
+          rows={1}
           value={text}
+          mentions={mentions}
           maxLength={MaxAnswer}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(v, ms) => {
+            setText(v)
+            setMentions(ms)
+          }}
+          onKeyDown={(e) => {
+            // Enter sends, as the one-line field did; Shift+Enter is a
+            // new line.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              e.currentTarget.form?.requestSubmit()
+            }
+          }}
           placeholder={
             answered
               ? "Answer again, or add what's missing"
@@ -1097,7 +1129,7 @@ function BlockerItem({
                 : "Answer in your own words"
           }
           aria-label={`Your answer to: ${plainLine(b.question)}`}
-          className="min-w-0 flex-1 bg-card"
+          className="max-h-40 min-h-9 min-w-0 flex-1 bg-card py-1.5"
           disabled={busy}
         />
         <Button type="submit" disabled={busy}>
@@ -1270,6 +1302,7 @@ function BlockerItem({
             sent={b.id === NoteItem ? undefined : told.resolved}
           />
         )}
+      {missed && <p className="text-xs text-destructive">{missed}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
