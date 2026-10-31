@@ -25,7 +25,7 @@ import { go } from "@/lib/nav"
 import { errorText } from "@/lib/talk"
 import { cn } from "@/lib/utils"
 
-import { BoardSettingsPanel, InviteHow, InvitePanel, useHomeOff } from "./parts"
+import { BoardSettingsPanel, InviteHow, InvitePanel, useInviteReach } from "./parts"
 
 type Tab = "all" | "decide" | "done"
 
@@ -277,7 +277,7 @@ function inviteError(err: unknown): string {
 // ends; the settings stay (card #103).
 function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: () => Promise<void> }) {
   const { invite, setInvite } = useInvite(true)
-  const homeOff = useHomeOff(true)
+  const reach = useInviteReach(true)
   const [error, setError] = useState<string | null>(null)
   const inviting = !!invite && invite.state !== ""
   return (
@@ -317,7 +317,7 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
                 >
                   Invite someone
                 </Button>
-                <InviteHow homeOff={homeOff} />
+                <InviteHow reach={reach} />
               </div>
             )
           )}

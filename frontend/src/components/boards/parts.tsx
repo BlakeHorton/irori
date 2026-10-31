@@ -16,7 +16,7 @@ import {
   type InviteStatus,
 } from "@/lib/boards"
 import { copyText } from "@/lib/clipboard"
-import { devices } from "@/lib/devices"
+import { devices, type HomeServerView } from "@/lib/devices"
 import { plainLine, shortRepo } from "@/lib/irori"
 import { errorText } from "@/lib/talk"
 import { cn } from "@/lib/utils"
@@ -26,28 +26,42 @@ import { cn } from "@/lib/utils"
 // invite works, and a board's settings (members, what reaches my agents,
 // what my agents may do, reviewers).
 
-// useHomeOff says this device's home server is off while it could run
-// one: an invite link then only reaches someone who can reach this device
-// directly (no third-party relays, architecture.md §7.1).
-export function useHomeOff(open: boolean): boolean {
-  const [off, setOff] = useState(false)
+// useInviteReach says why an invite link from this device may not reach
+// someone away from your home, or "" when it should (card #107). The link
+// names this device's home server: off, or on but not reachable from
+// outside, it only works for someone on your network (no third-party
+// relays, architecture.md §7.1).
+export function useInviteReach(open: boolean): string {
+  const [why, setWhy] = useState("")
   useEffect(() => {
     if (!open) return
     let live = true
     devices
       .homeServer()
-      .then((h) => live && setOff(h.can && !h.on && !h.elsewhere))
-      .catch(() => live && setOff(false))
+      .then((h) => live && setWhy(inviteReachLine(h)))
+      .catch(() => live && setWhy(""))
     return () => {
       live = false
     }
   }, [open])
-  return off
+  return why
+}
+
+export function inviteReachLine(h: HomeServerView): string {
+  if (!h.can || h.elsewhere) return ""
+  if (!h.on) {
+    return "Your home server is off, so the link only works for someone who can reach this device directly, like on your network. Turn it on in Settings, Devices to invite people from anywhere."
+  }
+  if (!h.running || h.reach === "outside") return ""
+  const fix = !h.outside
+    ? "Turn on Reachable from outside home in Settings, Devices."
+    : plainLine(h.line ?? "") || "Irori is still asking your router to open a port; check Settings, Devices."
+  return `Your home server can't be reached from outside your home yet, so the link only works for someone on your network. ${fix}`
 }
 
 // InviteHow says once, under the boards, what an invite does, and why the
 // link may not reach far (card #96).
-export function InviteHow({ homeOff }: { homeOff: boolean }) {
+export function InviteHow({ reach }: { reach: string }) {
   return (
     <div className="grid gap-1 border-l-2 border-primary/60 pl-2.5 text-xs text-muted-foreground">
       <p>
@@ -56,13 +70,7 @@ export function InviteHow({ homeOff }: { homeOff: boolean }) {
         then they give you the five words their screen shows to check it's
         them. Their other devices follow once they're in.
       </p>
-      {homeOff && (
-        <p className="text-warning">
-          Your home server is off, so the link only works for someone who can
-          reach this device directly, like on your network. Turn it on in
-          Settings, Devices to invite people from anywhere.
-        </p>
-      )}
+      {reach && <p className="text-warning">{reach}</p>}
     </div>
   )
 }
@@ -228,6 +236,7 @@ export function InvitePanel({ s, onClose }: { s: InviteStatus; onClose: () => vo
 
 function SendLink({ s }: { s: InviteStatus }) {
   const [copied, setCopied] = useState(false)
+  const reach = useInviteReach(true)
   const until = s.expiresAt ? new Date(s.expiresAt) : null
   return (
     <div className="grid gap-2">
@@ -246,6 +255,7 @@ function SendLink({ s }: { s: InviteStatus }) {
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
+      {reach && <p className="text-xs text-warning">{reach}</p>}
       <p className="text-xs text-muted-foreground">Waiting for them to join…</p>
     </div>
   )

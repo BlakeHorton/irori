@@ -228,12 +228,18 @@ impl Inner {
     }
 
     fn set(&self, s: Status) {
-        let changed = {
+        let (changed, was) = {
             let mut st = self.lock();
             let changed = st.status != s;
+            let was = st.status.state;
             st.status = s.clone();
-            changed
+            (changed, was)
         };
+        // The outcome goes to the log when it changes (card #107: a failed
+        // mapping only showed in Devices, so a dead invite left no trace).
+        if changed && (was != s.state || s.state == STATE_FAILED) {
+            self.log(&describe(&s));
+        }
         if changed && let Some(f) = &self.cfg.on_change {
             f(&s);
         }
@@ -521,4 +527,26 @@ async fn unmap_all(m: &Inner) {
             )),
         }
     }
+}
+
+/// One log line for a mapping outcome. Never a secret: addresses and
+/// ports only.
+fn describe(s: &Status) -> String {
+    let mut line = format!("portmap: {}", s.state);
+    if !s.method.is_empty() {
+        line.push_str(&format!(" via {}", s.method));
+    }
+    if let Some(ip) = s.external {
+        line.push_str(&format!(", external {ip}"));
+        if s.cgnat {
+            line.push_str(" (shared or private: not reachable from outside)");
+        }
+    }
+    for p in &s.ports {
+        line.push_str(&format!(", {} {}->{}", p.proto, p.external, p.internal));
+    }
+    if !s.detail.is_empty() {
+        line.push_str(&format!(": {}", s.detail));
+    }
+    line
 }
