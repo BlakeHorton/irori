@@ -11,6 +11,7 @@ name = "irori-dev"
 path = "src/main.rs"
 
 [dependencies]
+irori-api.workspace = true
 irori-blob.workspace = true
 irori-capture.workspace = true
 irori-coord.workspace = true
@@ -24,6 +25,10 @@ irori-scrub.workspace = true
 irori-store.workspace = true
 irori-sys.workspace = true
 irori-tools.workspace = true
+irori-window.workspace = true
+getrandom.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true

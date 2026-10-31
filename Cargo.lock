@@ -3189,6 +3189,8 @@ dependencies = [
 name = "irori-dev"
 version = "0.0.0"
 dependencies = [
+ "getrandom 0.4.3",
+ "irori-api",
  "irori-blob",
  "irori-capture",
  "irori-coord",
@@ -3202,9 +3204,12 @@ dependencies = [
  "irori-store",
  "irori-sys",
  "irori-tools",
+ "irori-window",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

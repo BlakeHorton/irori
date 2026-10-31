@@ -13,6 +13,12 @@
 //!   irori-dev probe --irori <exe> --home <copy> --claude <empty dir>
 //!                   [--go-tools <fallback_tools.json>]
 //!
+//!   irori-dev agent-check --home <empty dir> --claude <empty dir> --work <empty dir>
+//!                         --irori <exe> --mod <copy of mod/> [--claude-bin <claude>]
+//!                         [--model <m>] [--turn-wait <secs>] [--only 1,2,3]
+//!       what a real Claude agent does with Irori's tools (agent_check.rs;
+//!       scripts/agent-check.sh). Spends API tokens.
+//!
 //!   irori-dev boards-live host|guest --home <empty dir> --claude <empty dir> ...
 //!       one side of the live two-person shared-board run (boards_live.rs;
 //!       tools/rehearse/boards-live.sh and .ps1). It makes a fresh person,
@@ -20,6 +26,7 @@
 //!
 //! Output is counts and row keys, never payloads, keys or tokens.
 
+mod agent_check;
 mod boards_live;
 mod http;
 mod probe;
@@ -32,6 +39,7 @@ const USAGE: &str = "usage: irori-dev verify --home <copy of a data dir> [--go-h
        irori-dev replay --home <copy of a data dir> --out <dir> [--now <rfc3339>]
        irori-dev replay --compare <dir>
        irori-dev probe --irori <exe> --home <copy of a data dir> --claude <empty dir> [--go-tools <fallback_tools.json>] [--go-lockfile <copy of Go's irori.json>]
+       irori-dev agent-check --home <empty dir> --claude <empty dir> --work <empty dir> --irori <exe> --mod <copy of mod/> [--claude-bin <claude>] [--model <m>] [--turn-wait <secs>] [--only 1,2,3]
        irori-dev boards-live host --home <empty dir> --claude <empty dir> [--link-out <file>] [--step-wait <secs>]
        irori-dev boards-live guest --home <empty dir> --claude <empty dir> --link <irori-invite:...> [--step-wait <secs>]";
 
@@ -52,6 +60,13 @@ fn main() -> ExitCode {
                     "irori-dev: {e}
 {USAGE}"
                 );
+                ExitCode::from(2)
+            }
+        },
+        Some("agent-check") => match agent_check::Opts::parse(&args[1..]) {
+            Ok(o) => agent_check::run(&o),
+            Err(e) => {
+                eprintln!("irori-dev: {e}\n{USAGE}");
                 ExitCode::from(2)
             }
         },
