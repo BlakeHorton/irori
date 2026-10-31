@@ -140,6 +140,7 @@ export const BoardService = {
   Pin: (id: string, pinned: boolean) => done(commands.boardPin(id, pinned)),
   MovePin: (id: string, before: string) => done(commands.boardMovePin(id, before)),
   Place: (id: string, x: number, y: number) => done(commands.boardPlace(id, x, y)),
+  Create: (input: B.NewCardInput) => call(commands.boardCreate(input)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),
   CommentModifyCancel: (id: string, commentId: string) =>

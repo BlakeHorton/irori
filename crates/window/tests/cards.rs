@@ -704,3 +704,42 @@ fn modify_a_comment_before_it_is_read() {
     assert!(r.w.comment_modify_save(&t.id, &cid, "green").is_err());
     assert_eq!(item(&r).text, "use the blue one");
 }
+
+/// Card #116: New card makes a card on the person's own board. Unpicked,
+/// Irori hands it to a free agent; picked, it goes to that agent.
+#[test]
+fn new_card_from_the_app() {
+    use irori_window::new_card::NewCardInput;
+    let r = Rig::new();
+    assert!(
+        r.w.create_card(NewCardInput::default()).is_err(),
+        "a title is needed"
+    );
+    let res =
+        r.w.create_card(NewCardInput {
+            title: "  Tidy the logs ".into(),
+            objective: "They grow forever".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(res.task.title, "Tidy the logs");
+    assert_eq!(res.task.objective, "They grow forever");
+    assert!(res.task.ask.is_none(), "not an ask");
+    assert_eq!(
+        res.told.to.len(),
+        1,
+        "handed to one free agent: {:?}",
+        res.told
+    );
+
+    let res =
+        r.w.create_card(NewCardInput {
+            title: "Review the PR".into(),
+            assign_to: r.key_b.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(res.told.to, vec![r.key_b.clone()]);
+    assert_eq!(res.told.mode, "wake");
+    assert!(res.task.assigned.contains(&r.key_b));
+}

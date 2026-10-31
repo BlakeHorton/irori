@@ -43,6 +43,11 @@ export const commands = {
 	boardDelete: (id: string) => __TAURI_INVOKE<null>("board_delete", { id }),
 	boardPin: (id: string, pinned: boolean) => __TAURI_INVOKE<null>("board_pin", { id, pinned }),
 	boardPlace: (id: string, x: number, y: number) => __TAURI_INVOKE<null>("board_place", { id, x, y }),
+	/**
+	 *  New card (card #116): a card on the person's own board, handed to one
+	 *  free agent or to the agent picked.
+	 */
+	boardCreate: (input: NewCardInput) => __TAURI_INVOKE<TaskResult>("board_create", { input }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
 	boardCommentModify: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify", { id, commentId }),
 	/**  Cancel on a comment held for editing: it goes out as it was. */
@@ -858,6 +863,17 @@ export type Message = {
 
 /**  inbox.Mode (the wake policy). */
 export type Mode = "everyone" | "allowlist" | "open";
+
+/**  What the New card form sends. */
+export type NewCardInput = {
+	title?: string,
+	objective?: string,
+	doneWhen?: string,
+	/**  The repo it belongs to ("": none). */
+	repoKey?: string,
+	/**  An agent's key: hand it to that agent instead of the free one. */
+	assignTo?: string,
+};
 
 /**  The notification settings (Go `notify.Options`). */
 export type NotifyOptions = {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AppHeader } from "@/components/app-header"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
+import { NewCardDialog } from "@/components/cards/new-card-dialog"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
@@ -117,6 +118,8 @@ export function App() {
   const [heldOpen, setHeldOpen] = useState(false)
   const [heldTab, setHeldTab] = useState<HeldTab>("waiting")
   const [heldFrom, setHeldFrom] = useState("")
+  // New card (card #116): its dialog is open.
+  const [newCard, setNewCard] = useState(false)
   const held = useHeld(heldOpen && heldTab === "history")
   const name = nameLookup(
     roster.agents.map((a): [string, string] => [a.key, a.name]),
@@ -313,6 +316,7 @@ export function App() {
         roster={roster}
         held={held.held.length}
         onHeld={() => openHeld("")}
+        onNewCard={section.kind === "board" ? undefined : () => setNewCard(true)}
         section={open ? null : section}
         boardsNeedYou={boardDecide.length}
       />
@@ -432,6 +436,11 @@ export function App() {
           </>
         )}
       </main>
+      <NewCardDialog
+        open={newCard}
+        onClose={() => setNewCard(false)}
+        onMade={openCard}
+      />
       {heldOpen && (
         <HeldDialog
           state={held}

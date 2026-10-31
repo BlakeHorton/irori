@@ -5,18 +5,22 @@ import type { Roster } from "@/lib/irori"
 import { go, type Section } from "@/lib/nav"
 
 // AppHeader is the top bar: the product mark, Home | Boards (card #96),
-// this device, the version, the Held list (with how many messages wait on
+// this device, New card (card #116), the version, the Held list (with how many messages wait on
 // the person) and the settings.
 export function AppHeader({
   roster,
   held,
   onHeld,
+  onNewCard,
   section,
   boardsNeedYou = 0,
 }: {
   roster: Roster
   held: number
   onHeld: () => void
+  // New card (card #116); left out where it doesn't apply (a shared
+  // board's page: the card would land on the person's own board).
+  onNewCard?: () => void
   // Where the window is; null on a card's page (neither is current).
   section?: Section | null
   // Cards on boards waiting on the person, shown on Boards.
@@ -72,6 +76,11 @@ export function AppHeader({
           <span className="truncate text-xs font-medium text-ink-2" title={device?.id}>
             {device?.name || "this device"}
           </span>
+          {onNewCard && (
+            <Button size="sm" onClick={onNewCard} title="Make a card for an agent to pick up">
+              + New card
+            </Button>
+          )}
           <Button
             size="sm"
             variant={held > 0 ? "outline" : "ghost"}

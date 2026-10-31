@@ -38,6 +38,7 @@ import {
   TaskState,
   type Link,
   type Mention,
+  type NewCardInput,
   type Step,
 } from "./models"
 import { EventRosterChanged, inHost, inWails, plainLine } from "./irori"
@@ -68,6 +69,7 @@ export type {
   Link,
   Mention,
   MentionCandidate,
+  NewCardInput,
   Step,
   Told,
 }
@@ -317,6 +319,54 @@ function sampleAsk(text: string, repoKey: string, wake: boolean, mentions: Menti
     task: { id: c.id } as TaskResult["task"],
     told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }),
     mentioned: sampleOutcomes(named),
+  })
+}
+
+// sampleCreate is BoardService.Create on the sample: a new open card,
+// handed to the agent picked or to sample-heron (the free one).
+function sampleCreate(input: NewCardInput): TaskResult {
+  const title = (input.title ?? "").trim()
+  if (!title) throw new Error("coord: invalid input: give the card a title")
+  const now = new Date().toISOString()
+  const cs = sampleState()
+  const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
+  const to = input.assignTo || "sample-heron"
+  const c = {
+    ...cs[0],
+    id: `sample-new-${Date.now()}`,
+    short: String(top + 1),
+    shortWas: "",
+    title,
+    goal: (input.objective ?? "").trim(),
+    doneWhen: (input.doneWhen ?? "").trim(),
+    note: "",
+    state: TaskState.Submitted,
+    repoKey: input.repoKey ?? "",
+    steps: [],
+    blockers: [],
+    prs: [],
+    links: [],
+    comments: [],
+    working: [],
+    watching: [],
+    progress: { done: 0, total: 0 },
+    openBlockers: 0,
+    waiting: 0,
+    blockerQuestion: "",
+    recent: [],
+    thread: [
+      CardThreadItem({ id: "sample-new-post", kind: "event", at: now, who: sampleYou, text: "made the card" }),
+    ],
+    threadEarlier: 0,
+    historyTrimmed: false,
+    updatedAt: now,
+    ask: null,
+  } as CardDetail
+  sample = [c, ...cs]
+  sampleChanged()
+  return TaskResult({
+    task: { id: c.id } as TaskResult["task"],
+    told: Told({ to: [to], mode: "wake" }),
   })
 }
 
@@ -1030,6 +1080,14 @@ export const cards = {
       return
     }
     sampleReopen(id)
+  },
+
+  // create is New card (card #116): a card on the person's own board,
+  // straight from the form. Irori hands it to one free agent, or to
+  // assignTo when the person picked one.
+  async create(input: NewCardInput): Promise<TaskResult> {
+    if (inWails()) return BoardService.Create(input)
+    return sampleCreate(input)
   },
 
   // askRepos are the repos the agents are in, for the ask box's chip.

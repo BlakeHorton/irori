@@ -377,6 +377,14 @@ pub async fn board_comment_modify_save(
     w.comment_modify_save(&id, &comment_id, &text).map(|_| ())
 }
 
+/// New card (card #116): a card on the person's own board, handed to one
+/// free agent or to the agent picked.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_create(w: W<'_>, input: crate::new_card::NewCardInput) -> R<TaskResult> {
+    w.create_card(input)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_move_pin(w: W<'_>, id: String, before: String) -> R<()> {
@@ -780,6 +788,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_delete,
             board_pin,
             board_place,
+            board_create,
             board_comment_modify,
             board_comment_modify_cancel,
             board_comment_modify_save,

@@ -65,6 +65,7 @@ export type MentionCandidate = B.MentionCandidate
 export type MentionOutcome = B.MentionOutcome
 export type Message = B.Message
 export type Mode = B.Mode
+export type NewCardInput = B.NewCardInput
 export type NotifyOptions = B.NotifyOptions
 export type Outcome = B.Outcome
 export type PairJoiner = B.PairJoiner
@@ -351,6 +352,11 @@ export function MentionOutcome(p: Partial<B.MentionOutcome> = {}): B.MentionOutc
 /** Message with Go's zero values for every field left out. */
 export function Message(p: Partial<B.Message> = {}): B.Message {
   return { "id": "", "from": Sender(), "to": Address(), "text": "", "hop": 0, "trust": "", "sentAt": "", ...p } as B.Message
+}
+
+/** NewCardInput with Go's zero values for every field left out. */
+export function NewCardInput(p: Partial<B.NewCardInput> = {}): B.NewCardInput {
+  return { ...p } as B.NewCardInput
 }
 
 /** NotifyOptions with Go's zero values for every field left out. */
