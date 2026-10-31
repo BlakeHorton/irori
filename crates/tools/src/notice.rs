@@ -46,10 +46,13 @@ impl std::fmt::Display for RecordError {
 
 impl std::error::Error for RecordError {}
 
-/// Go `HeldOnCard`: `d`'s message goes on its card without its text (held,
-/// or another device decides the hold).
+/// `d`'s message goes on its card without its text: only when this device
+/// holds it (the person's block list, allowlist or Pause all). A delivery
+/// another device decides shows its text at once (card #94): since
+/// decision 37 nothing holds by default, and the text otherwise stayed off
+/// the card until the recipient's device reported back.
 pub fn held_on_card(ib: &Inbox, d: &Delivery) -> bool {
-    d.state == inbox::st::HELD || !ib.owned(&d.id)
+    d.state == inbox::st::HELD && ib.owned(&d.id)
 }
 
 /// The task a message Ref names: `task:<id>`, or `comment:<id>` on a card.
