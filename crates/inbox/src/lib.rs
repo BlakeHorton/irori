@@ -387,6 +387,8 @@ pub struct Message {
     pub board: BoardFrom,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<FileRef>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub mentions: Vec<Mention>,
     /// The device that wrote the message.sent row (memory only).
     #[serde(skip)]
     pub writer: String,
@@ -459,6 +461,23 @@ pub struct SendOptions {
     pub ref_: String,
     pub notice: bool,
     pub attachments: Vec<FileRef>,
+    /// The agents the message mentions (stored on its message.sent row).
+    pub mentions: Vec<Mention>,
+    /// A message id: the new message continues its chain (a mention's
+    /// copy names the message it copies).
+    pub parent: String,
+}
+
+/// The reason on a mentioned agent's copy of a message (card #77).
+pub const REASON_MENTIONED: &str = "mentioned";
+
+/// One agent a message mentions (the JSON of `coord::Mention`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Mention {
+    pub key: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "is_false")]
+    pub gone: bool,
 }
 
 /// The per-device wake policy.

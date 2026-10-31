@@ -65,6 +65,7 @@ pub fn route_notice(
             notice: true,
             reason: n.kind.clone(),
             attachments: n.attachments.clone(),
+            ..SendOptions::default()
         };
         let res = ib.send_with(from, &Address::new(addr::AGENT, to), &text, o);
         let (delivery, mut err) = match res {

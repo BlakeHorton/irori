@@ -8,8 +8,8 @@ use crate::policy::placed;
 use crate::state::{AliasRow, DeliveryRow, Drec, Inner, norm_alias, pair_key, trim};
 use crate::{
     Address, DEFAULT_INBOX_LIST, DIRECT_LIMIT, DIRECT_WINDOW, Delivery, Error, ErrorKind, Inbox,
-    MAX_ATTACHMENTS, MAX_DEFER, MAX_NOTE, MAX_REF, MAX_TEXT, Message, Result, SendOptions, Sender,
-    addr, choice, kinds, mode, path, st, tm, trust,
+    MAX_ATTACHMENTS, MAX_DEFER, MAX_NOTE, MAX_REF, MAX_TEXT, Mention, Message, REASON_MENTIONED,
+    Result, SendOptions, Sender, addr, choice, kinds, mode, path, st, tm, trust,
 };
 
 /// Trims, then cuts to n runes (no ellipsis).
@@ -140,13 +140,21 @@ impl Inner {
             ref_: clip(&o.ref_, MAX_REF),
             notice: o.notice,
             attachments: o.attachments.clone(),
+            mentions: o.mentions.clone(),
             ..Message::default()
         };
+        if !o.parent.is_empty()
+            && let Some(p) = self.msgs.get(&o.parent)
+        {
+            m.parent_id = p.id.clone();
+            m.hop = p.hop + 1;
+        }
         if self.is_person(from) {
             m.trust = trust::USER.into();
         }
         // Hops: a message sent from inside a woken turn continues its chain.
-        if let Some(run) = self.running.get(&from.key)
+        if m.parent_id.is_empty()
+            && let Some(run) = self.running.get(&from.key)
             && let Some(parent) = self.newest_in(&run.wake_id)
         {
             m.parent_id = parent.id.clone();
@@ -346,6 +354,17 @@ impl Inbox {
     /// Answers a delivery addressed to from: marks it Answered and sends a
     /// reply back to its sender.
     pub fn reply(&self, from: &Sender, did: &str, text: &str) -> Result<(Message, Delivery)> {
+        self.reply_with(from, did, text, &[])
+    }
+
+    /// [`Inbox::reply`] with the agents the reply mentions on its row.
+    pub fn reply_with(
+        &self,
+        from: &Sender,
+        did: &str,
+        text: &str,
+        mentions: &[Mention],
+    ) -> Result<(Message, Delivery)> {
         self.mutate(|b| {
             let d = b.mine(&from.key, did)?;
             match d.d.state.as_str() {
@@ -361,6 +380,7 @@ impl Inbox {
             let o = SendOptions {
                 mode: mode::WAKE.into(),
                 ref_: orig.ref_.clone(),
+                mentions: mentions.to_vec(),
                 ..SendOptions::default()
             };
             let (m, nd) = b.send_locked(
@@ -376,6 +396,66 @@ impl Inbox {
             b.put_delivery(r, &from.key)?;
             Ok((m, nd))
         })
+    }
+
+    /// Gives each agent `orig` mentions, other than its recipient `to`
+    /// (named `to_name`) and the sender, its own copy of the message
+    /// (board.md "Direct messages"): reason `mentioned`, woken, the same
+    /// ref, `parentId` the original. A gone mention gets nothing. Each
+    /// result pairs the mention with its delivery or its error; copies to
+    /// `to` or the sender are left out.
+    pub fn send_mention_copies(
+        &self,
+        from: &Sender,
+        orig: &Message,
+        to: &str,
+        to_name: &str,
+    ) -> Vec<(Mention, Result<Delivery>)> {
+        let who = if from.is_user() {
+            "The person".to_string()
+        } else if from.name.is_empty() {
+            from.key.clone()
+        } else {
+            from.name.clone()
+        };
+        let to_name = if to_name.is_empty() { to } else { to_name };
+        let mut out = Vec::new();
+        for m in &orig.mentions {
+            if m.key.is_empty() || m.key == to || m.key == from.key {
+                continue;
+            }
+            if m.gone {
+                out.push((
+                    m.clone(),
+                    Err(Error::wrap(
+                        ErrorKind::BadState,
+                        format!("{} is gone", m.name),
+                    )),
+                ));
+                continue;
+            }
+            let text = format!(
+                "{who} mentioned you in a message to {to_name}:
+{}",
+                orig.text
+            );
+            let r = self
+                .send_with(
+                    from,
+                    &Address::new(addr::AGENT, &m.key),
+                    &text,
+                    SendOptions {
+                        reason: REASON_MENTIONED.into(),
+                        mode: mode::WAKE.into(),
+                        ref_: orig.ref_.clone(),
+                        parent: orig.id.clone(),
+                        ..SendOptions::default()
+                    },
+                )
+                .map(|(_, d)| d);
+            out.push((m.clone(), r));
+        }
+        out
     }
 
     /// A channel-path recipient has the delivery (Delivered then Engaged).

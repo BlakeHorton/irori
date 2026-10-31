@@ -224,6 +224,14 @@ fn message_schema() -> Schema {
             ("device", Schema::String),
         ]))),
     ));
+    f.push((
+        "mentions",
+        Schema::Slice(Box::new(Schema::object(vec![
+            ("key", Schema::String),
+            ("name", Schema::String),
+            ("gone", Schema::Bool),
+        ]))),
+    ));
     Schema::object(f)
 }
 
@@ -243,6 +251,19 @@ pub(crate) fn decode_message(payload: &[u8]) -> std::result::Result<Message, jso
                     size: i(f, "size"),
                     mime: s(f, "mime"),
                     device: s(f, "device"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mentions = o
+        .get("mentions")
+        .map(|a| {
+            a.items()
+                .iter()
+                .map(|x| crate::Mention {
+                    key: s(x, "key"),
+                    name: s(x, "name"),
+                    gone: b(x, "gone"),
                 })
                 .collect()
         })
@@ -272,6 +293,7 @@ pub(crate) fn decode_message(payload: &[u8]) -> std::result::Result<Message, jso
             .map(crate::bridge::decode_board_from)
             .unwrap_or_default(),
         attachments,
+        mentions,
         writer: String::new(),
     })
 }
