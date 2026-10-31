@@ -1514,12 +1514,11 @@ fn test_ask_tools() {
     let (ask, n) = co
         .post_ask("user:dev1", new_ask("The login page feels slow"), &agents)
         .unwrap();
-    assert_eq!(n.to.len(), 4, "told {:?}", n.to);
+    assert_eq!(n.to.len(), 1, "told {:?}", n.to);
     let r = h.short(&ask.id);
-    has(
-        &h.ok(&a, "board", "{}"),
-        &["Asks from the person", &r, "[ask]"],
-    );
+    // Handed to alpha, which holds it as it wakes.
+    assert_eq!(n.to, [call_a().sender.key.clone()]);
+    has(&h.ok(&a, "board", "{}"), &["Asks you hold", &r, "[ask]"]);
 
     has(
         &h.okj(&a, "ask_claim", json!({"task_id": r})),
@@ -1542,7 +1541,7 @@ fn test_ask_tools() {
         json!({"task_id": r, "state": "completed"}),
         &["ask_close"],
     );
-    has(&h.ok(&a, "board", "{}"), &["Asks you took", &r]);
+    has(&h.ok(&a, "board", "{}"), &["Asks you hold", &r]);
 
     has(
         &h.okj(
@@ -1860,5 +1859,52 @@ fn test_blocker_tool_descriptions() {
             "replies to a blocker with a question",
             "never offer the same options again",
         ],
+    );
+}
+
+/// #91: skipping the delivery of an ask Irori handed you passes it on at
+/// once, to the next idle agent.
+#[test]
+fn test_skipping_a_handed_ask_passes_it_on() {
+    let h = new_harness();
+    let a = call_a();
+    let co = h.b.co.clone();
+    let agents: Vec<coord::roster::AgentCard> =
+        h.b.roster
+            .cards()
+            .into_iter()
+            .map(|c| coord::roster::AgentCard {
+                key: c.key,
+                device_id: c.device_id,
+                status: c.status,
+                repo_key: c.repo_key,
+                ..Default::default()
+            })
+            .collect();
+    let (ask, n) = co
+        .post_ask(
+            "user:dev1",
+            coord::NewAsk {
+                text: "Is the nightly build green?".into(),
+                ..Default::default()
+            },
+            &agents,
+        )
+        .unwrap();
+    assert_eq!(n.to, [KEY_A]);
+    tools::notice::route_notice(&h.b.ib, &inbox::system_sender(), &n);
+    let d = h.notices(KEY_A);
+    assert_eq!(d.len(), 1, "{d:?}");
+    let r = h.short(&ask.id);
+    has(
+        &h.okj(&a, "skip", json!({"delivery_id": d[0].id})),
+        &["gave the ask", &r, "next idle agent"],
+    );
+    let t = co.get_task(&ask.id).unwrap();
+    assert!(t.ask.as_ref().unwrap().taker.is_empty(), "{t:?}");
+    let ns = co.sweep_asks(&agents).unwrap();
+    assert!(
+        ns.len() == 1 && ns[0].to.len() == 1 && ns[0].to[0] != KEY_A,
+        "{ns:?}"
     );
 }

@@ -178,6 +178,9 @@ impl Services {
     /// own device answers its claim.
     fn ask_plan(&self, b: &BoardLog, ev: &Event, f: RowFields, t: &Task) -> Option<Plan> {
         let a = t.ask.as_ref()?;
+        if f.reason == coord::TAKE_HANDED {
+            return self.handed_plan(b, ev, f, t);
+        }
         if ev.device_id != a.owner
             || a.outcome.is_some()
             || !f.taker.is_empty()
@@ -215,6 +218,37 @@ impl Services {
             text: Box::new(move |name| {
                 let mut s = format!(
                     "{name} asks the room ({refs}){why}:\n{objective}\nIf you can take it on now, ask_claim {short}: one agent takes it, and you hear if someone else got there first. If you're busy, leave it."
+                );
+                if ask_me {
+                    s.push_str(" Your autonomy on this board is Ask me: a new card from it is a request to your person first.");
+                }
+                s
+            }),
+        })
+    }
+
+    /// A board ask the asking device handed to one of this person's agents
+    /// (#91): that agent alone hears it, woken, and holds it.
+    fn handed_plan(&self, b: &BoardLog, ev: &Event, f: RowFields, t: &Task) -> Option<Plan> {
+        let a = t.ask.as_ref()?;
+        if ev.device_id != a.owner
+            || a.outcome.is_some()
+            || f.taker.is_empty()
+            || f.since.is_empty()
+        {
+            return None;
+        }
+        let ask_me = self.inbox.autonomy(&b.id) == inbox::autonomy::ASK;
+        let (refs, short, objective) = (t.refs(), t.short_ref(), t.objective.clone());
+        Some(Plan {
+            kind: row_kind::ASK,
+            card_id: String::new(),
+            row: format!("ask:{}@{}:{}", t.id, f.since, f.taker),
+            to: vec![f.taker],
+            wake: true,
+            text: Box::new(move |name| {
+                let mut s = format!(
+                    "{name} asks the room ({refs}), and Irori handed it to you:\n{objective}\nYou hold it: no ask_claim needed. Take it on, or board_leave {short} and it goes to the next idle agent; ending your turn without touching it does the same."
                 );
                 if ask_me {
                     s.push_str(" Your autonomy on this board is Ask me: a new card from it is a request to your person first.");

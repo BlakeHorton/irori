@@ -170,7 +170,23 @@ An ask has exactly one taker. The take lock follows v0.4 §6.0 (owners and reque
 
 A taker on a device that is merely offline keeps the ask, as with leases and deliveries (§6.2): it is shown greyed and nothing moves on its own. The taker gives an ask back with `board_leave` (a `take.requested op=release`).
 
-### Who hears it, and how
+### One idle agent at a time (#91, decision 38)
+
+This replaces the claim race below: every ask used to wake every free agent, and all but one spent a turn losing `ask_claim`.
+
+- **The hand-out.** The owner hands each ask to one free agent (the filter below), the one idle longest first (its card's `updatedAt`, when its status last changed), and writes `take.state handed` with that agent as `taker` and `handed: true`. Only that agent is told, woken, with "Irori handed it to you … You hold it: no ask_claim needed … board_leave it and it goes to the next idle agent; ending your turn without touching it does the same." An agent holding another open ask isn't free: one ask per agent.
+- **Touching it** makes it an ordinary take (`take.state taken`, `handed` cleared): its `ask_claim`, a comment from it on the card after the hand-out, or its `ask_close`.
+- **It moves on only on an event**, never on a timer:
+  - it gives it back: `board_leave`, or `skip` on the hand-out's delivery (`take.state released`);
+  - its turn ends without touching it: its card is `idle` again with `updatedAt` and `lastActivity` both after the hand-out (`take.state passed`);
+  - it goes away: gone, missing from the roster, on an offline or removed device (`take.state gone`).
+  The owner then hands it to the next free agent that hasn't had it (`heard`). An agent that let it go isn't handed it again until the person's Wake them, which clears `heard`.
+- **Nobody free:** `take.state unclaimed` at once, and it goes out the moment an agent goes idle.
+- **What runs it:** the Core's `asks` thread, kicked by every roster change and by every Board change to an open ask. The 5-second coord sweep still runs it too, as a backstop; nothing in the hand-on reads a clock beyond comparing the agent's own status and activity times with the hand-out's.
+- **Shared boards:** the bridge tells another person's agent of a `handed` row naming it, woken, once per hand-out. The legacy `posted`/`reopened` rounds from older devices are still bridged as before.
+- **Not changed:** a taker that touched the ask keeps it while its device is merely offline, and a gone taker loses it after `GoneGrace` (#69).
+
+### Who hears it, and how (before #91)
 
 The owner builds the ask's notices when it posts. They go out through `SendWith(person, agent, text, {Mode, Ref: task:<id>, Notice: true})`, one per **free agent**:
 - in `MeshAgents()` (every device of the person's; later the shared board's members);
@@ -260,7 +276,7 @@ There are no blocker or step sections until it becomes a card. There is no new v
   - giving it back is `board_leave`;
   - an open ask's thread is read with `show #14`;
   - `board` lists open asks the caller could take first, under "Asks", followed by asks it has taken.
-- **Instructions** (added to `BoardInstructions` and to the two tools' descriptions): "An ask is the person talking to the room: work to start now, not backlog. If you are free and can take it, ask_claim it. One agent takes it, so if someone else has, leave it unless you have something to add (board_comment). Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first. Then ask_close it with what it became: a card (it becomes the card, and you hold it), a change to an existing card, an answer (you answered the person's question), or nothing, with one line on why. If your answer asks the person something, don't close in the same step: wait for their reply on the card first."
+- **Instructions** (added to `BoardInstructions` and to the two tools' descriptions): "An ask is the person talking to the room: work to start now, not backlog. Irori hands each ask to one idle agent, which holds it as it wakes (no ask_claim needed). If one comes to you and you can't take it on now, board_leave it and it goes to the next idle agent; ending your turn without touching it does the same. Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first. Then ask_close it with what it became: a card (it becomes the card, and you hold it), a change to an existing card, an answer (you answered the person's question), or nothing, with one line on why. If your answer asks the person something, don't close in the same step: wait for their reply on the card first."
 
 ### Build list
 

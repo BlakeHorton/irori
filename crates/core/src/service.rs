@@ -189,6 +189,9 @@ struct Services {
     names: Arc<Namer>,
     members: Arc<Members>,
     names_kick: Arc<Kick>,
+    /// Kicked by roster and Board changes: asks are handed out and on by
+    /// these events, never on a timer (#91).
+    asks_kick: Arc<Kick>,
     colors: coord::devcolor::Picks,
     files: blob::Files,
     scrubber: Arc<scrub::Scrubber>,
@@ -947,6 +950,7 @@ impl Core {
             names,
             members,
             names_kick: Kick::new(),
+            asks_kick: Kick::new(),
             colors,
             files,
             scrubber,
@@ -1303,10 +1307,12 @@ impl Core {
             let rq = s.roster.subscribe();
             let reg = self.on_stop(&rq, |q| q.close());
             let kick = s.names_kick.clone();
+            let asks = s.asks_kick.clone();
             self.spawn("names-roster", move || {
                 let _reg = reg;
                 while rq.recv().is_some() {
                     kick.kick();
+                    asks.kick();
                 }
             });
             let s = s.clone();
@@ -1318,6 +1324,19 @@ impl Core {
                     if s.names.settle() {
                         s.presence.rescan();
                     }
+                }
+            });
+        }
+
+        // Asks go to one idle agent and move on by events: an agent going
+        // idle, busy or away (the roster), or the ask's card changing (a
+        // give-back, a claim, a comment). No timer decides a hand-on.
+        {
+            let s = s.clone();
+            self.spawn("asks", move || {
+                let mut seen = s.asks_kick.generation().wrapping_sub(1);
+                while s.asks_kick.wait(&mut seen) {
+                    s.hand_out_asks();
                 }
             });
         }
@@ -1396,6 +1415,13 @@ impl Core {
             self.spawn("feed-board", move || {
                 let _reg = reg;
                 while let Some(ch) = q.recv() {
+                    if s2
+                        .coord
+                        .get_task(&ch.task_id)
+                        .is_some_and(|t| t.open_ask().is_some())
+                    {
+                        s2.asks_kick.kick();
+                    }
                     s2.hub.publish(CoreEvent::Board(ch));
                 }
             });
@@ -1438,6 +1464,7 @@ impl Core {
         self.stop_async.cancel();
         self.s.rearm.close();
         self.s.names_kick.close();
+        self.s.asks_kick.close();
         let threads = std::mem::take(&mut *self.threads.lock().unwrap_or_else(|e| e.into_inner()));
         let deadline = Instant::now() + CLOSE_WAIT;
         for h in threads {
@@ -2167,6 +2194,28 @@ impl Services {
                 !(dev == me || dev.is_empty() && irori_identity::owner::device_of(&a.key) == me)
             })
             .collect()
+    }
+
+    /// Hands out and on this device's asks, the private Board's and each
+    /// shared board's, and tells the agents they went to.
+    fn hand_out_asks(self: &Arc<Self>) {
+        let (asks, err) = self.coord.sweep_asks_partial(&self.ask_agents());
+        for n in &asks {
+            let from = if n.person {
+                self.user_sender()
+            } else {
+                inbox::system_sender()
+            };
+            if let Some(e) = notice::notice_err(&self.route_notice(&from, n)) {
+                logf(format_args!("ask notice {} {}: {e}", n.kind, n.reference));
+            }
+        }
+        if let Err(e) = err {
+            logf(format_args!("asks: {e}"));
+        }
+        if let Err(e) = self.sweep_board_asks() {
+            logf(format_args!("board asks: {e}"));
+        }
     }
 
     fn sweep_coord(self: &Arc<Self>) -> Result<(), String> {

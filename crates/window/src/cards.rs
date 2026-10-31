@@ -120,6 +120,8 @@ pub const ASK_OPEN: &str = "open";
 pub const ASK_WAITING: &str = "waiting";
 pub const ASK_UNCLAIMED: &str = "unclaimed";
 pub const ASK_TAKEN: &str = "taken";
+/// Irori handed it to one idle agent, which hasn't acted on it yet (#91).
+pub const ASK_HANDED: &str = "handed";
 pub const ASK_CLOSED: &str = "closed";
 
 /// An ask on its tile and page.
@@ -757,7 +759,7 @@ pub(crate) fn card_ask(
             out.outcome_ref = f(&o.task);
         }
     } else if !a.taker.is_empty() {
-        out.state = ASK_TAKEN.into();
+        out.state = if a.handed { ASK_HANDED } else { ASK_TAKEN }.into();
         out.taker = Some(p.ref_(&a.taker));
     } else if !a.waiting.is_empty() {
         out.state = ASK_WAITING.into();

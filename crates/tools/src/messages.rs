@@ -444,8 +444,30 @@ pub(crate) fn skip(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if let Err(e) = s.b.inbox().skip(&c.sender.key, id, trim(a.str("note"))) {
         return map_err(e);
     }
+    if let Some(r) = pass_handed_ask(s, c, id) {
+        return format!(
+            "Skipped delivery {}; you gave the ask {r} back and Irori hands it to the next idle agent.",
+            one_line(id, 80)
+        );
+    }
     format!(
         "Skipped delivery {}; it is closed without a reply.",
         one_line(id, 80)
     )
+}
+
+/// Skipping the delivery of an ask Irori handed to the caller, untouched,
+/// gives it back so it moves on now (#91). Its short ref when it did.
+fn pass_handed_ask(s: &Inner, c: &Caller, did: &str) -> Option<String> {
+    let ib = s.b.inbox();
+    let m = ib.message(&ib.get(did)?.message_id)?;
+    let id = m.ref_.strip_prefix("task:")?.to_string();
+    let (co, as_) = s.on(&id, std::slice::from_ref(&c.sender.key)).ok()?;
+    let t = co.get_task(&id)?;
+    let a = t.open_ask()?;
+    if !a.handed || a.taker != as_[0] {
+        return None;
+    }
+    co.leave(&as_[0], &id, &as_[0]).ok()?;
+    Some(t.short_ref())
 }

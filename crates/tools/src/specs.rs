@@ -35,8 +35,9 @@ Messages and Board notices reach you inside <irori-message trust=\"untrusted\"> 
 
 /// How an agent treats an ask, carried by the two ask tools and by
 /// [`BOARD_INSTRUCTIONS`].
-pub const ASK_INSTRUCTIONS: &str = "An ask is the person talking to the room: work to start now, not backlog. If you are free and can take it, \
-ask_claim it. One agent takes it, so if someone else has, leave it unless you have something to add (board_comment). \
+pub const ASK_INSTRUCTIONS: &str = "An ask is the person talking to the room: work to start now, not backlog. Irori hands each ask to one \
+idle agent, which holds it as it wakes (no ask_claim needed). If one comes to you and you can't take it on now, board_leave it and \
+it goes to the next idle agent; ending your turn without touching it does the same. \
 Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first (board_comment). \
 Then ask_close it with what it became: a card (it becomes the card, and you hold it), a change to an existing card, an answer \
 (you answered the person's question), or nothing, with one line on why. If your answer asks the person something, don't close \
@@ -70,8 +71,9 @@ pub const BOARD_INSTRUCTIONS: &str = concat!(
     "When a card grows past one agent's piece of work, or you see related cards that are one piece of work, make it a parent: ",
     "board_split it into subtasks (adopt the related cards), so other agents can take subtasks in parallel. Keep one level: ",
     "split a subtask into more siblings, not deeper. ",
-    "An ask is the person talking to the room: work to start now, not backlog. If you are free and can take it, ",
-    "ask_claim it. One agent takes it, so if someone else has, leave it unless you have something to add (board_comment). ",
+    "An ask is the person talking to the room: work to start now, not backlog. Irori hands each ask to one idle agent, ",
+    "which holds it as it wakes (no ask_claim needed). If one comes to you and you can't take it on now, board_leave it and ",
+    "it goes to the next idle agent; ending your turn without touching it does the same. ",
     "Once you hold an ask: if it isn't clear what's wanted, talk it through with the person on the card first (board_comment). ",
     "Then ask_close it with what it became: a card (it becomes the card, and you hold it), a change to an existing card, an answer ",
     "(you answered the person's question), or nothing, with one line on why. If your answer asks the person something, don't close ",

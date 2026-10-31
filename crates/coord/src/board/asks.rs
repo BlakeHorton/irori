@@ -32,6 +32,20 @@ pub const TAKE_RELEASED: &str = "released";
 pub const TAKE_GONE: &str = "gone";
 pub const TAKE_REOPENED: &str = "reopened";
 pub const TAKE_UNCLAIMED: &str = "unclaimed";
+/// Irori handed it to one idle agent, which holds it until it acts or
+/// lets it go.
+pub const TAKE_HANDED: &str = "handed";
+/// The agent it was handed to ended its turn without touching it.
+pub const TAKE_PASSED: &str = "passed";
+
+/// Where an ask handed to an agent stands.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Handed {
+    Waits,
+    Touched,
+    Ended,
+    Gone,
+}
 
 pub const OUTCOME_CARD: &str = "card";
 pub const OUTCOME_EDIT: &str = "edit";
@@ -62,7 +76,6 @@ pub(crate) struct AskAgain {
     pub skip: String,
     pub why: String,
     pub reason: String,
-    pub wake: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -333,7 +346,9 @@ impl Fold {
                 let mut t = self.tasks.remove(&p.task_id).expect("checked");
                 let a = t.ask.as_mut().expect("checked");
                 let was = a.taker.clone();
+                let was_handed = a.handed;
                 a.taker = p.taker.clone();
+                a.handed = p.handed && !p.taker.is_empty();
                 a.reason = p.reason.clone();
                 a.told = p.told;
                 a.since = at(p.since);
@@ -356,9 +371,15 @@ impl Fold {
                 let ti = Touch::of(t);
                 let created_by = t.created_by.clone();
                 let was_who = cmp_or_dev(&p.was, &was).to_string();
-                if !p.taker.is_empty() && p.taker != was {
+                if !p.taker.is_empty() && p.taker != was && p.handed {
+                    let what = format!("handed it to {}", p.taker);
+                    self.touch(ev, &ti, when, SWEEPER, &what, false, Vec::new());
+                } else if !p.taker.is_empty() && (p.taker != was || was_handed && !p.handed) {
                     self.tasks.get_mut(&p.task_id).expect("present").updated_by = p.taker.clone();
                     self.touch(ev, &ti, when, &p.taker, "took it", true, Vec::new());
+                } else if p.reason == TAKE_PASSED {
+                    let what = "passed it on: its turn ended without taking it";
+                    self.touch(ev, &ti, when, &was_who, what, false, Vec::new());
                 } else if p.reason == TAKE_RELEASED {
                     self.touch(ev, &ti, when, &was_who, "gave it back", true, Vec::new());
                 } else if p.reason == TAKE_GONE {
@@ -729,28 +750,87 @@ impl Fold {
                 },
             )?;
         }
+        // Irori hands it to one idle agent, which holds it as it wakes: no
+        // race on ask_claim, one turn spent. Nobody idle: it waits for one.
         let t = self.tasks[&id].clone();
-        let free = self.free_agents(&t, agents, &[]);
+        let free = self.free_agents(&t, agents, &self.handed_elsewhere(&id));
+        let pick: Vec<String> = free.into_iter().take(1).collect();
         self.write_take(
             &id,
             TakeStateRow {
-                reason: TAKE_POSTED.into(),
-                told: free.len() as i64,
-                heard: free.clone(),
+                taker: pick.first().cloned().unwrap_or_default(),
+                reason: if pick.is_empty() {
+                    TAKE_UNCLAIMED.into()
+                } else {
+                    TAKE_HANDED.into()
+                },
+                handed: !pick.is_empty(),
+                told: pick.len() as i64,
+                heard: pick.clone(),
                 since: at,
-                unclaimed: free.is_empty(),
+                unclaimed: pick.is_empty(),
                 ..TakeStateRow::default()
             },
         )?;
         let t = self.tasks[&id].clone();
-        let mut n = ask_notice(&t, &free, true, "");
+        let mut n = match pick.first() {
+            Some(k) => hand_notice(&t, k, ""),
+            None => ask_notice(&t, &[], true, ""),
+        };
         n.attachments = input.files;
         Ok((t, n))
     }
 
-    /// The agents among `roster` that may take ask t now, sorted.
+    /// The agents holding another open ask: one ask per agent at a time.
+    fn handed_elsewhere(&self, id: &str) -> Vec<String> {
+        self.tasks
+            .values()
+            .filter(|t| t.id != id && !is_terminal(&t.state))
+            .filter_map(|t| t.open_ask())
+            .filter(|a| !a.taker.is_empty())
+            .map(|a| a.taker.clone())
+            .collect()
+    }
+
+    /// Where an ask handed to `a.taker` stands, by events only: a comment
+    /// from it, its turn ending, or it going away. Never by time waited.
+    fn handed_state(&self, id: &str, a: &Ask, roster: &HashMap<&str, &AgentCard>) -> Handed {
+        if self
+            .comments
+            .values()
+            .any(|c| c.task_id == id && c.by == a.taker && !gotime::before(&c.at, &a.since))
+        {
+            return Handed::Touched;
+        }
+        let Some(card) = roster.get(a.taker.as_str()) else {
+            return Handed::Gone;
+        };
+        let dev = cmp_or_dev(&card.device_id, owner::device_of(&card.key));
+        if card.status == "gone"
+            || card.device_state == "offline"
+            || self
+                .revoked
+                .as_ref()
+                .is_some_and(|r| !dev.is_empty() && r(dev))
+        {
+            return Handed::Gone;
+        }
+        // Idle again, with transcript rows and a status change since it was
+        // handed: a turn ran and ended without touching it.
+        if card.status == "idle"
+            && gotime::after(&card.updated_at, &a.since)
+            && gotime::after(&card.last_activity, &a.since)
+        {
+            return Handed::Ended;
+        }
+        Handed::Waits
+    }
+
+    /// The agents among `roster` that may take ask t now, the one idle
+    /// longest first.
     fn free_agents(&self, t: &Task, roster: &[AgentCard], skip: &[String]) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
+        let mut since: HashMap<String, GoTime> = HashMap::new();
         for a in roster {
             let dev = cmp_or_dev(&a.device_id, owner::device_of(&a.key));
             if a.key.is_empty() || a.key == SWEEPER || self.is_owner(&a.key) || a.status != "idle" {
@@ -775,8 +855,10 @@ impl Fold {
                 continue;
             }
             out.push(a.key.clone());
+            since.insert(a.key.clone(), a.updated_at);
         }
-        out.sort();
+        // Idle longest first (its status last changed earliest), then by key.
+        out.sort_by(|x, y| gotime::cmp(&since[x], &since[y]).then_with(|| x.cmp(y)));
         out
     }
 
@@ -853,6 +935,19 @@ impl Fold {
         match r.op.as_str() {
             TAKE_CLAIM => {
                 self.observe(now);
+                if a.taker == r.by && a.handed {
+                    return self.write_take(
+                        id,
+                        TakeStateRow {
+                            taker: r.by.clone(),
+                            reason: TAKE_TAKEN.into(),
+                            req: Some(r.r.clone()),
+                            told: a.told,
+                            heard: a.heard.clone(),
+                            ..TakeStateRow::default()
+                        },
+                    );
+                }
                 if !a.taker.is_empty() || self.gone(&r.by, now) {
                     self.set_req_done(id, i);
                     return Ok(());
@@ -891,7 +986,6 @@ impl Fold {
                         skip: r.by.clone(),
                         why: "the agent that took it gave it back".into(),
                         reason: TAKE_RELEASED.into(),
-                        wake: true,
                     },
                 );
                 Ok(())
@@ -904,7 +998,6 @@ impl Fold {
                 self.asks.again.insert(
                     id.into(),
                     AskAgain {
-                        wake: true,
                         why: "the person wants it picked up".into(),
                         reason: TAKE_REOPENED.into(),
                         skip: String::new(),
@@ -939,7 +1032,67 @@ impl Fold {
         let res = (|| -> Result<()> {
             for id in &ids {
                 let a = self.tasks[id].ask.clone().unwrap_or_default();
-                if !a.taker.is_empty() {
+                if !a.taker.is_empty() && a.handed {
+                    match self.handed_state(id, &a, &in_roster) {
+                        Handed::Waits => continue,
+                        Handed::Touched => {
+                            self.write_take(
+                                id,
+                                TakeStateRow {
+                                    taker: a.taker.clone(),
+                                    reason: TAKE_TAKEN.into(),
+                                    told: a.told,
+                                    heard: a.heard.clone(),
+                                    ..TakeStateRow::default()
+                                },
+                            )?;
+                            continue;
+                        }
+                        Handed::Ended => {
+                            self.write_take(
+                                id,
+                                TakeStateRow {
+                                    reason: TAKE_PASSED.into(),
+                                    was: a.taker.clone(),
+                                    told: a.told,
+                                    heard: a.heard.clone(),
+                                    since: now,
+                                    ..TakeStateRow::default()
+                                },
+                            )?;
+                            again.insert(
+                                id.clone(),
+                                AskAgain {
+                                    skip: a.taker.clone(),
+                                    why: "the agent it went to ended its turn without taking it"
+                                        .into(),
+                                    reason: TAKE_PASSED.into(),
+                                },
+                            );
+                        }
+                        Handed::Gone => {
+                            self.write_take(
+                                id,
+                                TakeStateRow {
+                                    reason: TAKE_GONE.into(),
+                                    was: a.taker.clone(),
+                                    told: a.told,
+                                    heard: a.heard.clone(),
+                                    since: now,
+                                    ..TakeStateRow::default()
+                                },
+                            )?;
+                            again.insert(
+                                id.clone(),
+                                AskAgain {
+                                    skip: a.taker.clone(),
+                                    why: "the agent it went to went away".into(),
+                                    reason: TAKE_GONE.into(),
+                                },
+                            );
+                        }
+                    }
+                } else if !a.taker.is_empty() {
                     if !self.taker_gone(&a.taker, &in_roster, &now) {
                         continue;
                     }
@@ -948,6 +1101,8 @@ impl Fold {
                         TakeStateRow {
                             reason: TAKE_GONE.into(),
                             was: a.taker.clone(),
+                            told: a.told,
+                            heard: a.heard.clone(),
                             since: now,
                             ..TakeStateRow::default()
                         },
@@ -958,71 +1113,67 @@ impl Fold {
                             skip: a.taker.clone(),
                             why: "the agent that took it went away".into(),
                             reason: TAKE_GONE.into(),
-                            wake: true,
                         },
                     );
                 }
                 let t = self.tasks[id].clone();
                 let a = t.ask.clone().unwrap_or_default();
-                if let Some(ag) = again.get(id).cloned() {
-                    if !a.taker.is_empty() {
-                        continue;
-                    }
-                    let free = self.free_agents(&t, agents, std::slice::from_ref(&ag.skip));
-                    // The agent that gave it back stays heard, so a later
-                    // sweep doesn't tell (and wake) it again as a late joiner.
-                    let mut heard = free.clone();
-                    if !ag.skip.is_empty() {
-                        heard.push(ag.skip.clone());
-                    }
+                if !a.taker.is_empty() {
+                    continue;
+                }
+                let ag = again.remove(id);
+                // Asked again by the person: everyone may hear it again.
+                let fresh = ag.as_ref().is_some_and(|g| g.reason == TAKE_REOPENED);
+                let mut heard = if fresh { Vec::new() } else { a.heard.clone() };
+                if let Some(g) = &ag
+                    && !g.skip.is_empty()
+                    && !heard.contains(&g.skip)
+                {
+                    heard.push(g.skip.clone());
+                }
+                // One ask per agent: an agent another ask went to isn't free.
+                let mut skip = heard.clone();
+                skip.extend(self.handed_elsewhere(id));
+                let free = self.free_agents(&t, agents, &skip);
+                if let Some(pick) = free.first() {
+                    heard.push(pick.clone());
                     self.write_take(
                         id,
                         TakeStateRow {
-                            reason: ag.reason.clone(),
-                            told: free.len() as i64,
+                            taker: pick.clone(),
+                            reason: TAKE_HANDED.into(),
+                            handed: true,
+                            told: heard.len() as i64,
                             heard,
                             since: now,
-                            unclaimed: free.is_empty(),
                             ..TakeStateRow::default()
                         },
                     )?;
-                    again.remove(id);
-                    if !free.is_empty() {
-                        let t = self.tasks[id].clone();
-                        out.push(ask_notice(&t, &free, ag.wake, &ag.why));
-                    }
+                    let t = self.tasks[id].clone();
+                    let why = ag.as_ref().map(|g| g.why.as_str()).unwrap_or_default();
+                    out.push(hand_notice(&t, pick, why));
                     continue;
                 }
-                let free = self.free_agents(&t, agents, &a.heard);
-                let window = gotime::since(&now, &a.since) < ASK_UNCLAIMED.as_nanos() as i128;
-                let unclaimed = a.unclaimed || a.told + free.len() as i64 == 0 || !window;
-                if free.is_empty() && unclaimed == a.unclaimed {
+                // Nobody idle to hand it to: it waits, and goes out the
+                // moment an agent goes idle (the next sweep, kicked by the
+                // roster change).
+                if a.unclaimed && ag.is_none() {
                     continue;
                 }
-                let mut heard = a.heard.clone();
-                heard.extend(free.iter().cloned());
-                let mut reason = a.reason.clone();
-                if unclaimed && !a.unclaimed {
-                    reason = TAKE_UNCLAIMED.into();
-                }
+                // The person's "Wake them" stays a reopen, so their card
+                // can say they woke them and nobody was free.
+                let reason = if fresh { TAKE_REOPENED } else { TAKE_UNCLAIMED };
                 self.write_take(
                     id,
                     TakeStateRow {
-                        reason,
-                        told: a.told + free.len() as i64,
+                        reason: reason.into(),
+                        told: heard.len() as i64,
                         heard,
-                        unclaimed,
+                        since: if ag.is_some() { now } else { a.since },
+                        unclaimed: true,
                         ..TakeStateRow::default()
                     },
                 )?;
-                if !free.is_empty() {
-                    // Only idle agents are told, so a late joiner is woken
-                    // while the ask is fresh; after that the person's "Wake
-                    // them" does it.
-                    let wake = window;
-                    let t = self.tasks[id].clone();
-                    out.push(ask_notice(&t, &free, wake, ""));
-                }
             }
             Ok(())
         })();
@@ -1092,12 +1243,38 @@ impl Fold {
             return Err(bad_state(format!("{} isn't an open ask", t.short_ref())));
         };
         if a.taker == by {
+            let (handed, t) = (a.handed, t.clone());
+            // Handed to it: the claim tells the owner it's taken, no wait.
+            if handed {
+                let at = self.stamp();
+                self.write(
+                    by,
+                    self.ask_kind(kinds::TAKE_REQUESTED),
+                    &TakeRequestedRow {
+                        task_id: id.into(),
+                        by: by.into(),
+                        op: TAKE_CLAIM.into(),
+                        at,
+                    },
+                )?;
+                // It hears its answer here, not as a "taken" notice.
+                if let Some(r) = self.asks.reqs.get_mut(id).and_then(|v| v.last_mut()) {
+                    r.waiting = true;
+                }
+                self.ask_duties();
+                if let Some(r) = self.asks.reqs.get_mut(id).and_then(|v| v.last_mut()) {
+                    r.waiting = false;
+                }
+                self.sync_waiting(id);
+            }
+            let t = self.tasks.get(id).cloned().unwrap_or(t);
+            let owner = t.ask.as_ref().map(|a| a.owner.clone()).unwrap_or_default();
             return Ok(Ok(ClaimResult {
-                task: t.clone(),
+                task: t,
                 taker: by.into(),
                 mine: true,
                 pending: false,
-                owner: a.owner.clone(),
+                owner,
             }));
         }
         if !a.taker.is_empty() {
@@ -1409,6 +1586,35 @@ impl Fold {
         )?;
         self.ask_duties();
         Ok(())
+    }
+}
+
+/// Tells the one agent Irori handed ask t to that it holds it.
+fn hand_notice(t: &Task, to: &str, why: &str) -> Notice {
+    let mut b = format!(
+        "The person asks the room ({}), and Irori handed it to you",
+        t.refs()
+    );
+    if !why.is_empty() {
+        b.push_str(&format!(" ({why})"));
+    }
+    b.push_str(&format!(":\n{}\n", cut(&t.objective, MAX_ASK_NOTICE)));
+    b.push_str(&format!(
+        "You hold it: no ask_claim needed. {YOU_HAVE_IT} If you can't take it on now, board_leave {} and it goes to the next idle agent; ending your turn without touching it does the same.",
+        t.short_ref()
+    ));
+    b.push_str(&deeper(&t.id));
+    Notice {
+        kind: NOTICE_ASK.into(),
+        task_id: t.id.clone(),
+        reference: format!("task:{}", t.id),
+        title: t.title.clone(),
+        by: t.created_by.clone(),
+        to: vec![to.into()],
+        wake: true,
+        text: b,
+        person: true,
+        ..Notice::default()
     }
 }
 

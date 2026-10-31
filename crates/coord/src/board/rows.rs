@@ -373,6 +373,7 @@ crate::go_struct! {
         pub unclaimed: bool = "unclaimed" "omit",
         pub seen: BTreeMap<String, i64> = "seen" "omit",
         pub was: String = "was" "omit",
+        pub handed: bool = "handed" "omit",
         pub at: GoTime = "at",
     }
 }
