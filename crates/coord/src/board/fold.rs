@@ -60,13 +60,14 @@ const CLOCK_SKEW: Duration = Duration::from_secs(120);
 pub const SUB_BUFFER: usize = 64;
 
 /// The row prefixes coord folds.
-pub const FOLLOW_KINDS: [&str; 6] = [
+pub const FOLLOW_KINDS: [&str; 7] = [
     "task.",
     "lease.",
     "blocker.",
     "take.",
     "board.ask.",
     "review.",
+    "wait.",
 ];
 
 /// Whether coord folds `kind`.
@@ -199,6 +200,15 @@ pub struct Fold {
     pub(crate) step_seq: HashMap<String, i64>,
     pub(crate) activity: HashMap<String, Vec<Activity>>,
     pub(crate) watchq: BTreeMap<String, WatchQueue>,
+    /// Open waits by id (card #87), the queue of those to fire with what
+    /// happened, and the ids fired or canceled (a late wait.created for
+    /// one of them is not folded back in).
+    pub(crate) waits: BTreeMap<String, Wait>,
+    pub(crate) waitq: Vec<(String, String)>,
+    pub(crate) waits_done: HashSet<String>,
+    /// The state each open task wait last saw, so the sweep catches a
+    /// move that came by another path than task.status (or while off).
+    pub(crate) wait_seen: HashMap<String, String>,
 
     pub(crate) claims: Vec<ShortClaim>,
     pub(crate) claimed: HashSet<String>,
@@ -302,6 +312,10 @@ impl Fold {
             step_seq: HashMap::new(),
             activity: HashMap::new(),
             watchq: BTreeMap::new(),
+            waits: BTreeMap::new(),
+            waitq: Vec::new(),
+            waits_done: HashSet::new(),
+            wait_seen: HashMap::new(),
             claims: Vec::new(),
             claimed: HashSet::new(),
             short_groups: BTreeMap::new(),
@@ -682,6 +696,7 @@ impl Fold {
             | kinds::TASK_STEP
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
+            kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
             kinds::TASK_PARENT => {
                 let Some(p) = row::<TaskParentRow>(&ev.payload) else {
@@ -962,6 +977,7 @@ impl Fold {
             || p.state == FAILED && was != FAILED
             || is_terminal(&p.state) && !is_terminal(&was) && self.last_subtask(&p.task_id);
         self.touch_parent(&ti, line, wake);
+        self.waits_on_status(&p.task_id, &was, &p.state);
         self.note(Change {
             kind: TASK_CHANGED.into(),
             task_id: p.task_id,
@@ -1303,6 +1319,9 @@ impl Fold {
             if self.live(l, now) {
                 tracked.insert(l.lease.holder.clone());
             }
+        }
+        for w in self.waits.values() {
+            tracked.insert(w.by.clone());
         }
         self.first_absent.retain(|k, _| tracked.contains(k));
         for k in tracked {

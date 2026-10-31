@@ -1238,6 +1238,7 @@ impl Fold {
             }
         }
         out.extend(self.watch_notices());
+        self.wait_notices(&now, out)?;
         Ok(())
     }
 

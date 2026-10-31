@@ -556,6 +556,8 @@ pub const NOTICE_RETURNED: &str = "returned";
 pub const NOTICE_REOPENED: &str = "reopened";
 pub const NOTICE_ANSWERED: &str = "answered";
 pub const NOTICE_WATCHED: &str = "watched";
+/// A wait went off (card #87): always a wake.
+pub const NOTICE_WAIT: &str = "wait";
 pub const NOTICE_ASK: &str = "ask";
 pub const NOTICE_TAKEN: &str = "taken";
 pub const NOTICE_ASK_COMMENT: &str = "ask_comment";
@@ -812,4 +814,46 @@ pub struct SetAside {
     pub ignored: usize,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub ignored_by: std::collections::BTreeMap<String, usize>,
+}
+
+/// One open wait (card #87): `by` is woken once when task `task_id`
+/// reaches a state in `until`, or when `branch` of `repo` moves off the
+/// shas it had (`refs`, "<ref>=<sha>"). See waits.rs.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wait {
+    pub id: String,
+    pub by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub task_id: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub until: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub from_state: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub repo: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub root: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub branch: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub refs: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub note: String,
+    pub at: GoTime,
+    pub expires: GoTime,
+}
+
+/// What a new wait waits on (the `wait` tool's arguments, resolved).
+#[derive(Debug, Clone, Default)]
+pub struct WaitSpec {
+    pub task_id: String,
+    pub until: Vec<String>,
+    pub repo: String,
+    pub root: String,
+    pub branch: String,
+    /// "<ref>=<sha>" for each ref of the branch as it is now; empty sha
+    /// when the ref doesn't exist yet.
+    pub refs: Vec<String>,
+    pub note: String,
 }

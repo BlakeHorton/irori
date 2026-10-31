@@ -29,6 +29,7 @@ mod subtasks;
 mod tasks;
 mod types;
 mod util;
+mod waits;
 
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::{Duration, Instant};
@@ -60,6 +61,10 @@ pub use review::{
 };
 pub use short::{parse_ref, parse_short, short_suffix};
 pub use types::*;
+pub use waits::{
+    MAX_WAITS, UNTIL_BLOCKED, UNTIL_CHANGED, UNTIL_DONE, UNTIL_UNBLOCKED, WAIT_CARD_GONE,
+    WAIT_EXPIRED, WAIT_GONE, WAIT_TTL, until_text, wait_line,
+};
 
 use crate::roster::{AgentCard, Agents};
 use fold::Sub;
@@ -419,6 +424,26 @@ impl Coord {
     }
     pub fn unwatch(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().watch(by, id, false)
+    }
+    /// Registers a wait (card #87): `by` is woken once when it fires.
+    pub fn create_wait(&self, by: &str, spec: WaitSpec) -> Result<Wait> {
+        self.lock().create_wait(by, spec)
+    }
+    /// Cancels one of `by`'s open waits.
+    pub fn cancel_wait(&self, by: &str, id: &str) -> Result<Wait> {
+        self.lock().cancel_wait(by, id)
+    }
+    /// Open waits, oldest first; `by` empty for everyone's.
+    pub fn waits(&self, by: &str) -> Vec<Wait> {
+        self.lock().waits_of(by)
+    }
+    /// Open branch waits of this device's agents, for the core to check.
+    pub fn branch_waits(&self) -> Vec<Wait> {
+        self.lock().branch_waits()
+    }
+    /// Queues a wait to fire with `what` at the next sweep (a branch moved).
+    pub fn fire_wait(&self, id: &str, what: &str) {
+        self.lock().fire_wait(id, what)
     }
     /// A task's newest activity lines, newest first (`None`: no such task).
     pub fn activity(&self, id: &str) -> Option<Vec<Activity>> {
