@@ -650,26 +650,28 @@ impl People {
                 ..AgentRef::default()
             };
         }
-        if key == self.user {
-            return AgentRef {
-                key: key.into(),
-                name: "You".into(),
-                status: "person".into(),
-                live: true,
-                where_: "This PC".into(),
-                ..AgentRef::default()
+        if key == self.user || self.is_owner(key) {
+            // The person carries the device they wrote from, so their face
+            // is a user icon in that device's colour (card #108).
+            let dev = if key == self.user {
+                self.self_id.as_str()
+            } else {
+                key.strip_prefix(irori_identity::USER_KEY_PREFIX)
+                    .unwrap_or(key)
             };
-        }
-        if self.is_owner(key) {
-            let dev = key
-                .strip_prefix(irori_identity::USER_KEY_PREFIX)
-                .unwrap_or(key);
             return AgentRef {
                 key: key.into(),
                 name: "You".into(),
                 status: "person".into(),
                 live: true,
                 where_: self.where_(dev),
+                device: self.chip(dev),
+                color: if self.paired {
+                    self.colors.get(dev).cloned().unwrap_or_default()
+                } else {
+                    String::new()
+                },
+                device_id: dev.to_string(),
                 ..AgentRef::default()
             };
         }

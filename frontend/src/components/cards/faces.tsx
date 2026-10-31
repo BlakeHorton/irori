@@ -1,6 +1,6 @@
 import { minidenticon } from "minidenticons"
 import { AgentHover } from "@/components/cards/agent-hover"
-import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarBadge } from "@/components/ui/avatar"
 import { deviceVar, displayName, type AgentRef } from "@/lib/cards"
 import { cn } from "@/lib/utils"
 
@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils"
 // identicon drawn from the agent's key, so an agent keeps its face for
 // as long as it lives. A working face wears its device's colour once there
 // are two devices (card #22), so the colour says which device it is on;
-// with one device it is blue. A watcher is grey, the person is a violet
-// "you". A live working agent gets the green dot; a gone one, or one on
+// with one device it is blue. A watcher is grey; the person is a user
+// icon in their device's colour (card #108). A live working agent gets the green dot; a gone one, or one on
 // an offline device, is faded; a contested lease rings it amber
 // (docs/design/v0.4-devices.md §9). Hovering an agent's face shows its
 // hover card (card #104): name, device, and its cards; noHover leaves it
@@ -29,7 +29,7 @@ export function Face({
 }) {
   const person = who.status === "person"
   const gone = who.status === "gone"
-  const tint = !person && !watching ? deviceVar(who.color) : ""
+  const tint = !watching ? deviceVar(who.color) : ""
   const name = displayName(who)
   const title = [
     name,
@@ -55,9 +55,17 @@ export function Face({
       aria-label={title}
     >
       {person ? (
-        <AvatarFallback className="rounded-none bg-person-surface font-sans text-[10px] font-semibold text-person">
-          you
-        </AvatarFallback>
+        // The person is a user icon in the colour of the device they wrote
+        // from (card #108), blue with one device, as an agent's face is.
+        <span
+          className={cn(
+            "flex size-full items-center justify-center",
+            watching ? "text-muted-foreground/70" : "text-primary"
+          )}
+          style={tint ? { color: tint } : undefined}
+        >
+          <Pixels cells={personCells} />
+        </span>
       ) : (
         <span
           className={cn(
@@ -108,9 +116,24 @@ function cells(seed: string): [number, number][] {
   return c!
 }
 
-// Identicon draws the 5x5 pattern in currentColor at 4px a square, so it
-// stays crisp at 20px.
+// personCells are the person's face: a pixel user (head over shoulders),
+// drawn like an agent's identicon so it sits square among them (card #108).
+// prettier-ignore
+const personCells: [number, number][] = [
+               [1, 0], [2, 0], [3, 0],
+               [1, 1], [2, 1], [3, 1],
+               [1, 3], [2, 3], [3, 3],
+  [0, 4], [1, 4], [2, 4], [3, 4], [4, 4],
+]
+
+// Identicon draws the seed's 5x5 pattern.
 function Identicon({ seed }: { seed: string }) {
+  return <Pixels cells={cells(seed)} />
+}
+
+// Pixels draws a 5x5 pattern in currentColor at 4px a square, so it
+// stays crisp at 20px.
+function Pixels({ cells }: { cells: [number, number][] }) {
   return (
     <svg
       viewBox="0 0 5 5"
@@ -119,7 +142,7 @@ function Identicon({ seed }: { seed: string }) {
       shapeRendering="crispEdges"
       aria-hidden
     >
-      {cells(seed).map(([x, y]) => (
+      {cells.map(([x, y]) => (
         <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} />
       ))}
     </svg>

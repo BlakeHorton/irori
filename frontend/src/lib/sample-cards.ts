@@ -69,6 +69,8 @@ export const sampleYou = AgentRef({
   status: "person",
   live: true,
   where: "This PC",
+  deviceId: dev,
+  color: "teal",
 })
 
 // sampleHolder mirrors cards_service.go's holderLine: the holder that took
