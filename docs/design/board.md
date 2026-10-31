@@ -92,6 +92,13 @@ The notice wakes the assignee when the roster shows it idle. A busy, offline or 
 - **The card comes back to someone.** When nobody is left on it, a working card goes back to open (`task.status submitted`, by Irori), and a blocked one stays blocked. Its creator hears at its next turn (`returned` notice) when that is an agent still around. Otherwise (the person made it, or the creator is gone too) `person` is set on the row, and every desktop device shows a "Nobody is on ..." notification (`returned:<taskId>`), cleared once anyone is on the card. The fold keeps `Task.Returned` until then, and the tile says who went away.
 - **Stale.** A working card with no activity for two hours and nobody busy on it shows a "Stale" chip. It is derived in the cards service, never written.
 
+*Card #110. garnet held #82 for hours: its session still ran, so presence kept it idle, but it read none of its wakes, and Irori kept handing it work. linden's #81 stayed held across Core restarts.*
+
+- **Not answering.** An idle session that a wake item has waited on, unread, for `NOT_ANSWERING_AFTER` (5 minutes, `Inbox::unanswered_since`: queued or delivered and not engaged, timed from when it began to wait, so re-sent wakes don't reset it), and that has done nothing since, shows as not answering: roster status `unresponsive`. The Core looks on its 5 s coord sweep; presence's status hook sets it, so it rides `agent.status` rows to other devices and the window ("isn't answering"). It clears as soon as the session acts. A busy session is never marked: it takes its wakes when its turn ends.
+- **What follows.** It gets no new cards or asks (only idle agents do), and a card or ask handed to it moves on as if it went away. Irori comments once on each card it holds ("garnet isn't answering ..."), and tells the card's poster when that's another live agent. For its cards it counts as away: any agent can `board_join` one after `GoneGrace`, and after `HolderGrace` they go back on the Board as above ("stopped answering").
+- **Across restarts.** The gone clock was memory only, so each Core restart started it over. Coord now reads this device's `agent.gone` rows (undone by a later `agent.seen`) at replay, and a holder that went before the restart counts as away since then.
+- **Never handed out.** An unheld card posted on this device that never had a hand-out (posted before 0.7.1, or put back on the Board by the sweep) goes out like a new one.
+
 ## Blocker threads
 
 A blocker is a small thread of its own. The person's answer doesn't resolve it: it goes to the agent that raised it, and the item stays open until someone resolves it. Anyone may resolve (decision 19).
