@@ -10,7 +10,7 @@ The highest-value fixes are small: an assignment that wakes an idle assignee, a 
 
 ## Settled since: who takes a card
 
-Stephen, 10-31, after seeing Lead hold #77-#80 at once: put the task up and see if someone claims it; an agent picks up another card only when it becomes free. This answers part of case G and leans decision 6 toward (a). Card #81 changes Irori's instructions to agents and how an unheld card reaches free agents.
+Stephen, 10-31, after seeing Lead hold #77-#80 at once: put the task up and see if someone claims it; an agent picks up another card only when it becomes free. This answers part of case G and leans decision 6 toward (a). Card #82 changes Irori's instructions to agents and how an unheld card reaches free agents.
 
 ## 1. Real cases
 
