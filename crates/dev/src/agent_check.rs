@@ -426,7 +426,7 @@ fn ask(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
         Ok(a) => a,
         Err(e) => return (Err(e), None),
     };
-    let id = match h.window.ask(ASK_TEXT, "", true, &[], "") {
+    let id = match h.window.ask(ASK_TEXT, "", true, &[], "", &[]) {
         Ok(r) => r.task.id,
         Err(e) => return (Err(format!("the person's ask: {e}")), Some(a.log.clone())),
     };
@@ -456,7 +456,7 @@ fn needs_person(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>)
         Ok(a) => a,
         Err(e) => return (Err(e), None),
     };
-    if let Err(e) = h.window.ask(LICENSE_ASK, "", true, &[], "") {
+    if let Err(e) = h.window.ask(LICENSE_ASK, "", true, &[], "", &[]) {
         return (Err(format!("the person's ask: {e}")), Some(a.log.clone()));
     }
     let r = play(o, h, &mut a, |h, a| {
@@ -509,7 +509,7 @@ fn purpose(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
         }
     }
     let before: Vec<String> = S3_STEPS.iter().map(|s| s.to_string()).collect();
-    if let Err(e) = h.window.comment(&t.id, S3_COMMENT, "wake") {
+    if let Err(e) = h.window.comment(&t.id, S3_COMMENT, "wake", &[]) {
         return (Err(format!("the person's comment: {e}")), log);
     }
     let id = t.id.clone();
