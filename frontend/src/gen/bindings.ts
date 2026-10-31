@@ -392,6 +392,11 @@ export type CardDetail = {
 	threadEarlier: number,
 	historyTrimmed: boolean,
 	subtaskList: CardSubtask[],
+	/**
+	 *  Waits (card #87): agents waiting on this card, and what this card's
+	 *  holders wait on.
+	 */
+	waits: CardWait[],
 	onBoard?: CardBoard | null,
 	sharedTo?: SharedCopy | null,
 } & CardSummary;
@@ -535,6 +540,18 @@ export type CardThreadItem = {
 	attachments?: FileRef[],
 	unheard?: boolean,
 	pending?: string[],
+};
+
+/**
+ *  One wait shown on a card page (card #87): `who` waits; `on_this` when
+ *  it waits on this card, else it is one of this card's holders waiting on
+ *  something else (`text`: "#12 until done", "branch main moves").
+ */
+export type CardWait = {
+	id: string,
+	who: AgentRef,
+	text: string,
+	onThis: boolean,
 };
 
 /**  presence.Change. */

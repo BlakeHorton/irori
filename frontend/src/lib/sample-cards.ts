@@ -17,6 +17,7 @@ import {
   CardResolution,
   CardSubtask,
   CardThreadItem,
+  CardWait,
   Holding,
 } from "./models"
 import {
@@ -207,6 +208,12 @@ export function sampleCards(now: Date): CardDetail[] {
       goal: "Tagged release with final notes and an installer on the release page.",
       working: [otter],
       watching: [heron],
+      // Waits (card #87): wren is woken when this card is done; otter, on
+      // it, waits for main to move.
+      waits: [
+        CardWait({ id: "sample-wait-1", who: wren, text: "until done", onThis: true }),
+        CardWait({ id: "sample-wait-2", who: otter, text: "branch main moves" }),
+      ],
       updatedAt: at(18),
       steps: steps([
         ["Boat batch merged (#206, #207)", true],

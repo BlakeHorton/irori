@@ -432,12 +432,27 @@ pub struct CardDetail {
     pub thread_earlier: i64,
     pub history_trimmed: bool,
     pub subtask_list: Vec<CardSubtask>,
+    /// Waits (card #87): agents waiting on this card, and what this card's
+    /// holders wait on.
+    pub waits: Vec<CardWait>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub on_board: Option<CardBoard>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub shared_to: Option<SharedCopy>,
+}
+
+/// One wait shown on a card page (card #87): `who` waits; `on_this` when
+/// it waits on this card, else it is one of this card's holders waiting on
+/// something else (`text`: "#12 until done", "branch main moves").
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CardWait {
+    pub id: String,
+    pub who: AgentRef,
+    pub text: String,
+    pub on_this: bool,
 }
 
 /// One page of the Done tab.
@@ -1083,6 +1098,25 @@ impl Window {
             });
         }
         let refr = |id: &str| co.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
+        if !co.is_board() {
+            for w in co.waits("") {
+                let on_this = w.task_id == t.id;
+                if !on_this && (!t.holders.contains(&w.by) || coord::is_terminal(&t.state)) {
+                    continue;
+                }
+                let text = if on_this {
+                    format!("until {}", coord::until_text(&w.until))
+                } else {
+                    coord::wait_line(&w, &refr(&w.task_id))
+                };
+                d.waits.push(CardWait {
+                    id: w.id.clone(),
+                    who: p.ref_(&w.by),
+                    text,
+                    on_this,
+                });
+            }
+        }
         d.summary.ask = card_ask(&t, &p, Some(&refr));
         let (thread, mut by_blocker, earlier) = build_thread(&d.comments, &acts, &t, &p);
         d.thread = thread;

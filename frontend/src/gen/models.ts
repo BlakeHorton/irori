@@ -37,6 +37,7 @@ export type CardReview = B.CardReview
 export type CardSubtask = B.CardSubtask
 export type CardSummary = B.CardSummary
 export type CardThreadItem = B.CardThreadItem
+export type CardWait = B.CardWait
 export type Change = B.Change
 export type ChangeKind = B.ChangeKind
 export type Comment = B.Comment
@@ -183,7 +184,7 @@ export function CardBoard(p: Partial<B.CardBoard> = {}): B.CardBoard {
 
 /** CardDetail with Go's zero values for every field left out. */
 export function CardDetail(p: Partial<B.CardDetail> = {}): B.CardDetail {
-  return { ...CardSummary(), "goal": "", "doneWhen": "", "note": "", "steps": [], "blockers": [], "reviews": [], "prs": [], "links": [], "recent": [], "comments": [], "thread": [], "threadEarlier": 0, "historyTrimmed": false, "subtaskList": [], ...p } as B.CardDetail
+  return { ...CardSummary(), "goal": "", "doneWhen": "", "note": "", "steps": [], "blockers": [], "reviews": [], "prs": [], "links": [], "recent": [], "comments": [], "thread": [], "threadEarlier": 0, "historyTrimmed": false, "subtaskList": [], "waits": [], ...p } as B.CardDetail
 }
 
 /** CardHolder with Go's zero values for every field left out. */
@@ -239,6 +240,11 @@ export function CardSummary(p: Partial<B.CardSummary> = {}): B.CardSummary {
 /** CardThreadItem with Go's zero values for every field left out. */
 export function CardThreadItem(p: Partial<B.CardThreadItem> = {}): B.CardThreadItem {
   return { "id": "", "kind": "", "at": "", "who": AgentRef(), "text": "", ...p } as B.CardThreadItem
+}
+
+/** CardWait with Go's zero values for every field left out. */
+export function CardWait(p: Partial<B.CardWait> = {}): B.CardWait {
+  return { "id": "", "who": AgentRef(), "text": "", "onThis": false, ...p } as B.CardWait
 }
 
 /** Change with Go's zero values for every field left out. */

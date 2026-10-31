@@ -37,6 +37,7 @@ import {
   type CardReview,
   type CardSubtask,
   type CardSummary,
+  type CardWait,
   type Step,
   type Told,
 } from "@/lib/cards"
@@ -1479,10 +1480,14 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
     ...detail.working.map((w): [AgentRef, "working"] => [w, "working"]),
     ...detail.watching.map((w): [AgentRef, "watching"] => [w, "watching"]),
   ]
-  if (!rows.length)
+  const waits = detail.waits ?? []
+  if (!rows.length && !waits.length)
     return <Note>Nobody yet. An agent that takes the card shows here.</Note>
   return (
     <div className="grid gap-1.5">
+      {!rows.length && (
+        <Note>Nobody yet. An agent that takes the card shows here.</Note>
+      )}
       {rows.map(([w, role]) => (
         <div
           key={`${role}-${w.key}`}
@@ -1542,6 +1547,30 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
           )}
         </div>
       ))}
+      {waits.map((w) => (
+        <WaitRow key={w.id} wait={w} />
+      ))}
+    </div>
+  )
+}
+
+// WaitRow is one wait on the card page (card #87): an agent waiting on
+// this card ("waits until done"), or a holder of this card waiting on
+// another card or a branch. Irori wakes the agent once when it fires.
+function WaitRow({ wait }: { wait: CardWait }) {
+  return (
+    <div
+      className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 text-[13px]"
+      title="Irori wakes this agent once when it happens"
+    >
+      <Face who={wait.who} watching noDot />
+      <span className="min-w-0 truncate">
+        <span className="text-ink">{name(wait.who)}</span>{" "}
+        <small className="text-xs text-muted-foreground">
+          · {wait.onThis ? `waits ${wait.text}` : `waiting on ${wait.text}`}
+        </small>
+      </span>
+      <span className="text-xs text-muted-foreground">waiting</span>
     </div>
   )
 }
