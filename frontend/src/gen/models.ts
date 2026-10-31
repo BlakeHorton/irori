@@ -20,6 +20,7 @@ export type BoardMember = B.BoardMember
 export type BoardReviewer = B.BoardReviewer
 export type BoardSettings = B.BoardSettings
 export type BoardSummary = B.BoardSummary
+export type CanvasPos = B.CanvasPos
 export type CaptureChange = B.CaptureChange
 export type CardActivity = B.CardActivity
 export type CardAsk = B.CardAsk
@@ -160,6 +161,11 @@ export function BoardSettings(p: Partial<B.BoardSettings> = {}): B.BoardSettings
 /** BoardSummary with Go's zero values for every field left out. */
 export function BoardSummary(p: Partial<B.BoardSummary> = {}): B.BoardSummary {
   return { "boardId": "", "name": "", "tag": "", "people": [], "owner": false, "devices": 0, "cards": 0, "ready": false, ...p } as B.BoardSummary
+}
+
+/** CanvasPos with Go's zero values for every field left out. */
+export function CanvasPos(p: Partial<B.CanvasPos> = {}): B.CanvasPos {
+  return { "x": 0, "y": 0, ...p } as B.CanvasPos
 }
 
 /** CaptureChange with Go's zero values for every field left out. */

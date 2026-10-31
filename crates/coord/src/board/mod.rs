@@ -22,6 +22,7 @@ mod fold;
 mod links;
 mod mention;
 mod mirror;
+mod placed;
 mod resource;
 mod review;
 pub mod rows;
@@ -54,6 +55,7 @@ pub use fold::{
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
 pub use mention::{mention_into, without_mentioned};
 pub use mirror::RELEASE_REQUEST;
+pub use placed::MAX_PLACE;
 pub use resource::{
     RESOURCE_NAMED, RESOURCE_PATH, RESOURCE_PORT, Resource, check_repo_key, normalize_glob,
     normalize_resource, overlaps, parse_resource,
@@ -452,6 +454,14 @@ impl Coord {
     }
     pub fn unwatch(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().watch(by, id, false)
+    }
+    /// Records where a card was dropped on the Board's canvas (card #93).
+    pub fn place(&self, by: &str, id: &str, x: i64, y: i64) -> Result<()> {
+        self.lock().place(by, id, x, y)
+    }
+    /// Every placed card's canvas position, by card id.
+    pub fn positions(&self) -> std::collections::HashMap<String, (i64, i64)> {
+        self.lock().positions()
     }
     /// Registers a wait (card #87): `by` is woken once when it fires.
     pub fn create_wait(&self, by: &str, spec: WaitSpec) -> Result<Wait> {

@@ -11,7 +11,17 @@ the Go updater takes it because `0.6.0` is newer than `0.5.x`.
 ## Cut a release
 
 1. Run `sh scripts/check.sh` on the PC (and on the Mac when macOS code
-   changed).
+   changed), then `sh scripts/agent-check.sh` on the Mac. The second is
+   what a real Claude agent does with Irori's tools: on a throwaway
+   `IRORI_HOME`, it takes an ask and closes it, raises a blocker when only
+   the person can choose, and renames a card whose purpose a comment
+   changed. It prints PASS or FAIL per scenario and exits non-zero on any
+   failure. It runs real Claude sessions (API spend, a few minutes), which
+   is why check.sh leaves it out. A FAIL means the tool descriptions or
+   wake text no longer lead an agent to do what they say: fix the
+   wording, not the check. An agent is not deterministic, so rerun a
+   FAIL (`--only <n>`); one that comes back on a rerun is a real gap,
+   and the transcript path it prints shows what the agent did instead.
 2. Tag and push: `git tag v0.6.0 && git push origin v0.6.0`.
 3. PC, PowerShell:
 

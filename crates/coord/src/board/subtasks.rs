@@ -451,6 +451,7 @@ impl Fold {
             return;
         }
         self.deleted.insert(p.task_id.clone());
+        self.placed.remove(&p.task_id);
         if self.tasks.remove(&p.task_id).is_some() {
             self.order.remove(&p.task_id);
             self.pins.remove(&p.task_id);

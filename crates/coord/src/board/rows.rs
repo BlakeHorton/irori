@@ -486,3 +486,16 @@ crate::go_struct! {
         pub at: GoTime = "at",
     }
 }
+
+crate::go_struct! {
+    /// task.placed (card #93): where a card sits on the Board's canvas,
+    /// in canvas pixels; the newest row wins.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskPlacedRow {
+        pub task_id: String = "taskId",
+        pub x: i64 = "x",
+        pub y: i64 = "y",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}

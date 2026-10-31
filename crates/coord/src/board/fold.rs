@@ -204,6 +204,8 @@ pub struct Fold {
     /// happened, and the ids fired or canceled (a late wait.created for
     /// one of them is not folded back in).
     pub(crate) waits: BTreeMap<String, Wait>,
+    /// Card positions on the canvas (card #93), by card id.
+    pub(crate) placed: HashMap<String, (i64, i64)>,
     pub(crate) waitq: Vec<(String, String)>,
     pub(crate) waits_done: HashSet<String>,
     /// The state each open task wait last saw, so the sweep catches a
@@ -313,6 +315,7 @@ impl Fold {
             activity: HashMap::new(),
             watchq: BTreeMap::new(),
             waits: BTreeMap::new(),
+            placed: HashMap::new(),
             waitq: Vec::new(),
             waits_done: HashSet::new(),
             wait_seen: HashMap::new(),
@@ -696,6 +699,7 @@ impl Fold {
             | kinds::TASK_STEP
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
+            kinds::TASK_PLACED => self.fold_placed(ev),
             kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
             kinds::TASK_PARENT => {

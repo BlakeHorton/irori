@@ -139,6 +139,7 @@ export const BoardService = {
   Delete: (id: string) => done(commands.boardDelete(id)),
   Pin: (id: string, pinned: boolean) => done(commands.boardPin(id, pinned)),
   MovePin: (id: string, before: string) => done(commands.boardMovePin(id, before)),
+  Place: (id: string, x: number, y: number) => done(commands.boardPlace(id, x, y)),
   Reopen: (id: string) => call(commands.boardReopen(id)),
 }
 

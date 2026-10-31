@@ -32,6 +32,7 @@ import { previewFlag } from "@/lib/preview"
 import { onOpen } from "@/lib/settings"
 import { nameLookup, useGone, useHeld } from "@/lib/talk"
 import { UpdateBanner } from "@/updater"
+import { BoardCanvas, useBoardView, ViewSwitch } from "@/components/canvas/switch"
 
 // PageState is the history entry of a card's page. fromGrid: the grid is
 // the entry behind it, so Back is the browser's back.
@@ -82,6 +83,8 @@ export function App() {
     asFilter(previewFlag("filter"))
   )
   const done = useDoneCards(filter === "done")
+  // List or Canvas (card #93): the grid, or the board as a flow chart.
+  const [view, setView] = useBoardView()
   const [open, setOpen] = useState(() => cardFromHash(window.location.hash))
   // last is the card last opened, marked in the grid on the way back. In
   // the browser preview ?from=<id> sets it, to see the grid as Back leaves
@@ -331,6 +334,9 @@ export function App() {
               />
               <DeviceBar filter={active} onFilter={setFilter} devices={chips} />
               <BoardBar filter={active} onFilter={setFilter} boards={boards} />
+              <span className="ml-auto">
+                <ViewSwitch view={view} onView={setView} />
+              </span>
             </div>
             {filter === "done" ? (
               <DoneGrid
@@ -339,6 +345,8 @@ export function App() {
                 onSelect={openCard}
                 now={now}
               />
+            ) : view === "canvas" ? (
+              <BoardCanvas cards={shown} onOpen={openCard} />
             ) : shown.length ? (
               <>
                 {pinnedGroup.length > 0 && (

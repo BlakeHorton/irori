@@ -849,8 +849,9 @@ fn test_send_and_reply() {
     let cm = h.b.co.get_comment(&hid).unwrap();
     assert!(!cm.held && cm.text == secret, "released entry {cm:?}");
 
-    // To another device's agent: its host decides the hold with its own
-    // policy, so the text waits for it there too.
+    // To another device's agent: its host decides the hold, but nothing
+    // holds by default (decision 37), so the text is on the card at once
+    // (card #94) instead of waiting for that device to report back.
     let mut rc = card(KEY_R, "remote", "remote:github.com/acme/app", "");
     rc.device_id = "dev2".into();
     h.b.roster.put(rc);
@@ -859,13 +860,11 @@ fn test_send_and_reply() {
         "send",
         json!({"to": KEY_R, "text": "remote card words", "task_id": id}),
     );
-    has(
-        &out,
-        &["its text joins it once the wake policy lets it through."],
-    );
+    has(&out, &[&format!("It is on {tid}'s thread.")]);
+    has_not(&out, &["wake policy lets it through"]);
     let cm = h.b.co.get_comment(&field(&out, "message")).unwrap();
     assert!(
-        cm.held && cm.text.is_empty() && cm.to == KEY_R,
+        !cm.held && cm.text == "remote card words" && cm.to == KEY_R,
         "remote entry {cm:?}"
     );
 }
