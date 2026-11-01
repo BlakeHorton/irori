@@ -1,10 +1,10 @@
 // Pure helpers for the Irori mod: no `$`, no engine imports, so `bun test`
 // can cover them as well as `claude plugin test`.
 
-import type { AttachEvent, AttachView, Policy, ToolSpec, TrackedAppend } from '../types'
+import type { AttachEvent, AttachView, PausedCard, Policy, ToolSpec, TrackedAppend } from '../types'
 
 /** Matches .claude-plugin/plugin.json; sent to `irori attach` and shown by /irori. */
-export const MOD_VERSION = '0.4.4'
+export const MOD_VERSION = '0.5.0'
 
 export const PLUGIN = 'irori'
 export const TOOL_PREFIX = 'mcp__irori__'
@@ -266,7 +266,7 @@ export function titleToSet(
 }
 
 /** A Board card as GET /v1/board lists it: only what heldReminder reads. */
-export type BoardCard = { short?: string; title?: string; state?: string; holders?: string[] }
+export type BoardCard = { short?: string; title?: string; state?: string; holders?: string[]; paused?: boolean }
 export type BoardLists = { needsYou?: BoardCard[]; blocked?: BoardCard[]; working?: BoardCard[]; open?: BoardCard[] }
 
 /**
@@ -292,4 +292,48 @@ export function heldReminder(board: BoardLists | undefined, agentKey: string | u
     'If you need them to decide, approve or do something (sign in, give access, pick an option), raise it on the card with the irori board_block tool, one blocker per question, even when they asked you here; you can also say it here. ' +
     'Keep the card\'s steps current with board_step.'
   )
+}
+
+export type { PausedCard }
+
+/**
+ * The paused set after a deliver's `pause` and `resume` (card #207): each
+ * paused ref added once (by `from`), each resumed one dropped.
+ */
+export function applyPause(list: readonly PausedCard[], e: Pick<AttachEvent, 'pause' | 'resume' | 'from'>): PausedCard[] {
+  const resumed = new Set(e.resume ?? [])
+  const out = list.filter(c => !resumed.has(c.ref))
+  for (const ref of e.pause ?? []) {
+    if (ref && !resumed.has(ref) && !out.some(c => c.ref === ref)) out.push({ ref, by: e.from || 'The person' })
+  }
+  return out
+}
+
+/**
+ * The cards this session holds that the person paused, from GET /v1/board
+ * (card #207): rebuilt at hello, so a pause or resume missed while detached
+ * still counts. Done cards aren't paused.
+ */
+export function pausedFromBoard(board: BoardLists | undefined, agentKey: string | undefined, before: readonly PausedCard[] = []): PausedCard[] {
+  if (!board || !agentKey) return []
+  const out: PausedCard[] = []
+  for (const c of [...(board.needsYou ?? []), ...(board.blocked ?? []), ...(board.working ?? []), ...(board.open ?? [])]) {
+    if (!c.paused || !c.short || !c.holders?.includes(agentKey)) continue
+    const ref = `#${c.short}`
+    if (out.some(p => p.ref === ref)) continue
+    out.push({ ref, by: before.find(p => p.ref === ref)?.by ?? 'The person' })
+  }
+  return out
+}
+
+/**
+ * Why a tool call is refused while cards are paused (card #207), or '' to
+ * let it run. Irori's own tools always run: the agent must still answer on
+ * the card.
+ */
+export function pausedRefusal(paused: readonly PausedCard[], tool: string): string {
+  if (!paused.length || tool.startsWith(TOOL_PREFIX)) return ''
+  const refs = paused.map(c => c.ref).join(', ')
+  const by = paused[0]?.by ?? 'The person'
+  return `Not run: ${by} paused ${refs}. Your tools are off until they resume it, except Irori's own: answer ${by} on the card (board_comment) and wait.`
 }

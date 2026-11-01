@@ -31,6 +31,10 @@ import {
   takeEvents,
   titleToSet,
   heldReminder,
+  applyPause,
+  pausedFromBoard,
+  pausedRefusal,
+  type PausedCard,
   type BoardLists,
   MAX_TITLES,
   toolArgs,
@@ -46,6 +50,8 @@ const wakesAtom = atom({ plugin: 'irori', key: 'wakes' } as const, [])
 const appendsAtom = atom({ plugin: 'irori', key: 'appends' } as const, [])
 /** Titles this mod set on the session (card #21), newest last. */
 const titlesAtom = atom({ plugin: 'irori', key: 'titles' } as const, [] as string[])
+/** Cards the person paused that this session holds (card #207). */
+const pausedAtom = atom({ plugin: 'irori', key: 'paused' } as const, [] as PausedCard[])
 
 // Reset on every (re)load; a reload also ends the running child.
 let pluginOptions: PluginOptions = {}
@@ -56,6 +62,8 @@ let restartTimer: { cancel: () => void } | null = null
 let ended = false
 // Appends wait here while a main-loop response streams (card #197).
 const appendGate = new AppendGate()
+/** The main loop's running turn (card #207): what a stop cuts. */
+let runningTurn: string | null = null
 /** From the newest hello: where control and tool calls go, and who they act as. */
 let api: { url: string; token: string } | null = null
 let attachSecret = ''
@@ -216,6 +224,8 @@ async function onDeliver($: EngineInterface, e: AttachEvent) {
     ended: false,
   }
   await update($, wakesAtom, list => [...list.filter(w => w.token !== token), wake].slice(-MAX_WAKES))
+  if (e.pause?.length || e.resume?.length) await update($, pausedAtom, list => applyPause(list, e))
+  if (e.stop) await cutRunningTurn($)
   if (!e.reminder) {
     try {
       $.ui.toast(`irori: message from ${e.from || 'another agent'}`)
@@ -258,6 +268,25 @@ async function onDeliver($: EngineInterface, e: AttachEvent) {
     const outcome = await submitted
     if (outcome.failed) await appendInstead($, token, prompt, outcome.err)
   }
+}
+
+/**
+ * The person's stop (card #207): cancels the main loop's running turn and
+ * its tools, so the stop's prompt, submitted next, starts at once. The cut
+ * turn's wakes are reported ended, so the Core's gate opens. An idle
+ * session has nothing to cut.
+ */
+async function cutRunningTurn($: EngineInterface) {
+  const turnId = runningTurn
+  if (!turnId) return
+  try {
+    await $.turn.abort({ turnId })
+  } catch (err) {
+    // Not the running turn any more (it just ended): nothing to cut.
+    $.ui.log(`irori: stop: ${errText(err)}`, { to: 'debug' })
+  }
+  if (runningTurn === turnId) runningTurn = null
+  await markEnded($, turnId)
 }
 
 /**
@@ -386,6 +415,15 @@ async function onHello($: EngineInterface, e: AttachEvent) {
     agentKey: e.agentKey,
   })
   void loadTools($).catch(() => {})
+  void refreshPaused($, e.agentKey).catch(() => {})
+}
+
+/** Rebuilds the paused set from the board at hello (card #207). */
+async function refreshPaused($: EngineInterface, agentKey: string | undefined) {
+  const board = await callCore($, 'GET', '/v1/board?done=1')
+  if (!board.ok) return
+  const before = await read($, pausedAtom)
+  await update($, pausedAtom, () => pausedFromBoard(board.body as BoardLists, agentKey, before))
 }
 
 async function handleEvent($: EngineInterface, e: AttachEvent): Promise<'superseded' | void> {
@@ -652,6 +690,15 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // While the person has a card paused (card #207), every tool but Irori's
+  // own is refused with why; Irori's go on to the hook below.
+  on('tool.call', async ($, e, next) => {
+    const tool = String((e as unknown as { tool?: unknown }).tool ?? '')
+    const why = pausedRefusal(await read($, pausedAtom), tool)
+    if (why) return { result: why }
+    return next(e)
+  })
+
   // Every Irori tool, whichever names the Core listed (registered late, after hello).
   on('tool.call', { tool: /^mcp__irori__/ }, async ($, e, next) => ({
     result: await callTool($, e as unknown as Record<string, unknown>, next.budget.remainingMs),
@@ -662,6 +709,7 @@ export const register: Register = (on, options) => {
     // Subagent turns can quote a token; only the main loop engages a wake,
     // and only the main loop's turns read appends.
     if (e.agentId === undefined) {
+      runningTurn = e.turnId
       void markEngaged($, e.text, e.turnId).catch(() => {})
       void markAppendsEngaged($, e.turnId).catch(() => {})
     }
@@ -682,7 +730,10 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
-    if (e.agentId === undefined) void markEnded($, e.turnId).catch(() => {})
+    if (e.agentId === undefined) {
+      if (runningTurn === e.turnId) runningTurn = null
+      void markEnded($, e.turnId).catch(() => {})
+    }
     return done
   })
 

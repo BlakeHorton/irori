@@ -4,6 +4,9 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   AppendGate,
+  applyPause,
+  pausedFromBoard,
+  pausedRefusal,
   appendArgs,
   appendsToEngage,
   bandText,
@@ -220,5 +223,40 @@ describe('AppendGate (card #197)', () => {
     expect(g.streaming).toBe(false)
     g.leave()
     expect(g.streaming).toBe(false)
+  })
+})
+
+describe('Pause (card #207)', () => {
+  const me = 'dev1/aaaa'
+  test('applyPause adds each paused card once and drops resumed ones', () => {
+    let list = applyPause([], { pause: ['#7'], from: 'Stephen' })
+    list = applyPause(list, { pause: ['#7', '#9'], from: 'Stephen' })
+    expect(list).toEqual([
+      { ref: '#7', by: 'Stephen' },
+      { ref: '#9', by: 'Stephen' },
+    ])
+    expect(applyPause(list, { resume: ['#7'] })).toEqual([{ ref: '#9', by: 'Stephen' }])
+    expect(applyPause(list, {})).toEqual(list)
+  })
+  test('pausedRefusal refuses other tools, never Irori\'s', () => {
+    const paused = [{ ref: '#7', by: 'Stephen' }]
+    expect(pausedRefusal([], 'Bash')).toBe('')
+    expect(pausedRefusal(paused, 'mcp__irori__board_comment')).toBe('')
+    const why = pausedRefusal(paused, 'Bash')
+    expect(why).toContain('Stephen paused #7')
+    expect(why).toContain('board_comment')
+  })
+  test('pausedFromBoard keeps the paused cards this session holds', () => {
+    const board = {
+      working: [
+        { short: '7', paused: true, holders: [me] },
+        { short: '8', paused: true, holders: ['dev1/other'] },
+        { short: '9', holders: [me] },
+      ],
+      blocked: [{ short: '7', paused: true, holders: [me] }],
+    }
+    expect(pausedFromBoard(board, me, [{ ref: '#7', by: 'Stephen' }])).toEqual([{ ref: '#7', by: 'Stephen' }])
+    expect(pausedFromBoard(board, me)).toEqual([{ ref: '#7', by: 'The person' }])
+    expect(pausedFromBoard(undefined, me)).toEqual([])
   })
 })

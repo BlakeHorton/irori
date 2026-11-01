@@ -24,6 +24,12 @@ export type AttachEvent = {
   mode?: string
   /** Delivery ids named in the prompt's last line instead of in full (part of deliveryIds). */
   overflow?: string[]
+  /** The person's stop (card #207): cut the running turn, then submit. */
+  stop?: boolean
+  /** Cards the person paused (card #207): refuse every non-Irori tool until resumed. */
+  pause?: string[]
+  /** Cards the person resumed (card #207). */
+  resume?: string[]
   // held / moved
   deliveryId?: string
   why?: string
@@ -94,6 +100,9 @@ export type TrackedAppend = {
   engaged: boolean
 }
 
+/** A card the person paused (card #207), and who paused it. */
+export type PausedCard = { ref: string; by: string }
+
 declare module 'claude-code' {
   interface PluginState {
     irori: {
@@ -104,6 +113,8 @@ declare module 'claude-code' {
       appends: TrackedAppend[]
       /** Titles this mod set on the session (card #21), newest last. */
       titles: string[]
+      /** Cards the person paused that this session holds (card #207). */
+      paused: PausedCard[]
     }
   }
 }
