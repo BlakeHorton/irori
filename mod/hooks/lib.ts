@@ -4,7 +4,7 @@
 import type { AttachEvent, AttachView, Policy, ToolSpec, TrackedAppend } from '../types'
 
 /** Matches .claude-plugin/plugin.json; sent to `irori attach` and shown by /irori. */
-export const MOD_VERSION = '0.4.3'
+export const MOD_VERSION = '0.4.4'
 
 export const PLUGIN = 'irori'
 export const TOOL_PREFIX = 'mcp__irori__'
@@ -55,6 +55,36 @@ export function takeEvents(buffer: string): { events: AttachEvent[]; rest: strin
  */
 export function appendArgs(prompt: string) {
   return { message: { type: 'user' as const, content: [{ type: 'text' as const, text: prompt }] } }
+}
+
+/**
+ * Holds next-turn appends while a main-loop model request streams (card
+ * #197). A row appended mid-response lands between a server tool's
+ * `server_tool_use` (the advisor's) and its result, and the rebuilt history
+ * then splits that message: every later request fails with a 400. Appends
+ * that arrive during a step wait for it to end, in the order they came.
+ */
+export class AppendGate<T> {
+  private steps = 0
+  private held: T[] = []
+  /** A main-loop step started streaming. */
+  enter() {
+    this.steps++
+  }
+  /** A step ended: what was held, to append now, once no step streams. */
+  leave(): T[] {
+    this.steps = Math.max(0, this.steps - 1)
+    if (this.steps > 0) return []
+    const out = this.held
+    this.held = []
+    return out
+  }
+  /** Holds the item while a step streams (true); false when it may go now. */
+  hold(item: T): boolean {
+    if (this.steps === 0) return false
+    this.held.push(item)
+    return true
+  }
 }
 
 /**

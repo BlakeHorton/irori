@@ -3,6 +3,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  AppendGate,
   appendArgs,
   appendsToEngage,
   bandText,
@@ -193,5 +194,30 @@ describe('heldReminder', () => {
     expect(heldReminder({ working: [{ short: '1', holders: ['x'] }] }, me)).toBe('')
     expect(heldReminder(undefined, me)).toBe('')
     expect(heldReminder({ working: [{ short: '1', holders: [me] }] }, undefined)).toBe('')
+  })
+})
+
+describe('AppendGate (card #197)', () => {
+  test('passes appends when no step streams', () => {
+    const g = new AppendGate<string>()
+    expect(g.hold('a')).toBe(false)
+    expect(g.leave()).toEqual([])
+  })
+  test('holds appends during a step and releases them in order at its end', () => {
+    const g = new AppendGate<string>()
+    g.enter()
+    expect(g.hold('a')).toBe(true)
+    expect(g.hold('b')).toBe(true)
+    expect(g.leave()).toEqual(['a', 'b'])
+    expect(g.hold('c')).toBe(false)
+  })
+  test('overlapping steps release only when the last ends', () => {
+    const g = new AppendGate<string>()
+    g.enter()
+    g.enter()
+    g.hold('a')
+    expect(g.leave()).toEqual([])
+    expect(g.leave()).toEqual(['a'])
+    expect(g.leave()).toEqual([])
   })
 })

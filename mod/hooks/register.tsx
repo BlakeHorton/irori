@@ -11,6 +11,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type { AttachEvent, AttachView, Policy, ToolSpec, TrackedAppend, TrackedWake } from '../types'
 import {
+  AppendGate,
   appendArgs,
   appendsToEngage,
   BACKOFF_MIN_MS,
@@ -53,6 +54,8 @@ let stopChild: (() => void) | null = null
 let backoffMs = BACKOFF_MIN_MS
 let restartTimer: { cancel: () => void } | null = null
 let ended = false
+// Appends wait here while a main-loop response streams (card #197).
+const appendGate = new AppendGate<AttachEvent>()
 /** From the newest hello: where control and tool calls go, and who they act as. */
 let api: { url: string; token: string } | null = null
 let attachSecret = ''
@@ -387,6 +390,8 @@ async function handleEvent($: EngineInterface, e: AttachEvent): Promise<'superse
       })
       return
     case 'append':
+      // Never mid-response (card #197): held until the main step ends.
+      if (appendGate.hold(e)) return
       void onAppend($, e).catch(() => {})
       return
     case 'held':
@@ -649,6 +654,23 @@ export const register: Register = (on, options) => {
       void markAppendsEngaged($, e.turnId).catch(() => {})
     }
     return started
+  })
+
+  // A main-loop model request is streaming: appends wait for its end
+  // (card #197), then go in order, after the whole response is kept.
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId !== undefined) return yield* next(e)
+    appendGate.enter()
+    try {
+      return yield* next(e)
+    } finally {
+      const held = appendGate.leave()
+      if (held.length) {
+        void (async () => {
+          for (const a of held) await onAppend($, a).catch(() => {})
+        })()
+      }
+    }
   })
 
   on('turn.complete', async ($, e, next) => {

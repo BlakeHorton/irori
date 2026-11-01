@@ -433,6 +433,44 @@ describe('next-turn appends', () => {
     expect(posts(w.calls, '/v1/deliveries/turn-ended')).toEqual([])
   })
 
+  test('an append that comes while a main response streams waits for it to end (card #197)', OPTIONS, async ($, on) => {
+    const w = world(on)
+    let release: () => void = () => {}
+    const gate = new Promise<void>(r => (release = r))
+    on('turn.step', async function* (_$, e) {
+      await gate
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null } as never
+    })
+    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
+    await until(() => w.children.length === 1, 'spawn')
+    w.children[0]!.write(line(hello))
+    await pause(20)
+
+    // A subagent's step holds nothing.
+    let subDone = false
+    void (async () => {
+      for await (const _ of $.turn.step({ turnId: 'turn-s', index: 0, model: 'm', messageCount: 1, agentId: 'agent-1' } as never)) void _
+      subDone = true
+    })()
+    // The main step streams (an advisor call in flight) when the append comes.
+    let done = false
+    void (async () => {
+      for await (const _ of $.turn.step({ turnId: 'turn-a', index: 0, model: 'm', messageCount: 1 } as never)) void _
+      done = true
+    })()
+    await pause(20)
+    w.children[0]!.write(line(appendEvent))
+    await pause(100)
+    expect(w.appended).toEqual([])
+    expect(posts(w.calls, '/v1/deliveries/delivered')).toEqual([])
+
+    release()
+    await until(() => done && subDone, 'steps ended')
+    await until(() => w.appended.length === 1, 'appended after the step')
+    expect(w.appended).toEqual([{ type: 'user', text: appendPrompt, agentId: undefined }])
+    await until(() => posts(w.calls, '/v1/deliveries/delivered').length === 1, 'delivered')
+  })
+
   test('an append the host refuses is forgotten, and appended again when re-sent', OPTIONS, async ($, on) => {
     const outcomes: Array<'deny' | undefined> = ['deny', 'deny', undefined]
     const w = world(on, { appendFails: () => outcomes.shift() })
