@@ -106,6 +106,10 @@ pub(crate) struct Fold {
     pub ledger: ledger::Ledger,
     pub repo_roots: HashMap<String, RepoSeen>,
     pub root_users: HashMap<String, HashSet<String>>,
+    /// Each session's latest working directory (card #137): where its
+    /// last command ran (after any `cd`) or its last edited file sits.
+    /// Live only: a restart learns it again from the next one.
+    pub session_dirs: HashMap<String, String>,
     pub commit_map: HashMap<String, CommitRec>,
     /// The raw decision.recorded payloads, oldest first.
     pub decisions: Vec<Vec<u8>>,

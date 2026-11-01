@@ -1652,6 +1652,21 @@ impl Core {
     pub fn person(&self) -> irori_identity::Person {
         self.s.ident.current()
     }
+
+    /// The person renames themself (card #183): person.json here, then a
+    /// person.profile row that carries the name to their other devices;
+    /// the boards' member.profile rows follow as it folds.
+    pub fn set_person_name(&self, name: &str) -> Result<irori_identity::Person, String> {
+        let s = &self.s;
+        if !s.ident.set_name(name).map_err(|e| e.to_string())? {
+            return Ok(s.ident.current());
+        }
+        let prof = s.ident.profile_row().map_err(|e| e.to_string())?;
+        s.store
+            .append("irori", store::kinds::PERSON_PROFILE, &prof)
+            .map_err(|e| e.to_string())?;
+        Ok(s.ident.current())
+    }
     pub fn certified_devices(&self) -> Vec<irori_identity::DeviceState> {
         self.s.chain.devices()
     }
@@ -2337,6 +2352,7 @@ impl Services {
 
     fn sweep_coord(self: &Arc<Self>) -> Result<(), String> {
         check_branch_waits(&self.coord);
+        self.sweep_where();
         let (ns, err) = self.coord.sweep_notices_partial();
         let (asks, aerr) = self.coord.sweep_asks_partial(&self.ask_agents());
         for n in ns.iter().chain(asks.iter()) {
@@ -2462,6 +2478,57 @@ fn server_addr(home: Option<&home::Server>, servers: &mesh::Servers) -> String {
 /// no git) and queues the wait to fire when one moved, with the new tip's
 /// subject so the waiter needn't go and look. The coord sweep that
 /// follows writes wait.fired and wakes the waiter.
+impl Services {
+    /// Where each card this device's agents hold is (card #137): for every
+    /// open private card a local session holds, its latest working
+    /// directory (capture's, else the session's start one) read as a git
+    /// place, written when it changed. So a card says where its work is
+    /// even if its agent never says, and whoever picks it up after a crash
+    /// can find the branch.
+    fn sweep_where(&self) {
+        for c in self.presence.snapshot() {
+            if c.status == "gone" {
+                continue;
+            }
+            let dir = self
+                .capture
+                .session_dir(&c.key)
+                .unwrap_or_else(|| c.cwd.clone());
+            if dir.is_empty() {
+                continue;
+            }
+            let held = self.coord.list_tasks(&coord::TaskFilter {
+                holder: c.key.clone(),
+                open: true,
+                ..coord::TaskFilter::default()
+            });
+            for t in held {
+                // One writer per card: its holder, not a co-holding step
+                // owner, so two sessions never take turns rewriting it.
+                if t.holder != c.key || t.shared || t.open_ask().is_some() {
+                    continue;
+                }
+                // Only a git place is worth a row (see Where's line).
+                let Some(g) = capture::gitlink::place(&dir) else {
+                    continue;
+                };
+                let w = coord::Where {
+                    who: c.key.clone(),
+                    cwd: dir.clone(),
+                    worktree: g.worktree,
+                    branch: g.branch,
+                    head: g.head,
+                    pushed: g.pushed,
+                    ..coord::Where::default()
+                };
+                if let Err(e) = self.coord.set_where(&t.id, w) {
+                    logf(format_args!("where {}: {e}", t.id));
+                }
+            }
+        }
+    }
+}
+
 fn check_branch_waits(co: &coord::Coord) {
     for w in co.branch_waits() {
         let Some(now) = capture::gitlink::branch_tips(&w.root, &w.branch) else {

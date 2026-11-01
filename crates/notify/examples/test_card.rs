@@ -7,6 +7,8 @@
 //! the sound off in that scratch home, and exits after the given seconds
 //! (default 8). With `kinds` after the seconds it shows one card of each
 //! kind instead (info, success, warn, error; card #175).
+//! IRORI_CONFETTI=1 turns "Confetti on good news" on, so a success card
+//! throws its burst.
 
 fn main() {
     let Some(home) = std::env::var_os("IRORI_HOME") else {
@@ -26,6 +28,7 @@ fn main() {
     });
     let (_, err) = n.set_options(notify::Options {
         sound: false,
+        confetti: std::env::var("IRORI_CONFETTI").as_deref() == Ok("1"),
         ..n.options()
     });
     if let Err(e) = err {

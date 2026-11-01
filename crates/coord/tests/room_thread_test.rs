@@ -182,3 +182,67 @@ fn a_thread_handed_later_brings_its_files() {
     assert!(ns.len() == 1 && ns[0].to == [BOB], "{ns:?}");
     assert_eq!(ns[0].attachments, vec![file]);
 }
+
+/// Card #169: the person reopens a resolved thread. It is live again
+/// (open ask, not terminal), their reply goes to the agent that answered,
+/// a replay folds the same, and only the person reopens it.
+#[test]
+fn a_resolved_thread_reopens() {
+    let e = Env::new();
+    let card = alices_card(&e);
+    let (tk, _) = thread(&e, &format!("Is #{} still moving?", card.short));
+    e.c.add_comment(ALICE, &tk.id, "Yes, nearly there.", false)
+        .unwrap();
+    e.c.sweep_asks(&agents(&e)).unwrap();
+    e.c.resolve_thread(USER, &tk.id).unwrap();
+    want_err(e.c.reopen_thread(ALICE, &tk.id), ErrorKind::NotAllowed);
+
+    let t = e.c.reopen_thread(USER, &tk.id).unwrap();
+    assert!(!is_terminal(&t.state), "{t:?}");
+    assert!(t.open_ask().is_some(), "the thread's ask is open again");
+    let a = ask_of(&e.c, &tk.id);
+    assert!(a.reason == "answered" && a.taker.is_empty(), "{a:?}");
+    want_err(e.c.reopen_thread(USER, &tk.id), ErrorKind::BadState);
+
+    // No hand-out: it was answered; the reply goes to alice.
+    e.clk.add(secs(60));
+    assert!(e.c.sweep_asks(&agents(&e)).unwrap().is_empty());
+    let (_, ns) =
+        e.c.person_comment(USER, &tk.id, "One more thing.", false, &[], None)
+            .unwrap();
+    assert!(
+        ns.len() == 1
+            && ns[0].to == [ALICE]
+            && ns[0].wake
+            && ns[0].text.contains("One more thing."),
+        "{ns:?}"
+    );
+
+    // A replay folds the same, and it can be resolved again.
+    let again = e.reopen().get_task(&tk.id).unwrap();
+    assert!(again.open_ask().is_some() && !is_terminal(&again.state));
+    let t = e.c.resolve_thread(USER, &tk.id).unwrap();
+    assert!(is_terminal(&t.state));
+}
+
+/// Card #169: a thread nobody answered goes out again when reopened.
+#[test]
+fn a_reopened_unanswered_thread_goes_out_again() {
+    let e = Env::new();
+    e.ros.set(ALICE, "busy");
+    e.ros.set(BOB, "busy");
+    e.ros.set(CAROL, "busy");
+    let (tk, _) = thread(&e, "Anyone around?");
+    e.c.resolve_thread(USER, &tk.id).unwrap();
+    e.c.reopen_thread(USER, &tk.id).unwrap();
+    e.ros.set(BOB, "idle");
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.iter().any(|n| n.to == [BOB]), "{ns:?}");
+}
+
+#[test]
+fn only_threads_reopen_as_threads() {
+    let e = Env::new();
+    let card = alices_card(&e);
+    want_err(e.c.reopen_thread(USER, &card.id), ErrorKind::Invalid);
+}

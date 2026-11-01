@@ -155,6 +155,7 @@ export const BoardService = {
   Threads: () => call(commands.boardThreads()),
   CardRef: (r: string) => call(commands.boardCardRef(r)),
   ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
+  ReopenThread: (id: string) => done(commands.boardReopenThread(id)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),
   CommentModifyCancel: (id: string, commentId: string) =>
@@ -217,6 +218,8 @@ export const SettingsService = {
   TestNotification: () => done(commands.settingsTestNotification()),
   GetLaunchAtLogin: () => call(commands.settingsGetLaunchAtLogin()),
   SetLaunchAtLogin: (enabled: boolean) => done(commands.settingsSetLaunchAtLogin(enabled)),
+  GetYourName: () => call(commands.settingsGetYourName()),
+  SetYourName: (name: string) => call(commands.settingsSetYourName(name)),
 }
 
 export const AttachmentsService = {

@@ -28,6 +28,7 @@ export type CardBlocker = B.CardBlocker
 export type CardBoard = B.CardBoard
 export type CardDetail = B.CardDetail
 export type CardHolder = B.CardHolder
+export type CardLeftOff = B.CardLeftOff
 export type CardMention = B.CardMention
 export type CardMessage = B.CardMessage
 export type CardOption = B.CardOption
@@ -40,6 +41,7 @@ export type CardSubtask = B.CardSubtask
 export type CardSummary = B.CardSummary
 export type CardThreadItem = B.CardThreadItem
 export type CardWait = B.CardWait
+export type CardWhere = B.CardWhere
 export type Change = B.Change
 export type ChangeKind = B.ChangeKind
 export type Comment = B.Comment
@@ -85,6 +87,7 @@ export type SharePreview = B.SharePreview
 export type SharedCopy = B.SharedCopy
 export type State = B.State
 export type Step = B.Step
+export type SubtaskPreview = B.SubtaskPreview
 export type Target = B.Target
 export type Task = B.Task
 export type TaskResult = B.TaskResult
@@ -163,7 +166,7 @@ export function BoardSettings(p: Partial<B.BoardSettings> = {}): B.BoardSettings
 
 /** BoardSummary with Go's zero values for every field left out. */
 export function BoardSummary(p: Partial<B.BoardSummary> = {}): B.BoardSummary {
-  return { "boardId": "", "name": "", "tag": "", "people": [], "owner": false, "devices": 0, "cards": 0, "ready": false, ...p } as B.BoardSummary
+  return { "boardId": "", "name": "", "tag": "", "people": [], "owner": false, "devices": 0, "cards": 0, "doneWeek": 0, "ready": false, ...p } as B.BoardSummary
 }
 
 /** CanvasPos with Go's zero values for every field left out. */
@@ -204,6 +207,11 @@ export function CardDetail(p: Partial<B.CardDetail> = {}): B.CardDetail {
 /** CardHolder with Go's zero values for every field left out. */
 export function CardHolder(p: Partial<B.CardHolder> = {}): B.CardHolder {
   return { "who": AgentRef(), "state": "", "others": 0, ...p } as B.CardHolder
+}
+
+/** CardLeftOff with Go's zero values for every field left out. */
+export function CardLeftOff(p: Partial<B.CardLeftOff> = {}): B.CardLeftOff {
+  return { "text": "", "by": AgentRef(), "at": "", ...p } as B.CardLeftOff
 }
 
 /** CardMention with Go's zero values for every field left out. */
@@ -264,6 +272,11 @@ export function CardThreadItem(p: Partial<B.CardThreadItem> = {}): B.CardThreadI
 /** CardWait with Go's zero values for every field left out. */
 export function CardWait(p: Partial<B.CardWait> = {}): B.CardWait {
   return { "id": "", "who": AgentRef(), "text": "", "onThis": false, ...p } as B.CardWait
+}
+
+/** CardWhere with Go's zero values for every field left out. */
+export function CardWhere(p: Partial<B.CardWhere> = {}): B.CardWhere {
+  return { "who": AgentRef(), "worktree": "", "branch": "", "head": "", "pushed": false, "at": "", ...p } as B.CardWhere
 }
 
 /** Change with Go's zero values for every field left out. */
@@ -443,12 +456,17 @@ export function SharedCopy(p: Partial<B.SharedCopy> = {}): B.SharedCopy {
 
 /** SharePreview with Go's zero values for every field left out. */
 export function SharePreview(p: Partial<B.SharePreview> = {}): B.SharePreview {
-  return { "boardId": "", "boardName": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", "visibleTo": [], "dropped": [], "hash": "", ...p } as B.SharePreview
+  return { "boardId": "", "boardName": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", "visibleTo": [], "dropped": [], "subtasks": [], "keptPrivate": [], "hash": "", ...p } as B.SharePreview
 }
 
 /** Step with Go's zero values for every field left out. */
 export function Step(p: Partial<B.Step> = {}): B.Step {
   return { "id": "", "text": "", "done": false, ...p } as B.Step
+}
+
+/** SubtaskPreview with Go's zero values for every field left out. */
+export function SubtaskPreview(p: Partial<B.SubtaskPreview> = {}): B.SubtaskPreview {
+  return { "taskId": "", "ref": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", ...p } as B.SubtaskPreview
 }
 
 /** Target with Go's zero values for every field left out. */

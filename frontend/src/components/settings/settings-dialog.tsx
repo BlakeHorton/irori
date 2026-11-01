@@ -1,4 +1,4 @@
-import { useId, useRef, type ReactNode } from "react"
+import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import {
   BellIcon,
   InfoIcon,
@@ -11,6 +11,7 @@ import { InvitePanel, JoinInvite } from "@/components/boards/parts"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { DevicesPanel } from "@/components/settings/devices-panel"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,7 @@ import { Switch } from "@/components/ui/switch"
 import { useBoards, useInvite } from "@/lib/boards"
 import { plainLine } from "@/lib/irori"
 import { go } from "@/lib/nav"
-import { corners, useSettings } from "@/lib/settings"
+import { corners, useSettings, useYourName } from "@/lib/settings"
 import { UpdateStatusLine } from "@/updater"
 
 export type SettingsSection = "notifications" | "devices" | "people" | "app"
@@ -77,19 +78,23 @@ export function SettingsDialog({
   onSection: (s: SettingsSection) => void
   version?: string
 }) {
-  const here = settingsSections.find((s) => s.id === section) ?? settingsSections[0]
+  const here =
+    settingsSections.find((s) => s.id === section) ?? settingsSections[0]
   // Focus starts on the open section's button, not the first one.
   const currentRef = useRef<HTMLButtonElement>(null)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         initialFocus={currentRef}
-        className="h-[min(640px,calc(100vh-4rem))] grid-cols-[13rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-0 p-0 sm:max-w-3xl">
+        className="h-[min(640px,calc(100vh-4rem))] grid-cols-[13rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-0 p-0 sm:max-w-3xl"
+      >
         <nav
           aria-label="Settings sections"
           className="flex flex-col gap-0.5 border-r border-border p-3"
         >
-          <DialogTitle className="px-2 pt-1 pb-3 text-base">Settings</DialogTitle>
+          <DialogTitle className="px-2 pt-1 pb-3 text-base">
+            Settings
+          </DialogTitle>
           {settingsSections.map((s) => {
             const Icon = s.icon
             const current = s.id === here.id
@@ -128,6 +133,7 @@ export function SettingsDialog({
 
 function NotificationsPane({ open }: { open: boolean }) {
   const s = useSettings(open)
+  const reducedMotion = useReducedMotion()
   const n = s.notify
   if (!n) {
     return (
@@ -150,6 +156,17 @@ function NotificationsPane({ open }: { open: boolean }) {
         checked={n.sound}
         disabled={off}
         onChange={(v) => s.setNotify({ sound: v })}
+      />
+      <Toggle
+        label="Confetti on good news"
+        hint={
+          reducedMotion
+            ? "Off while Reduce Motion is on."
+            : "A burst across the screen when a card is done."
+        }
+        checked={n.confetti ?? false}
+        disabled={off}
+        onChange={(v) => s.setNotify({ confetti: v })}
       />
       <Row label="Volume" disabled={off || !n.sound}>
         <Slider
@@ -185,18 +202,9 @@ function NotificationsPane({ open }: { open: boolean }) {
         >
           Send a test notification
         </Button>
-        {s.tested && <p className="text-xs text-muted-foreground">{s.tested}</p>}
-      </div>
-      <div className="border-t border-border pt-3">
-        {/* The confetti card adds its setting here; until it lands the
-            row shows where it goes. */}
-        <Toggle
-          label="Confetti when a card is done"
-          hint="Coming with the confetti card."
-          checked={false}
-          disabled
-          onChange={() => {}}
-        />
+        {s.tested && (
+          <p className="text-xs text-muted-foreground">{s.tested}</p>
+        )}
       </div>
       {s.error && <p className="text-xs text-destructive">{s.error}</p>}
     </div>
@@ -212,6 +220,7 @@ function PeoplePane({ onOpenBoard }: { onOpenBoard: () => void }) {
   const inviting = !!invite && invite.state !== ""
   return (
     <div className="grid gap-3">
+      <YourName />
       {error && <p className="text-xs text-destructive">{error}</p>}
       {boards.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">
@@ -353,6 +362,83 @@ function Row({
     >
       <span className="text-ink">{label}</span>
       {children}
+    </div>
+  )
+}
+
+// useReducedMotion follows the OS's Reduce Motion, which the cards' confetti
+// also honours (toast skips the burst while it is on).
+function useReducedMotion() {
+  const query = "(prefers-reduced-motion: reduce)"
+  const [on, setOn] = useState(
+    () => window.matchMedia?.(query).matches ?? false
+  )
+  useEffect(() => {
+    const m = window.matchMedia?.(query)
+    if (!m) return
+    const change = () => setOn(m.matches)
+    m.addEventListener("change", change)
+    return () => m.removeEventListener("change", change)
+  }, [])
+  return on
+}
+
+// YourName is the person's one name (card #183): what every board they're
+// on shows them as, and their other devices too. Enter or Save keeps it.
+function YourName() {
+  const { name, error, save } = useYourName(true)
+  const [draft, setDraft] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const id = useId()
+  const value = draft ?? name ?? ""
+  const changed = draft !== null && draft.trim() !== (name ?? "")
+  const keep = async () => {
+    if (!changed) return
+    if (await save(value)) {
+      setDraft(null)
+      setSaved(true)
+    }
+  }
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className="text-[13px] font-medium text-ink">
+        Your name
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          value={value}
+          maxLength={60}
+          disabled={name === null}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setSaved(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void keep()
+            if (e.key === "Escape" && draft !== null) {
+              e.stopPropagation()
+              setDraft(null)
+            }
+          }}
+          className="h-8 w-64 text-[13px]"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!changed || !value.trim()}
+          onClick={() => void keep()}
+        >
+          Save
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {error
+          ? error
+          : saved
+            ? "Saved. Your other devices and your boards pick it up as they sync."
+            : "What people on your boards see you as, on all your devices."}
+      </p>
     </div>
   )
 }

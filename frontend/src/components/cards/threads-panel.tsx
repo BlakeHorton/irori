@@ -229,18 +229,20 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
   const [error, setError] = useState<string | null>(null)
   const resolved = t.state === "resolved"
   const items = (detail?.thread ?? []).filter((it) => it.kind !== "event")
-  const resolve = async () => {
+  const act = (f: (id: string) => Promise<void>) => async () => {
     if (busy) return
     setBusy(true)
     setError(null)
     try {
-      await threadsApi.resolve(t.id)
+      await f(t.id)
     } catch (err) {
       setError(errorText(err))
     } finally {
       setBusy(false)
     }
   }
+  const resolve = act(threadsApi.resolve)
+  const reopen = act(threadsApi.reopen)
   return (
     <div className="grid min-w-0 gap-2">
       <div className="grid min-w-0 gap-1 text-[12.5px]">
@@ -277,8 +279,18 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
         // thread's title and question, the box and Resolve.
         scroll={OpenThreadMax}
       />
-      {!resolved && (
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        {resolved ? (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void reopen()}
+            title="Bring it back: your next reply goes to the agents that answered"
+          >
+            Reopen
+          </Button>
+        ) : (
           <Button
             size="xs"
             variant="outline"
@@ -288,9 +300,9 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
           >
             Resolve
           </Button>
-          {error && <span className="text-xs text-destructive">{error}</span>}
-        </div>
-      )}
+        )}
+        {error && <span className="text-xs text-destructive">{error}</span>}
+      </div>
     </div>
   )
 }

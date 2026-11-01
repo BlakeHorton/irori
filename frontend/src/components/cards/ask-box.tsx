@@ -184,8 +184,8 @@ export function AskBox({
           }}
           placeholder={
             thread
-              ? "Ask about anything… (# a card, @ an agent)"
-              : "Ask the room… (@ to ask one agent, # for a card)"
+              ? "Ask about anything…"
+              : "Ask the room…"
           }
           aria-label={
             thread

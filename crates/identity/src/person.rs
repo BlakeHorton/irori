@@ -35,6 +35,8 @@ use crate::{DeviceJson, Error};
 /// File names in the data dir.
 pub const PERSON_FILE: &str = "person.json";
 pub const DEVICE_KEY_FILE: &str = "device.key";
+/// The longest person name (card #183).
+pub const MAX_NAME: usize = 60;
 
 /// The public view of `person.json` (GUI JSON).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -668,6 +670,36 @@ impl Identity {
         g.person.pub_hex = p.pub_hex;
         g.person_key = key;
         Ok(())
+    }
+
+    /// The person's name changes (card #183): person.json is rewritten.
+    /// Ok(false) when it is already that name. The caller writes the
+    /// person.profile row that carries it to the other devices.
+    pub fn set_name(&self, name: &str) -> Result<bool, Error> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(Error::Invalid("identity: a name can't be empty".into()));
+        }
+        if name.chars().count() > MAX_NAME {
+            return Err(Error::Invalid(format!(
+                "identity: a name is at most {MAX_NAME} characters"
+            )));
+        }
+        let mut g = self.lock();
+        if g.person.name == name {
+            return Ok(false);
+        }
+        let mut p = g.person.clone();
+        p.name = name.to_string();
+        write_person(
+            &self.data_dir.join(PERSON_FILE),
+            self.ks.as_ref(),
+            &p,
+            &g.person_key,
+            &g.older,
+        )?;
+        g.person.name = p.name;
+        Ok(true)
     }
 
     /// Go `Forget`: drop kept keys of epochs below `below`; writes only when

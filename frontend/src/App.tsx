@@ -133,6 +133,7 @@ export function App() {
   const [heldFrom, setHeldFrom] = useState("")
   // New card (card #116): its dialog is open.
   const [newCard, setNewCard] = useState(false)
+  const [newBoard, setNewBoard] = useState(false)
   // Threads (card #116): the panel beside the Board, the thread unfolded
   // in it, and whether the person hid it (kept across launches).
   const { threads: threadList } = useThreads()
@@ -394,7 +395,8 @@ export function App() {
         roster={roster}
         held={held.held.length}
         onHeld={() => openHeld("")}
-        onNewCard={section.kind === "board" ? undefined : () => setNewCard(true)}
+        onNewCard={() => setNewCard(true)}
+        onNewBoard={() => setNewBoard(true)}
         section={open ? null : section}
         boardsNeedYou={boardDecide.length}
       />
@@ -423,7 +425,12 @@ export function App() {
           </Scroll>
         ) : section.kind === "boards" ? (
           <Scroll>
-            <BoardsPage cards={cards} />
+            <BoardsPage
+              cards={cards}
+              now={now}
+              newBoard={newBoard}
+              onNewBoard={setNewBoard}
+            />
           </Scroll>
         ) : section.kind === "board" ? (
           <Scroll>
@@ -548,6 +555,11 @@ export function App() {
         open={newCard}
         onClose={() => setNewCard(false)}
         onMade={openCard}
+        board={
+          section.kind === "board" && !open
+            ? boards.find((b) => b.boardId === section.id)
+            : undefined
+        }
       />
       {heldOpen && (
         <HeldDialog

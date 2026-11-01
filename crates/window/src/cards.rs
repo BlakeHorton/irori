@@ -205,6 +205,24 @@ pub struct CardSummary {
     #[specta(optional)]
     pub ready: bool,
     pub waiting: i64,
+    /// Open blockers that wait on something other than the person: another
+    /// card, a lease, an agent, something external (card #158). They close
+    /// by themselves, so they are not counted in open_blockers.
+    #[serde(skip_serializing_if = "is_zero")]
+    #[specta(optional)]
+    pub waiting_on: i64,
+    /// What the first of those waits on, as the window names it: "#12" for
+    /// a card, the agent's name, the resource or the outside thing.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub wait_on: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub wait_question: String,
+    /// The card the first wait is on, until wait_on names it.
+    #[serde(skip)]
+    #[specta(skip)]
+    pub wait_task: String,
     pub working: Vec<AgentRef>,
     pub watching: Vec<AgentRef>,
     pub holder: CardHolder,
@@ -243,6 +261,40 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub pos: Option<CanvasPos>,
+    /// Where the holder's work is (card #137): its worktree, branch, last
+    /// commit and whether it's pushed.
+    #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub where_: Option<CardWhere>,
+    /// The holder's last line on what's done and what's next (card #137).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub left_off: Option<CardLeftOff>,
+}
+
+/// Where a card's work is (card #137), as its holder's device last saw it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CardWhere {
+    /// The holder it describes, with its device.
+    pub who: AgentRef,
+    pub worktree: String,
+    pub branch: String,
+    /// The last commit's sha.
+    pub head: String,
+    pub pushed: bool,
+    #[specta(type = ts::Time)]
+    pub at: GoTime,
+}
+
+/// A holder's one line on what's done and what's next (card #137).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CardLeftOff {
+    pub text: String,
+    pub by: AgentRef,
+    #[specta(type = ts::Time)]
+    pub at: GoTime,
 }
 
 /// A card's spot on the Board's canvas, in canvas pixels (card #93).
@@ -776,6 +828,28 @@ fn ms(t: &GoTime) -> i64 {
 
 // ---- summaries -----------------------------------------------------------------
 
+/// A blocker on one of these waits on something that ends by itself, not on
+/// the person (card #158): it never counts as a question for them.
+fn waits_by_itself(kind: &str) -> bool {
+    matches!(
+        kind,
+        coord::BLOCKED_ON_TASK
+            | coord::BLOCKED_ON_LEASE
+            | coord::BLOCKED_ON_AGENT
+            | coord::BLOCKED_ON_EXTERNAL
+    )
+}
+
+/// Names the card a summary's first wait is on ("#12"); a card this
+/// device can't see stays "a card".
+pub(crate) fn name_wait(s: &mut CardSummary, refr: &dyn Fn(&str) -> String) {
+    if s.wait_task.is_empty() || !s.wait_on.is_empty() {
+        return;
+    }
+    let r = refr(&s.wait_task);
+    s.wait_on = if r.is_empty() { "a card".into() } else { r };
+}
+
 pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
     let (d, n) = t.progress();
     let mut s = CardSummary {
@@ -800,11 +874,42 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
             total: r.total,
         };
     }
+    if !coord::is_terminal(&t.state) {
+        s.where_ = t
+            .where_
+            .as_ref()
+            .filter(|w| !w.worktree.is_empty())
+            .map(|w| CardWhere {
+                who: p.ref_(&w.who),
+                worktree: w.worktree.clone(),
+                branch: w.branch.clone(),
+                head: w.head.clone(),
+                pushed: w.pushed,
+                at: w.at,
+            });
+        s.left_off = t.left_off.as_ref().map(|l| CardLeftOff {
+            text: l.text.clone(),
+            by: p.ref_(&l.by),
+            at: l.at,
+        });
+    }
     let open = t.open_blockers();
     if !open.is_empty() {
         for bl in &open {
             if bl.status == coord::BLOCKER_ANSWERED {
                 s.waiting += 1;
+                continue;
+            }
+            if let Some(on) = bl.on.as_ref().filter(|on| waits_by_itself(&on.kind)) {
+                s.waiting_on += 1;
+                if s.waiting_on == 1 {
+                    s.wait_question = bl.question.clone();
+                    match on.kind.as_str() {
+                        coord::BLOCKED_ON_TASK => s.wait_task = on.reference.clone(),
+                        coord::BLOCKED_ON_AGENT => s.wait_on = p.ref_(&on.reference).name,
+                        _ => s.wait_on = on.reference.clone(),
+                    }
+                }
                 continue;
             }
             s.open_blockers += 1;
@@ -1191,6 +1296,7 @@ impl Window {
                         |id: &str| co.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
                     let mut s = card_summary(&t, &p);
                     s.ask = card_ask(&t, &p, Some(&refr));
+                    name_wait(&mut s, &refr);
                     s
                 }
                 Some(i) => {
@@ -1200,6 +1306,7 @@ impl Window {
                     let pt = self.priv_task(t);
                     let mut s = card_summary(&pt, &p);
                     s.ask = card_ask(&pt, &p, Some(&refr));
+                    name_wait(&mut s, &refr);
                     s.scope = crate::boards::SCOPE_BOARD.into();
                     s.scope_label = b.name.clone();
                     s.board = b.board_id.clone();
@@ -1777,6 +1884,9 @@ fn pending_lines(ds: &[Delivery], t: &Task, p: &People) -> Vec<String> {
 /// waits on), from the log the card lives in (card #161: a board's for a
 /// board card).
 fn family_of(co: &coord::Coord, t: &Task, s: &mut CardSummary) {
+    name_wait(s, &|id: &str| {
+        co.get_task(id).map(|x| x.short_ref()).unwrap_or_default()
+    });
     if !t.parent.is_empty()
         && let Some(pt) = co.get_task(&t.parent)
     {

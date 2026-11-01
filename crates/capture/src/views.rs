@@ -316,6 +316,12 @@ impl Capture {
         out
     }
 
+    /// Session `key`'s latest working directory (card #137), as its last
+    /// command or edit showed it; `None` before either since the start.
+    pub fn session_dir(&self, key: &str) -> Option<String> {
+        self.inner.read().session_dirs.get(key).cloned()
+    }
+
     /// Captured edits, newest first.
     pub fn edits(&self, q: &EditQuery) -> Vec<EditRow> {
         let limit = if q.limit == 0 { 50 } else { q.limit.min(500) };

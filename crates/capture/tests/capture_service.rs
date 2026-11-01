@@ -1873,3 +1873,35 @@ fn event_gone_root_released() {
     });
     std::fs::rename(join(&[&moved, "repo"]), join(&[&moved, "repo2"])).unwrap();
 }
+
+/// Card #137: a session started in one folder that `cd`s into a worktree
+/// is placed in the worktree, by its last command (or edit).
+#[test]
+fn a_sessions_dir_follows_its_cd() {
+    let r = Rig::new(|_| {});
+    let (_h, home) = tempdir();
+    let (_d, repo) = new_repo("false");
+    let w = r.session(SID_A, &home);
+    let start = sub(&now(), sec(5));
+    let cmd = format!("cd {repo} && git status");
+    let input = json!({"command": cmd, "description": "status"});
+    w.write(&flat(vec![
+        vec![w.prompt("p1", "look", &start)],
+        vec![w.tool_use("b1", "Bash", input, &add(&start, sec(1)))],
+    ]));
+    let res = json!({"stdout": "ok\n", "stderr": "", "interrupted": false, "isImage": false});
+    w.write(&[w.result("b1", res, &add(&start, sec(2)))]);
+    r.tail();
+    assert_eq!(
+        r.c.session_dir(&format!("{DEVICE}/{SID_A}")),
+        Some(repo.clone()),
+        "the cd's folder, not the session's start one"
+    );
+    // An edit elsewhere moves it to that file's folder.
+    let other = join(&[&repo, "src"]);
+    std::fs::create_dir_all(&other).unwrap();
+    let f = join(&[&other, "lib.rs"]);
+    w.write(&w.write_tool("w1", &f, "fn main() {}\n", None, &add(&start, sec(3))));
+    r.tail();
+    assert_eq!(r.c.session_dir(&format!("{DEVICE}/{SID_A}")), Some(other));
+}

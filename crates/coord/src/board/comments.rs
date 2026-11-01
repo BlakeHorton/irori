@@ -174,6 +174,7 @@ impl Fold {
                 cut(&t.done_criteria, MAX_NOTICE_FIELD)
             ));
         }
+        b.push_str(&t.handover_lines());
         if !note.is_empty() {
             b.push_str(&format!(
                 "\nHand-off note: {}",
