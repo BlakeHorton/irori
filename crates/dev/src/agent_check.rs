@@ -580,12 +580,12 @@ fn answered(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
     if let Err(e) = call("board_block", args) {
         return (Err(e), log);
     }
-    let Some(bid) = h
-        .core
-        .coord()
-        .get_task(&t.id)
-        .and_then(|t| t.blockers.iter().find(|b| b.resolved.is_none()).map(|b| b.id.clone()))
-    else {
+    let Some(bid) = h.core.coord().get_task(&t.id).and_then(|t| {
+        t.blockers
+            .iter()
+            .find(|b| b.resolved.is_none())
+            .map(|b| b.id.clone())
+    }) else {
         return (Err("the agent's blocker was not raised".into()), log);
     };
     // The person picks MIT in the window.

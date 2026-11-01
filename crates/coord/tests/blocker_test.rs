@@ -548,13 +548,24 @@ fn test_answered_blocker_reads_working() {
     e.c.answer(USER, &task.id, "b1", text("which one is signed?"))
         .unwrap();
     assert_eq!(group(USER), (false, false, true), "answered: working");
-    reply(&e.c, ALICE, &task.id, "b1", "Wintun is; going with it.", &[]);
+    reply(
+        &e.c,
+        ALICE,
+        &task.id,
+        "b1",
+        "Wintun is; going with it.",
+        &[],
+    );
     let (got, b) = blocker_of(&e.c, &task.id, "b1");
     assert!(
         b.status == BLOCKER_ANSWERED && b.open() && got.state == BLOCKED && got.all_answered(),
         "{b:?}"
     );
-    assert_eq!(group(USER), (false, false, true), "plain reply: still working");
+    assert_eq!(
+        group(USER),
+        (false, false, true),
+        "plain reply: still working"
+    );
     e.c.set_steps(
         ALICE,
         &task.id,
@@ -578,7 +589,6 @@ fn test_answered_blocker_reads_working() {
     .unwrap();
     assert_eq!(group(USER), (true, false, false), "a new question");
 }
-
 
 #[test]
 fn test_old_peer_resolve() {
