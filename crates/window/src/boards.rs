@@ -251,22 +251,6 @@ impl Window {
             Err(_) => self.core.coord().clone(),
         }
     }
-
-    /// `on` for an action kept on the private board alone (pins): a shared
-    /// card is refused rather than written to its board (Go `privateOnly`).
-    pub(crate) fn private_only(
-        &self,
-        id: &str,
-    ) -> Result<(std::sync::Arc<coord::Coord>, Vec<String>), String> {
-        let (co, keys) = self.on(id, &[])?;
-        if !std::sync::Arc::ptr_eq(&co, self.core.coord()) {
-            return Err(format!(
-                "{}: a card on a shared board isn't pinned",
-                coord::ErrorKind::Invalid.text()
-            ));
-        }
-        Ok((co, keys))
-    }
 }
 
 // ---- a board's settings: members, what reaches my agents, what they may do ----

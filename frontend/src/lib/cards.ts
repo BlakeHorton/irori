@@ -23,6 +23,8 @@ import {
   Told,
   TaskResult,
   ThreadSummary,
+  type RefTarget,
+  UploadFile,
   type AgentRef,
   type CardActivity,
   type CardBlocker,
@@ -265,7 +267,7 @@ function sampleThreadSeed(now: Date): CardDetail[] {
           kind: "comment",
           at: ago(60),
           who: sampleAgents.heron,
-          text: "#3 is waiting on you: it needs your call on the lobby list (Steam or our relay). #8 is half done; I'll finish it after the build.",
+          text: "#3 is waiting on you: it needs your call on the lobby list (Steam or our relay). #8 is half done; I'll finish it after the build. Where the builds go was settled in #26, and the notes export (#5) is done.",
         }),
       ],
       "answered"
@@ -351,12 +353,28 @@ export const threads = {
   // start is the header box's message as a thread: the agents on the
   // cards it names (#12) and the ones it @mentions hear it first; after
   // 45s with no answer, one idle agent gets it.
+  // files (picked, dropped or pasted) go on it as an ask's do (card
+  // #124). boardId starts it on that shared board (card #134): no
+  // mentions or files there.
   async start(
     text: string,
     mentions: Mention[] = [],
+    files: File[] = [],
     boardId = ""
   ): Promise<TaskResult> {
-    if (inWails()) return BoardService.StartThread(text, mentions, boardId)
+    checkUploads(files)
+    if (inWails()) {
+      if (!files.length) return BoardService.StartThread(text, mentions, boardId)
+      if (boardId)
+        throw new Error(
+          "files go with a thread on your own board only; on a shared board, attach them on a card"
+        )
+      return BoardService.StartThreadWithFiles(
+        text,
+        mentions,
+        await Promise.all(files.map(uploadOf))
+      )
+    }
     const t = text.trim()
     if (!t) throw new Error("coord: invalid input: an empty comment")
     const cs = sampleState()
@@ -379,6 +397,62 @@ export const threads = {
     sampleThreadState.set(id, "resolved")
     sampleChanged()
   },
+}
+
+// cardRef is what a #ref names across every board on this device, done
+// cards and old threads too (card #144), or null.
+export async function cardRef(r: string): Promise<RefTarget | null> {
+  if (inWails()) return (await BoardService.CardRef(r)) ?? null
+  return sampleCardRef(r)
+}
+
+// sampleCardRef is BoardService.CardRef on the sample.
+export function sampleCardRef(r: string): RefTarget | null {
+  const m = /^([a-z0-9_-]*)#(\d+[a-z]*)$/i.exec(r.trim())
+  if (!m) return null
+  const tag = m[1].toLowerCase()
+  const hit = sampleState().filter(
+    (c) => c.short === m[2] && (c.tag ?? "") === tag
+  )
+  if (hit.length !== 1) return null
+  const c = hit[0]
+  const thread = sampleThreadIds.has(c.id)
+  return {
+    id: c.id,
+    short: c.short,
+    title: c.title,
+    thread,
+    done: thread
+      ? sampleThreadState.get(c.id) === "resolved"
+      : c.state === TaskState.Completed ||
+        c.state === TaskState.Failed ||
+        c.state === TaskState.Canceled,
+  }
+}
+
+// refCache keeps each looked-up ref for a while, so a long thread full of
+// "#12" asks once; a card made or deleted since shows within a minute.
+const refCache = new Map<string, { at: number; v: Promise<RefTarget | null> }>()
+const RefTTL = 60_000
+
+// useCardRef is cardRef(r) for a component: undefined while it loads, then
+// the target or null. Off (r "") it asks nothing.
+export function useCardRef(r: string): RefTarget | null | undefined {
+  const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(null)
+  useEffect(() => {
+    if (!r) return
+    let live = true
+    let e = refCache.get(r)
+    if (!e || Date.now() - e.at > RefTTL) {
+      e = { at: Date.now(), v: cardRef(r).catch(() => null) }
+      refCache.set(r, e)
+    }
+    void e.v.then((v) => live && setGot({ r, v }))
+    return () => {
+      live = false
+    }
+  }, [r])
+  return got && got.r === r ? got.v : undefined
 }
 
 // useThreads is the Threads panel's rows, fresh on every card change.
@@ -443,6 +517,28 @@ function summary(c: CardDetail): CardSummary {
 // in memory.
 export const MaxUpload = 32 << 20
 export const MaxUploadFiles = 10
+
+// uploadOf is a File as BoardService takes it: its name and base64 bytes
+// (Go's []byte in JSON).
+// checkUploads refuses what the window would: too many files, or one too
+// big to cross the bridge.
+function checkUploads(files: File[]) {
+  if (files.length > MaxUploadFiles)
+    throw new Error(`at most ${MaxUploadFiles} files`)
+  const big = files.find((f) => f.size > MaxUpload)
+  if (big)
+    throw new Error(
+      `${big.name || "pasted image"} is over ${MaxUpload >> 20} MiB; ask an agent to attach it from disk`
+    )
+}
+
+async function uploadOf(f: File): Promise<UploadFile> {
+  const bytes = new Uint8Array(await f.arrayBuffer())
+  let bin = ""
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return UploadFile({ name: f.name || "pasted.png", data: btoa(bin) })
+}
 
 // sampleCreate is BoardService.Create on the sample: a new open card,
 // handed to the agent picked or to sample-heron (the free one).
@@ -1056,10 +1152,21 @@ export const cards = {
     id: string,
     text: string,
     wake = true,
-    mentions: Mention[] = []
+    mentions: Mention[] = [],
+    files: File[] = []
   ): Promise<CommentResult> {
-    if (inWails())
-      return BoardService.Comment(id, text, wake ? "wake" : "next_turn", mentions)
+    checkUploads(files)
+    if (inWails()) {
+      const tell = wake ? "wake" : "next_turn"
+      if (!files.length) return BoardService.Comment(id, text, tell, mentions)
+      return BoardService.CommentWithFiles(
+        id,
+        text,
+        tell,
+        mentions,
+        await Promise.all(files.map(uploadOf))
+      )
+    }
     return sampleComment(id, text, wake, mentions)
   },
 
@@ -1179,8 +1286,14 @@ export const cards = {
   // create is New card (card #116): a card on the person's own board,
   // straight from the form. Irori hands it to one free agent, or to
   // assignTo when the person picked one.
-  async create(input: NewCardInput): Promise<TaskResult> {
-    if (inWails()) return BoardService.Create(input)
+  // files go on the new card as its first comment (card #124).
+  async create(input: NewCardInput, files: File[] = []): Promise<TaskResult> {
+    checkUploads(files)
+    if (inWails())
+      return BoardService.Create({
+        ...input,
+        files: await Promise.all(files.map(uploadOf)),
+      })
     return sampleCreate(input)
   },
 

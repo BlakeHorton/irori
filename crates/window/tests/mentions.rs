@@ -34,6 +34,7 @@ fn a_comment_mention_wakes_and_watches() {
             "@beta can you check the build?",
             "next_turn",
             &[m(&r.key_b, "beta"), m("nodev/nosuch", "ghost")],
+            &[],
         )
         .unwrap();
     assert_eq!(c.told.to, vec![r.key_a.clone()]);
@@ -78,7 +79,7 @@ fn a_mention_with_tell_none_still_wakes() {
         )
         .unwrap();
     let c =
-        r.w.comment(&t.id, "fyi @beta", "none", &[m(&r.key_b, "beta")])
+        r.w.comment(&t.id, "fyi @beta", "none", &[m(&r.key_b, "beta")], &[])
             .unwrap();
     assert_eq!(c.mentioned[0].state, "woke");
     let ds = r.w.core.inbox().for_agent(&r.key_b, true, 0);

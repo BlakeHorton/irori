@@ -13,7 +13,8 @@ import {
 } from "@/lib/cards"
 import { copyText } from "@/lib/clipboard"
 import { plainLine } from "@/lib/irori"
-import { cardRefs, isGone, splitMentions } from "@/lib/mentions"
+import { useCardRef } from "@/lib/cards"
+import { cardRefs, isGone, localRef, refText, splitMentions } from "@/lib/mentions"
 import { richBlocks, richInline, safeHref, type Inline } from "@/lib/rich"
 import { cn } from "@/lib/utils"
 
@@ -125,47 +126,92 @@ function Pieces({
   })
 }
 
-// CardRefs is text with each card ref ("#12", "mlg#12", card #114) that
-// names a live card made a link that opens it. A ref no card has, or text
-// outside the app's card list, stays text.
+// CardRefs is text with each card ref ("#12", "mlg#12", card #114) made a
+// link: a live card or a thread the window holds at once, a done card or
+// an old thread once the backend has looked it up (card #144). A ref
+// nothing has, or text outside the app's context, stays text.
 function CardRefs({ text, interactive }: { text: string; interactive: boolean }) {
   const ctx = useContext(AgentCards)
   if (!ctx || !text.includes("#")) return text
+  const refs = cardRefs(text)
+  if (!refs.length) return text
   const out: ReactNode[] = []
   let last = 0
-  for (const r of cardRefs(text)) {
-    const c = ctx.cards.filter(
-      (x) => x.short === r.n && (r.tag === null || (x.tag ?? "") === r.tag)
-    )
-    if (c.length !== 1) continue
-    const card = c[0]
+  for (const r of refs) {
     out.push(text.slice(last, r.start))
     const label = text.slice(r.start, r.end)
+    const hit = localRef(r, ctx.cards, ctx.threads ?? [])
     out.push(
-      interactive ? (
-        <button
+      hit ? (
+        <RefLink
           key={r.start}
-          type="button"
-          className="rounded-sm bg-primary/10 px-0.5 font-medium text-primary hover:underline"
-          title={plainLine(card.title)}
-          onClick={(e) => {
-            e.stopPropagation()
-            ctx.onOpen(card.id)
-          }}
-        >
-          {label}
-        </button>
+          label={label}
+          title={hit.title}
+          interactive={interactive}
+          onOpen={() =>
+            hit.kind === "thread" && ctx.onOpenThread
+              ? ctx.onOpenThread(hit.id)
+              : ctx.onOpen(hit.id)
+          }
+        />
       ) : (
-        <span key={r.start} className="font-medium text-primary" title={plainLine(card.title)}>
-          {label}
-        </span>
+        <LookedUpRef key={r.start} r={refText(r)} label={label} interactive={interactive} />
       )
     )
     last = r.end
   }
-  if (!out.length) return text
   out.push(text.slice(last))
   return <>{out}</>
+}
+
+// LookedUpRef is a ref the window doesn't hold: a done card or a thread
+// past the panel's list. Text until (and unless) the backend finds it.
+function LookedUpRef({ r, label, interactive }: { r: string; label: string; interactive: boolean }) {
+  const ctx = useContext(AgentCards)
+  const t = useCardRef(r)
+  if (!ctx || !t) return label
+  return (
+    <RefLink
+      label={label}
+      title={t.done ? `${t.title} (${t.thread ? "resolved" : "done"})` : t.title}
+      interactive={interactive}
+      onOpen={() =>
+        t.thread && ctx.onOpenThread ? ctx.onOpenThread(t.id) : ctx.onOpen(t.id)
+      }
+    />
+  )
+}
+
+function RefLink({
+  label,
+  title,
+  interactive,
+  onOpen,
+}: {
+  label: string
+  title: string
+  interactive: boolean
+  onOpen: () => void
+}) {
+  if (!interactive)
+    return (
+      <span className="font-medium text-primary" title={plainLine(title)}>
+        {label}
+      </span>
+    )
+  return (
+    <button
+      type="button"
+      className="rounded-sm bg-primary/10 px-0.5 font-medium text-primary hover:underline"
+      title={plainLine(title)}
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen()
+      }}
+    >
+      {label}
+    </button>
+  )
 }
 
 // MentionChip is one "@name" a mention names: in the agent's device

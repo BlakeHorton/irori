@@ -1,5 +1,11 @@
 import { useState, type FormEvent } from "react"
 
+import {
+  AttachButton,
+  PendingFiles,
+  useFileAttach,
+} from "@/components/attachments"
+
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
@@ -13,12 +19,13 @@ import { errorText } from "@/lib/talk"
 // the cards it names (#12) and the agents it @mentions hear it first,
 // woken; if none answers within 45s, one idle agent gets it. It shows in
 // the Threads panel, where the person replies and resolves it. Enter
-// sends, Shift+Enter is a new line. On a shared board's page it starts the
-// thread on that board: only that board's agents and people see it, the
-// other people's agents hear it through their own devices, and its page
-// lists it in its own Threads panel. A board thread takes no mentions (a
-// board log carries none): name a card instead. No files on a thread yet.
-// New cards come from the header's "+ New card".
+// sends, Shift+Enter is a new line. Files go with it (card #124): pick them
+// with the clip, drop them on the box, or paste a screenshot. On a shared
+// board's page it starts the thread on that board: only that board's
+// agents and people see it, the other people's agents hear it through
+// their own devices, and its page lists it in its own Threads panel. A
+// board thread takes no mentions (a board log carries none; name a card
+// instead) and no files yet. New cards come from the header's New card.
 export function AskBox({
   onThread,
   board: onPage = "",
@@ -38,6 +45,8 @@ export function AskBox({
     ? onPage
     : ""
   const [busy, setBusy] = useState(false)
+  const attach = useFileAttach(busy)
+  const files = attach.files
   const [line, setLine] = useState<{ text: string; error?: boolean } | null>(
     null
   )
@@ -49,10 +58,19 @@ export function AskBox({
       setLine({ text: "This board isn't ready here yet.", error: true })
       return
     }
+    if (onBoard && files.length) {
+      setLine({
+        text: "Files don't go on a board thread yet: remove them, or attach them on a card.",
+        error: true,
+      })
+      return
+    }
     setBusy(true)
     setLine(null)
     try {
-      const res = await threads.start(text, onBoard ? [] : mentions, onBoard)
+      const res = onBoard
+        ? await threads.start(text, [], [], onBoard)
+        : await threads.start(text, mentions, files)
       // On a board the other people's agents are told by their own
       // devices: count every agent the thread's round names.
       const n = onBoard
@@ -66,6 +84,7 @@ export function AskBox({
       })
       setText("")
       setMentions([])
+      attach.clear()
       onThread(res.task.id)
     } catch (err) {
       setLine({ text: errorText(err), error: true })
@@ -75,7 +94,11 @@ export function AskBox({
   }
 
   return (
-    <form className="grid gap-1" onSubmit={(e) => void submit(e)}>
+    <form
+      className="grid gap-1"
+      onSubmit={(e) => void submit(e)}
+      {...attach.drop}
+    >
       <div className="flex items-start gap-2 p-1.5 glass-panel">
         <MentionTextarea
           autoSize
@@ -93,17 +116,16 @@ export function AskBox({
             setMentions(ms)
             setLine(null)
           }}
+          onPaste={(e) => {
+            if (attach.onPaste(e)) setLine(null)
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
               e.preventDefault()
               e.currentTarget.form?.requestSubmit()
             }
           }}
-          placeholder={
-            onBoard
-              ? "Ask about anything… (# a card)"
-              : "Ask about anything… (# a card, @ an agent)"
-          }
+          placeholder="Ask about anything…"
           aria-label="Start a thread"
           className="max-h-40 min-h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-transparent"
           // readOnly, not disabled: disabling the focused box would blur it,
@@ -111,9 +133,11 @@ export function AskBox({
           readOnly={busy}
           aria-busy={busy}
         />
-        {/* The button rides the box's first line (h-9, its min height)
-            and stays up top as it grows. */}
+        {/* The controls ride the box's first line (h-9, its min height)
+            whatever their own heights, and stay up top as it grows. */}
         <div className="flex h-9 shrink-0 items-center gap-2">
+          {attach.input}
+          <AttachButton attach={attach} disabled={busy || !!onBoard} />
           <Button
             type="submit"
             size="sm"
@@ -124,6 +148,7 @@ export function AskBox({
           </Button>
         </div>
       </div>
+      <PendingFiles attach={attach} disabled={busy} label="Files with the thread" />
       {line && (
         <p
           className={

@@ -22,6 +22,9 @@ use crate::gotime;
 use crate::names::trim_space;
 use crate::roster::AgentCard;
 
+/// The text of the comment that carries an ask's files.
+pub(crate) const ASK_FILES_NOTE: &str = "Files with the ask.";
+
 pub const TAKE_CLAIM: &str = "claim";
 pub const TAKE_RELEASE: &str = "release";
 pub const TAKE_REOPEN: &str = "reopen";
@@ -758,7 +761,7 @@ impl Fold {
                     task_id: id.clone(),
                     comment_id: new_id(&at),
                     by: by.clone(),
-                    text: "Files with the ask.".into(),
+                    text: ASK_FILES_NOTE.into(),
                     at,
                     attachments: input.files.clone(),
                     ..TaskCommentRow::default()
@@ -818,6 +821,17 @@ impl Fold {
         };
         n.attachments = input.files;
         Ok((t, n))
+    }
+
+    /// The files the person posted with ask `id` (the first comment
+    /// post_ask writes), for a notice that hands it out later.
+    pub(crate) fn ask_files(&self, id: &str) -> Vec<FileRef> {
+        self.list_comments(id)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|c| c.text == ASK_FILES_NOTE && self.is_owner(&c.by))
+            .map(|c| c.attachments)
+            .unwrap_or_default()
     }
 
     /// The agents holding another open ask: one ask per agent at a time.
@@ -1234,11 +1248,14 @@ impl Fold {
                     )?;
                     let t = self.tasks[id].clone();
                     let why = ag.as_ref().map(|g| g.why.as_str()).unwrap_or_default();
-                    if a.thread {
-                        out.push(super::threads::thread_hand_notice(&t, pick, &a.heard));
+                    let mut n = if a.thread {
+                        super::threads::thread_hand_notice(&t, pick, &a.heard)
                     } else {
-                        out.push(hand_notice(&t, pick, why));
-                    }
+                        hand_notice(&t, pick, why)
+                    };
+                    // Handed later, it still brings the ask's files (#124).
+                    n.attachments = self.ask_files(id);
+                    out.push(n);
                     continue;
                 }
                 // Nobody idle to hand it to: it waits, and goes out the

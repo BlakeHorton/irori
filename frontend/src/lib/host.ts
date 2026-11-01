@@ -117,6 +117,13 @@ export const BoardService = {
   Message: (taskId: string, msgId: string) => call(commands.boardMessage(taskId, msgId)),
   Comment: (id: string, text: string, tell: string, mentions: B.Mention[]) =>
     call(commands.boardComment(id, text, tell, mentions)),
+  CommentWithFiles: (
+    id: string,
+    text: string,
+    tell: string,
+    mentions: B.Mention[],
+    files: B.UploadFile[]
+  ) => call(commands.boardCommentWithFiles(id, text, tell, mentions, files)),
   Answer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: B.Mention[]) =>
     call(commands.boardAnswer(taskId, blockerId, option, text, wake, mentions)),
   ResolveBlocker: (taskId: string, blockerId: string, note: string, mentions: B.Mention[]) =>
@@ -133,7 +140,10 @@ export const BoardService = {
   Create: (input: B.NewCardInput) => call(commands.boardCreate(input)),
   StartThread: (text: string, mentions: B.Mention[], boardId: string) =>
     call(commands.boardStartThread(text, mentions, boardId)),
+  StartThreadWithFiles: (text: string, mentions: B.Mention[], files: B.UploadFile[]) =>
+    call(commands.boardStartThreadWithFiles(text, mentions, files)),
   Threads: (boardId: string) => call(commands.boardThreads(boardId)),
+  CardRef: (r: string) => call(commands.boardCardRef(r)),
   ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),

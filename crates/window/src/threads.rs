@@ -13,7 +13,7 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::Window;
-use crate::board::{TaskResult, Told};
+use crate::board::{TaskResult, Told, UploadFile};
 use crate::cards::AgentRef;
 use crate::ts;
 
@@ -61,18 +61,52 @@ pub struct ThreadSummary {
     pub updated_at: GoTime,
 }
 
+/// What a #ref in text names (card #144): a card or a thread, live or
+/// done, so the window can link it without loading every done card.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RefTarget {
+    pub id: String,
+    pub short: String,
+    pub title: String,
+    /// A thread opens in the Threads panel, not on a card's page.
+    pub thread: bool,
+    /// Done, failed or canceled (a thread: resolved).
+    pub done: bool,
+}
+
 impl Window {
-    /// BoardService.StartThread: the header box's message, as a thread;
-    /// with `board_id`, on that shared board (no mentions there).
+    /// BoardService.CardRef: what `#12`, `12b` or `mlg#12` names across every
+    /// board on this device, or None when nothing (or more than one card,
+    /// or a deleted one) does.
+    pub fn card_ref(&self, r: &str) -> Option<RefTarget> {
+        let id = self.core.task_ref(crate::trim(r)).ok()?;
+        let t = self.read(&id).get_task(&id)?;
+        Some(RefTarget {
+            id: t.id.clone(),
+            short: t.short.clone(),
+            title: t.title.clone(),
+            thread: is_thread(&t),
+            done: coord::is_terminal(&t.state)
+                || (is_thread(&t) && t.ask.as_ref().is_some_and(|a| a.outcome.is_some())),
+        })
+    }
+
+    /// BoardService.StartThread: the header box's message, as a thread.
+    /// Its files go on the thread like an ask's (card #124). With
+    /// `board_id`, on that shared board (card #134): no mentions or files
+    /// there.
     pub fn start_thread(
         &self,
         text: &str,
         mentions: &[ts::Mention],
+        files: &[UploadFile],
         board_id: &str,
     ) -> Result<TaskResult, String> {
         let board_id = crate::trim(board_id);
         let (t, n) = if board_id.is_empty() {
             let plan = self.plan_mentions("", mentions);
+            let refs = self.store_uploads(files)?;
             self.core
                 .coord()
                 .post_ask(
@@ -80,6 +114,7 @@ impl Window {
                     NewAsk {
                         text: text.into(),
                         mentions: plan.log.clone(),
+                        files: refs.iter().map(crate::coord_ref).collect(),
                         thread: true,
                         ..Default::default()
                     },
@@ -90,6 +125,12 @@ impl Window {
             if !mentions.is_empty() {
                 return Err(
                     "mentions work in threads on your own board; on a shared board, name a card (#12)"
+                        .into(),
+                );
+            }
+            if !files.is_empty() {
+                return Err(
+                    "files go with a thread on your own board only; on a shared board, attach them on a card"
                         .into(),
                 );
             }

@@ -576,6 +576,16 @@ impl Coord {
     pub fn move_pin(&self, by: &str, id: &str, before: &str) -> Result<Task> {
         self.lock().pin(by, id, true, before, true)
     }
+    /// Pins (or unpins, or moves with `before`) a shared board's card `id`
+    /// in the person's own log (card #161); `mv` moves a pinned one.
+    pub fn pin_ref(&self, by: &str, id: &str, pinned: bool, before: &str, mv: bool) -> Result<()> {
+        self.lock().pin_ref(by, id, pinned, before, mv)
+    }
+    /// Every pinned card id in this log with its rank, including board
+    /// cards pinned with [`Self::pin_ref`].
+    pub fn pinned_ranks(&self) -> std::collections::HashMap<String, f64> {
+        self.lock().pinned_ranks()
+    }
 
     // ---- comments ----
 
@@ -609,7 +619,23 @@ impl Coord {
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> Result<(Comment, Vec<Notice>)> {
         self.lock()
-            .person_comment(by, id, text, wake, mentions, around)
+            .person_comment(by, id, text, wake, mentions, Vec::new(), around)
+    }
+    /// person_comment with files on the comment (card #124): the notices
+    /// about it carry them, for attachment_get.
+    #[allow(clippy::too_many_arguments)]
+    pub fn person_comment_files(
+        &self,
+        by: &str,
+        id: &str,
+        text: &str,
+        wake: bool,
+        mentions: &[Mention],
+        files: Vec<FileRef>,
+        around: Option<&dyn Fn(&str) -> bool>,
+    ) -> Result<(Comment, Vec<Notice>)> {
+        self.lock()
+            .person_comment(by, id, text, wake, mentions, files, around)
     }
     /// The person's new text for their comment on a private card, before
     /// any agent read it (card #105). The caller holds its deliveries.

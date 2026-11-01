@@ -561,6 +561,10 @@ pub(crate) struct People {
     conflicts: HashMap<String, String>,
     unsent: std::collections::HashSet<String>,
     heard: HashMap<String, Vec<Delivery>>,
+    /// The shared boards' agent cards by board key (agent:<cardId>), so
+    /// another member's agents are named and live on a card they hold
+    /// rather than "gone" (card #146).
+    board: HashMap<String, irori_core::BoardAgent>,
 }
 
 fn unsent_key(agent: &str, r: &str) -> String {
@@ -604,6 +608,9 @@ impl Window {
         }
         for a in c.mesh_agents() {
             p.by_key.insert(a.key.clone(), a);
+        }
+        for a in c.board_agents() {
+            p.board.insert(a.key.clone(), a);
         }
         p.known = c.known_agent_names();
         p.colors = c.device_colors();
@@ -726,6 +733,28 @@ impl People {
             if !a.device_id.is_empty() {
                 dev = a.device_id.clone();
             }
+        }
+        if !self.by_key.contains_key(key)
+            && let Some(a) = self.board.get(key)
+        {
+            // Another member's agent on a shared board (card #146): the
+            // board's card names it and says whether it is busy, idle or
+            // gone; where is whose agent it is.
+            if !a.name.is_empty() {
+                r.name = a.name.clone();
+            }
+            r.status = if a.status.is_empty() {
+                "idle".into()
+            } else {
+                a.status.clone()
+            };
+            r.live = r.status != "gone";
+            r.where_ = if a.person.is_empty() {
+                "Another person's agent".into()
+            } else {
+                format!("{}'s agent", a.person)
+            };
+            return r;
         }
         r.where_ = self.where_(&dev);
         r.device = self.chip(&dev);
@@ -954,6 +983,11 @@ pub(crate) fn holder_line(working: &[AgentRef]) -> CardHolder {
     }
 }
 
+/// [`Window::cards_in`]'s scopes besides a board id: every card, or the
+/// private ones.
+pub const SCOPE_ALL: &str = "";
+pub const SCOPE_OWN: &str = "own";
+
 fn open_ask_summary(s: &CardSummary) -> bool {
     s.ask.as_ref().is_some_and(|a| a.state != ASK_CLOSED)
 }
@@ -974,13 +1008,26 @@ impl Window {
 
     /// BoardService.Cards: every live card for the grid.
     pub fn cards(&self) -> Vec<CardSummary> {
+        self.cards_in(SCOPE_ALL)
+    }
+
+    /// The live cards of one scope (card #161): [`SCOPE_ALL`] for every
+    /// card, [`SCOPE_OWN`] for the private ones, or a board id for that
+    /// board's. Pinned first, then families together, as the grid shows
+    /// them.
+    pub fn cards_in(&self, scope: &str) -> Vec<CardSummary> {
         let co = self.core.coord();
         let p = self.people();
         let now = self.now_ms();
-        let tasks = co.list_tasks(&coord::TaskFilter {
-            open: true,
-            ..Default::default()
-        });
+        let own = scope == SCOPE_ALL || scope == SCOPE_OWN;
+        let mut tasks = if own {
+            co.list_tasks(&coord::TaskFilter {
+                open: true,
+                ..Default::default()
+            })
+        } else {
+            Vec::new()
+        };
         let mut out = Vec::with_capacity(tasks.len());
         let placed = co.positions();
         // Threads (card #116) live in their own panel, not the grid.
@@ -996,11 +1043,16 @@ impl Window {
             }
             s.stale = s.subtasks == 0 && stale(&s, &last, now);
             s.talking = talking(&co.comments(&t.id).unwrap_or_default(), &p, now);
-            self.family_of(t, &mut s);
+            family_of(co, t, &mut s);
             out.push(s);
         }
         // Every board's: "All" includes them (v0.5 §8).
-        out.extend(self.board_cards(&p, now));
+        if scope != SCOPE_OWN {
+            let only = (scope != SCOPE_ALL).then_some(scope);
+            let (bs, bt) = self.board_cards(&p, now, only);
+            out.extend(bs);
+            tasks.extend(bt);
+        }
         out.sort_by(|a, b| {
             let (aa, ab) = (open_ask_summary(a), open_ask_summary(b));
             if aa != ab {
@@ -1049,6 +1101,13 @@ impl Window {
 
     /// BoardService.DoneCards: one page of the closed cards.
     pub fn done_cards(&self, limit: i64, before: &str) -> Result<DonePage, String> {
+        self.done_cards_in(limit, before, SCOPE_ALL)
+    }
+
+    /// One page of one scope's closed cards (card #161; see
+    /// [`Self::cards_in`]): paged on its own, so a board's Closed isn't
+    /// crowded out by newer cards elsewhere.
+    pub fn done_cards_in(&self, limit: i64, before: &str, scope: &str) -> Result<DonePage, String> {
         let co = self.core.coord();
         let limit = if limit <= 0 {
             coord::DEFAULT_DONE_CARD
@@ -1077,17 +1136,22 @@ impl Window {
         // Private closed cards, then every ready board's (#115): Closed
         // holds them all, the way the grid's All holds every live card.
         // A board card's `from` is its index in `boards`.
-        let mut done: Vec<(Task, Option<usize>)> = co
-            .list_tasks(&coord::TaskFilter::default())
-            .into_iter()
-            .filter(|t| terminal(t) && !crate::threads::is_thread(t))
-            .map(|t| (t, None))
-            .collect();
+        let own = scope == SCOPE_ALL || scope == SCOPE_OWN;
+        let mut done: Vec<(Task, Option<usize>)> = if own {
+            co.list_tasks(&coord::TaskFilter::default())
+                .into_iter()
+                .filter(|t| terminal(t) && !crate::threads::is_thread(t))
+                .map(|t| (t, None))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let boards: Vec<_> = self
             .core
             .board_list()
             .into_iter()
             .filter(|s| s.ready)
+            .filter(|s| scope == SCOPE_ALL || s.board_id == scope)
             .filter_map(|s| self.core.board_coord(&s.board_id).ok().map(|c| (s, c)))
             .collect();
         for (i, (_, bc)) in boards.iter().enumerate() {
@@ -1148,26 +1212,6 @@ impl Window {
         Ok(out)
     }
 
-    /// The subtask fields that need other cards.
-    fn family_of(&self, t: &Task, s: &mut CardSummary) {
-        let co = self.core.coord();
-        if !t.parent.is_empty()
-            && let Some(pt) = co.get_task(&t.parent)
-        {
-            s.parent = Some(CardRef {
-                id: pt.id.clone(),
-                short: pt.short.clone(),
-                title: pt.title.clone(),
-            });
-        }
-        if let Some(r) = &t.rollup
-            && !r.blocked.is_empty()
-            && let Some(k) = co.get_task(&r.blocked)
-        {
-            s.subtask_blocked = format!("{}: {}", k.short_ref(), r.blocked_question);
-        }
-    }
-
     /// The cards waiting on a decision (the tray's number).
     pub fn decide_count(&self) -> usize {
         let p = People::default();
@@ -1183,18 +1227,30 @@ impl Window {
             .count();
         private
             + self
-                .board_cards(&p, self.now_ms())
+                .board_cards(&p, self.now_ms(), None)
+                .0
                 .iter()
                 .filter(|s| s.open_blockers > 0)
                 .count()
     }
 
-    /// The live cards of every board this device holds, for the grid,
-    /// their keys as this device knows them. A withdrawn card is hidden
-    /// (§5.3; Go `boardCards`).
-    fn board_cards(&self, p: &People, now: i64) -> Vec<CardSummary> {
-        let mut out = Vec::new();
+    /// The live cards of every board this device holds (or only board
+    /// `only`), for the grid, their keys as this device knows them, with
+    /// their tasks for grouping families. A withdrawn card or a thread is
+    /// left out (§5.3; Go `boardCards`). The person's pins on board cards
+    /// live in their own log (card #161).
+    fn board_cards(
+        &self,
+        p: &People,
+        now: i64,
+        only: Option<&str>,
+    ) -> (Vec<CardSummary>, Vec<Task>) {
+        let (mut out, mut tasks) = (Vec::new(), Vec::new());
+        let pins = self.core.coord().pinned_ranks();
         for s in self.core.board_list() {
+            if only.is_some_and(|b| b != s.board_id) {
+                continue;
+            }
             let Ok(co) = self.core.board_coord(&s.board_id) else {
                 continue;
             };
@@ -1210,22 +1266,36 @@ impl Window {
                 if t.withdrawn || crate::threads::is_thread(&t) {
                     continue;
                 }
-                let pt = self.priv_task(t);
+                let pt = self.priv_task(t.clone());
                 let mut cs = card_summary(&pt, p);
                 cs.pos = pos_of(&placed, &pt.id);
                 cs.scope = crate::boards::SCOPE_BOARD.into();
                 cs.scope_label = s.name.clone();
                 cs.board = s.board_id.clone();
                 cs.tag = s.tag.clone();
+                let mut last = t.updated_at;
+                if let Some(acts) = co.activity(&t.id)
+                    && let Some(a) = acts.first()
+                    && a.at.unix_nano() > last.unix_nano()
+                {
+                    last = a.at;
+                }
+                cs.stale = cs.subtasks == 0 && stale(&cs, &last, now);
                 cs.talking = talking(
                     &self.priv_comments(co.comments(&pt.id).unwrap_or_default()),
                     p,
                     now,
                 );
+                if let Some(r) = pins.get(&pt.id) {
+                    cs.pinned = true;
+                    cs.pin_rank = *r;
+                }
+                family_of(&co, &t, &mut cs);
                 out.push(cs);
+                tasks.push(t);
             }
         }
-        out
+        (out, tasks)
     }
 
     /// BoardService.Card: one card opened.
@@ -1256,7 +1326,7 @@ impl Window {
             ..CardDetail::default()
         };
         self.board_detail(&t, &mut d);
-        self.family_of(&t, &mut d.summary);
+        family_of(&co, &t, &mut d.summary);
         for kid in &t.subtasks {
             let Some(k) = co.get_task(kid) else { continue };
             let ks = card_summary(&k, &p);
@@ -1702,6 +1772,27 @@ fn pending_lines(ds: &[Delivery], t: &Task, p: &People) -> Vec<String> {
         }
     }
     out
+}
+
+/// A card summary's family fields (its parent, the subtask a decision
+/// waits on), from the log the card lives in (card #161: a board's for a
+/// board card).
+fn family_of(co: &coord::Coord, t: &Task, s: &mut CardSummary) {
+    if !t.parent.is_empty()
+        && let Some(pt) = co.get_task(&t.parent)
+    {
+        s.parent = Some(CardRef {
+            id: pt.id.clone(),
+            short: pt.short.clone(),
+            title: pt.title.clone(),
+        });
+    }
+    if let Some(r) = &t.rollup
+        && !r.blocked.is_empty()
+        && let Some(k) = co.get_task(&r.blocked)
+    {
+        s.subtask_blocked = format!("{}: {}", k.short_ref(), r.blocked_question);
+    }
 }
 
 #[cfg(test)]

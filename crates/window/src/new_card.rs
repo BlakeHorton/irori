@@ -7,7 +7,7 @@ use serde::Deserialize;
 use specta::Type;
 
 use crate::Window;
-use crate::board::{TaskResult, Told};
+use crate::board::{TaskResult, Told, UploadFile};
 
 /// What the New card form sends.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Type)]
@@ -20,6 +20,9 @@ pub struct NewCardInput {
     pub repo_key: String,
     /// An agent's key: hand it to that agent instead of the free one.
     pub assign_to: String,
+    /// Files pasted, dropped or picked in the form (card #124): they go on
+    /// the card as the person's first comment, and with the hand-out.
+    pub files: Vec<UploadFile>,
 }
 
 impl Window {
@@ -32,6 +35,13 @@ impl Window {
                 coord::ErrorKind::Invalid.text()
             ));
         }
+        // Stored before the card is made: a file that can't be stored
+        // leaves no card behind.
+        let files: Vec<coord::FileRef> = self
+            .store_uploads(&input.files)?
+            .iter()
+            .map(crate::coord_ref)
+            .collect();
         let co = self.core.coord().clone();
         let me = self.core.user_sender().key;
         let t = co
@@ -46,11 +56,25 @@ impl Window {
                 },
             )
             .map_err(|e| e.to_string())?;
+        if !files.is_empty() {
+            // Nobody holds it yet: the comment tells no one by itself.
+            co.comment_on(
+                &me,
+                &t.id,
+                coord::CommentInput {
+                    text: "Files with the card.".into(),
+                    files: files.clone(),
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        }
         let to = crate::trim(&input.assign_to);
         if !to.is_empty() {
             let (t, mut n) = co.assign(&me, &t.id, to).map_err(|e| e.to_string())?;
             // The person picked this agent: it hears now, idle or not.
             n.wake = true;
+            n.attachments = files;
             let told = self.tell_from(&self.core.user_sender(), &n);
             return Ok(TaskResult {
                 task: t,
@@ -61,6 +85,8 @@ impl Window {
         let n = co
             .offer_card(&me, &t.id, &self.core.ask_agents())
             .map_err(|e| e.to_string())?;
+        let mut n = n;
+        n.attachments = files;
         // From Irori, not the person: it hands the card out.
         let told = self.tell_from(&inbox::system_sender(), &n);
         let t = co.get_task(&t.id).unwrap_or(t);
