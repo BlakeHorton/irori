@@ -513,6 +513,13 @@ function sampleAsk(text: string, repoKey: string, wake: boolean, mentions: Menti
   })
 }
 
+// sampleBoardOf finds a sample board by id; lib/boards.ts sets it (it
+// imports this file, so this file doesn't import it back).
+let sampleBoardOf: (id: string) => SampleBoard | undefined = () => undefined
+export function setSampleBoards(fn: (id: string) => SampleBoard | undefined) {
+  sampleBoardOf = fn
+}
+
 // sampleCreate is BoardService.Create on the sample: a new open card,
 // handed to the agent picked or to sample-heron (the free one).
 function sampleCreate(input: NewCardInput): TaskResult {
@@ -521,7 +528,24 @@ function sampleCreate(input: NewCardInput): TaskResult {
   const now = new Date().toISOString()
   const cs = sampleState()
   const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
-  const to = input.assignTo || "sample-heron"
+  // From a board's page (card #126): on that board, unheld unless picked.
+  const board = input.board ? sampleBoardOf(input.board) : undefined
+  const to = input.assignTo || (board ? "" : "sample-heron")
+  const onBoard = board
+    ? {
+        scope: "board",
+        scopeLabel: board.name,
+        board: board.boardId,
+        tag: board.tag,
+        onBoard: {
+          id: board.boardId,
+          name: board.name,
+          tag: board.tag,
+          visibleTo: board.people,
+          canWithdraw: true,
+        },
+      }
+    : {}
   const c = {
     ...cs[0],
     id: `sample-new-${Date.now()}`,
@@ -552,12 +576,13 @@ function sampleCreate(input: NewCardInput): TaskResult {
     historyTrimmed: false,
     updatedAt: now,
     ask: null,
+    ...onBoard,
   } as CardDetail
   sample = [c, ...cs]
   sampleChanged()
   return TaskResult({
     task: { id: c.id } as TaskResult["task"],
-    told: Told({ to: [to], mode: "wake" }),
+    told: Told(to ? { to: [to], mode: "wake" } : {}),
   })
 }
 

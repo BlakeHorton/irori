@@ -19,21 +19,27 @@ import {
   useMentionCandidates,
   type AskRepo,
 } from "@/lib/cards"
+import type { BoardSummary } from "@/lib/boards"
+import { plainLine } from "@/lib/irori"
 import { errorText } from "@/lib/talk"
 
 // NewCardDialog is New card (card #116): the person makes a card straight
 // from the header, no ask. Title is all it needs; goal, done-when and the
 // repo say more. With nobody picked, Irori hands it to one free agent (the
 // one idle longest), as it does any unheld card; picking an agent hands it
-// to that one, woken. onMade gets the new card's id.
+// to that one, woken. onMade gets the new card's id. From a board's page
+// (card #126) it goes on that board, where anyone on it can take it up.
 export function NewCardDialog({
   open,
   onClose,
   onMade,
+  board,
 }: {
   open: boolean
   onClose: () => void
   onMade: (id: string) => void
+  // The shared board whose page it was made from; left out: your own.
+  board?: BoardSummary
 }) {
   const [title, setTitle] = useState("")
   const [objective, setObjective] = useState("")
@@ -79,6 +85,7 @@ export function NewCardDialog({
         doneWhen,
         repoKey,
         assignTo,
+        board: board?.boardId,
       })
       reset()
       onMade(res.task.id)
@@ -95,10 +102,13 @@ export function NewCardDialog({
       <DialogContent className="sm:max-w-lg">
         <form className="grid gap-3" onSubmit={(e) => void submit(e)}>
           <DialogHeader>
-            <DialogTitle>New card</DialogTitle>
+            <DialogTitle>
+              {board ? `New card on ${plainLine(board.name)}` : "New card"}
+            </DialogTitle>
             <DialogDescription>
-              Work for an agent to pick up. Nobody picked: Irori hands it to
-              the free agent idle longest.
+              {board
+                ? `Goes on ${plainLine(board.tag)}#, visible to ${board.people.map(plainLine).join(", ")}. Nobody picked: it waits there for someone on the board to take it up.`
+                : "Work for an agent to pick up. Nobody picked: Irori hands it to the free agent idle longest."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
@@ -151,7 +161,7 @@ export function NewCardDialog({
               onValueChange={setAssignTo}
               className="w-full"
               choices={[
-                { value: "", label: "Any free agent" },
+                { value: "", label: board ? "Nobody yet" : "Any free agent" },
                 ...agents.map((c) => ({
                   value: c.who.key,
                   label: c.repo

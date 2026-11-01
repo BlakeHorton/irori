@@ -129,6 +129,12 @@ pub struct BoardSummary {
     pub devices: i64,
     /// Its live cards.
     pub cards: i64,
+    /// Cards completed in the last seven days (card #126's state bar).
+    pub done_week: i64,
+    /// When anything last happened on it: a card's last write or thread
+    /// row (card #126); zero for a board with no cards.
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    pub last_at: GoTime,
     /// Its board.created counted here, so cards can go on it. A board
     /// another device made shows up before its rows arrive.
     pub ready: bool,
@@ -432,15 +438,32 @@ impl Services {
                     .iter()
                     .filter(|d| !d.revoked)
                     .count() as i64;
-                s.cards = b
-                    .coord()
-                    .list_tasks(&coord::TaskFilter {
-                        open: true,
-                        ..Default::default()
-                    })
+                let co = b.coord();
+                let week = GoTime::from_system(std::time::SystemTime::now()).unix_nano()
+                    - 7 * 24 * 3600 * 1_000_000_000;
+                for t in co
+                    .list_tasks(&coord::TaskFilter::default())
                     .iter()
                     .filter(|t| !t.withdrawn)
-                    .count() as i64;
+                {
+                    let mut last = t.updated_at;
+                    if !coord::is_terminal(&t.state) {
+                        s.cards += 1;
+                        if let Some(acts) = co.activity(&t.id)
+                            && let Some(a) = acts.first()
+                            && a.at.unix_nano() > last.unix_nano()
+                        {
+                            last = a.at;
+                        }
+                    } else if t.state == coord::COMPLETED
+                        && t.updated_at.unix_nano() >= week
+                    {
+                        s.done_week += 1;
+                    }
+                    if last.unix_nano() > s.last_at.unix_nano() {
+                        s.last_at = last;
+                    }
+                }
                 s
             })
             .collect();

@@ -3,6 +3,7 @@
 //! every board in the grid (design v0.5-shared-boards.md §8, step 4).
 
 use coord::{Activity, Comment, Task};
+use gocompat::time::GoTime;
 use serde::Serialize;
 use specta::Type;
 
@@ -23,6 +24,12 @@ pub struct BoardSummary {
     pub owner: bool,
     pub devices: i64,
     pub cards: i64,
+    /// Cards completed in the last seven days (card #126).
+    pub done_week: i64,
+    /// When anything last happened on the board; left out with no cards.
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    #[specta(optional, type = crate::ts::Time)]
+    pub last_at: GoTime,
     pub ready: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
@@ -48,6 +55,8 @@ impl From<irori_core::BoardSummary> for BoardSummary {
             owner: s.owner,
             devices: s.devices,
             cards: s.cards,
+            done_week: s.done_week,
+            last_at: s.last_at,
             ready: s.ready,
             tag_clash: s.tag_clash,
             leaving: s.leaving,
