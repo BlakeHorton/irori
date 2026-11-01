@@ -44,7 +44,7 @@ use super::Services;
 use crate::timers::Ticker;
 use crate::{CLOSE_WAIT, logf};
 
-pub use super::boards_own::{BoardSummary, SharePreview, SharedCopy};
+pub use super::boards_own::{BoardSummary, SharePreview, SharedCopy, SubtaskPreview};
 
 /// Where the board logs live, under the data dir.
 pub const BOARDS_DIR: &str = "boards";
@@ -1610,7 +1610,11 @@ impl Services {
             )?;
             b.store.append("irori", kinds::MEMBER_DEVICE_ADDED, &add)?;
         }
-        if v.profile(&me.id).is_none() {
+        // None yet, or the person renamed themself (card #183): the board
+        // shows the newest name.
+        if v.profile(&me.id)
+            .is_none_or(|n| n != self.ident.current().name)
+        {
             let prof = self.ident.member_profile_row(epoch)?;
             b.store.append("irori", kinds::MEMBER_PROFILE, &prof)?;
         }

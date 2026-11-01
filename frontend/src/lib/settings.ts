@@ -145,3 +145,37 @@ export function onOpen(fn: (t: Target) => void): () => void {
   }
   return Events.On<Target>(EventOpen, (ev) => fn(ev.data))
 }
+
+// useYourName is the person's name (card #183): set once in Settings, it
+// follows to their other devices and every board they're on.
+export function useYourName(active: boolean) {
+  const [name, setName] = useState<string | null>(() =>
+    inWails() ? null : "Sample Person"
+  )
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!active || !inWails()) return
+    let live = true
+    SettingsService.GetYourName()
+      .then((n) => live && setName(n))
+      .catch((err) => live && setError(errorText(err)))
+    return () => {
+      live = false
+    }
+  }, [active])
+  const save = useCallback(async (next: string) => {
+    setError(null)
+    try {
+      const kept = inWails()
+        ? await SettingsService.SetYourName(next)
+        : next.trim()
+      if (!kept) throw new Error("A name can't be empty.")
+      setName(kept)
+      return true
+    } catch (err) {
+      setError(errorText(err))
+      return false
+    }
+  }, [])
+  return { name, error, save }
+}

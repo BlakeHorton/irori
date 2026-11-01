@@ -172,6 +172,59 @@ fn comment_on_a_shared_card_tells_its_agent() {
     );
 }
 
+/// Card #126: New card on a board's page goes on that board, unheld, or to
+/// the agent the person picked; the Boards list counts it and says when the
+/// board last had activity.
+#[test]
+fn new_card_on_a_board() {
+    use irori_window::new_card::NewCardInput;
+    let r = Rig::new();
+    let w = &r.w;
+    let mlg = w.boards_create("MLG", "mlg").unwrap();
+    let before = w.boards_list();
+    assert!(
+        before[0].cards == 0 && before[0].last_at.is_zero(),
+        "empty board {:?}",
+        before[0]
+    );
+    let res = w
+        .create_card(NewCardInput {
+            title: "Lay out the farm".into(),
+            board: mlg.board_id.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(res.told.to.is_empty(), "unheld: nobody told {:?}", res.told);
+    assert!(res.task.holders.is_empty() && res.task.assigned.is_empty());
+    let co = w.core.board_coord(&mlg.board_id).unwrap();
+    assert!(co.get_task(&res.task.id).is_some(), "on the board's log");
+    assert!(
+        w.core.coord().get_task(&res.task.id).is_none(),
+        "not on the private board"
+    );
+    let res = w
+        .create_card(NewCardInput {
+            title: "Plant the crops".into(),
+            board: mlg.board_id.clone(),
+            assign_to: r.key_a.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(res.told.to, vec![r.key_a.clone()]);
+    assert_eq!(res.told.mode, "wake");
+    let me = w
+        .core
+        .board_key(&mlg.board_id, &w.core.user_sender().key)
+        .unwrap();
+    co.set_task_state(&me, &res.task.id, coord::COMPLETED, "")
+        .unwrap();
+    let b = &w.boards_list()[0];
+    assert!(
+        b.cards == 1 && b.done_week == 1 && !b.last_at.is_zero(),
+        "after two cards, one done: {b:?}"
+    );
+}
+
 /// A Rig on loopback iroh with no LAN lookup (the invite tests).
 fn on_loopback() -> Rig {
     Rig::with(|o| {

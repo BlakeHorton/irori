@@ -605,6 +605,13 @@ function sampleAsk(text: string, repoKey: string, wake: boolean, mentions: Menti
   })
 }
 
+// sampleBoardOf finds a sample board by id; lib/boards.ts sets it (it
+// imports this file, so this file doesn't import it back).
+let sampleBoardOf: (id: string) => SampleBoard | undefined = () => undefined
+export function setSampleBoards(fn: (id: string) => SampleBoard | undefined) {
+  sampleBoardOf = fn
+}
+
 // sampleCreate is BoardService.Create on the sample: a new open card,
 // handed to the agent picked or to sample-heron (the free one).
 function sampleCreate(input: NewCardInput): TaskResult {
@@ -613,7 +620,24 @@ function sampleCreate(input: NewCardInput): TaskResult {
   const now = new Date().toISOString()
   const cs = sampleState()
   const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
-  const to = input.assignTo || "sample-heron"
+  // From a board's page (card #126): on that board, unheld unless picked.
+  const board = input.board ? sampleBoardOf(input.board) : undefined
+  const to = input.assignTo || (board ? "" : "sample-heron")
+  const onBoard = board
+    ? {
+        scope: "board",
+        scopeLabel: board.name,
+        board: board.boardId,
+        tag: board.tag,
+        onBoard: {
+          id: board.boardId,
+          name: board.name,
+          tag: board.tag,
+          visibleTo: board.people,
+          canWithdraw: true,
+        },
+      }
+    : {}
   const c = {
     ...cs[0],
     id: `sample-new-${Date.now()}`,
@@ -644,12 +668,13 @@ function sampleCreate(input: NewCardInput): TaskResult {
     historyTrimmed: false,
     updatedAt: now,
     ask: null,
+    ...onBoard,
   } as CardDetail
   sample = [c, ...cs]
   sampleChanged()
   return TaskResult({
     task: { id: c.id } as TaskResult["task"],
-    told: Told({ to: [to], mode: "wake" }),
+    told: Told(to ? { to: [to], mode: "wake" } : {}),
   })
 }
 
@@ -782,6 +807,10 @@ export function samplePreview(
   const c = sampleCard(id)
   if (c.scope === "board")
     throw new Error("coord: invalid input: the card is already on a board")
+  if (c.parent)
+    throw new Error(
+      `coord: invalid input: #${c.short} is a subtask of #${c.parent.short}: share #${c.parent.short} and its subtasks go with it`
+    )
   if (over(c))
     throw new Error(
       `coord: bad state: #${c.short} is ${c.state}; share a card that is still in play`
@@ -805,6 +834,22 @@ export function samplePreview(
     repo: c.repoKey,
     visibleTo: board.people,
     dropped: [] as string[],
+    // A parent's open subtasks go with it; ended ones stay (card #180).
+    subtasks: (c.subtaskList ?? [])
+      .filter((k) => !over(k))
+      .map((k) => ({
+        taskId: k.id,
+        ref: `#${k.short}`,
+        title: clean(`#${k.short}'s title`, k.title),
+        goal: "",
+        doneWhen: "",
+        steps: [] as string[],
+        links: [] as string[],
+        repo: c.repoKey,
+      })),
+    keptPrivate: (c.subtaskList ?? [])
+      .filter((k) => over(k))
+      .map((k) => `#${k.short} ${k.title} (${k.state})`),
     hash: "sample",
   }
   if (c.links.some((l) => l.kind === LinkKind.LinkPath))
@@ -825,6 +870,17 @@ export type SharePreviewShape = {
   repo: string
   visibleTo: string[]
   dropped: string[]
+  subtasks: {
+    taskId: string
+    ref: string
+    title: string
+    goal: string
+    doneWhen: string
+    steps: string[]
+    links: string[]
+    repo: string
+  }[]
+  keptPrivate: string[]
   hash: string
 }
 

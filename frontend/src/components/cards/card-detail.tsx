@@ -65,6 +65,7 @@ import {
   ShortRef,
   Spinner,
   StatePill,
+  waitLabel,
 } from "./bits"
 import { Face, LiveDot } from "./faces"
 import { Thread } from "./thread"
@@ -621,8 +622,10 @@ function SharedToBar({
 }
 
 // BoardActions are the header's board buttons (v0.5 §8): Share to board on
-// a private card still in play, when there is a board to share to;
-// Withdraw on a shared card, for its creator or an owner.
+// a private card still in play, when there is a board to share to (a
+// parent takes its open subtasks along; a subtask goes with its parent,
+// card #180); Withdraw on a shared card, for its creator or an owner (a
+// parent's, which brings its subtasks back too).
 function BoardActions({
   detail,
   boards,
@@ -635,13 +638,14 @@ function BoardActions({
   onBack: () => void
 }) {
   if (detail.onBoard) {
-    if (!detail.onBoard.canWithdraw || over(detail)) return null
+    if (!detail.onBoard.canWithdraw || over(detail) || detail.parent) return null
     // The private card the work carries on in, else back to the grid: a
     // withdrawn card is hidden and can't be reopened.
     return (
       <WithdrawButton
         cardId={detail.id}
         visibleTo={detail.onBoard.visibleTo}
+        family={(detail.subtasks ?? 0) > 0}
         onWithdrawn={(id) => (id && onOpen ? onOpen(id) : onBack())}
       />
     )
@@ -650,8 +654,7 @@ function BoardActions({
     over(detail) ||
     detail.sharedTo ||
     openAsk(detail) ||
-    detail.parent ||
-    (detail.subtasks ?? 0) > 0
+    detail.parent
   )
     return null
   return (
@@ -830,6 +833,8 @@ function ProgressLine({ detail }: { detail: CardDetail }) {
         {detail.openBlockers} waiting on a decision
       </span>
     )
+  if (detail.waitingOn)
+    parts.push(<span key="o">{waitLabel(detail).replace(/^Waiting/, "waiting")}</span>)
   if (detail.waiting > 0)
     parts.push(<span key="w">{detail.waiting} waiting on an agent</span>)
   if (!parts.length) return null
