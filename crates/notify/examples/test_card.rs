@@ -5,7 +5,8 @@
 //! It refuses to run without IRORI_HOME (never the live data dir), keeps
 //! the card visible to screen capture so it can be screenshotted, turns
 //! the sound off in that scratch home, and exits after the given seconds
-//! (default 8).
+//! (default 8). With `kinds` after the seconds it shows one card of each
+//! kind instead (info, success, warn, error; card #175).
 
 fn main() {
     let Some(home) = std::env::var_os("IRORI_HOME") else {
@@ -31,7 +32,28 @@ fn main() {
         eprintln!("settings: {e}");
     }
     n.set_opener(|t| println!("open {} {}", t.tab, t.ref_));
-    if let Err(e) = n.post_test() {
+    if std::env::args().nth(2).as_deref() == Some("kinds") {
+        use notify::{Level, Note};
+        for (i, (level, title)) in [
+            (Level::Error, "Error: the build failed"),
+            (Level::Warn, "Warn: a card is blocked on you"),
+            (Level::Success, "Success: a card is done"),
+            (Level::Info, "Info: a message Irori held"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let shown = n.post(Note {
+                id: format!("kinds-{i}"),
+                title: title.into(),
+                body: "One card of each kind, to compare their stripes and icons.".into(),
+                level,
+                sticky: true,
+                ..Note::default()
+            });
+            println!("{title}: shown {shown}");
+        }
+    } else if let Err(e) = n.post_test() {
         eprintln!("{e}");
         std::process::exit(1);
     }
