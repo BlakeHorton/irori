@@ -185,6 +185,21 @@ impl SharedBoards for Fake {
         self.withdrawn.lock().unwrap().push(task_id.into());
         Ok(())
     }
+    /// Blake and his agents (card #186); two of them share a name.
+    fn board_mentionables(&self, _board_id: &str) -> Vec<coord::roster::AgentCard> {
+        let card = |key: &str, name: &str| coord::roster::AgentCard {
+            key: key.into(),
+            name: name.into(),
+            status: "idle".into(),
+            ..Default::default()
+        };
+        vec![
+            card("person:pBlake", "Blake"),
+            card("agent:cb1", "mlg-lead"),
+            card("agent:cb2", "twin"),
+            card("agent:cb3", "twin"),
+        ]
+    }
 }
 
 struct Rig {
@@ -583,4 +598,80 @@ fn cs_text(r: &Rig, id: &str) -> Vec<String> {
         .into_iter()
         .map(|c| c.text)
         .collect()
+}
+
+/// Card #186: on a shared card an agent's @name also reaches the board's
+/// other people and their agents, by their board keys; ambiguous and
+/// unknown names behave as on the private board.
+#[test]
+fn mentions_on_a_shared_card_name_other_people_and_their_agents() {
+    let r = rig();
+    let id = created_id(&r.h.okj(
+        &call_a(),
+        "board_create",
+        json!({"title": "Loader", "board": "mlg"}),
+    ));
+    let out = r.h.okj(
+        &call_a(),
+        "board_comment",
+        json!({"task_id": id, "text": "@blake can @mlg-lead take the loader? @gamma too"}),
+    );
+    has(
+        &out,
+        &["Mentioned: blake (on the board), mlg-lead (on the board), gamma (woke)."],
+    );
+    has_not(&out, &["Not delivered"]);
+    // The comment row names them by board key. (Board rows keep their
+    // mentions once #177 lands; until then the fold drops them.)
+    let cm = r.fake.co.comments(&id).unwrap().pop().unwrap();
+    let stored: Vec<&str> = cm.mentions.iter().map(|m| m.key.as_str()).collect();
+    assert!(
+        stored
+            .iter()
+            .all(|k| k.starts_with("agent:") || k.starts_with("person:")),
+        "{stored:?}"
+    );
+    if !stored.is_empty() {
+        for k in ["person:pBlake", "agent:cb1"] {
+            assert!(stored.contains(&k), "{k} in {stored:?}");
+        }
+    }
+    // Their own devices tell them: nothing lands in this device's inbox.
+    let stray: Vec<String> =
+        r.h.b
+            .ib
+            .list(200)
+            .into_iter()
+            .map(|d| d.to)
+            .filter(|t| t.starts_with("person:") || t.starts_with("agent:cb"))
+            .collect();
+    assert!(stray.is_empty(), "{stray:?}");
+    // The mention arg takes a board key or a name.
+    let out = r.h.okj(
+        &call_a(),
+        "board_comment",
+        json!({"task_id": id, "text": "see above", "mention": ["agent:cb1", "Blake"]}),
+    );
+    has(&out, &["mlg-lead (on the board)", "Blake (on the board)"]);
+    // Ambiguous and unknown, as on the private board.
+    let out = r.h.okj(
+        &call_a(),
+        "board_comment",
+        json!({"task_id": id, "text": "@twin and @nobody", "mention": ["person:pNobody"]}),
+    );
+    has(
+        &out,
+        &[
+            "twin is ambiguous: mention one by key (agent:cb2; agent:cb3)",
+            "no agent has key person:pNobody",
+        ],
+    );
+    // On a private card the board's people are nobody.
+    let pid = created_id(&r.h.okj(&call_a(), "board_create", json!({"title": "Mine"})));
+    let out = r.h.okj(
+        &call_a(),
+        "board_comment",
+        json!({"task_id": pid, "text": "@Blake?"}),
+    );
+    has_not(&out, &["Blake (on the board)"]);
 }
