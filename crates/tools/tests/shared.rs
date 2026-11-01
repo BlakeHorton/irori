@@ -92,6 +92,10 @@ impl Fake {
         if k.starts_with("user:") {
             return ME.into();
         }
+        // Keys already in board form are kept, as the Core's board_key does.
+        if k.starts_with("agent:") || k.starts_with("person:") {
+            return k.into();
+        }
         let mut m = self.cards.lock().unwrap();
         if let Some(c) = m.get(k) {
             return c.clone();
