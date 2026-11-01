@@ -25,6 +25,7 @@ mod mention;
 mod mirror;
 mod offers;
 mod placed;
+mod prstate;
 mod threads;
 pub use offers::{OFFER_HANDED, OFFER_PASSED, OFFER_WAITING};
 mod resource;
@@ -60,6 +61,9 @@ pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
 pub use mention::{board_form, mention_into, without_mentioned};
 pub use mirror::RELEASE_REQUEST;
 pub use placed::MAX_PLACE;
+pub use prstate::{
+    NOTICE_PR, PR_CHANGES_REQUESTED, PR_CLOSED, PR_MERGED, PR_OPEN, PrCheck, PrState,
+};
 pub use resource::{
     RESOURCE_NAMED, RESOURCE_PATH, RESOURCE_PORT, Resource, check_repo_key, normalize_glob,
     normalize_resource, overlaps, parse_resource,
@@ -973,6 +977,21 @@ impl Coord {
 
     /// Follow's 1 s tick: refusals for conflicts lost, expiry rows for own
     /// leases, and the ask owner's duties.
+    /// Records what GitHub said about PR `check.pr` on card `id` (card
+    /// #208) and returns the card and the notices to route.
+    pub fn record_pr_state(&self, id: &str, check: PrCheck) -> Result<(Task, Vec<Notice>)> {
+        self.lock().record_pr_state(id, check)
+    }
+
+    /// The states of the PRs card `id` links, as last heard (card #208).
+    pub fn pr_states(&self, id: &str) -> Vec<PrState> {
+        let f = self.lock();
+        f.tasks
+            .get(id)
+            .map(|t| f.pr_states_of(t))
+            .unwrap_or_default()
+    }
+
     pub fn tick(&self) {
         self.lock().holder_duties();
     }

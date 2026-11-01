@@ -288,6 +288,8 @@ pub struct Fold {
     /// unblock restores in_review, not working. Not part of the Task's
     /// Go shape.
     pub(crate) review_before_block: HashSet<String>,
+    /// Each card's linked PRs as GitHub last said they stand (card #208).
+    pub(crate) pr_states: super::prstate::PrStates,
 }
 
 /// `stolenKey`: resource, holder and acquiredAt (RFC3339Nano, UTC).
@@ -394,6 +396,7 @@ impl Fold {
             reviewers: BTreeMap::new(),
             deleted: HashSet::new(),
             review_before_block: HashSet::new(),
+            pr_states: Default::default(),
         }
     }
 
@@ -938,6 +941,7 @@ impl Fold {
             }
             kinds::LEASE_STOLEN => self.apply_stolen(ev),
             kinds::REVIEW_REQUESTED | kinds::REVIEW_REVIEWER => self.fold_review(ev, &at),
+            kinds::PR_STATE => self.fold_pr_state(ev),
             kinds::LEASE_RELEASED => {
                 let Some(p) = row::<LeaseReleasedRow>(&ev.payload) else {
                     return;

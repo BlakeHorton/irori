@@ -88,6 +88,22 @@ crate::go_struct! {
 }
 
 crate::go_struct! {
+    /// How a card's linked PR stands on GitHub (card #208), written by
+    /// the device that holds the card as `irori`.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct PrStateRow {
+        pub task_id: String = "taskId",
+        pub pr: String = "pr",
+        pub state: String = "state" "omit",
+        pub review: String = "review" "omit",
+        pub merged_at: GoTime = "mergedAt",
+        pub error: String = "error" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
     #[derive(Debug, Clone, Default, PartialEq)]
     pub struct TaskStateRow {
         pub task_id: String = "taskId",

@@ -193,6 +193,9 @@ kinds! {
     BOARD_ASK_EDITED = "board.ask.edited" => Replicated, Accepts;
     REVIEW_REQUESTED = "review.requested" => Replicated, Accepts;
     REVIEW_REVIEWER = "review.reviewer" => Replicated, Accepts;
+    /// How a card's linked PR stands on GitHub (card #208): `{taskId, pr,
+    /// state?, review?, mergedAt?, error?, by, at}`, by `irori`.
+    PR_STATE = "pr.state" => Replicated, Accepts;
     // v0.5 private-log rows, never in a board log
     BOARD_JOINED = "board.joined" => Replicated, Refuses;
     BOARD_FORGOT = "board.forgot" => Replicated, Refuses;
