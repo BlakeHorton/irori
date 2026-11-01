@@ -561,6 +561,10 @@ pub(crate) struct People {
     conflicts: HashMap<String, String>,
     unsent: std::collections::HashSet<String>,
     heard: HashMap<String, Vec<Delivery>>,
+    /// The shared boards' agent cards by board key (agent:<cardId>), so
+    /// another member's agents are named and live on a card they hold
+    /// rather than "gone" (card #146).
+    board: HashMap<String, irori_core::BoardAgent>,
 }
 
 fn unsent_key(agent: &str, r: &str) -> String {
@@ -604,6 +608,9 @@ impl Window {
         }
         for a in c.mesh_agents() {
             p.by_key.insert(a.key.clone(), a);
+        }
+        for a in c.board_agents() {
+            p.board.insert(a.key.clone(), a);
         }
         p.known = c.known_agent_names();
         p.colors = c.device_colors();
@@ -726,6 +733,28 @@ impl People {
             if !a.device_id.is_empty() {
                 dev = a.device_id.clone();
             }
+        }
+        if !self.by_key.contains_key(key)
+            && let Some(a) = self.board.get(key)
+        {
+            // Another member's agent on a shared board (card #146): the
+            // board's card names it and says whether it is busy, idle or
+            // gone; where is whose agent it is.
+            if !a.name.is_empty() {
+                r.name = a.name.clone();
+            }
+            r.status = if a.status.is_empty() {
+                "idle".into()
+            } else {
+                a.status.clone()
+            };
+            r.live = r.status != "gone";
+            r.where_ = if a.person.is_empty() {
+                "Another person's agent".into()
+            } else {
+                format!("{}'s agent", a.person)
+            };
+            return r;
         }
         r.where_ = self.where_(&dev);
         r.device = self.chip(&dev);
