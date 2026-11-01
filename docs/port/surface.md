@@ -263,7 +263,7 @@ Text helpers (format.go):
 - Caps: name/title/cwd 240, payload 200, list text 1200, objective 400 runes (format.go:391-396).
 
 Representative outputs, port byte-exact (full set: golden-capture, see section 7):
-- agents (observe.go:28-148): head `"%d of %d agents on this device%s."` + `" Message one with send (to = its name or key). "+untrusted+"\n"`; per agent `"\n- %s%s [%s] %s, key %s\n"`, `  title:`, `  cwd:`, `  repoKey: <x|none (not in a git repo)>`, `  doing: %q-style quoted (ref)`, `  permissionMode: <mode|n/a for grok|unknown>`, `  last activity: <ago>`, `  last text (untrusted): %q`. Sort by lowercase name then key.
+- agents (observe.go:28-148): head `"%d of %d agents on this device%s."` + `" Message one with send (to = its name or key). "+untrusted+"\n"`; per agent `"\n- %s%s [%s] %s, key %s\n"`, `  title:`, `  cwd:`, `  repoKey: <x|none (not in a git repo)>`, `  doing: %q-style quoted (ref)`, `  permissionMode: <mode|n/a for grok|unknown>`, `  last activity: <ago>` (mid-turn: `in a turn now (<status> since <ago>); last transcript row <ago>`, card #159), `  last text (untrusted): %q`. Sort by lowercase name then key.
 - events (observe.go:155-205): default 20 max 100; line `"- 2006-01-02 15:04:05 (ago) kind dev=<first 8 runes> seq=N actor=A <payload>"`, local time.
 - inbox (messages.go:190-323): default 20 max 50; whole rows fit in 8 KiB before anything is marked read; channel (Grok) path marks shown Queued rows read; row format messages.go:293-323.
 - send/reply/ack/defer/skip strings messages.go:29-388 (defer minutes 1..720).

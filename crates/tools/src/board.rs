@@ -875,7 +875,7 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let res = s.resolve_mentions(c, a.str("text"), &a.strs("mention"));
+    let res = s.resolve_mentions(c, &id, a.str("text"), &a.strs("mention"));
     let (logm, shown) = s.mentions_on(&id, &res.mentions);
     let (cm, mut notices) = match co.comment_on(
         &as_[0],
@@ -1301,7 +1301,7 @@ pub(crate) fn board_unblock(s: &Inner, c: &Caller, raw: &[u8]) -> String {
                 "to resolve one blocker give pick (the number of a recommended answer) or note (your answer).",
             );
         }
-        let res = s.resolve_mentions(c, note, &a.strs("mention"));
+        let res = s.resolve_mentions(c, &id, note, &a.strs("mention"));
         let (logm, shown) = s.mentions_on(&id, &res.mentions);
         let (t, notices) = match co.answer(
             &as_[0],

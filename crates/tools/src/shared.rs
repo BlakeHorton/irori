@@ -65,6 +65,13 @@ pub trait SharedBoards: Send + Sync {
     fn share(&self, task_id: &str, board_id: &str, by: &str) -> Result<Task, String>;
     /// Withdraw a shared card (§5.3) for the person.
     fn withdraw(&self, task_id: &str) -> Result<(), String>;
+    /// Who an agent's @name on board `board_id`'s cards may also name
+    /// (card #186): the other members, as `person:<id>` by their profile
+    /// name, and their agents' cards, as `agent:<cardId>`. This person's
+    /// own agents are in the roster already. The default is nobody.
+    fn board_mentionables(&self, _board_id: &str) -> Vec<coord::roster::AgentCard> {
+        Vec::new()
+    }
 }
 
 /// How long a request to the person waits for an answer.

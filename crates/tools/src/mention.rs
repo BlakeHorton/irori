@@ -16,6 +16,9 @@ pub(crate) enum Got {
     Held(String),
     Failed(String),
     Gone,
+    /// Another person or their agent on a shared board (card #186): the
+    /// mention is on the card, and their own devices tell them.
+    Board,
 }
 
 /// The roster as coord's resolver reads it.
@@ -35,9 +38,24 @@ fn cards(s: &Inner) -> Vec<coord::roster::AgentCard> {
 }
 
 impl Inner {
-    /// The caller's mentions in `text` and `given`.
-    pub(crate) fn resolve_mentions(&self, c: &Caller, text: &str, given: &[String]) -> Resolved {
-        coord::mentions::resolve(&cards(self), &c.sender.key, text, given)
+    /// The caller's mentions in `text` and `given`, writing on card `id`
+    /// ("" for none). On a shared board's card they may also name the
+    /// board's other people and their agents (card #186).
+    pub(crate) fn resolve_mentions(
+        &self,
+        c: &Caller,
+        id: &str,
+        text: &str,
+        given: &[String],
+    ) -> Resolved {
+        let mut agents = cards(self);
+        if !id.is_empty()
+            && let Some(sb) = self.b.shared_boards()
+            && let Some(b) = sb.board_of(id)
+        {
+            agents.extend(sb.board_mentionables(&b.board_id));
+        }
+        coord::mentions::resolve(&agents, &c.sender.key, text, given)
     }
 
     /// `ms` with each key as card `id`'s log knows it. A key the log
@@ -89,7 +107,7 @@ impl Inner {
         a: &Args,
         rich: Option<Notice>,
     ) -> (Vec<NoticeResult>, String) {
-        let res = self.resolve_mentions(c, text, &a.strs("mention"));
+        let res = self.resolve_mentions(c, id, text, &a.strs("mention"));
         let tell_rich = |n: Option<Notice>| n.map(|n| self.tell(&c.sender, n)).unwrap_or_default();
         if res.mentions.is_empty() && res.misses.is_empty() {
             return (tell_rich(rich), String::new());
@@ -152,6 +170,11 @@ pub(crate) fn outcomes(ms: &[Mention], rs: &[NoticeResult]) -> Vec<(Mention, Got
         .map(|m| {
             if m.gone {
                 return (m.clone(), Got::Gone);
+            }
+            // A board key is another person or their agent: this device's
+            // own agents resolve to private keys (card #186).
+            if coord::board_form(&m.key) {
+                return (m.clone(), Got::Board);
             }
             let got = match rs.iter().find(|r| r.to == m.key) {
                 None => Got::Failed("not sent".into()),
@@ -219,6 +242,7 @@ pub(crate) fn mention_line(got: &[(Mention, Got)], misses: &[Miss], n: &Names<'_
             Got::Held(h) => ok.push(format!("{who} (held by {})", one_line(h, 80))),
             Got::Failed(e) => not.push(format!("{who}: not sent: {}", one_line(e, 160))),
             Got::Gone => not.push(format!("{who} is gone")),
+            Got::Board => ok.push(format!("{who} (on the board)")),
         }
     }
     not.extend(misses.iter().map(|m| miss_text(m, n)));

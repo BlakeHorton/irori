@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import {
-  AgentRef,
-  CardBlocker,
-  CardThreadItem,
-} from "./models"
+import { AgentRef, CardBlocker, CardThreadItem } from "./models"
 import {
   answerable,
   blockerChip,
@@ -36,7 +32,12 @@ describe("threadLabel", () => {
     const l = threadLabel(
       CardThreadItem({ kind: "comment", who: otter, text: "hi" })
     )
-    expect(l).toEqual({ author: "sample-otter", device: "", badges: [] })
+    expect(l).toEqual({
+      author: "sample-otter",
+      device: "",
+      badges: [],
+      waiting: [],
+    })
   })
 
   test("a message gets the arrow, its device and its badges", () => {
@@ -280,17 +281,16 @@ describe("unheard", () => {
 })
 
 describe("pending", () => {
-  test("the person's comment says who hasn't taken it up yet", () => {
-    const l = threadLabel(
-      CardThreadItem({
-        kind: "comment",
-        who: otter,
-        pending: ["queued for sample-heron (busy)", "sent to sample-crow, not read yet"],
-      })
-    )
-    expect(l.badges.map((b) => b.label)).toEqual([
-      "queued for sample-heron (busy)",
+  test("the person's comment says who hasn't heard it yet, under it", () => {
+    const lines = [
+      "sample-heron is busy: it hears this when its current turn ends",
       "sent to sample-crow, not read yet",
-    ])
+      "sample-wren read it",
+    ]
+    const l = threadLabel(
+      CardThreadItem({ kind: "comment", who: otter, pending: lines })
+    )
+    expect(l.waiting).toEqual(lines)
+    expect(l.badges).toEqual([])
   })
 })

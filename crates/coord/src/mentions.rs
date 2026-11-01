@@ -41,10 +41,13 @@ pub struct Resolved {
     pub misses: Vec<Miss>,
 }
 
-/// Whether `s` looks like an agent key rather than a name: a board key
-/// (`agent:…`) or a session key (`<device>/<session>`).
+/// Whether `s` looks like a key rather than a name: a board key
+/// (`agent:…`, or `person:…` for a board's member, card #186) or a session
+/// key (`<device>/<session>`).
 pub fn key_shaped(s: &str) -> bool {
-    s.starts_with("agent:") || !irori_identity::owner::device_of(s).is_empty()
+    s.starts_with("agent:")
+        || s.starts_with("person:")
+        || !irori_identity::owner::device_of(s).is_empty()
 }
 
 fn live(a: &AgentCard) -> bool {

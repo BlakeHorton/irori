@@ -591,4 +591,56 @@ impl tools::SharedBoards for super::ToolsView {
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
+
+    fn board_mentionables(&self, board_id: &str) -> Vec<coord::roster::AgentCard> {
+        self.0.board_mentionables(board_id)
+    }
+}
+
+impl Services {
+    /// The other members of board `board_id` and their agents' cards, as
+    /// an agent's @name may name them (card #186): `person:<id>` by the
+    /// member's profile name, `agent:<cardId>` by the card's name. This
+    /// person and the agents its devices host are left out: the roster
+    /// has those, by their private keys.
+    pub(crate) fn board_mentionables(&self, board_id: &str) -> Vec<coord::roster::AgentCard> {
+        let Ok(b) = self.board(board_id) else {
+            return Vec::new();
+        };
+        let me = self.person_id();
+        let m = b.verifier.membership();
+        let active: Vec<String> = m
+            .members
+            .iter()
+            .filter(|p| p.state == irori_identity::membership::MEMBER_ACTIVE && p.person_id != me)
+            .map(|p| p.person_id.clone())
+            .collect();
+        let mut out: Vec<coord::roster::AgentCard> = active
+            .iter()
+            .map(|id| coord::roster::AgentCard {
+                key: format!("{PERSON_ACTOR_PREFIX}{id}"),
+                name: b.verifier.profile(id).unwrap_or_default(),
+                status: "idle".into(),
+                ..Default::default()
+            })
+            .collect();
+        let maps = super::boards::lock(&b.maps);
+        let mut cards: Vec<_> = maps
+            .cards
+            .values()
+            .filter(|c| !maps.by_id.contains_key(&c.card_id) && active.contains(&c.person_id))
+            .collect();
+        cards.sort_by(|a, b| a.card_id.cmp(&b.card_id));
+        out.extend(cards.into_iter().map(|c| coord::roster::AgentCard {
+            key: format!("{AGENT_ACTOR_PREFIX}{}", c.card_id),
+            name: c.name.clone(),
+            status: if c.status.is_empty() {
+                "idle".into()
+            } else {
+                c.status.clone()
+            },
+            ..Default::default()
+        }));
+        out
+    }
 }

@@ -76,7 +76,7 @@ pub(crate) fn send(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(f) => f,
         Err(msg) => return msg,
     };
-    let res = s.resolve_mentions(c, text, &a.strs("mention"));
+    let res = s.resolve_mentions(c, "", text, &a.strs("mention"));
     let o = SendOptions {
         reason: trim(a.str("reason")).to_string(),
         mode: mode::WAKE.into(),
@@ -144,7 +144,7 @@ pub(crate) fn reply(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         return out;
     }
     let ib = s.b.inbox();
-    let res = s.resolve_mentions(c, a.str("text"), &a.strs("mention"));
+    let res = s.resolve_mentions(c, "", a.str("text"), &a.strs("mention"));
     let ms = crate::mention::to_inbox(&res.mentions);
     let (m, d) = match ib.reply_with(&c.sender, id, a.str("text"), &ms) {
         Ok(v) => v,
