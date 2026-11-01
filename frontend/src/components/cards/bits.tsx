@@ -114,11 +114,12 @@ export function StatePill({ card }: { card: CardSummary }) {
         {card.openBlockers} {card.openBlockers === 1 ? "blocker" : "blockers"}
       </Badge>
     )
-  // The work is done and waits on its review (card #191).
+  // The work is done and waits on its review (card #191). Yellow, as it
+  // can't move on until the review comes (card #217).
   if (card.state === TaskState.InReview)
     return (
       <Badge
-        variant="info"
+        variant="warning"
         title="The work is done and waits on its pull request's review; its agent is free for other work"
       >
         In review
