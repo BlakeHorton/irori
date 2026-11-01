@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
   DeviceColors,
+  MaxDeviceName,
   devices as actions,
   isOpen,
   PairState,
@@ -42,33 +43,28 @@ export function DevicesPanel({ open }: { open: boolean }) {
 
   return (
     <div className="grid gap-3">
-        <ul className="grid gap-1.5" aria-label="Your devices">
-          {devices.map((d) => (
-            <DeviceRow
-              key={d.deviceId}
-              device={d}
-              now={now}
-              onRemoved={reload}
-            />
-          ))}
-        </ul>
-        {error && <p className="text-xs text-destructive">{error}</p>}
-        <HomeServer open={open} />
-        <div className="border-t border-border pt-3">
-          {status?.state ? (
-            <Pairing status={status} onDone={() => setStatus(null)} />
-          ) : (
-            <Start onStarted={setStatus} />
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Devices find each other on your local network and through your home
-          server, one of your own devices; nothing goes through a public server.
-          Others on a network see that sealed messages pass, never their
-          content, and a relay you add under Advanced sees IP addresses. What
-          reaches another device stays there, so a secret an agent wrote that
-          the scrubber missed is copied for good.
-        </p>
+      <ul className="grid gap-1.5" aria-label="Your devices">
+        {devices.map((d) => (
+          <DeviceRow key={d.deviceId} device={d} now={now} onRemoved={reload} />
+        ))}
+      </ul>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <HomeServer open={open} />
+      <div className="border-t border-border pt-3">
+        {status?.state ? (
+          <Pairing status={status} onDone={() => setStatus(null)} />
+        ) : (
+          <Start onStarted={setStatus} />
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Devices find each other on your local network and through your home
+        server, one of your own devices; nothing goes through a public server.
+        Others on a network see that sealed messages pass, never their content,
+        and a relay you add under Advanced sees IP addresses. What reaches
+        another device stays there, so a secret an agent wrote that the scrubber
+        missed is copied for good.
+      </p>
     </div>
   )
 }
@@ -82,6 +78,7 @@ function DeviceRow({
   now: Date
   onRemoved: () => Promise<void>
 }) {
+  const [renaming, setRenaming] = useState(false)
   const seen = parseTime(d.lastSeen)
   const state = d.this
     ? "this device"
@@ -103,19 +100,37 @@ function DeviceRow({
         )}
         aria-hidden
       />
-      <span className="min-w-0 truncate">
-        <span className={cn("text-ink", d.revoked && "line-through")}>
-          {plainLine(d.name) || d.deviceId}
-        </span>{" "}
-        <small className="text-xs text-muted-foreground">
-          {d.role === "node" ? "node · " : ""}
-          {state}
-        </small>
-      </span>
-      {d.revoked ? (
+      {renaming ? (
+        <RenameField
+          device={d}
+          onDone={async (saved) => {
+            setRenaming(false)
+            if (saved) await onRemoved()
+          }}
+        />
+      ) : (
+        <span className="min-w-0 truncate">
+          <span className={cn("text-ink", d.revoked && "line-through")}>
+            {plainLine(d.name) || d.deviceId}
+          </span>{" "}
+          <small className="text-xs text-muted-foreground">
+            {d.role === "node" ? "node · " : ""}
+            {state}
+          </small>
+        </span>
+      )}
+      {d.revoked || renaming ? (
         <span />
       ) : (
         <span className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label={`Rename ${plainLine(d.name) || "this device"}`}
+            onClick={() => setRenaming(true)}
+          >
+            Rename
+          </Button>
           <ColorPick device={d} onPicked={onRemoved} />
           {!d.this && (
             <ConfirmButton
@@ -382,9 +397,7 @@ function Relay({ open }: { open: boolean }) {
             autoComplete="off"
             onChange={(e) => setUrl(e.target.value)}
           />
-          <Button type="submit">
-            Save
-          </Button>
+          <Button type="submit">Save</Button>
           <Button
             type="button"
             variant="ghost"
@@ -795,6 +808,82 @@ function Ended({
         OK
       </Button>
     </div>
+  )
+}
+
+// RenameField renames one of the person's devices (card #184): the name
+// shows in the header, the Devices list and agents' "on <device>" lines on
+// all their devices, and never on a shared board. Empty goes back to the
+// computer's name. Enter saves, Esc cancels.
+function RenameField({
+  device: d,
+  onDone,
+}: {
+  device: DeviceView
+  onDone: (saved: boolean) => Promise<void>
+}) {
+  const [name, setName] = useState(d.name)
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+  const save = async (e?: FormEvent) => {
+    e?.preventDefault()
+    if (busy) return
+    if (name.trim() === d.name.trim()) {
+      await onDone(false)
+      return
+    }
+    setBusy(true)
+    try {
+      await actions.rename(d.deviceId, name)
+      setError("")
+      await onDone(true)
+    } catch (err) {
+      setError(errorText(err))
+      setBusy(false)
+    }
+  }
+  return (
+    <form
+      className="col-start-2 col-end-4 grid gap-1"
+      onSubmit={(e) => void save(e)}
+    >
+      <span className="flex items-center gap-2">
+        <Input
+          autoFocus
+          value={name}
+          maxLength={MaxDeviceName}
+          aria-label="Device name"
+          placeholder="The computer's name"
+          className="h-7 text-[13px]"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault()
+              e.stopPropagation()
+              void onDone(false)
+            }
+          }}
+        />
+        <Button type="submit" size="xs" disabled={busy}>
+          Save
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={() => void onDone(false)}
+        >
+          Cancel
+        </Button>
+      </span>
+      <small className="text-xs text-muted-foreground">
+        {error ? (
+          <span className="text-destructive">{error}</span>
+        ) : (
+          "Your devices show this name. Leave it empty for the computer's name."
+        )}
+      </small>
+    </form>
   )
 }
 

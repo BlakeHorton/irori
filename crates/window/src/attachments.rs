@@ -134,12 +134,10 @@ impl Window {
         if id.is_empty() {
             return String::new();
         }
-        self.core
-            .certified_devices()
-            .into_iter()
-            .find(|d| d.cert.device_id == id && !d.cert.label.is_empty())
-            .map(|d| d.cert.label)
-            .unwrap_or_else(|| id.to_string())
+        match self.core.device_label(id) {
+            l if l.is_empty() => id.to_string(),
+            l => l,
+        }
     }
 
     fn info(&self, r: &FileRef) -> AttachmentInfo {

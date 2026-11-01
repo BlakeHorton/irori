@@ -43,7 +43,13 @@ import {
   type NewCardInput,
   type Step,
 } from "./models"
-import { EventRosterChanged, inHost, inWails, plainLine } from "./irori"
+import {
+  EventDevicesChanged,
+  EventRosterChanged,
+  inHost,
+  inWails,
+  plainLine,
+} from "./irori"
 import { safeHref } from "./rich"
 import { EventInboxChanged, useLatest } from "./talk"
 import { NoteItem, sampleAgents, sampleCards, sampleYou } from "./sample-cards"
@@ -366,7 +372,14 @@ export const threads = {
     const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
     const id = `sample-thread-${Date.now()}`
     sample = [
-      sampleThread(id, String(top + 1), t, new Date().toISOString(), [], "waiting"),
+      sampleThread(
+        id,
+        String(top + 1),
+        t,
+        new Date().toISOString(),
+        [],
+        "waiting"
+      ),
       ...cs,
     ]
     sampleChanged()
@@ -430,7 +443,9 @@ const RefTTL = 60_000
 // useCardRef is cardRef(r) for a component: undefined while it loads, then
 // the target or null. Off (r "") it asks nothing.
 export function useCardRef(r: string): RefTarget | null | undefined {
-  const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(null)
+  const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(
+    null
+  )
   useEffect(() => {
     if (!r) return
     let live = true
@@ -452,10 +467,7 @@ export function useThreads(): {
   threads: ThreadSummary[]
   error: string | null
 } {
-  const { value, error, reload } = useLatest<ThreadSummary[]>(
-    threads.list,
-    []
-  )
+  const { value, error, reload } = useLatest<ThreadSummary[]>(threads.list, [])
   useFresh(reload, error, true)
   return { threads: value, error }
 }
@@ -538,7 +550,12 @@ async function uploadOf(f: File): Promise<UploadFile> {
 
 // sampleAsk is BoardService.Ask on the sample: a new ask first in the
 // grid, heard by the sample's idle agents.
-function sampleAsk(text: string, repoKey: string, wake: boolean, mentions: Mention[]): TaskResult {
+function sampleAsk(
+  text: string,
+  repoKey: string,
+  wake: boolean,
+  mentions: Mention[]
+): TaskResult {
   const t = text.trim()
   if (!t) throw new Error("coord: invalid input: an empty comment")
   const now = new Date().toISOString()
@@ -662,7 +679,13 @@ function sampleCreate(input: NewCardInput): TaskResult {
     blockerQuestion: "",
     recent: [],
     thread: [
-      CardThreadItem({ id: "sample-new-post", kind: "event", at: now, who: sampleYou, text: "made the card" }),
+      CardThreadItem({
+        id: "sample-new-post",
+        kind: "event",
+        at: now,
+        who: sampleYou,
+        text: "made the card",
+      }),
     ],
     threadEarlier: 0,
     historyTrimmed: false,
@@ -686,7 +709,13 @@ function sampleMentions(mentions: readonly Mention[]): CardMention[] {
     const who = agents.find((a) => a.key === m.key)
     return CardMention({
       name: m.name,
-      who: who ?? { key: m.key, name: m.name, status: "gone", live: false, where: "" },
+      who: who ?? {
+        key: m.key,
+        name: m.name,
+        status: "gone",
+        live: false,
+        where: "",
+      },
       gone: !who || who.status === "gone",
     })
   })
@@ -695,7 +724,11 @@ function sampleMentions(mentions: readonly Mention[]): CardMention[] {
 // sampleOutcomes is each mention's outcome on the sample: a gone agent
 // isn't delivered; the others are woken.
 function sampleOutcomes(named: readonly CardMention[]) {
-  return named.map((m) => ({ key: m.who.key, name: m.name, state: m.gone ? "gone" : "woke" }))
+  return named.map((m) => ({
+    key: m.who.key,
+    name: m.name,
+    state: m.gone ? "gone" : "woke",
+  }))
 }
 
 // sampleCandidates are BoardService.MentionCandidates on the sample.
@@ -703,7 +736,9 @@ function sampleCandidates(): MentionCandidate[] {
   return Object.values(sampleAgents).map((who) =>
     MentionCandidate({
       who,
-      cwd: who.device ? "~/projects/irori" : "C:\\Users\\sample\\projects\\example-app",
+      cwd: who.device
+        ? "~/projects/irori"
+        : "C:\\Users\\sample\\projects\\example-app",
       repo: who.device ? "irori" : "example-app",
     })
   )
@@ -1179,7 +1214,12 @@ export const EditState = {
 } as const
 
 // sampleEdit is Modify, Cancel and Save on the sample's comment.
-function sampleEdit(id: string, commentId: string, edit: string, text?: string) {
+function sampleEdit(
+  id: string,
+  commentId: string,
+  edit: string,
+  text?: string
+) {
   const c = sampleCard(id)
   c.thread = c.thread.map((it) =>
     it.id === commentId
@@ -1192,7 +1232,12 @@ function sampleEdit(id: string, commentId: string, edit: string, text?: string) 
 // sampleComment is BoardService.Comment on the sample: the person's
 // comment at the end of the thread, heard by the live agents on the card
 // (watchers answer only if asked); with none, it is unheard.
-function sampleComment(id: string, text: string, wake: boolean, mentions: Mention[]): CommentResult {
+function sampleComment(
+  id: string,
+  text: string,
+  wake: boolean,
+  mentions: Mention[]
+): CommentResult {
   const c = sampleCard(id)
   const t = text.trim()
   if (!t) throw new Error("coord: invalid input: an empty comment")
@@ -1200,10 +1245,14 @@ function sampleComment(id: string, text: string, wake: boolean, mentions: Mentio
   const answers = c.working.filter((w) => w.live)
   const watching = c.watching.filter((w) => w.live)
   const named = sampleMentions(mentions)
-  const unheard = !answers.length && !watching.length && !named.some((m) => !m.gone)
+  const unheard =
+    !answers.length && !watching.length && !named.some((m) => !m.gone)
   // A mentioned agent watches the card (never holds it).
   for (const m of named)
-    if (!m.gone && ![...c.working, ...c.watching].some((w) => w.key === m.who.key))
+    if (
+      !m.gone &&
+      ![...c.working, ...c.watching].some((w) => w.key === m.who.key)
+    )
       c.watching = [...c.watching, m.who]
   c.thread = [
     ...c.thread,
@@ -1247,7 +1296,8 @@ export const cards = {
     wake = true,
     mentions: Mention[] = []
   ): Promise<AnswerResult> {
-    if (inWails()) return BoardService.Answer(id, blockerId, option, text, wake, mentions)
+    if (inWails())
+      return BoardService.Answer(id, blockerId, option, text, wake, mentions)
     return sampleAnswer(id, blockerId, option, text, wake, mentions)
   },
 
@@ -1260,7 +1310,8 @@ export const cards = {
     note: string,
     mentions: Mention[] = []
   ): Promise<AnswerResult> {
-    if (inWails()) return BoardService.ResolveBlocker(id, blockerId, note, mentions)
+    if (inWails())
+      return BoardService.ResolveBlocker(id, blockerId, note, mentions)
     return sampleResolveBlocker(id, blockerId, note, mentions)
   },
 
@@ -1310,7 +1361,8 @@ export const cards = {
   ): Promise<TaskResult> {
     checkUploads(files)
     if (inWails()) {
-      if (!files.length) return BoardService.Ask(text, repoKey, wake, boardId, mentions)
+      if (!files.length)
+        return BoardService.Ask(text, repoKey, wake, boardId, mentions)
       return BoardService.AskWithFiles(
         text,
         repoKey,
@@ -1365,7 +1417,11 @@ export const cards = {
 
   // saveComment sends the held comment's new text to the agents it was
   // held from.
-  async saveComment(id: string, commentId: string, text: string): Promise<void> {
+  async saveComment(
+    id: string,
+    commentId: string,
+    text: string
+  ): Promise<void> {
     if (inWails()) {
       await BoardService.CommentModifySave(id, commentId, text)
       return
@@ -1497,13 +1553,19 @@ export const cards = {
 // poll, so a failure has no next event to recover it.
 const RetryMs = 4000
 
-// subscribe re-runs fn on every board:changed (or sample change).
+// subscribe re-runs fn on every board:changed (or sample change), and on
+// devices:changed: a renamed device changes the cards' "on <device>" lines.
 function subscribe(fn: () => void): () => void {
   if (!inWails()) {
     sampleListeners.add(fn)
     return () => sampleListeners.delete(fn)
   }
-  return Events.On(EventBoardChanged, fn)
+  const offBoard = Events.On(EventBoardChanged, fn)
+  const offDevices = Events.On(EventDevicesChanged, fn)
+  return () => {
+    offBoard()
+    offDevices()
+  }
 }
 
 // useFresh re-reads on every card change, when the window regains focus,
@@ -1868,7 +1930,8 @@ export function useMentionCandidates(active = true): MentionCandidate[] {
     const first = !candidateListeners.size
     candidateListeners.add(fn)
     if (first) {
-      if (inWails()) candidatesOff = Events.On(EventRosterChanged, loadCandidates)
+      if (inWails())
+        candidatesOff = Events.On(EventRosterChanged, loadCandidates)
       loadCandidates()
     } else fn()
     return () => {

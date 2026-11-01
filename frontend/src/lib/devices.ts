@@ -14,7 +14,7 @@ import {
   PairStatus,
   RelayView,
 } from "./models"
-import { EventRosterChanged, inWails } from "./irori"
+import { EventDevicesChanged, EventRosterChanged, inWails } from "./irori"
 import { useLatest } from "./talk"
 
 export { DeviceView, HomeServerView, PairStatus, RelayView }
@@ -212,6 +212,15 @@ const sample = {
     if (d) d.color = color || DeviceColors[0]
     for (const fn of sampleListeners) fn()
   },
+  rename(id: string, name: string): string {
+    const d = sampleList().find((x) => x.deviceId === id)
+    if (!d) throw new Error("that isn't one of your devices")
+    sampleHostNames[id] ??= d.name
+    const kept = cleanDeviceName(name)
+    d.name = kept || sampleHostNames[id]
+    for (const fn of sampleListeners) fn()
+    return kept
+  },
   remove(id: string) {
     const d = sampleList().find((x) => x.deviceId === id)
     if (!d || d.this) throw new Error("that device can't be removed here")
@@ -332,7 +341,26 @@ export const devices = {
     if (inWails()) return DevicesService.SetDeviceColor(deviceId, color)
     sample.color(deviceId, color)
   },
+  // rename is the person's name for a device (card #184); "" goes back to
+  // the computer's name. Returns the name as kept.
+  async rename(deviceId: string, name: string): Promise<string> {
+    if (inWails()) return DevicesService.RenameDevice(deviceId, name)
+    return sample.rename(deviceId, name)
+  },
 }
+
+// MaxDeviceName mirrors coord::devname::MAX_LEN.
+export const MaxDeviceName = 40
+
+// cleanDeviceName is coord::devname::clean: one line, trimmed, at most
+// MaxDeviceName characters.
+export function cleanDeviceName(name: string): string {
+  const one = name.replace(/\s+/g, " ").trim()
+  return [...one].slice(0, MaxDeviceName).join("")
+}
+
+// The sample devices' computer names, for a rename back to "".
+const sampleHostNames: Record<string, string> = {}
 
 // DeviceColors is internal/devcolor.Palette: the colours a device can wear.
 export const DeviceColors = [
@@ -386,10 +414,14 @@ export function useDevices(active: boolean): DevicesState {
     const offRoster = inWails()
       ? Events.On(EventRosterChanged, () => void reload())
       : () => {}
+    const offDevices = inWails()
+      ? Events.On(EventDevicesChanged, () => void reload())
+      : () => {}
     return () => {
       window.clearInterval(id)
       offPair()
       offRoster()
+      offDevices()
     }
   }, [active, reload])
 

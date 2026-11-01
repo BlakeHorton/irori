@@ -221,6 +221,8 @@ struct Services {
     /// these events, never on a timer (#91).
     asks_kick: Arc<Kick>,
     colors: coord::devcolor::Picks,
+    /// The person's names for their devices (card #184).
+    device_names: coord::devname::Names,
     files: blob::Files,
     scrubber: Arc<scrub::Scrubber>,
     secrets: Mutex<Vec<String>>,
@@ -600,6 +602,15 @@ struct AgentGone<'a> {
     reason: &'a str,
 }
 
+/// The `device.name` payload (keys sorted, as the colour row's).
+#[derive(Serialize)]
+struct DeviceName<'a> {
+    at_device: &'a str,
+    #[serde(rename = "deviceId")]
+    device_id: &'a str,
+    name: &'a str,
+}
+
 /// The `device.color` payload (a Go map: keys sorted).
 #[derive(Serialize)]
 struct DeviceColor<'a> {
@@ -884,6 +895,8 @@ impl Core {
         let colors = coord::devcolor::Picks::new();
         let colors_sub = Arc::new(st.subscribe());
         load_colors(&st, &colors);
+        let device_names = coord::devname::Names::new();
+        load_device_names(&st, &device_names);
         let decisions_sub = Arc::new(st.subscribe());
 
         // The Core's stop; the shared boards' threads end with it too.
@@ -1028,6 +1041,7 @@ impl Core {
             answering,
             asks_kick: Kick::new(),
             colors,
+            device_names,
             files,
             scrubber,
             secrets: Mutex::new(Vec::new()),
@@ -1342,8 +1356,15 @@ impl Core {
                 while let Some(ev) = sub.recv() {
                     if ev.is_resync() {
                         load_colors(&s.store, &s.colors);
+                        load_device_names(&s.store, &s.device_names);
+                        s.hub.publish(CoreEvent::Devices);
                     } else if ev.kind == coord::devcolor::KIND {
                         s.colors.apply(&ev);
+                    } else if ev.kind == coord::devname::KIND {
+                        // A rename from this device was folded when it was
+                        // written; the window still hears it here.
+                        s.device_names.apply(&ev);
+                        s.hub.publish(CoreEvent::Devices);
                     }
                 }
             });
@@ -1985,6 +2006,69 @@ impl Core {
             .map_err(|e| e.to_string())
     }
 
+    /// What each of the person's devices is called, by id: the person's
+    /// name for it (card #184), else its certificate's label (the
+    /// computer's name when it joined), else this device's own name.
+    /// Removed devices keep their name, so old lines still read.
+    pub fn device_labels(&self) -> std::collections::BTreeMap<String, String> {
+        let mut out: std::collections::BTreeMap<String, String> = self
+            .s
+            .chain
+            .devices()
+            .into_iter()
+            .map(|d| (d.cert.device_id, d.cert.label))
+            .collect();
+        let me = &self.s.device;
+        let mine = out.entry(me.id.clone()).or_default();
+        if mine.is_empty() {
+            *mine = me.name.clone();
+        }
+        for (id, name) in self.s.device_names.chosen() {
+            if let Some(l) = out.get_mut(&id) {
+                *l = name;
+            }
+        }
+        out
+    }
+
+    /// The person's renames alone, by device id (card #184).
+    pub(crate) fn device_renames(&self) -> std::collections::HashMap<String, String> {
+        self.s.device_names.chosen()
+    }
+
+    /// What device id is called ([`Core::device_labels`]); `""` for one
+    /// this device doesn't know.
+    pub fn device_label(&self, id: &str) -> String {
+        self.device_labels().remove(id).unwrap_or_default()
+    }
+
+    /// Renames one of the person's devices for them (`""` goes back to the
+    /// computer's name). The row replicates to their other devices and
+    /// never to a shared board. Only the window calls it.
+    pub fn set_device_name(&self, device_id: &str, name: &str) -> Result<String, String> {
+        if !self.device_colors().contains_key(device_id) {
+            return Err("that isn't one of your devices".into());
+        }
+        let name = coord::devname::clean(name);
+        let ev = self
+            .s
+            .store
+            .append(
+                "user",
+                coord::devname::KIND,
+                &DeviceName {
+                    at_device: &self.s.device.id,
+                    device_id,
+                    name: &name,
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        // Folded now, so the window's next read has it; the follower
+        // folding it again is a no-op.
+        self.s.device_names.apply(&ev);
+        Ok(name)
+    }
+
     /// Marks this device for Reset at its next start.
     pub fn request_reset(&self) -> std::io::Result<()> {
         crate::reset::request_reset(&self.s.data_dir)
@@ -2113,6 +2197,24 @@ fn ignored_by(
         }
     }
     out
+}
+
+fn load_device_names(st: &Store, names: &coord::devname::Names) {
+    let mut f = Filter {
+        kinds: vec![coord::devname::KIND.into()],
+        limit: store::MAX_LIST_LIMIT,
+        ..Filter::default()
+    };
+    loop {
+        let Ok(evs) = st.list(&f) else { return };
+        for ev in &evs {
+            names.apply(ev);
+        }
+        if (evs.len() as i64) < f.limit {
+            return;
+        }
+        f.after = evs[evs.len() - 1].cursor();
+    }
 }
 
 fn load_colors(st: &Store, colors: &coord::devcolor::Picks) {
@@ -2259,6 +2361,7 @@ impl Services {
             &self.pairing.handle,
             &self.device.id,
             &self.chain,
+            &self.device_names.chosen(),
             &r,
         )
         .map_err(|e| match e {

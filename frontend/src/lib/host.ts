@@ -198,6 +198,7 @@ export const DevicesService = {
   Devices: () => call(commands.devicesDevices()),
   Colors: () => call(commands.devicesColors()),
   SetDeviceColor: (deviceId: string, color: string) => done(commands.devicesSetDeviceColor(deviceId, color)),
+  RenameDevice: (deviceId: string, name: string) => call(commands.devicesRenameDevice(deviceId, name)),
   AddDevice: (role: string) => call(commands.devicesAddDevice(role)),
   JoinWithCode: (code: string, server: string) => call(commands.devicesJoinWithCode(code, server)),
   ConfirmWords: (words: string) => done(commands.devicesConfirmWords(words)),
