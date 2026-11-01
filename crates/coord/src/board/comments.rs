@@ -608,6 +608,7 @@ impl Fold {
         (answer, watch)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn person_comment(
         &mut self,
         by: &str,
@@ -615,9 +616,33 @@ impl Fold {
         text: &str,
         wake: bool,
         mentions: &[Mention],
+        files: Vec<FileRef>,
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> Result<(Comment, Vec<Notice>)> {
-        let (by, text) = check_comment(by, text, &[])?;
+        // The files go on the comment and with every notice about it, so
+        // whoever hears it can fetch them with attachment_get (card #124).
+        let (cm, mut ns) =
+            self.person_comment_notices(by, id, text, wake, mentions, &files, around)?;
+        if !files.is_empty() {
+            for n in &mut ns {
+                n.attachments = files.clone();
+            }
+        }
+        Ok((cm, ns))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn person_comment_notices(
+        &mut self,
+        by: &str,
+        id: &str,
+        text: &str,
+        wake: bool,
+        mentions: &[Mention],
+        files: &[FileRef],
+        around: Option<&dyn Fn(&str) -> bool>,
+    ) -> Result<(Comment, Vec<Notice>)> {
+        let (by, text) = check_comment(by, text, files)?;
         if !self.is_owner(&by) {
             return Err(invalid("only the person comments from the app"));
         }
@@ -668,6 +693,7 @@ impl Fold {
                 at,
                 unheard: answerers.is_empty() && watch.is_empty() && !live_mention,
                 mentions: ms.clone(),
+                attachments: files.to_vec(),
                 ..TaskCommentRow::default()
             },
         )?;

@@ -78,7 +78,7 @@ pub struct AskRepo {
 
 /// A file the person put in the window: its name and bytes (base64 in
 /// JSON, as Go's `[]byte`).
-#[derive(Debug, Clone, Default, Deserialize, Type)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Type)]
 pub struct UploadFile {
     pub name: String,
     /// base64.
@@ -165,11 +165,22 @@ impl Window {
         text: &str,
         tell: &str,
         mentions: &[ts::Mention],
+        files: &[UploadFile],
     ) -> Result<CommentResult, String> {
         let tl = parse_tell(tell)?;
         let (co, keys) = self.on(id, &[])?;
+        if !files.is_empty() && !std::sync::Arc::ptr_eq(&co, self.core.coord()) {
+            return Err(invalid(
+                "files go with a comment on your own board only; comment without them",
+            ));
+        }
         let me = keys[0].clone();
         let plan = self.plan_mentions(id, mentions);
+        let refs: Vec<coord::FileRef> = self
+            .store_uploads(files)?
+            .iter()
+            .map(crate::coord_ref)
+            .collect();
         let mut res = CommentResult::default();
         if tl == Tell::None {
             let (c, ns) = co
@@ -179,6 +190,7 @@ impl Window {
                     coord::CommentInput {
                         text: text.into(),
                         mentions: plan.log.clone(),
+                        files: refs,
                         ..Default::default()
                     },
                 )
@@ -192,7 +204,15 @@ impl Window {
         // session behind each (private_key).
         let around = |k: &str| p.ref_(&self.core.private_key(k)).live;
         let (c, ns) = co
-            .person_comment(&me, id, text, tl == Tell::Wake, &plan.log, Some(&around))
+            .person_comment_files(
+                &me,
+                id,
+                text,
+                tl == Tell::Wake,
+                &plan.log,
+                refs,
+                Some(&around),
+            )
             .map_err(|e| e.to_string())?;
         res.comment = c;
         let (ns, mentioned) = self.route_mentioned(ns, &plan);
@@ -648,7 +668,7 @@ impl Window {
     /// Writes files to a temporary folder outside the data dir, stores
     /// them as the person's attachments, then removes the folder (Go
     /// `storeUploads` + `Core.AttachFiles`).
-    fn store_uploads(&self, files: &[UploadFile]) -> Result<Vec<FileRef>, String> {
+    pub(crate) fn store_uploads(&self, files: &[UploadFile]) -> Result<Vec<FileRef>, String> {
         use base64::Engine as _;
         if files.is_empty() {
             return Ok(Vec::new());

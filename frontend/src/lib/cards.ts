@@ -328,8 +328,21 @@ export const threads = {
   // start is the header box's message as a thread: the agents on the
   // cards it names (#12) and the ones it @mentions hear it first; after
   // 45s with no answer, one idle agent gets it.
-  async start(text: string, mentions: Mention[] = []): Promise<TaskResult> {
-    if (inWails()) return BoardService.StartThread(text, mentions)
+  // files (picked, dropped or pasted) go on it as an ask's do (card #124).
+  async start(
+    text: string,
+    mentions: Mention[] = [],
+    files: File[] = []
+  ): Promise<TaskResult> {
+    checkUploads(files)
+    if (inWails()) {
+      if (!files.length) return BoardService.StartThread(text, mentions)
+      return BoardService.StartThreadWithFiles(
+        text,
+        mentions,
+        await Promise.all(files.map(uploadOf))
+      )
+    }
     const t = text.trim()
     if (!t) throw new Error("coord: invalid input: an empty comment")
     const cs = sampleState()
@@ -420,6 +433,18 @@ export const MaxUploadFiles = 10
 
 // uploadOf is a File as BoardService takes it: its name and base64 bytes
 // (Go's []byte in JSON).
+// checkUploads refuses what the window would: too many files, or one too
+// big to cross the bridge.
+function checkUploads(files: File[]) {
+  if (files.length > MaxUploadFiles)
+    throw new Error(`at most ${MaxUploadFiles} files`)
+  const big = files.find((f) => f.size > MaxUpload)
+  if (big)
+    throw new Error(
+      `${big.name || "pasted image"} is over ${MaxUpload >> 20} MiB; ask an agent to attach it from disk`
+    )
+}
+
 async function uploadOf(f: File): Promise<UploadFile> {
   const bytes = new Uint8Array(await f.arrayBuffer())
   let bin = ""
@@ -1109,10 +1134,21 @@ export const cards = {
     id: string,
     text: string,
     wake = true,
-    mentions: Mention[] = []
+    mentions: Mention[] = [],
+    files: File[] = []
   ): Promise<CommentResult> {
-    if (inWails())
-      return BoardService.Comment(id, text, wake ? "wake" : "next_turn", mentions)
+    checkUploads(files)
+    if (inWails()) {
+      const tell = wake ? "wake" : "next_turn"
+      if (!files.length) return BoardService.Comment(id, text, tell, mentions)
+      return BoardService.CommentWithFiles(
+        id,
+        text,
+        tell,
+        mentions,
+        await Promise.all(files.map(uploadOf))
+      )
+    }
     return sampleComment(id, text, wake, mentions)
   },
 
@@ -1133,13 +1169,7 @@ export const cards = {
     boardId = "",
     mentions: Mention[] = []
   ): Promise<TaskResult> {
-    if (files.length > MaxUploadFiles)
-      throw new Error(`at most ${MaxUploadFiles} files`)
-    const big = files.find((f) => f.size > MaxUpload)
-    if (big)
-      throw new Error(
-        `${big.name} is over ${MaxUpload >> 20} MiB; ask an agent to attach it from disk`
-      )
+    checkUploads(files)
     if (inWails()) {
       if (!files.length) return BoardService.Ask(text, repoKey, wake, boardId, mentions)
       return BoardService.AskWithFiles(
@@ -1270,8 +1300,14 @@ export const cards = {
   // create is New card (card #116): a card on the person's own board,
   // straight from the form. Irori hands it to one free agent, or to
   // assignTo when the person picked one.
-  async create(input: NewCardInput): Promise<TaskResult> {
-    if (inWails()) return BoardService.Create(input)
+  // files go on the new card as its first comment (card #124).
+  async create(input: NewCardInput, files: File[] = []): Promise<TaskResult> {
+    checkUploads(files)
+    if (inWails())
+      return BoardService.Create({
+        ...input,
+        files: await Promise.all(files.map(uploadOf)),
+      })
     return sampleCreate(input)
   },
 

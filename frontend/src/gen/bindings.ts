@@ -31,6 +31,11 @@ export const commands = {
 	boardDoneCards: (limit: number, before: string) => __TAURI_INVOKE<DonePage>("board_done_cards", { limit, before }),
 	boardMessage: (taskId: string, msgId: string) => __TAURI_INVOKE<CardMessage>("board_message", { taskId, msgId }),
 	boardComment: (id: string, text: string, tell: string, mentions: Mention[]) => __TAURI_INVOKE<CommentResult>("board_comment", { id, text, tell, mentions }),
+	/**
+	 *  Comment with files (card #124): pasted, dropped or picked in the
+	 *  comment or thread Reply box.
+	 */
+	boardCommentWithFiles: (id: string, text: string, tell: string, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<CommentResult>("board_comment_with_files", { id, text, tell, mentions, files }),
 	boardAnswer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: Mention[]) => __TAURI_INVOKE<AnswerResult>("board_answer", { taskId, blockerId, option, text, wake, mentions }),
 	boardResolveBlocker: (taskId: string, blockerId: string, note: string, mentions: Mention[]) => __TAURI_INVOKE<AnswerResult>("board_resolve_blocker", { taskId, blockerId, note, mentions }),
 	boardAsk: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_ask", { text, repoKey, wake, boardId, mentions }),
@@ -50,6 +55,8 @@ export const commands = {
 	boardCreate: (input: NewCardInput) => __TAURI_INVOKE<TaskResult>("board_create", { input }),
 	/**  The header box's message as a thread (card #116). */
 	boardStartThread: (text: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions }),
+	/**  A thread with files (card #124), as an ask takes them. */
+	boardStartThreadWithFiles: (text: string, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<TaskResult>("board_start_thread_with_files", { text, mentions, files }),
 	/**  The Threads panel: open threads, then the newest resolved. */
 	boardThreads: () => __TAURI_INVOKE<ThreadSummary[]>("board_threads"),
 	/**  Resolve on a thread: the person is done with it. */
@@ -891,6 +898,11 @@ export type NewCardInput = {
 	repoKey?: string,
 	/**  An agent's key: hand it to that agent instead of the free one. */
 	assignTo?: string,
+	/**
+	 *  Files pasted, dropped or picked in the form (card #124): they go on
+	 *  the card as the person's first comment, and with the hand-out.
+	 */
+	files?: UploadFile[],
 };
 
 /**  The notification settings (Go `notify.Options`). */

@@ -6,6 +6,11 @@ import {
   PinOffIcon,
 } from "lucide-react"
 
+import {
+  AttachButton,
+  PendingFiles,
+  useFileAttach,
+} from "@/components/attachments"
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Badge } from "@/components/ui/badge"
@@ -399,7 +404,9 @@ export function CardPage({
               now={now}
               earlier={detail.threadEarlier}
               historyTrimmed={detail.historyTrimmed}
-              composer={<CommentBox cardId={detail.id} />}
+              composer={
+                <CommentBox cardId={detail.id} noFiles={!!detail.onBoard} />
+              }
             />
           </Section>
         </Card>
@@ -978,12 +985,17 @@ const name = displayName
 // app is asked now.
 // reply makes it a thread's reply box (card #116): a reply always wakes
 // the agents in the thread, so the Wake switch steps aside.
+// Files go with it (card #124): the clip, a drop or a pasted screenshot,
+// and whoever hears the comment gets them. A shared board's card takes
+// none (noFiles): its rows may name only files offered on the board.
 export function CommentBox({
   cardId,
   reply = false,
+  noFiles = false,
 }: {
   cardId: string
   reply?: boolean
+  noFiles?: boolean
 }) {
   const [text, setText] = useDraft(`${cardId}/comment`)
   const [mentions, setMentions] = useMentionsDraft(`${cardId}/comment`)
@@ -994,6 +1006,7 @@ export function CommentBox({
   const [heard, setHeard] = useState<{ line: string; error?: string } | null>(
     null
   )
+  const attach = useFileAttach(busy || noFiles)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -1005,7 +1018,13 @@ export function CommentBox({
     setBusy(true)
     setError(null)
     try {
-      const res = await cards.comment(cardId, text, wake, mentions)
+      const res = await cards.comment(
+        cardId,
+        text,
+        wake,
+        mentions,
+        attach.files
+      )
       setHeard({
         line: heardLine(res.answers, res.watching, res.told.mode ?? ""),
         error: res.told.error,
@@ -1013,6 +1032,7 @@ export function CommentBox({
       setMissed(res.mentioned)
       setText("")
       setMentions([])
+      attach.clear()
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -1021,7 +1041,11 @@ export function CommentBox({
   }
 
   return (
-    <form className="mt-1 grid gap-1.5" onSubmit={(e) => void submit(e)}>
+    <form
+      className="mt-1 grid gap-1.5"
+      onSubmit={(e) => void submit(e)}
+      {...attach.drop}
+    >
       <MentionTextarea
         autoSize
         value={text}
@@ -1031,6 +1055,9 @@ export function CommentBox({
           setText(v)
           setMentions(ms)
           setHeard(null)
+        }}
+        onPaste={(e) => {
+          if (attach.onPaste(e)) setHeard(null)
         }}
         onKeyDown={(e) => {
           // Enter sends, Shift+Enter is a new line (not while an IME is
@@ -1049,6 +1076,12 @@ export function CommentBox({
         className="max-h-48 min-h-10 bg-card"
         disabled={busy}
       />
+      <PendingFiles
+        attach={attach}
+        disabled={busy}
+        label="Files with the comment"
+        className="flex flex-wrap gap-2"
+      />
       <div className="flex items-center justify-between gap-3">
         {reply ? (
           <span />
@@ -1063,9 +1096,17 @@ export function CommentBox({
             Wake now
           </label>
         )}
-        <Button type="submit" size="sm" disabled={busy}>
-          {busy ? "Sending…" : reply ? "Reply" : "Comment"}
-        </Button>
+        <span className="flex items-center gap-1">
+          {!noFiles && (
+            <>
+              {attach.input}
+              <AttachButton attach={attach} disabled={busy} />
+            </>
+          )}
+          <Button type="submit" size="sm" disabled={busy}>
+            {busy ? "Sending…" : reply ? "Reply" : "Comment"}
+          </Button>
+        </span>
       </div>
       {heard &&
         (heard.error ? (

@@ -571,7 +571,23 @@ impl Coord {
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> Result<(Comment, Vec<Notice>)> {
         self.lock()
-            .person_comment(by, id, text, wake, mentions, around)
+            .person_comment(by, id, text, wake, mentions, Vec::new(), around)
+    }
+    /// person_comment with files on the comment (card #124): the notices
+    /// about it carry them, for attachment_get.
+    #[allow(clippy::too_many_arguments)]
+    pub fn person_comment_files(
+        &self,
+        by: &str,
+        id: &str,
+        text: &str,
+        wake: bool,
+        mentions: &[Mention],
+        files: Vec<FileRef>,
+        around: Option<&dyn Fn(&str) -> bool>,
+    ) -> Result<(Comment, Vec<Notice>)> {
+        self.lock()
+            .person_comment(by, id, text, wake, mentions, files, around)
     }
     /// The person's new text for their comment on a private card, before
     /// any agent read it (card #105). The caller holds its deliveries.

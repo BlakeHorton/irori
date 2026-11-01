@@ -501,7 +501,9 @@ fn comment_with_nobody_on_the_card() {
                 },
             )
             .unwrap();
-    let res = r.w.comment(&t.id, "note to self", "wake", &[]).unwrap();
+    let res =
+        r.w.comment(&t.id, "note to self", "wake", &[], &[])
+            .unwrap();
     assert!(res.told.mode.is_empty() && res.told.to.is_empty());
     assert!(res.answers.is_empty() && res.watching.is_empty());
     assert_eq!(r.w.card(&t.id).unwrap().comments.len(), 1);
@@ -655,7 +657,7 @@ fn modify_a_comment_before_it_is_read() {
     let t = held_task(&r);
     let ib = r.w.core.inbox();
     let res =
-        r.w.comment(&t.id, "use the red one", "next_turn", &[])
+        r.w.comment(&t.id, "use the red one", "next_turn", &[], &[])
             .unwrap();
     let cid = res.comment.id.clone();
     let item = |r: &Rig| {
@@ -752,7 +754,7 @@ fn a_thread_from_the_header_box() {
     let r = Rig::new();
     let t = held_task(&r);
     let res =
-        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[])
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[])
             .unwrap();
     let id = res.task.id.clone();
     assert_eq!(
@@ -772,7 +774,7 @@ fn a_thread_from_the_header_box() {
     let ts = r.w.threads();
     assert_eq!(ts[0].state, "answered");
     assert_eq!(ts[0].last_text, "Yes, half done.");
-    let c = r.w.comment(&id, "Thanks", "wake", &[]).unwrap();
+    let c = r.w.comment(&id, "Thanks", "wake", &[], &[]).unwrap();
     assert_eq!(
         c.told.to,
         vec![r.key_a.clone()],
@@ -786,4 +788,80 @@ fn a_thread_from_the_header_box() {
         done.cards.iter().all(|c| c.id != id),
         "not in Closed either"
     );
+}
+
+/// Card #124: files go with a thread, a reply in it, and a new card; the
+/// agent that hears each gets them with the message, for attachment_get.
+#[test]
+fn files_with_a_thread_a_reply_and_a_new_card() {
+    use base64::Engine as _;
+    let r = Rig::new();
+    let t = held_task(&r);
+    let ib = r.w.core.inbox();
+    let up = |name: &str, body: &[u8]| irori_window::board::UploadFile {
+        name: name.into(),
+        data: base64::engine::general_purpose::STANDARD.encode(body),
+    };
+    // The file names on each message alpha got since the last look.
+    let seen = std::cell::RefCell::new(std::collections::HashSet::new());
+    let heard = |r: &Rig| -> Vec<Vec<String>> {
+        let mut ds = ib.for_agent(&r.key_a, true, 100);
+        ds.reverse();
+        ds.into_iter()
+            .filter(|d| seen.borrow_mut().insert(d.id.clone()))
+            .map(|d| {
+                d.message
+                    .attachments
+                    .iter()
+                    .map(|a| a.name.clone())
+                    .collect()
+            })
+            .collect()
+    };
+    let files_on = |r: &Rig, id: &str| -> Vec<String> {
+        r.w.card(id)
+            .unwrap()
+            .comments
+            .iter()
+            .flat_map(|c| c.attachments.iter().map(|a| a.name.clone()))
+            .collect()
+    };
+
+    let res =
+        r.w.start_thread(
+            &format!("What is this on #{}?", t.short),
+            &[],
+            &[up("shot.png", b"\x89PNG one")],
+        )
+        .unwrap();
+    let id = res.task.id.clone();
+    assert_eq!(res.told.to, vec![r.key_a.clone()]);
+    assert_eq!(files_on(&r, &id), vec!["shot.png"]);
+    assert_eq!(heard(&r), vec![vec!["shot.png".to_string()]]);
+
+    r.w.comment(&id, "and this one", "wake", &[], &[up("log.txt", b"boom")])
+        .unwrap();
+    assert_eq!(files_on(&r, &id), vec!["shot.png", "log.txt"]);
+    assert_eq!(heard(&r), vec![vec!["log.txt".to_string()]]);
+    let sha =
+        r.w.card(&id)
+            .unwrap()
+            .comments
+            .iter()
+            .flat_map(|c| c.attachments.clone())
+            .find(|a| a.name == "log.txt")
+            .unwrap()
+            .sha256;
+    assert!(r.w.attachment_info(&sha).unwrap().here);
+
+    let res =
+        r.w.create_card(irori_window::new_card::NewCardInput {
+            title: "Look at the crash".into(),
+            assign_to: r.key_a.clone(),
+            files: vec![up("crash.txt", b"trace")],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(files_on(&r, &res.task.id), vec!["crash.txt"]);
+    assert_eq!(heard(&r), vec![vec!["crash.txt".to_string()]]);
 }
