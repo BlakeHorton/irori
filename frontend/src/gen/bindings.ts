@@ -127,6 +127,10 @@ export const commands = {
 	settingsTestNotification: () => __TAURI_INVOKE<null>("settings_test_notification"),
 	settingsGetLaunchAtLogin: () => __TAURI_INVOKE<boolean>("settings_get_launch_at_login"),
 	settingsSetLaunchAtLogin: (enabled: boolean) => __TAURI_INVOKE<null>("settings_set_launch_at_login", { enabled }),
+	/**  The person's name (card #183). */
+	settingsGetYourName: () => __TAURI_INVOKE<string>("settings_get_your_name"),
+	/**  The person renames themself; returns the name as kept. */
+	settingsSetYourName: (name: string) => __TAURI_INVOKE<string>("settings_set_your_name", { name }),
 	attachmentsInfo: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_info", { sha }),
 	attachmentsFetch: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_fetch", { sha }),
 	attachmentsSave: (sha: string) => __TAURI_INVOKE<string>("attachments_save", { sha }),
@@ -358,6 +362,10 @@ export type BoardSummary = {
 	owner: boolean,
 	devices: number,
 	cards: number,
+	/**  Cards completed in the last seven days (card #126). */
+	doneWeek: number,
+	/**  When anything last happened on the board; left out with no cards. */
+	lastAt?: string,
 	ready: boolean,
 	tagClash?: boolean,
 	/**
@@ -587,6 +595,18 @@ export type CardSummary = {
 	 */
 	ready?: boolean,
 	waiting: number,
+	/**
+	 *  Open blockers that wait on something other than the person: another
+	 *  card, a lease, an agent, something external (card #158). They close
+	 *  by themselves, so they are not counted in open_blockers.
+	 */
+	waitingOn?: number,
+	/**
+	 *  What the first of those waits on, as the window names it: "#12" for
+	 *  a card, the agent's name, the resource or the outside thing.
+	 */
+	waitOn?: string,
+	waitQuestion?: string,
 	working: AgentRef[],
 	watching: AgentRef[],
 	holder: CardHolder,
@@ -942,6 +962,11 @@ export type NewCardInput = {
 	/**  An agent's key: hand it to that agent instead of the free one. */
 	assignTo?: string,
 	/**
+	 *  A shared board's id (card #126): the card goes on that board, made
+	 *  from its page. "": the person's own board.
+	 */
+	board?: string,
+	/**
 	 *  Files pasted, dropped or picked in the form (card #124): they go on
 	 *  the card as the person's first comment, and with the hand-out.
 	 */
@@ -1098,6 +1123,10 @@ export type SharePreview = {
 	repo: string,
 	visibleTo: string[],
 	dropped: string[],
+	/**  The open subtasks that go under it (card #180). */
+	subtasks: SubtaskPreview[],
+	/**  Its ended subtasks, which stay private: "#6 Old idea (canceled)". */
+	keptPrivate: string[],
 	hash: string,
 };
 
@@ -1121,6 +1150,18 @@ export type Step = {
 	doing?: boolean,
 	/**  The agent doing the step (card #86). */
 	owner?: string,
+};
+
+/**  One subtask as Share would write it under its parent (card #180). */
+export type SubtaskPreview = {
+	taskId: string,
+	ref: string,
+	title: string,
+	goal: string,
+	doneWhen: string,
+	steps: string[],
+	links: string[],
+	repo: string,
 };
 
 /**

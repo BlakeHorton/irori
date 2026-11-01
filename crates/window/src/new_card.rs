@@ -20,6 +20,9 @@ pub struct NewCardInput {
     pub repo_key: String,
     /// An agent's key: hand it to that agent instead of the free one.
     pub assign_to: String,
+    /// A shared board's id (card #126): the card goes on that board, made
+    /// from its page. "": the person's own board.
+    pub board: String,
     /// Files pasted, dropped or picked in the form (card #124): they go on
     /// the card as the person's first comment, and with the hand-out.
     pub files: Vec<UploadFile>,
@@ -34,6 +37,16 @@ impl Window {
                 "{}: give the card a title",
                 coord::ErrorKind::Invalid.text()
             ));
+        }
+        let board = crate::trim(&input.board);
+        if !board.is_empty() {
+            if !input.files.is_empty() {
+                return Err(format!(
+                    "{}: files on a shared board's new card aren't supported yet; add them in a comment",
+                    coord::ErrorKind::Invalid.text()
+                ));
+            }
+            return self.create_on_board(board, title, &input);
         }
         // Stored before the card is made: a file that can't be stored
         // leaves no card behind.
@@ -90,6 +103,51 @@ impl Window {
         // From Irori, not the person: it hands the card out.
         let told = self.tell_from(&inbox::system_sender(), &n);
         let t = co.get_task(&t.id).unwrap_or(t);
+        Ok(TaskResult {
+            task: t,
+            told,
+            ..TaskResult::default()
+        })
+    }
+
+    /// New card on a shared board's page (card #126): written to that
+    /// board's log as the person. Unheld, it waits there for someone on the
+    /// board to take it up, as an agent's board_create does; picked, it
+    /// goes to that agent, woken.
+    fn create_on_board(
+        &self,
+        board: &str,
+        title: &str,
+        input: &NewCardInput,
+    ) -> Result<TaskResult, String> {
+        let co = self.core.board_coord(board).map_err(|e| e.to_string())?;
+        let me = self
+            .core
+            .board_key(board, &self.core.user_sender().key)
+            .map_err(|e| e.to_string())?;
+        let t = co
+            .create_task(
+                &me,
+                NewTask {
+                    title: title.into(),
+                    objective: crate::trim(&input.objective).into(),
+                    done_criteria: crate::trim(&input.done_when).into(),
+                    repo_key: crate::trim(&input.repo_key).into(),
+                    ..NewTask::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        let to = crate::trim(&input.assign_to);
+        if to.is_empty() {
+            return Ok(TaskResult {
+                task: t,
+                ..TaskResult::default()
+            });
+        }
+        let to = self.core.board_key(board, to).map_err(|e| e.to_string())?;
+        let (t, mut n) = co.assign(&me, &t.id, &to).map_err(|e| e.to_string())?;
+        n.wake = true;
+        let told = self.tell_from(&self.core.user_sender(), &n);
         Ok(TaskResult {
             task: t,
             told,

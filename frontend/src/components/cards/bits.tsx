@@ -121,6 +121,18 @@ export function StatePill({ card }: { card: CardSummary }) {
         Subtask blocked
       </Badge>
     )
+  // It waits on another card, a lease, an agent or something outside
+  // (card #158): that ends by itself, so it's calm, not red.
+  if (card.waitingOn)
+    return (
+      <Badge
+        variant="slate"
+        className="rounded-full"
+        title={card.waitQuestion ? plainLine(card.waitQuestion) : undefined}
+      >
+        {waitLabel(card)}
+      </Badge>
+    )
   // Every open blocker is answered: it waits on the agents, not on you.
   if (card.waiting > 0)
     return (
@@ -345,4 +357,11 @@ export function Spinner({
       <span className="col-start-1 row-start-1 hidden size-[7px] rounded-full bg-current motion-reduce:block" />
     </span>
   )
+}
+
+// waitLabel: what a card waits on that isn't you (card #158).
+export function waitLabel(card: { waitingOn?: number; waitOn?: string }): string {
+  const n = card.waitingOn ?? 0
+  const on = card.waitOn ? `Waiting on ${plainLine(card.waitOn)}` : "Waiting"
+  return n > 1 ? `${on} +${n - 1}` : on
 }

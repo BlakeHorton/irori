@@ -380,6 +380,15 @@ impl Coord {
     pub fn withdraw(&self, by: &str, id: &str, note: &str) -> Result<Task> {
         self.lock().withdraw(by, id, note)
     }
+    /// Whether this device may withdraw card `id` (its creator's person or
+    /// a board owner), the rule [`Self::withdraw`] applies; checked for a
+    /// whole family before any of it is withdrawn (card #180).
+    pub fn may_withdraw(&self, id: &str) -> bool {
+        let f = self.lock();
+        f.tasks
+            .get(id)
+            .is_some_and(|t| f.may_cancel(t, &f.dev, None))
+    }
     pub fn split(
         &self,
         by: &str,

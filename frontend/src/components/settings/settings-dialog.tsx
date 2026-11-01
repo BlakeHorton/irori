@@ -11,6 +11,7 @@ import { InvitePanel, JoinInvite } from "@/components/boards/parts"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { DevicesPanel } from "@/components/settings/devices-panel"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,7 @@ import { Switch } from "@/components/ui/switch"
 import { useBoards, useInvite } from "@/lib/boards"
 import { plainLine } from "@/lib/irori"
 import { go } from "@/lib/nav"
-import { corners, useSettings } from "@/lib/settings"
+import { corners, useSettings, useYourName } from "@/lib/settings"
 import { UpdateStatusLine } from "@/updater"
 
 export type SettingsSection = "notifications" | "devices" | "people" | "app"
@@ -219,6 +220,7 @@ function PeoplePane({ onOpenBoard }: { onOpenBoard: () => void }) {
   const inviting = !!invite && invite.state !== ""
   return (
     <div className="grid gap-3">
+      <YourName />
       {error && <p className="text-xs text-destructive">{error}</p>}
       {boards.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">
@@ -379,4 +381,64 @@ function useReducedMotion() {
     return () => m.removeEventListener("change", change)
   }, [])
   return on
+}
+
+// YourName is the person's one name (card #183): what every board they're
+// on shows them as, and their other devices too. Enter or Save keeps it.
+function YourName() {
+  const { name, error, save } = useYourName(true)
+  const [draft, setDraft] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const id = useId()
+  const value = draft ?? name ?? ""
+  const changed = draft !== null && draft.trim() !== (name ?? "")
+  const keep = async () => {
+    if (!changed) return
+    if (await save(value)) {
+      setDraft(null)
+      setSaved(true)
+    }
+  }
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className="text-[13px] font-medium text-ink">
+        Your name
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          value={value}
+          maxLength={60}
+          disabled={name === null}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setSaved(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void keep()
+            if (e.key === "Escape" && draft !== null) {
+              e.stopPropagation()
+              setDraft(null)
+            }
+          }}
+          className="h-8 w-64 text-[13px]"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!changed || !value.trim()}
+          onClick={() => void keep()}
+        >
+          Save
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {error
+          ? error
+          : saved
+            ? "Saved. Your other devices and your boards pick it up as they sync."
+            : "What people on your boards see you as, on all your devices."}
+      </p>
+    </div>
+  )
 }
