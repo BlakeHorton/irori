@@ -567,10 +567,10 @@ fn answered(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
         return (Err("the agent's card was not made".into()), log);
     };
     let task = format!("task:{}", t.id);
-    if !t.holders.contains(&a.key) {
-        if let Err(e) = call("board_join", serde_json::json!({ "task_id": task })) {
-            return (Err(e), log);
-        }
+    if !t.holders.contains(&a.key)
+        && let Err(e) = call("board_join", serde_json::json!({ "task_id": task }))
+    {
+        return (Err(e), log);
     }
     let options: Vec<serde_json::Value> = S4_OPTIONS
         .iter()
