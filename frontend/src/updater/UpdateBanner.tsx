@@ -56,7 +56,7 @@ export function UpdateBanner() {
       className="glass-panel mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-card-foreground"
     >
       <Download className="size-5 shrink-0 text-primary" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-56">
         <div className="text-sm font-medium">Irori {v} is ready.</div>
         <div className="text-xs text-muted-foreground">
           Restart now to update, or keep working. It installs when you quit
