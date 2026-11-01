@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SettingsMenu } from "@/components/settings/settings-menu"
+import { agentCounts } from "@/lib/agent-counts"
 import type { Roster } from "@/lib/irori"
 import { go, type Section } from "@/lib/nav"
 
@@ -27,7 +28,9 @@ export function AppHeader({
   boardsNeedYou?: number
 }) {
   const { device, version, source, agents } = roster
-  const busy = agents.filter((a) => a.status === "busy").length
+  // Working · free · not answering, by the rule threads go out by
+  // (card #172): "shell" (waiting on its own command) is working, not free.
+  const n = agentCounts(agents)
 
   return (
     <header className="sticky top-0 z-20 glass-panel border-x-0! border-t-0!">
@@ -70,8 +73,22 @@ export function AppHeader({
         )}
         <div className="ml-auto flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
           <span className="hidden text-xs tabular-nums sm:inline">
-            {agents.length} {agents.length === 1 ? "agent" : "agents"}
-            {busy > 0 && <span className="text-primary"> · {busy} busy</span>}
+            <span
+              title={[
+                `${n.working} working${n.running ? ` (${n.running} waiting on a command they started)` : ""}`,
+                `${n.free} free: idle, so a thread or card can go to them`,
+                n.silent && `${n.silent} idle but not answering`,
+                n.offline && `${n.offline} on an offline device`,
+              ]
+                .filter(Boolean)
+                .join("\n")}
+            >
+              {n.total} {n.total === 1 ? "agent" : "agents"}
+              {n.working > 0 && <span className="text-primary"> · {n.working} working</span>}
+              {" · "}
+              {n.free} free
+              {n.silent > 0 && <span className="text-warning"> · {n.silent} not answering</span>}
+            </span>
           </span>
           <span className="truncate text-xs font-medium text-ink-2" title={device?.id}>
             {device?.name || "this device"}

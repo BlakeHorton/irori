@@ -27,8 +27,12 @@ export function ThreadsPanel({
   onOpen,
   onHide,
   now,
+  why = "",
 }: {
   threads: ThreadSummary[]
+  // Why nobody is free to take a waiting thread (card #172), "" when
+  // someone is.
+  why?: string
   // The thread unfolded ("" none).
   open: string
   onOpen: (id: string) => void
@@ -74,6 +78,7 @@ export function ThreadsPanel({
           open={open === t.id}
           onToggle={() => onOpen(open === t.id ? "" : t.id)}
           now={now}
+          why={why}
         />
       ))}
       {resolved.length > 0 && (
@@ -99,6 +104,7 @@ export function ThreadsPanel({
                 open={open === t.id}
                 onToggle={() => onOpen(open === t.id ? "" : t.id)}
                 now={now}
+                why={why}
               />
             ))}
         </div>
@@ -119,7 +125,7 @@ const stateBadges: Record<
 }
 
 // stateLine says where a folded thread stands.
-function stateLine(t: ThreadSummary): string {
+function stateLine(t: ThreadSummary, why = ""): string {
   switch (t.state) {
     case "answered":
       return t.lastBy && t.lastText
@@ -134,7 +140,7 @@ function stateLine(t: ThreadSummary): string {
     default:
       return t.told.length
         ? `Waiting for ${t.told.map(displayName).join(", ")}; an idle agent answers after 45s`
-        : "Waiting for a free agent"
+        : why || "Waiting for a free agent"
   }
 }
 
@@ -143,11 +149,13 @@ function ThreadRow({
   open,
   onToggle,
   now,
+  why,
 }: {
   t: ThreadSummary
   open: boolean
   onToggle: () => void
   now: Date
+  why: string
 }) {
   // Opened from elsewhere (a #ref, card #144), it scrolls into view.
   const box = useRef<HTMLElement>(null)
@@ -204,7 +212,7 @@ function ThreadRow({
                 : "line-clamp-2 text-xs text-muted-foreground"
             }
           >
-            {stateLine(t)}
+            {stateLine(t, why)}
           </span>
         )}
       </button>

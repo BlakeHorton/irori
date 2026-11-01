@@ -13,6 +13,7 @@ import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
 import { ThreadsPanel } from "@/components/cards/threads-panel"
+import { whyWaiting } from "@/lib/agent-counts"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
@@ -171,6 +172,7 @@ export function App() {
             onOpen={setThread}
             onHide={() => hideThreads(true)}
             now={now}
+            why={whyWaiting(roster.agents)}
           />
         </div>
       </div>
