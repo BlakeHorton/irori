@@ -1,3 +1,11 @@
 [alias]
 # `cargo xtask bindings [--check]` (architecture.md 7.1, D10).
 xtask = "run --quiet -p xtask --"
+
+# Android 15+ phones (Pixel 10) use 16 KB pages: align the app's .so to
+# them, or Android warns that the app isn't 16 KB compatible (card #226).
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
