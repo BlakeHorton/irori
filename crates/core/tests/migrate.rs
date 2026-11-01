@@ -142,6 +142,12 @@ fn test_start_migrates_a_v03_data_dir() {
         .try_into()
         .unwrap();
     let vk = VerifyingKey::from_bytes(&pub_bytes).unwrap();
+    // The migrated card is unheld and never had a hand-out, so the coord
+    // sweep offers it (card #110): with no agent free, one task.offered
+    // "waiting" row. The background sweep writes it whenever it first
+    // runs, in this start or the next (card #119), so run it here: the
+    // row lands now, and the counts below don't depend on timing.
+    c.sweep_coord().unwrap();
     let evs = c
         .store()
         .missing(&Vector::default(), store::MAX_MISSING_LIMIT)
@@ -177,11 +183,16 @@ fn test_start_migrates_a_v03_data_dir() {
             && ds[0].cert.role == irori_identity::objects::ROLE_NODE,
         "certified devices {ds:?}"
     );
+    let offered =
+        |evs: &[store::Event]| evs.iter().filter(|e| e.kind == kinds::TASK_OFFERED).count();
+    assert_eq!(offered(&evs), 1, "the migrated card's hand-out");
     let n = evs.len();
     c.close().unwrap();
 
-    // A second start migrates nothing again and writes no second self-cert.
+    // A second start migrates nothing again, writes no second self-cert,
+    // and doesn't hand the waiting card out again.
     let c2 = start();
+    c2.sweep_coord().unwrap();
     let evs2 = c2
         .store()
         .missing(&Vector::default(), store::MAX_MISSING_LIMIT)
@@ -192,6 +203,7 @@ fn test_start_migrates_a_v03_data_dir() {
         .count();
     // Only the new device.started row is added.
     assert_eq!((evs2.len(), certs), (n + 1, 1), "second start");
+    assert_eq!(offered(&evs2), 1, "the hand-out after restart");
     let pol = c2.inbox().policy();
     assert!(
         pol.mode == inbox::policy_mode::ALLOWLIST && pol.paused,

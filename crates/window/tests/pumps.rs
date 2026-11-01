@@ -235,6 +235,10 @@ fn pairing_changes_reach_the_page() {
         "pair: no pairing is waiting for words"
     );
     p.cancel();
+    // Nobody joined, so cancel shuts the guest window before it returns
+    // (card #119): it used to close in a spawned task, after the page had
+    // already heard the new state, and this check raced it.
+    assert!(!r.w.core.guest_windows().any_open());
     wait("devices:pairing after cancel", || {
         seen.of(events::EVENT_DEVICES_PAIRING)
             .last()

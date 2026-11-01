@@ -491,7 +491,7 @@ impl Pairer {
     pub fn cancel(&self) {
         let s = lock(&self.inner.m).cur.clone();
         if let Some(s) = s {
-            s.fail_spawn(STATE_CANCELED, "Canceled.", FRAME_CANCEL);
+            s.cancel_now();
         }
     }
 
@@ -502,7 +502,7 @@ impl Pairer {
         let s = lock(&self.inner.m).cur.clone();
         match s {
             Some(s) if !s.add => {
-                s.fail_spawn(STATE_CANCELED, "Canceled.", FRAME_CANCEL);
+                s.cancel_now();
                 true
             }
             _ => false,
@@ -1259,6 +1259,24 @@ impl Session {
             p.changed(&g);
         }
         self.close();
+    }
+
+    /// The person's Cancel (never called from inside the room's own
+    /// callbacks). With somebody to tell, as fail_spawn: the cancel frame
+    /// goes out first, then the room closes in the background. With nobody
+    /// joined, the room (and its guest window, which lets strangers reach
+    /// this device) closes now, before the caller returns (card #119).
+    fn cancel_now(self: &Arc<Self>) {
+        match self.mark_failed(STATE_CANCELED, "Canceled.") {
+            Some(Some(conn)) => {
+                let s = self.clone();
+                if let Some(p) = self.pairer() {
+                    p.spawn(async move { s.tell_and_close(Some(conn), FRAME_CANCEL).await });
+                }
+            }
+            Some(None) => self.close(),
+            None => {}
+        }
     }
 
     fn fail_spawn(self: &Arc<Self>, state: &'static str, why: &'static str, tell: &'static str) {
