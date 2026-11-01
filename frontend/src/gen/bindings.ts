@@ -585,6 +585,18 @@ export type CardSummary = {
 	 */
 	ready?: boolean,
 	waiting: number,
+	/**
+	 *  Open blockers that wait on something other than the person: another
+	 *  card, a lease, an agent, something external (card #158). They close
+	 *  by themselves, so they are not counted in open_blockers.
+	 */
+	waitingOn?: number,
+	/**
+	 *  What the first of those waits on, as the window names it: "#12" for
+	 *  a card, the agent's name, the resource or the outside thing.
+	 */
+	waitOn?: string,
+	waitQuestion?: string,
 	working: AgentRef[],
 	watching: AgentRef[],
 	holder: CardHolder,

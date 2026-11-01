@@ -205,6 +205,24 @@ pub struct CardSummary {
     #[specta(optional)]
     pub ready: bool,
     pub waiting: i64,
+    /// Open blockers that wait on something other than the person: another
+    /// card, a lease, an agent, something external (card #158). They close
+    /// by themselves, so they are not counted in open_blockers.
+    #[serde(skip_serializing_if = "is_zero")]
+    #[specta(optional)]
+    pub waiting_on: i64,
+    /// What the first of those waits on, as the window names it: "#12" for
+    /// a card, the agent's name, the resource or the outside thing.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub wait_on: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub wait_question: String,
+    /// The card the first wait is on, until wait_on names it.
+    #[serde(skip)]
+    #[specta(skip)]
+    pub wait_task: String,
     pub working: Vec<AgentRef>,
     pub watching: Vec<AgentRef>,
     pub holder: CardHolder,
@@ -810,6 +828,28 @@ fn ms(t: &GoTime) -> i64 {
 
 // ---- summaries -----------------------------------------------------------------
 
+/// A blocker on one of these waits on something that ends by itself, not on
+/// the person (card #158): it never counts as a question for them.
+fn waits_by_itself(kind: &str) -> bool {
+    matches!(
+        kind,
+        coord::BLOCKED_ON_TASK
+            | coord::BLOCKED_ON_LEASE
+            | coord::BLOCKED_ON_AGENT
+            | coord::BLOCKED_ON_EXTERNAL
+    )
+}
+
+/// Names the card a summary's first wait is on ("#12"); a card this
+/// device can't see stays "a card".
+pub(crate) fn name_wait(s: &mut CardSummary, refr: &dyn Fn(&str) -> String) {
+    if s.wait_task.is_empty() || !s.wait_on.is_empty() {
+        return;
+    }
+    let r = refr(&s.wait_task);
+    s.wait_on = if r.is_empty() { "a card".into() } else { r };
+}
+
 pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
     let (d, n) = t.progress();
     let mut s = CardSummary {
@@ -858,6 +898,18 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
         for bl in &open {
             if bl.status == coord::BLOCKER_ANSWERED {
                 s.waiting += 1;
+                continue;
+            }
+            if let Some(on) = bl.on.as_ref().filter(|on| waits_by_itself(&on.kind)) {
+                s.waiting_on += 1;
+                if s.waiting_on == 1 {
+                    s.wait_question = bl.question.clone();
+                    match on.kind.as_str() {
+                        coord::BLOCKED_ON_TASK => s.wait_task = on.reference.clone(),
+                        coord::BLOCKED_ON_AGENT => s.wait_on = p.ref_(&on.reference).name,
+                        _ => s.wait_on = on.reference.clone(),
+                    }
+                }
                 continue;
             }
             s.open_blockers += 1;
@@ -1244,6 +1296,7 @@ impl Window {
                         |id: &str| co.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
                     let mut s = card_summary(&t, &p);
                     s.ask = card_ask(&t, &p, Some(&refr));
+                    name_wait(&mut s, &refr);
                     s
                 }
                 Some(i) => {
@@ -1253,6 +1306,7 @@ impl Window {
                     let pt = self.priv_task(t);
                     let mut s = card_summary(&pt, &p);
                     s.ask = card_ask(&pt, &p, Some(&refr));
+                    name_wait(&mut s, &refr);
                     s.scope = crate::boards::SCOPE_BOARD.into();
                     s.scope_label = b.name.clone();
                     s.board = b.board_id.clone();
@@ -1830,6 +1884,9 @@ fn pending_lines(ds: &[Delivery], t: &Task, p: &People) -> Vec<String> {
 /// waits on), from the log the card lives in (card #161: a board's for a
 /// board card).
 fn family_of(co: &coord::Coord, t: &Task, s: &mut CardSummary) {
+    name_wait(s, &|id: &str| {
+        co.get_task(id).map(|x| x.short_ref()).unwrap_or_default()
+    });
     if !t.parent.is_empty()
         && let Some(pt) = co.get_task(&t.parent)
     {

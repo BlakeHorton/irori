@@ -65,6 +65,7 @@ import {
   ShortRef,
   Spinner,
   StatePill,
+  waitLabel,
 } from "./bits"
 import { Face, LiveDot } from "./faces"
 import { Thread } from "./thread"
@@ -830,6 +831,8 @@ function ProgressLine({ detail }: { detail: CardDetail }) {
         {detail.openBlockers} waiting on a decision
       </span>
     )
+  if (detail.waitingOn)
+    parts.push(<span key="o">{waitLabel(detail).replace(/^Waiting/, "waiting")}</span>)
   if (detail.waiting > 0)
     parts.push(<span key="w">{detail.waiting} waiting on an agent</span>)
   if (!parts.length) return null
