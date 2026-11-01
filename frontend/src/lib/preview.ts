@@ -2,8 +2,9 @@
 // bun run dev, in a plain browser; frontend/PREVIEW.md). Like ?empty and
 // ?open=, they only exist outside the app: inside Wails they read nothing.
 //
-//   ?settings       opens the settings popover
-//   ?devices        opens the Devices dialog
+//   ?settings[=<s>] opens Settings at a section: notifications, devices,
+//                   people or app
+//   ?devices        opens Settings at Devices and connections
 //   ?boards         opens the Boards dialog
 //   ?share=<card>   opens Share to board on that card's page
 //   ?update=ready   shows the update card (also downloading, installing)

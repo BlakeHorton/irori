@@ -2,13 +2,6 @@ import { useEffect, useState, type FormEvent } from "react"
 
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   AutonomyPresets,
@@ -29,7 +22,7 @@ import { errorText } from "@/lib/talk"
 import { cn } from "@/lib/utils"
 
 // The pieces of the Boards pages (card #96; design/v0.5-shared-boards.md
-// §8): the New board dialog (make one, or join with an invite), an open invite either side, how an
+// §8): New board, Join with an invite, an open invite either side, how an
 // invite works, and a board's settings (members, what reaches my agents,
 // what my agents may do, reviewers).
 
@@ -109,11 +102,11 @@ export function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Pro
     }
   }
   return (
-    <form className="grid gap-2" onSubmit={submit}>
+    <form className="grid gap-2 border-t border-border pt-3" onSubmit={submit}>
+      <span className="text-[13px] font-semibold text-ink">New board</span>
       <div className="flex gap-1.5">
         <Input
           value={name}
-          autoFocus
           onChange={(e) => setName(e.target.value)}
           maxLength={MaxBoardName}
           placeholder="Board name"
@@ -147,89 +140,6 @@ export function NewBoard({ taken, onMade }: { taken: string[]; onMade: () => Pro
   )
 }
 
-// NewBoardDialog is the header's New board on Boards (card #126): make a
-// board, or join one with an invite someone sent, as two tabs. Joining
-// closes it; the invite then runs over the Boards list. join is false
-// while an invite is open: one at a time.
-export function NewBoardDialog({
-  open,
-  onClose,
-  taken,
-  onMade,
-  join,
-  onJoined,
-}: {
-  open: boolean
-  onClose: () => void
-  taken: string[]
-  onMade: () => Promise<void>
-  join: boolean
-  onJoined: (s: InviteStatus) => void
-}) {
-  const [tab, setTab] = useState<"make" | "join">("make")
-  const t = join ? tab : "make"
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (o) return
-        setTab("make")
-        onClose()
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t === "make" ? "New board" : "Join a board"}</DialogTitle>
-          <DialogDescription>
-            {t === "make"
-              ? "One board per project. Only the people you invite see it."
-              : "Paste the invite link someone sent you."}
-          </DialogDescription>
-        </DialogHeader>
-        {join && (
-          <div className="flex gap-1" role="tablist" aria-label="New board or join one">
-            {(
-              [
-                ["make", "Make a board"],
-                ["join", "Join with an invite"],
-              ] as const
-            ).map(([k, label]) => (
-              <Button
-                key={k}
-                type="button"
-                size="sm"
-                role="tab"
-                aria-selected={t === k}
-                variant={t === k ? "secondary" : "ghost"}
-                onClick={() => setTab(k)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        )}
-        {t === "make" ? (
-          <NewBoard
-            taken={taken}
-            onMade={async () => {
-              await onMade()
-              onClose()
-            }}
-          />
-        ) : (
-          <JoinInvite
-            onJoined={(s) => {
-              onJoined(s)
-              setTab("make")
-              onClose()
-            }}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // JoinInvite is Join with an invite: the irori-invite: link someone sent.
 export function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }) {
   const [link, setLink] = useState("")
@@ -249,11 +159,11 @@ export function JoinInvite({ onJoined }: { onJoined: (s: InviteStatus) => void }
     }
   }
   return (
-    <form className="grid gap-2" onSubmit={submit}>
+    <form className="grid gap-2 border-t border-border pt-3" onSubmit={submit}>
+      <span className="text-[13px] font-semibold text-ink">Join with an invite</span>
       <div className="flex gap-1.5">
         <Input
           value={link}
-          autoFocus
           onChange={(e) => setLink(e.target.value)}
           placeholder="irori-invite:…"
           aria-label="The invite link someone sent you"

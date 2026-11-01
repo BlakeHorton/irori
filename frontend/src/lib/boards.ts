@@ -8,7 +8,7 @@ import { useEffect, useState } from "react"
 
 import { BoardsService, Events } from "./host"
 import { BoardSettings, BoardSummary, InviteStatus, SharePreview } from "./models"
-import { sampleShare, sampleWithdraw, samplePreview, setSampleBoards } from "./cards"
+import { sampleShare, sampleWithdraw, samplePreview } from "./cards"
 import { inWails } from "./irori"
 import { useLatest } from "./talk"
 
@@ -95,8 +95,6 @@ function boardsState(): BoardSummary[] {
       owner: true,
       devices: 2,
       cards: 2,
-      doneWeek: 1,
-      lastAt: new Date(Date.now() - 7 * 60_000).toISOString(),
       ready: true,
     }),
     BoardSummary({
@@ -127,8 +125,6 @@ function sampleFind(id: string): BoardSummary {
 export function sampleBoard(id: string): BoardSummary | undefined {
   return boardsState().find((x) => x.boardId === id)
 }
-
-setSampleBoards(sampleBoard)
 
 const sampleSettings: Record<string, BoardSettings> = {}
 

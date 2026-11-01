@@ -162,7 +162,7 @@ export function BoardSettings(p: Partial<B.BoardSettings> = {}): B.BoardSettings
 
 /** BoardSummary with Go's zero values for every field left out. */
 export function BoardSummary(p: Partial<B.BoardSummary> = {}): B.BoardSummary {
-  return { "boardId": "", "name": "", "tag": "", "people": [], "owner": false, "devices": 0, "cards": 0, "doneWeek": 0, "ready": false, ...p } as B.BoardSummary
+  return { "boardId": "", "name": "", "tag": "", "people": [], "owner": false, "devices": 0, "cards": 0, "ready": false, ...p } as B.BoardSummary
 }
 
 /** CanvasPos with Go's zero values for every field left out. */
