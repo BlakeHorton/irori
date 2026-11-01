@@ -922,6 +922,8 @@ export type NotifyOptions = {
 	volume: number,
 	/**  One of the CORNER_* values. */
 	corner: string,
+	/**  A confetti burst from each success card ("Confetti on good news"). */
+	confetti?: boolean,
 };
 
 /**  coord.Outcome: how an ask ended. */

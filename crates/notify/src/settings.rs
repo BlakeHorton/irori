@@ -36,6 +36,7 @@ fn options_schema() -> Schema {
         ("sound", Schema::Bool),
         ("volume", Schema::Float(64)),
         ("corner", Schema::String),
+        ("confetti", Schema::Bool),
     ])
 }
 
@@ -60,6 +61,7 @@ pub fn load(dir: &Path) -> Options {
         ("sound", Out::Bool(d.sound)),
         ("volume", Out::Float(d.volume)),
         ("corner", Out::String(d.corner.clone())),
+        ("confetti", Out::Bool(d.confetti)),
     ]);
     if let Err(e) = gocompat::json::lenient::unmarshal_into(raw, &options_schema(), &mut out) {
         eprintln!("irori: notifications: {SETTINGS_FILE}: {e}; using the defaults");
@@ -74,6 +76,7 @@ pub fn load(dir: &Path) -> Options {
             _ => d.volume,
         },
         corner: out.get_str("corner").to_string(),
+        confetti: b("confetti"),
     }
     .normalized()
 }
