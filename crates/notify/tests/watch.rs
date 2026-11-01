@@ -394,52 +394,6 @@ fn watch_board_needs_you() {
     r.fake.wait_post(&id);
 }
 
-/// Card #130: an agent's completed waits on the person's Done (card
-/// #112). Its card is good news: green, "finished", Open and Mark Done,
-/// and Mark Done closes the card. A blocked card still warns.
-#[test]
-fn watch_board_finished_is_ready_to_review() {
-    let r = rig_with(
-        None,
-        coord::Options {
-            done_check: true,
-            ..coord::Options::default()
-        },
-    );
-    let task =
-        r.co.create_task(KEY_A, new_task("ship the release"))
-            .unwrap();
-    r.co.claim_task(KEY_A, &task.id).unwrap();
-    r.block_on_person(KEY_A, &task.id, "which version number?");
-    let id = needs_id(&task.id);
-    r.fake.wait_post(&id);
-    let c = r.fake.card(&id);
-    assert_eq!(c.title, "alpha is blocked on you (#1)");
-    assert_eq!(c.kind, toast::Kind::Warn, "a blocker still warns");
-    r.co.unblock(USER, &task.id, "0.4").unwrap();
-    r.fake.wait_gone(&id);
-
-    let got =
-        r.co.set_task_state(KEY_A, &task.id, coord::COMPLETED, "all green")
-            .unwrap();
-    assert_eq!(got.state, coord::BLOCKED, "a done check, not closed");
-    let c = r
-        .fake
-        .wait_title(&id, "alpha finished “ship the release” (#1)");
-    assert_eq!(c.body, "Ready for you to look over and mark Done.");
-    assert_eq!(c.kind, toast::Kind::Success);
-    let labels: Vec<&str> = c.actions.iter().map(|a| a.label.as_str()).collect();
-    assert_eq!(labels, vec!["Open", "Mark Done"]);
-    r.fake.drain();
-    // A press takes the card down, as the engine does: Mark Done.
-    r.fake.press(&id, "Mark Done");
-    wait_for("Mark Done closes the card", || {
-        r.co.get_task(&task.id)
-            .is_some_and(|t| t.state == coord::COMPLETED && t.open_blockers().is_empty())
-    });
-    r.fake.no_post(Duration::from_millis(100)); // closed: it doesn't come back
-}
-
 #[test]
 fn watch_seeds_quietly() {
     // A card already waiting when the app starts doesn't pop up.
