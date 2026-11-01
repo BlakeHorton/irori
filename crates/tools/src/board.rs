@@ -585,7 +585,17 @@ pub(crate) fn board(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     );
     group(&mut b, "Needs you", &v.needs_you, &mut cut);
     group(&mut b, "Blocked", &v.blocked, &mut cut);
-    group(&mut b, "Working", &v.working, &mut cut);
+    // Card #191: cards waiting on their review come out of Working.
+    let (reviewing, working): (Vec<Card>, Vec<Card>) = std::mem::take(&mut v.working)
+        .into_iter()
+        .partition(|cd| coord::effective_state(&cd.task) == coord::IN_REVIEW);
+    group(&mut b, "Working", &working, &mut cut);
+    group(
+        &mut b,
+        "In review (the work waits on its PR or review; the holder is free for other work)",
+        &reviewing,
+        &mut cut,
+    );
     group(&mut b, "Open", &v.open, &mut cut);
     if !v.leases.is_empty() && cut == 0 {
         let _ = write!(b, "\nLeases in the way ({}):\n", v.leases.len());
@@ -1753,9 +1763,10 @@ const STATUS_ARGS: &[(&str, Ty)] = &[
     ("attach", Ty::Strs),
 ];
 
-const BOARD_STATES: [&str; 5] = [
+const BOARD_STATES: [&str; 6] = [
     coord::WORKING,
     coord::INPUT_REQUIRED,
+    coord::IN_REVIEW,
     coord::COMPLETED,
     coord::FAILED,
     coord::CANCELED,
@@ -1775,7 +1786,9 @@ pub(crate) fn board_status(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         return err_text("use board_block for blocked: it takes the reason.");
     }
     if !BOARD_STATES.contains(&st.as_str()) {
-        return err_text("give state: working, input_required, completed, failed or canceled.");
+        return err_text(
+            "give state: working, input_required, in_review, completed, failed or canceled.",
+        );
     }
     if st == coord::INPUT_REQUIRED {
         return s.input_required(&id, trim(a.str("note")));

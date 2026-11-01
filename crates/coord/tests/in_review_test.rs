@@ -92,7 +92,9 @@ fn board_status_in_review_needs_something_to_review() {
         ErrorKind::Invalid,
     );
     e.c.add_link(ALICE, &t.id, PR).unwrap();
-    let got = e.c.set_task_state(ALICE, &t.id, IN_REVIEW, "with the merge desk").unwrap();
+    let got =
+        e.c.set_task_state(ALICE, &t.id, IN_REVIEW, "with the merge desk")
+            .unwrap();
     assert_eq!(got.state, IN_REVIEW);
     // And back by hand.
     let got = e.c.set_task_state(ALICE, &t.id, WORKING, "").unwrap();
@@ -140,7 +142,9 @@ fn completing_from_in_review_works_and_an_in_review_holder_is_free() {
     e.c.claim_task(ALICE, &other.id).unwrap();
 
     // Completing it is allowed from in review.
-    let done = e.c.set_task_state(ALICE, &t.id, COMPLETED, "merged").unwrap();
+    let done =
+        e.c.set_task_state(ALICE, &t.id, COMPLETED, "merged")
+            .unwrap();
     assert_ne!(done.state, IN_REVIEW);
 }
 
@@ -167,7 +171,8 @@ fn a_parents_rollup_is_in_review_when_every_open_subtask_is() {
     e.c.set_task_state(BOB, &a.id, IN_REVIEW, "").unwrap();
     let shown = |e: &Env| e.c.get_task(&p.id).unwrap().rollup.unwrap().state;
     assert_ne!(shown(&e), IN_REVIEW, "one subtask still works");
-    e.c.add_link(CAROL, &b.id, "https://github.com/a/b/pull/10").unwrap();
+    e.c.add_link(CAROL, &b.id, "https://github.com/a/b/pull/10")
+        .unwrap();
     e.c.set_task_state(CAROL, &b.id, IN_REVIEW, "").unwrap();
     assert_eq!(shown(&e), IN_REVIEW);
     // A parent is never put in review by hand.

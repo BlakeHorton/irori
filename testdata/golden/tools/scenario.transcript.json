@@ -492,7 +492,7 @@
   {
     "step": 101,
     "tool": "board_status",
-    "text": "Error: give state: working, input_required, completed, failed or canceled."
+    "text": "Error: give state: working, input_required, in_review, completed, failed or canceled."
   },
   {
     "step": 102,
