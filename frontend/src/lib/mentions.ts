@@ -435,6 +435,34 @@ export function cardRefs(text: string): CardRef[] {
   return out
 }
 
+// RefHit is what a card ref names among what the window already holds
+// (card #144): one live card, one thread, or null (look it up: a done card
+// or an old thread, or nothing).
+export type RefHit = { kind: "card" | "thread"; id: string; title: string } | null
+
+// localRef resolves r against the live cards, then the threads (own board,
+// so only an untagged ref). More than one live card leaves it to the
+// lookup, which says ambiguous (and the ref stays text).
+export function localRef(
+  r: CardRef,
+  cards: readonly { id: string; short: string; title: string; tag?: string }[],
+  threads: readonly { id: string; short: string; title: string }[]
+): RefHit {
+  const c = cards.filter(
+    (x) => x.short === r.n && (r.tag === null || (x.tag ?? "") === r.tag)
+  )
+  if (c.length === 1) return { kind: "card", id: c[0].id, title: c[0].title }
+  if (c.length > 1 || r.tag !== null) return null
+  const t = threads.filter((x) => x.short === r.n)
+  if (t.length === 1) return { kind: "thread", id: t[0].id, title: t[0].title }
+  return null
+}
+
+// refText is a ref as the backend reads it: "#12" or "mlg#12".
+export function refText(r: Pick<CardRef, "tag" | "n">): string {
+  return `${r.tag ?? ""}#${r.n}`
+}
+
 // cardTokenAt is the "#query" the caret is in (card #114), or null: a "#"
 // at the start or after whitespace or "(", up to the caret, no newline.
 // A space ends it unless some card title still holds the query.

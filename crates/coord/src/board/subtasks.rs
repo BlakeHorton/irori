@@ -536,6 +536,60 @@ impl Fold {
         Ok(self.tasks[id].clone())
     }
 
+    /// Pins a card this log doesn't hold (card #161): a shared board's
+    /// card, pinned by the person in their own log, so it orders with
+    /// their private pins and follows them to their devices, and no other
+    /// member sees it. Only the private log takes these.
+    pub(crate) fn pin_ref(
+        &mut self,
+        by: &str,
+        id: &str,
+        pinned: bool,
+        before: &str,
+        mv: bool,
+    ) -> Result<()> {
+        let by = trim_space(by).to_string();
+        if !self.is_owner(&by) {
+            return Err(not_allowed("only the person pins cards"));
+        }
+        if self.on_board {
+            return Err(invalid("pins live in the person's own log"));
+        }
+        if trim_space(id).is_empty() {
+            return Err(invalid("pin which card?"));
+        }
+        let now = self.pins.get(id).is_some_and(|r| r.pinned);
+        if !mv && now == pinned {
+            return Ok(());
+        }
+        let rank = if pinned {
+            self.pin_rank(id, before, mv)?
+        } else {
+            0.0
+        };
+        let at = self.stamp();
+        self.write(
+            &by,
+            kinds::TASK_PINNED,
+            &TaskPinnedRow {
+                task_id: id.into(),
+                pinned,
+                rank,
+                by: by.clone(),
+                at,
+            },
+        )
+    }
+
+    /// Every pinned card id with its rank, held cards or not.
+    pub(crate) fn pinned_ranks(&self) -> HashMap<String, f64> {
+        self.pins
+            .iter()
+            .filter(|(_, r)| r.pinned)
+            .map(|(id, r)| (id.clone(), r.rank))
+            .collect()
+    }
+
     /// Where id goes among the pinned cards: last, or just before `before`.
     fn pin_rank(&self, id: &str, before: &str, mv: bool) -> Result<f64> {
         let mut list: Vec<(&String, f64)> = self

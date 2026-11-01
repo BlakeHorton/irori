@@ -144,6 +144,7 @@ export const BoardService = {
   StartThread: (text: string, mentions: B.Mention[]) =>
     call(commands.boardStartThread(text, mentions)),
   Threads: () => call(commands.boardThreads()),
+  CardRef: (r: string) => call(commands.boardCardRef(r)),
   ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),

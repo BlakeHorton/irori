@@ -21,7 +21,7 @@ use super::{
     DONE_ANSWER, DONE_CONTEXT, DONE_QUESTION, KEEP_RESOLVED, MAX_ANSWER, MAX_ATTACHMENTS,
     MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT, MAX_MISSING, MAX_MISSING_TEXT, MAX_OBJECTIVE,
     MAX_OPEN_BLOCKERS, MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION, MAX_STEP_TEXT, MAX_STEPS,
-    MAX_WHY,
+    MAX_WHY, NEEDS_PROOF,
 };
 use crate::names::trim_space;
 
@@ -952,7 +952,17 @@ impl Fold {
     /// An agent's completed (card #112): the card waits on the person with
     /// a done check. Done closes it; their words go back to the agent. An
     /// earlier check on the card, open or answered, gives way to this one.
-    pub(crate) fn ask_done(&mut self, by: &str, t: &Task, note: &str) -> Result<Task> {
+    pub(crate) fn ask_done(
+        &mut self,
+        by: &str,
+        t: &Task,
+        note: &str,
+        files: Vec<FileRef>,
+        need_proof: bool,
+    ) -> Result<Task> {
+        if files.len() > MAX_ATTACHMENTS {
+            return Err(invalid(format!("at most {MAX_ATTACHMENTS} attachments")));
+        }
         let earlier: Vec<String> = t
             .blockers
             .iter()
@@ -972,6 +982,12 @@ impl Fold {
                 b.options.first().is_some_and(|o| o.answer == DONE_ANSWER)
                     && last_answer(self, t, &b.id).is_some_and(|a| a.pick == 1)
             });
+        // Card #140: the person decides Done on the proof, so a check with
+        // none is refused here, after every other refusal and before any
+        // write. Once they said Done it closes without one.
+        if need_proof && !said_done && note.is_empty() {
+            return Err(invalid(NEEDS_PROOF));
+        }
         for bid in earlier {
             self.answer(
                 by,
@@ -988,6 +1004,8 @@ impl Fold {
                 },
             )?;
         }
+        // The person already said Done: the card closes now, and the
+        // proof's files have nothing to wait on (the note stays on the row).
         if said_done {
             let at = self.stamp();
             self.write(
@@ -1006,10 +1024,13 @@ impl Fold {
         }
         let t = self.open_task(&t.id)?.clone();
         let now = self.stamp();
+        // The note is the agent's proof (card #140): what changed, how it
+        // was checked, the commit. It was held to MAX_OBJECTIVE already;
+        // MAX_CONTEXT would cut exactly what the person reads to decide.
         let cx = if note.is_empty() {
             DONE_CONTEXT.to_string()
         } else {
-            cut(note, MAX_CONTEXT)
+            cut(note, MAX_OBJECTIVE)
         };
         let opts = clean_options(
             &[BlockerOption {
@@ -1036,7 +1057,7 @@ impl Fold {
             false,
             now,
             Vec::new(),
-            Vec::new(),
+            files,
             true,
         )?;
         Ok(nt)
@@ -1189,7 +1210,14 @@ impl Fold {
             None => b.context.clone(),
         };
         check_text("the question", &q, 1, MAX_QUESTION)?;
-        check_text("the context", &cx, 0, MAX_CONTEXT)?;
+        // A done check's context is the agent's proof, up to MAX_OBJECTIVE
+        // (card #140).
+        let max_cx = if b.done_check {
+            MAX_OBJECTIVE
+        } else {
+            MAX_CONTEXT
+        };
+        check_text("the context", &cx, 0, max_cx)?;
         let now = self.stamp();
         let opts = clean_options(&r.options, &by, now)?;
         if q == b.question && cx == b.context && same_options(&opts, &b.options) {

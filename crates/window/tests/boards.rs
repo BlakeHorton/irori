@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use irori_window::boards::SCOPE_BOARD;
-use irori_window::cards::{CardSummary, SCOPE_MINE};
+use irori_window::cards::{CardSummary, SCOPE_MINE, SCOPE_OWN};
 use irori_window::invites::{INVITE_DONE, INVITE_WORDS, InviteStatus};
 use store::kinds::{self, AGENT_ACTOR_PREFIX};
 
@@ -85,8 +85,19 @@ fn boards_in_the_window() {
         cs.len() == 1 && cs[0].by.starts_with("person:"),
         "board comments {cs:?}"
     );
-    // A shared card isn't pinned.
-    assert!(w.pin(&shared_id, true).is_err());
+    // A shared card is pinned in the person's own log (card #161), not
+    // on the board.
+    w.pin(&shared_id, true).unwrap();
+    assert!(
+        w.cards().iter().any(|c| c.id == shared_id && c.pinned),
+        "the shared card shows pinned"
+    );
+    let bco = w.core.board_coord(&mlg.board_id).unwrap();
+    assert!(
+        !bco.get_task(&shared_id).unwrap().pinned,
+        "no pin on the board"
+    );
+    w.pin(&shared_id, false).unwrap();
     w.boards_withdraw(&shared_id).unwrap();
     assert!(
         !w.cards().iter().any(|s| s.id == shared_id),
@@ -396,6 +407,161 @@ fn closed_holds_finished_board_cards() {
     }
     let want: Vec<String> = all.cards.iter().map(|s| s.id.clone()).collect();
     assert_eq!(seen, want, "paging across private and board cards");
+}
+
+/// Card #161: a board's family shows as one on the grid (the subtask
+/// names its parent and sits right after it; the parent says which
+/// subtask waits on a decision), the board page's scope holds only that
+/// board, and the person's pins on board cards order with their own.
+#[test]
+fn board_cards_carry_families_scopes_and_pins() {
+    let r = Rig::new();
+    let w = &r.w;
+    let mine = create(&r, "a private card");
+    let mlg = w.boards_create("MLG", "mlg").unwrap();
+    let bco = w.core.board_coord(&mlg.board_id).unwrap();
+    let me = w
+        .core
+        .board_key(&mlg.board_id, &w.core.user_sender().key)
+        .unwrap();
+    let parent = bco
+        .create_task(
+            &me,
+            coord::NewTask {
+                title: "the parent".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let kid = bco
+        .create_task(
+            &me,
+            coord::NewTask {
+                title: "a subtask".into(),
+                parent: parent.id.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    // Something newer between them, so grouping is what keeps them together.
+    let other = bco
+        .create_task(
+            &me,
+            coord::NewTask {
+                title: "unrelated".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    bco.block(
+        &me,
+        &kid.id,
+        "which way?",
+        Some(coord::BlockedBy {
+            kind: coord::BLOCKED_ON_PERSON.into(),
+            ..Default::default()
+        }),
+    )
+    .unwrap();
+
+    let all = w.cards();
+    let at = |id: &str| all.iter().position(|c| c.id == id).unwrap();
+    let k = &all[at(&kid.id)];
+    assert_eq!(
+        k.parent.as_ref().map(|p| p.id.as_str()),
+        Some(parent.id.as_str())
+    );
+    assert_eq!(
+        at(&kid.id),
+        at(&parent.id) + 1,
+        "the subtask follows its parent"
+    );
+    assert!(
+        all[at(&parent.id)].subtask_blocked.contains("which way?"),
+        "parent says its subtask waits: {:?}",
+        all[at(&parent.id)].subtask_blocked
+    );
+    assert!(at(&other.id) < usize::MAX);
+    let d = w.card(&kid.id).unwrap();
+    assert_eq!(
+        d.summary.parent.map(|p| p.id),
+        Some(parent.id.clone()),
+        "a board subtask's page names its parent"
+    );
+
+    // Scopes.
+    let own: Vec<String> = w.cards_in(SCOPE_OWN).into_iter().map(|c| c.id).collect();
+    assert_eq!(own, vec![mine.id.clone()]);
+    let board: Vec<String> = w
+        .cards_in(&mlg.board_id)
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(board.len(), 3);
+    assert!(!board.contains(&mine.id));
+
+    // Pins: a board card and a private card in one order, none on the board.
+    w.pin(&mine.id, true).unwrap();
+    w.pin(&other.id, true).unwrap();
+    w.move_pin(&other.id, &mine.id).unwrap();
+    let all = w.cards();
+    assert_eq!(
+        all[0].id, other.id,
+        "the board card moved before the private one"
+    );
+    assert_eq!(all[1].id, mine.id);
+    assert!(!bco.get_task(&other.id).unwrap().pinned);
+    // Pinning the board parent brings its subtask into Pinned with it.
+    w.pin(&parent.id, true).unwrap();
+    let all = w.cards();
+    let ip = all.iter().position(|c| c.id == parent.id).unwrap();
+    assert_eq!(all[ip + 1].id, kid.id);
+    assert!(ip + 1 < 4, "the subtask sits in Pinned with its parent");
+}
+
+/// Card #161: a board's Closed pages on its own, so newer closed cards
+/// elsewhere don't crowd it out.
+#[test]
+fn closed_pages_per_scope() {
+    let r = Rig::new();
+    let w = &r.w;
+    let mlg = w.boards_create("MLG", "mlg").unwrap();
+    let bco = w.core.board_coord(&mlg.board_id).unwrap();
+    let me = w
+        .core
+        .board_key(&mlg.board_id, &w.core.user_sender().key)
+        .unwrap();
+    let mut on_board = Vec::new();
+    for i in 0..2 {
+        let t = bco
+            .create_task(
+                &me,
+                coord::NewTask {
+                    title: format!("board {i}"),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        bco.set_task_state(&me, &t.id, coord::COMPLETED, "")
+            .unwrap();
+        on_board.push(t.id);
+    }
+    let co = w.core.coord();
+    let user = w.core.user_sender().key;
+    for i in 0..3 {
+        let t = create(&r, &format!("private {i}"));
+        co.set_task_state(&user, &t.id, coord::COMPLETED, "")
+            .unwrap();
+    }
+    let page = w.done_cards_in(2, "", &mlg.board_id).unwrap();
+    let mut got: Vec<String> = page.cards.iter().map(|c| c.id.clone()).collect();
+    got.sort();
+    on_board.sort();
+    assert_eq!(got, on_board, "both board cards on its first page");
+    assert!(page.next.is_empty());
+    let own = w.done_cards_in(10, "", SCOPE_OWN).unwrap();
+    assert_eq!(own.cards.len(), 3);
+    assert!(own.cards.iter().all(|c| c.scope == SCOPE_MINE));
 }
 
 /// Card #146: a card another member's agent holds shows that agent on it,

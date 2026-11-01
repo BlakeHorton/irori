@@ -99,6 +99,8 @@ pub const MAX_CONTEXT: usize = 800;
 /// agent gave no note (card #112).
 pub const DONE_QUESTION: &str = "Is this done?";
 pub const DONE_ANSWER: &str = "Done";
+/// Why an agent's completed without proof is refused (card #140).
+pub const NEEDS_PROOF: &str = "completed needs proof: give proof with what changed, how you checked it (tests run, and what you saw in the real app), the commit or branch, and any caveats; attach screenshots of a UI change. The person reads it to decide Done";
 pub const DONE_CONTEXT: &str =
     "The agent says the work is done. Mark it done, or say why it isn't and it goes back to them.";
 pub const MAX_ANSWER: usize = 200;
@@ -117,7 +119,7 @@ pub const MAX_BLOCKER_LINKS: usize = 8;
 pub const MAX_ASIDE: usize = 2048;
 
 pub(crate) const MAX_TITLE: usize = 200;
-pub(crate) const MAX_OBJECTIVE: usize = 8000;
+pub const MAX_OBJECTIVE: usize = 8000;
 /// A hand-off note on board_assign (card #85).
 pub(crate) const MAX_HANDOFF_NOTE: usize = 2000;
 pub(crate) const MAX_SCOPE: usize = 64;
@@ -320,6 +322,27 @@ impl Coord {
     }
     pub fn set_task_state(&self, by: &str, id: &str, s: &str, note: &str) -> Result<Task> {
         self.lock().set_task_state(by, id, s, note)
+    }
+    /// [`Self::set_task_state`] with proof (card #140): an agent's
+    /// completed puts `files` on its done check beside the note, and with
+    /// `need_proof` refuses ([`NEEDS_PROOF`]) a check with no note, after
+    /// every other refusal. The person's own completed needs none.
+    pub fn set_task_state_with(
+        &self,
+        by: &str,
+        id: &str,
+        s: &str,
+        note: &str,
+        files: Vec<FileRef>,
+        need_proof: bool,
+    ) -> Result<Task> {
+        self.lock()
+            .set_task_state_with(by, id, s, note, files, need_proof)
+    }
+    /// Whether an agent's completed waits on the person's Done (card #112):
+    /// then it must bring proof (card #140).
+    pub fn done_check(&self) -> bool {
+        self.lock().done_check
     }
     pub fn reopen(&self, by: &str, id: &str) -> Result<(Task, Notice)> {
         self.lock().reopen(by, id, REOPEN_NOTE)
@@ -537,6 +560,16 @@ impl Coord {
     }
     pub fn move_pin(&self, by: &str, id: &str, before: &str) -> Result<Task> {
         self.lock().pin(by, id, true, before, true)
+    }
+    /// Pins (or unpins, or moves with `before`) a shared board's card `id`
+    /// in the person's own log (card #161); `mv` moves a pinned one.
+    pub fn pin_ref(&self, by: &str, id: &str, pinned: bool, before: &str, mv: bool) -> Result<()> {
+        self.lock().pin_ref(by, id, pinned, before, mv)
+    }
+    /// Every pinned card id in this log with its rank, including board
+    /// cards pinned with [`Self::pin_ref`].
+    pub fn pinned_ranks(&self) -> std::collections::HashMap<String, f64> {
+        self.lock().pinned_ranks()
     }
 
     // ---- comments ----

@@ -394,6 +394,126 @@ fn watch_board_needs_you() {
     r.fake.wait_post(&id);
 }
 
+/// Card #130: an agent's completed waits on the person's Done (card
+/// #112). Its card is good news: green, "finished", Open and Mark Done,
+/// and Mark Done closes the card. A blocked card still warns.
+#[test]
+fn watch_board_finished_is_ready_to_review() {
+    let r = rig_with(
+        None,
+        coord::Options {
+            done_check: true,
+            ..coord::Options::default()
+        },
+    );
+    let task =
+        r.co.create_task(KEY_A, new_task("ship the release"))
+            .unwrap();
+    r.co.claim_task(KEY_A, &task.id).unwrap();
+    r.block_on_person(KEY_A, &task.id, "which version number?");
+    let id = needs_id(&task.id);
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert_eq!(c.title, "alpha is blocked on you (#1)");
+    assert_eq!(c.kind, toast::Kind::Warn, "a blocker still warns");
+    r.co.unblock(USER, &task.id, "0.4").unwrap();
+    r.fake.wait_gone(&id);
+
+    // Card #140: the body is the proof's first line, with its screenshots.
+    let shot = coord::FileRef {
+        sha256: "ab".repeat(32),
+        name: "panel.png".into(),
+        size: 12,
+        mime: "image/png".into(),
+        device: "dev1".into(),
+    };
+    let got =
+        r.co.set_task_state_with(
+            KEY_A,
+            &task.id,
+            coord::COMPLETED,
+            "Release notes cut for 0.4.\nChecked: cargo test; opened the page.",
+            vec![shot],
+            true,
+        )
+        .unwrap();
+    assert_eq!(got.state, coord::BLOCKED, "a done check, not closed");
+    let c = r
+        .fake
+        .wait_title(&id, "alpha finished “ship the release” (#1)");
+    assert_eq!(c.body, "Release notes cut for 0.4. · 1 screenshot");
+    assert_eq!(c.kind, toast::Kind::Success);
+    let labels: Vec<&str> = c.actions.iter().map(|a| a.label.as_str()).collect();
+    assert_eq!(labels, vec!["Open", "Mark Done"]);
+    r.fake.drain();
+    // A press takes the card down, as the engine does: Mark Done.
+    r.fake.press(&id, "Mark Done");
+    wait_for("Mark Done closes the card", || {
+        r.co.get_task(&task.id)
+            .is_some_and(|t| t.state == coord::COMPLETED && t.open_blockers().is_empty())
+    });
+    r.fake.no_post(Duration::from_millis(100)); // closed: it doesn't come back
+}
+
+/// Card #140: new proof while the card is still up re-posts it in place
+/// with the new first line, and a question raised after it went up stops
+/// Mark Done from closing the card over it.
+#[test]
+fn watch_board_finished_follows_new_proof() {
+    let r = rig_with(
+        None,
+        coord::Options {
+            done_check: true,
+            ..coord::Options::default()
+        },
+    );
+    let task = r.co.create_task(KEY_A, new_task("ship it")).unwrap();
+    r.co.claim_task(KEY_A, &task.id).unwrap();
+    let id = needs_id(&task.id);
+    r.co.set_task_state_with(
+        KEY_A,
+        &task.id,
+        coord::COMPLETED,
+        "First try.",
+        Vec::new(),
+        true,
+    )
+    .unwrap();
+    r.fake.wait_title(&id, "alpha finished “ship it” (#1)");
+    assert_eq!(r.fake.card(&id).body, "First try.");
+    r.co.set_task_state_with(
+        KEY_A,
+        &task.id,
+        coord::COMPLETED,
+        "Second try.
+more",
+        Vec::new(),
+        true,
+    )
+    .unwrap();
+    wait_for("the card shows the new proof", || {
+        r.fake.is_live(&id) && r.fake.card(&id).body == "Second try."
+    });
+
+    // A real question after the card went up: Mark Done refuses.
+    r.co.raise(
+        KEY_A,
+        &task.id,
+        coord::NewBlocker {
+            question: "Which version?".into(),
+            blocked_by: Some(coord::BlockedBy {
+                kind: coord::BLOCKED_ON_PERSON.into(),
+                ..Default::default()
+            }),
+            ..coord::NewBlocker::default()
+        },
+    )
+    .unwrap();
+    let err = notify::watch::mark_done(&r.co, USER, &task.id).unwrap_err();
+    assert!(err.contains("open question"), "{err}");
+    assert_ne!(r.co.get_task(&task.id).unwrap().state, coord::COMPLETED);
+}
+
 #[test]
 fn watch_seeds_quietly() {
     // A card already waiting when the app starts doesn't pop up.
@@ -463,9 +583,15 @@ fn watch_board_ignores_the_persons_own_moves() {
     );
 }
 
-#[test]
-fn watch_unclaimed_ask() {
-    let r = rig();
+/// Posts an ask that alpha is handed and gives back, so it waits unclaimed
+/// with one agent told.
+fn ask_told_one(r: &Rig) -> Task {
+    let alpha: Vec<CoordCard> = r
+        .ros
+        .agents()
+        .into_iter()
+        .filter(|c| c.key == KEY_A)
+        .collect();
     let (ask, _) =
         r.co.post_ask(
             USER,
@@ -473,35 +599,37 @@ fn watch_unclaimed_ask() {
                 text: "who can look at the release notes?".into(),
                 ..NewAsk::default()
             },
-            &[],
+            &alpha,
         )
         .unwrap();
-    let id = unclaimed_id(&ask.id);
-    r.fake.wait_post(&id);
-    let c = r.fake.card(&id);
-    assert!(c.title.contains("Nobody took") && c.title.contains(&format!("#{}", ask.short)));
-    let labels: Vec<&str> = c.actions.iter().map(|a| a.label.as_str()).collect();
-    assert_eq!(labels, vec!["Wake them", "Close"]);
-    r.fake.press(&id, "Wake them");
-    wait_for("Wake them writes a reopen request", || {
-        r.st.list(&store::Filter {
-            kinds: vec!["take.requested".into()],
-            ..Default::default()
-        })
-        .unwrap()
-        .len()
-            == 1
-    });
-    // Nobody is free: the owner's sweep opens it again, still unclaimed,
-    // and the card comes back to say so.
+    assert_eq!(r.co.get_task(&ask.id).unwrap().ask.unwrap().taker, KEY_A);
+    r.co.leave(KEY_A, &ask.id, KEY_A).unwrap();
     r.co.sweep_asks(&[]).unwrap();
-    r.fake.wait_post(&id);
-    assert!(r.fake.card(&id).body.contains("You woke them"));
-    r.co.ask_claim(KEY_A, &ask.id, Duration::from_secs(1))
-        .unwrap();
-    r.fake.wait_gone(&id);
+    let a = r.co.get_task(&ask.id).unwrap().ask.unwrap();
+    assert!(a.unclaimed && a.told == 1 && a.taker.is_empty(), "{a:?}");
+    ask
+}
 
-    let (two, _) =
+/// The take requests written so far (giving an ask back writes one too).
+fn requests(r: &Rig) -> usize {
+    r.st.list(&store::Filter {
+        kinds: vec!["take.requested".into()],
+        ..Default::default()
+    })
+    .unwrap()
+    .len()
+}
+
+fn labels(c: &toast::Note) -> Vec<&str> {
+    c.actions.iter().map(|a| a.label.as_str()).collect()
+}
+
+#[test]
+fn watch_unclaimed_ask() {
+    let r = rig();
+    // Nobody free (told == 0): Open and Later, nothing that wakes again or
+    // ends the ask, and it says it waits for a free agent.
+    let (ask, _) =
         r.co.post_ask(
             USER,
             NewAsk {
@@ -511,10 +639,53 @@ fn watch_unclaimed_ask() {
             &[],
         )
         .unwrap();
-    r.fake.wait_post(&unclaimed_id(&two.id));
-    r.fake.press(&unclaimed_id(&two.id), "Close");
-    r.fake.wait_gone(&unclaimed_id(&two.id));
-    assert_eq!(r.co.get_task(&two.id).unwrap().state, coord::CANCELED);
+    let id = unclaimed_id(&ask.id);
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert!(c.title.contains("Nobody took") && c.title.contains(&format!("#{}", ask.short)));
+    assert!(c.body.contains("first agent that is"), "{c:?}");
+    assert_eq!(labels(&c), vec!["Open", "Later"]);
+    let before = requests(&r);
+    r.fake.press(&id, "Later");
+    // Later only dismisses: the ask stays open, nothing is requested, and
+    // nothing reposts it while it waits.
+    r.co.sweep_asks(&[]).unwrap();
+    r.fake.no_post(Duration::from_millis(150));
+    assert_eq!(requests(&r), before);
+    let still = r.co.get_task(&ask.id).unwrap();
+    assert!(still.state != coord::CANCELED && still.ask.unwrap().is_open());
+
+    // Told but none took it: Wake them clears heard.
+    let ask = ask_told_one(&r);
+    let id = unclaimed_id(&ask.id);
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert!(c.body.contains("1 agents were told"), "{c:?}");
+    assert_eq!(labels(&c), vec!["Wake them", "Later"]);
+    let before = requests(&r);
+    r.fake.press(&id, "Wake them");
+    wait_for("Wake them writes a reopen request", || {
+        requests(&r) == before + 1
+    });
+    // Nobody is free now: the owner's sweep opens it again, still
+    // unclaimed, and the card comes back without Wake them.
+    r.co.sweep_asks(&[]).unwrap();
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert!(
+        c.body.contains("You woke them") && c.body.contains("first agent"),
+        "{c:?}"
+    );
+    assert_eq!(labels(&c), vec!["Open", "Later"]);
+    r.fake.press(&id, "Open");
+    let t = r.opened();
+    assert!(
+        t.tab == TAB_BOARD && t.ref_ == format!("task:{}", ask.id),
+        "{t:?}"
+    );
+    r.co.ask_claim(KEY_A, &ask.id, Duration::from_secs(1))
+        .unwrap();
+    r.fake.wait_gone(&id);
 }
 
 #[test]
@@ -555,28 +726,12 @@ fn watch_unclaimed_ask_woken_in_one_tick() {
             ..Default::default()
         },
     );
-    let (ask, _) =
-        r.co.post_ask(
-            USER,
-            NewAsk {
-                text: "who can look at the release notes?".into(),
-                ..NewAsk::default()
-            },
-            &[],
-        )
-        .unwrap();
+    let ask = ask_told_one(&r);
     let id = unclaimed_id(&ask.id);
     r.fake.wait_post(&id);
+    let before = requests(&r);
     r.fake.press(&id, "Wake them");
-    wait_for("the reopen request", || {
-        r.st.list(&store::Filter {
-            kinds: vec!["take.requested".into()],
-            ..Default::default()
-        })
-        .unwrap()
-        .len()
-            == 1
-    });
+    wait_for("the reopen request", || requests(&r) == before + 1);
     r.co.sweep_asks(&[]).unwrap();
     let got = r.co.get_task(&ask.id).unwrap().ask.unwrap();
     assert!(got.reason == coord::TAKE_REOPENED && got.since.equal(&tick));
