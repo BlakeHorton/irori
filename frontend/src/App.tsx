@@ -456,6 +456,16 @@ export function App() {
       run: () => hideThreads(!threadsHidden),
     },
     { id: "card.back", title: "Back to the cards", shortcut: "Esc", keywords: ["close", "leave"], when: () => !!open, run: back },
+    // The header's Wind down (card #220), from the palette (card #228); like
+    // the header's button, not on the sample roster.
+    {
+      id: "agents.wind-down",
+      title: "Wind down all agents",
+      order: 3,
+      keywords: ["stop", "pause", "save", "end", "shut down", "quit"],
+      when: () => roster.source !== "sample",
+      run: () => setWindDown(true),
+    },
   ])
 
   const agentCards = useMemo(
