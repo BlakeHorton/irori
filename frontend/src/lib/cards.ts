@@ -807,6 +807,10 @@ export function samplePreview(
   const c = sampleCard(id)
   if (c.scope === "board")
     throw new Error("coord: invalid input: the card is already on a board")
+  if (c.parent)
+    throw new Error(
+      `coord: invalid input: #${c.short} is a subtask of #${c.parent.short}: share #${c.parent.short} and its subtasks go with it`
+    )
   if (over(c))
     throw new Error(
       `coord: bad state: #${c.short} is ${c.state}; share a card that is still in play`
@@ -830,6 +834,22 @@ export function samplePreview(
     repo: c.repoKey,
     visibleTo: board.people,
     dropped: [] as string[],
+    // A parent's open subtasks go with it; ended ones stay (card #180).
+    subtasks: (c.subtaskList ?? [])
+      .filter((k) => !over(k))
+      .map((k) => ({
+        taskId: k.id,
+        ref: `#${k.short}`,
+        title: clean(`#${k.short}'s title`, k.title),
+        goal: "",
+        doneWhen: "",
+        steps: [] as string[],
+        links: [] as string[],
+        repo: c.repoKey,
+      })),
+    keptPrivate: (c.subtaskList ?? [])
+      .filter((k) => over(k))
+      .map((k) => `#${k.short} ${k.title} (${k.state})`),
     hash: "sample",
   }
   if (c.links.some((l) => l.kind === LinkKind.LinkPath))
@@ -850,6 +870,17 @@ export type SharePreviewShape = {
   repo: string
   visibleTo: string[]
   dropped: string[]
+  subtasks: {
+    taskId: string
+    ref: string
+    title: string
+    goal: string
+    doneWhen: string
+    steps: string[]
+    links: string[]
+    repo: string
+  }[]
+  keptPrivate: string[]
   hash: string
 }
 

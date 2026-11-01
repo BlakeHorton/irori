@@ -44,7 +44,7 @@ use super::Services;
 use crate::timers::Ticker;
 use crate::{CLOSE_WAIT, logf};
 
-pub use super::boards_own::{BoardSummary, SharePreview, SharedCopy};
+pub use super::boards_own::{BoardSummary, SharePreview, SharedCopy, SubtaskPreview};
 
 /// Where the board logs live, under the data dir.
 pub const BOARDS_DIR: &str = "boards";

@@ -92,7 +92,8 @@ export function ShareButton({
             <DialogTitle>Share to board</DialogTitle>
             <DialogDescription>
               This is exactly what goes on the board. The card's comments,
-              notes and blockers stay private, and this private card closes.
+              notes and blockers stay private, and this private card
+              {preview?.subtasks.length ? " and its subtasks close" : " closes"}.
             </DialogDescription>
           </DialogHeader>
           {ready.length > 1 && (
@@ -146,6 +147,34 @@ function Preview({ p }: { p: SharePreview }) {
           {p.links.length === 1 ? plainLine(p.links[0]) : `${p.links.length} links`}
         </p>
       )}
+      {p.subtasks.length > 0 && (
+        <div className="grid gap-1 border-t border-border pt-2">
+          <p className="text-xs font-medium text-ink-2">
+            {p.subtasks.length === 1 ? "Its subtask goes with it" : `Its ${p.subtasks.length} subtasks go with it`}
+          </p>
+          <ul className="grid gap-1 pl-3" aria-label="Subtasks that go with it">
+            {p.subtasks.map((s) => (
+              <li key={s.taskId} className="grid gap-0.5 border-l-2 border-border pl-2">
+                <span className="text-ink">
+                  <span className="mr-1.5 font-mono text-xs text-muted-foreground">{plainLine(s.ref)}</span>
+                  {plainLine(s.title)}
+                </span>
+                {s.steps.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {s.steps.length === 1 ? "1 step" : `${s.steps.length} steps`}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {p.keptPrivate.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-ink-2">Not shared (ended):</span>{" "}
+          {p.keptPrivate.map(plainLine).join("; ")}
+        </p>
+      )}
       <p className="border-t border-border pt-2 text-xs text-ink-2">
         <span className="font-medium">Visible to:</span> {p.visibleTo.map(plainLine).join(", ")}
       </p>
@@ -163,10 +192,13 @@ function Preview({ p }: { p: SharePreview }) {
 export function WithdrawButton({
   cardId,
   visibleTo,
+  family,
   onWithdrawn,
 }: {
   cardId: string
   visibleTo: string[]
+  // A parent: its subtasks come off the board with it (card #180).
+  family?: boolean
   onWithdrawn: (privateId: string) => void
 }) {
   return (
@@ -175,9 +207,10 @@ export function WithdrawButton({
       confirmLabel="Withdraw it"
       question={
         <>
-          Take this card off the board? {visibleTo.map(plainLine).join(", ")}'s
-          devices already have what was shared; nothing can be recalled. The
-          work carries on in a private card.
+          Take this card{family && " and its subtasks"} off the board?{" "}
+          {visibleTo.map(plainLine).join(", ")}'s devices already have what was
+          shared; nothing can be recalled. The work carries on in private
+          {family ? " cards" : " a private card"}.
         </>
       }
       onConfirm={async () => onWithdrawn(await actions.withdraw(cardId))}

@@ -79,7 +79,41 @@ pub struct SharePreview {
     pub repo: String,
     pub visible_to: Vec<String>,
     pub dropped: Vec<String>,
+    /// The open subtasks that go under it (card #180).
+    pub subtasks: Vec<SubtaskPreview>,
+    /// Its ended subtasks, which stay private: "#6 Old idea (canceled)".
+    pub kept_private: Vec<String>,
     pub hash: String,
+}
+
+/// One subtask as Share would write it under its parent (card #180).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtaskPreview {
+    pub task_id: String,
+    #[serde(rename = "ref")]
+    pub reference: String,
+    pub title: String,
+    pub goal: String,
+    pub done_when: String,
+    pub steps: Vec<String>,
+    pub links: Vec<String>,
+    pub repo: String,
+}
+
+impl From<irori_core::SubtaskPreview> for SubtaskPreview {
+    fn from(s: irori_core::SubtaskPreview) -> SubtaskPreview {
+        SubtaskPreview {
+            task_id: s.task_id,
+            reference: s.reference,
+            title: s.title,
+            goal: s.goal,
+            done_when: s.done_when,
+            steps: s.steps,
+            links: s.links,
+            repo: s.repo,
+        }
+    }
 }
 
 impl From<irori_core::SharePreview> for SharePreview {
@@ -95,6 +129,8 @@ impl From<irori_core::SharePreview> for SharePreview {
             repo: p.repo,
             visible_to: p.visible_to,
             dropped: p.dropped,
+            subtasks: p.subtasks.into_iter().map(Into::into).collect(),
+            kept_private: p.kept_private,
             hash: p.hash,
         }
     }

@@ -1117,6 +1117,10 @@ export type SharePreview = {
 	repo: string,
 	visibleTo: string[],
 	dropped: string[],
+	/**  The open subtasks that go under it (card #180). */
+	subtasks: SubtaskPreview[],
+	/**  Its ended subtasks, which stay private: "#6 Old idea (canceled)". */
+	keptPrivate: string[],
 	hash: string,
 };
 
@@ -1140,6 +1144,18 @@ export type Step = {
 	doing?: boolean,
 	/**  The agent doing the step (card #86). */
 	owner?: string,
+};
+
+/**  One subtask as Share would write it under its parent (card #180). */
+export type SubtaskPreview = {
+	taskId: string,
+	ref: string,
+	title: string,
+	goal: string,
+	doneWhen: string,
+	steps: string[],
+	links: string[],
+	repo: string,
 };
 
 /**

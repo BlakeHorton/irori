@@ -87,6 +87,7 @@ export type SharePreview = B.SharePreview
 export type SharedCopy = B.SharedCopy
 export type State = B.State
 export type Step = B.Step
+export type SubtaskPreview = B.SubtaskPreview
 export type Target = B.Target
 export type Task = B.Task
 export type TaskResult = B.TaskResult
@@ -455,12 +456,17 @@ export function SharedCopy(p: Partial<B.SharedCopy> = {}): B.SharedCopy {
 
 /** SharePreview with Go's zero values for every field left out. */
 export function SharePreview(p: Partial<B.SharePreview> = {}): B.SharePreview {
-  return { "boardId": "", "boardName": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", "visibleTo": [], "dropped": [], "hash": "", ...p } as B.SharePreview
+  return { "boardId": "", "boardName": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", "visibleTo": [], "dropped": [], "subtasks": [], "keptPrivate": [], "hash": "", ...p } as B.SharePreview
 }
 
 /** Step with Go's zero values for every field left out. */
 export function Step(p: Partial<B.Step> = {}): B.Step {
   return { "id": "", "text": "", "done": false, ...p } as B.Step
+}
+
+/** SubtaskPreview with Go's zero values for every field left out. */
+export function SubtaskPreview(p: Partial<B.SubtaskPreview> = {}): B.SubtaskPreview {
+  return { "taskId": "", "ref": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", ...p } as B.SubtaskPreview
 }
 
 /** Target with Go's zero values for every field left out. */

@@ -1362,3 +1362,183 @@ fn a_rename_reaches_every_device_and_board() {
     a.core.close().unwrap();
     b.core.close().unwrap();
 }
+
+/// Card #180: a parent shares as a family. Its open subtasks go under the
+/// board parent, an ended one stays private and is listed, a subtask alone
+/// is refused naming its parent, and Withdraw brings the family back.
+#[test]
+fn share_and_withdraw_a_family() {
+    let r = Rig::new();
+    let c = &r.core;
+    let id = c.create_board("MLG", "mlg").unwrap();
+    let co = c.coord();
+    let parent = co
+        .create_task(&r.key_a, new_task("ship the release"))
+        .unwrap();
+    let sub = |t: &str| coord::NewSubtask {
+        title: t.into(),
+        ..Default::default()
+    };
+    let (_, kids) = co
+        .split(
+            &r.key_a,
+            &parent.id,
+            vec![
+                sub("release notes"),
+                sub("announce it in ~/notes/a.md"),
+                sub("old idea"),
+            ],
+            vec![],
+        )
+        .unwrap();
+    let user = c.user_sender().key;
+    co.set_task_state(&user, &kids[2].id, coord::COMPLETED, "")
+        .unwrap();
+
+    // A subtask alone is refused, and says which card to share instead.
+    let e = c.preview_share(&kids[0].id, &id).unwrap_err().to_string();
+    assert!(
+        e.contains("is a subtask of") && e.contains(&parent.short_ref()),
+        "{e}"
+    );
+
+    let p = c.preview_share(&parent.id, &id).unwrap();
+    assert_eq!(p.subtasks.len(), 2, "{p:?}");
+    assert_eq!(p.subtasks[1].title, "announce it in [path]");
+    assert!(
+        p.dropped.iter().any(|d| d.contains(&kids[1].short_ref())),
+        "a subtask's scrub is named: {:?}",
+        p.dropped
+    );
+    assert!(
+        p.kept_private.len() == 1 && p.kept_private[0].contains("(completed)"),
+        "{:?}",
+        p.kept_private
+    );
+    // The hash covers the subtasks: an edit to one wants a new preview.
+    co.edit_task(
+        &r.key_a,
+        &kids[0].id,
+        coord::TaskEdit {
+            title: Some("release notes, v2".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        c.share_to_board(&parent.id, &id, &p.hash),
+        Err(BoardError::PreviewStale(_))
+    ));
+    let p = c.preview_share(&parent.id, &id).unwrap();
+    let shared = c.share_to_board(&parent.id, &id, &p.hash).unwrap();
+
+    let bco = c.board_coord(&id).unwrap();
+    let on_board = bco.get_task(&shared.id).unwrap();
+    assert_eq!(on_board.subtasks.len(), 2, "{on_board:?}");
+    let titles: Vec<String> = on_board
+        .subtasks
+        .iter()
+        .map(|k| bco.get_task(k).unwrap().title)
+        .collect();
+    assert_eq!(titles, ["release notes, v2", "announce it in [path]"]);
+    for k in &kids[..2] {
+        let t = co.get_task(&k.id).unwrap();
+        assert!(
+            t.state == coord::CANCELED && t.note.contains("a subtask of mlg#1"),
+            "private subtask after share: {t:?}"
+        );
+        assert!(c.shared_copy_of(&k.id).is_some());
+    }
+    let pt = co.get_task(&parent.id).unwrap();
+    assert!(
+        pt.state == coord::CANCELED && pt.note.starts_with("Shared to MLG as mlg#1"),
+        "private parent after share: {pt:?}"
+    );
+    assert_eq!(
+        co.get_task(&kids[2].id).unwrap().state,
+        coord::COMPLETED,
+        "the ended subtask stayed as it was"
+    );
+
+    // A board subtask alone isn't withdrawn; the parent takes them all back.
+    let e = c
+        .withdraw_card(&on_board.subtasks[0])
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("withdraw mlg#1"), "{e}");
+    c.withdraw_card(&shared.id).unwrap();
+    for k in bco
+        .get_task(&shared.id)
+        .unwrap()
+        .subtasks
+        .iter()
+        .chain([&shared.id])
+    {
+        let t = bco.get_task(k).unwrap();
+        assert!(t.withdrawn && t.state == coord::CANCELED, "{t:?}");
+    }
+    for k in &kids[..2] {
+        let t = co.get_task(&k.id).unwrap();
+        assert!(!coord::is_terminal(&t.state), "subtask back: {t:?}");
+    }
+    let pt = co.get_task(&parent.id).unwrap();
+    assert!(!coord::is_terminal(&pt.state), "parent back: {pt:?}");
+    assert_eq!(pt.subtasks.len(), 3);
+    r.core.close().unwrap();
+}
+
+/// Card #180: one subtask that can't go (an ask, which is never shared)
+/// stops the whole family before anything is written.
+#[test]
+fn a_subtask_that_cant_go_stops_the_family() {
+    let r = Rig::new();
+    let c = &r.core;
+    let id = c.create_board("MLG", "mlg").unwrap();
+    let co = c.coord();
+    let user = c.user_sender().key;
+    let parent = co.create_task(&r.key_a, new_task("tidy the docs")).unwrap();
+    co.split(
+        &r.key_a,
+        &parent.id,
+        vec![coord::NewSubtask {
+            title: "the readme".into(),
+            ..Default::default()
+        }],
+        vec![],
+    )
+    .unwrap();
+    let (ask, _) = co
+        .post_ask(
+            &user,
+            coord::NewAsk {
+                text: "can someone fix the install page?".into(),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+    co.ask_close(
+        &user,
+        &ask.id,
+        coord::AskOutcome {
+            kind: coord::OUTCOME_CARD.into(),
+            note: "a docs fix".into(),
+            title: "the install page".into(),
+            parent: parent.id.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(co.get_task(&parent.id).unwrap().subtasks.len(), 2);
+    let e = c.preview_share(&parent.id, &id).unwrap_err().to_string();
+    assert!(e.contains("is an ask"), "{e}");
+    assert!(
+        c.board_coord(&id)
+            .unwrap()
+            .list_tasks(&coord::TaskFilter::default())
+            .is_empty(),
+        "nothing went to the board"
+    );
+    assert!(!coord::is_terminal(&co.get_task(&parent.id).unwrap().state));
+    r.core.close().unwrap();
+}
