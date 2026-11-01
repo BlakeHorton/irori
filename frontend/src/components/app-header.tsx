@@ -101,7 +101,7 @@ export function AppHeader({
                 : `v${version.replace(/^v/, "")}`}
             </Badge>
           )}
-          <SettingsMenu />
+          <SettingsMenu version={version} />
         </div>
       </div>
     </header>
