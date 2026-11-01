@@ -160,11 +160,14 @@ export function App() {
     setThread(id)
     hideThreads(false)
   }
+  // The app is exactly the window's height (card #170): the header stays
+  // put and each column scrolls itself, never the page. Beside the Board
+  // the Threads column scrolls on its own; without it the Board does.
   const withThreads = (main: ReactNode) =>
     showThreads ? (
-      <div className="flex items-start gap-4">
-        <div className="grid min-w-0 flex-1 gap-3.5">{main}</div>
-        <div className="sticky top-[72px] max-h-[calc(100svh-88px)] w-[380px] shrink-0 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 gap-4">
+        <div className={boardColumn}>{main}</div>
+        <div className="-mr-1 min-h-0 w-[380px] shrink-0 overflow-y-auto pr-1 pb-4">
           <ThreadsPanel
             threads={threadList}
             open={thread}
@@ -175,7 +178,7 @@ export function App() {
         </div>
       </div>
     ) : (
-      main
+      <div className={boardColumn}>{main}</div>
     )
   const held = useHeld(heldOpen && heldTab === "history")
   const name = nameLookup(
@@ -384,7 +387,7 @@ export function App() {
 
   return (
     <AgentCards.Provider value={agentCards}>
-    <div className="min-h-svh bg-background">
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
       <AppHeader
         roster={roster}
         held={held.held.length}
@@ -393,7 +396,7 @@ export function App() {
         section={open ? null : section}
         boardsNeedYou={boardDecide.length}
       />
-      <main className="mx-auto flex max-w-[1920px] flex-col gap-3.5 px-4 pt-[18px] pb-10 sm:px-6">
+      <main className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 px-4 pt-[18px] sm:px-6">
         <UpdateBanner />
         {error && (
           <p className="glass-panel border-destructive/50! px-3 py-2 text-sm text-destructive" role="alert">
@@ -401,6 +404,7 @@ export function App() {
           </p>
         )}
         {open ? (
+          <Scroll>
           <CardPage
             key={open}
             summary={
@@ -414,9 +418,13 @@ export function App() {
             onBack={back}
             onOpen={openCard}
           />
+          </Scroll>
         ) : section.kind === "boards" ? (
-          <BoardsPage cards={cards} />
+          <Scroll>
+            <BoardsPage cards={cards} />
+          </Scroll>
         ) : section.kind === "board" ? (
+          <Scroll>
           <BoardPage
             key={section.id}
             boardId={section.id}
@@ -430,6 +438,7 @@ export function App() {
             onOpen={openCard}
             now={now}
           />
+          </Scroll>
         ) : loading && cards.length === 0 ? (
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
         ) : homeCards.length === 0 && filter !== "done" ? (
@@ -599,3 +608,18 @@ function BoardsNeedYou({
 }
 
 export default App
+
+// The Board's column (card #170): it scrolls by itself under the ask box.
+// The 4px gutter keeps a selected card's ring clear of the clip.
+const boardColumn =
+  "-mx-1 grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-1 pb-10"
+
+// Scroll is a page that isn't the Board (a card, Boards, a shared board):
+// it scrolls by itself under the header (card #170).
+function Scroll({ children }: { children: ReactNode }) {
+  return (
+    <div className="-mx-1 grid min-h-0 flex-1 content-start gap-3.5 overflow-y-auto px-1 pb-10">
+      {children}
+    </div>
+  )
+}
