@@ -153,6 +153,18 @@ impl Window {
         self.seams.notifier.test()
     }
 
+    /// SettingsService.GetYourName: the person's name (card #183).
+    pub fn get_your_name(&self) -> String {
+        self.core.person().name
+    }
+
+    /// SettingsService.SetYourName: the person renames themself once; their
+    /// other devices and every board they're on follow. Returns the name
+    /// as kept (trimmed).
+    pub fn set_your_name(&self, name: &str) -> Result<String, String> {
+        self.core.set_person_name(name).map(|p| p.name)
+    }
+
     /// SettingsService.GetLaunchAtLogin: the live OS state.
     pub fn get_launch_at_login(&self) -> Result<bool, String> {
         self.seams.login.enabled()

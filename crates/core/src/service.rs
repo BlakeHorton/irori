@@ -1652,6 +1652,21 @@ impl Core {
     pub fn person(&self) -> irori_identity::Person {
         self.s.ident.current()
     }
+
+    /// The person renames themself (card #183): person.json here, then a
+    /// person.profile row that carries the name to their other devices;
+    /// the boards' member.profile rows follow as it folds.
+    pub fn set_person_name(&self, name: &str) -> Result<irori_identity::Person, String> {
+        let s = &self.s;
+        if !s.ident.set_name(name).map_err(|e| e.to_string())? {
+            return Ok(s.ident.current());
+        }
+        let prof = s.ident.profile_row().map_err(|e| e.to_string())?;
+        s.store
+            .append("irori", store::kinds::PERSON_PROFILE, &prof)
+            .map_err(|e| e.to_string())?;
+        Ok(s.ident.current())
+    }
     pub fn certified_devices(&self) -> Vec<irori_identity::DeviceState> {
         self.s.chain.devices()
     }

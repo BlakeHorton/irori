@@ -1323,3 +1323,42 @@ fn a_row_naming_no_card_on_the_board_is_counted_as_unresolved() {
     );
     r.core.close().unwrap();
 }
+
+/// Card #183: the person renames themself once, on one device. Their
+/// other device takes the name from the person.profile row, and every
+/// board they're on shows it (a fresh member.profile), on both devices.
+#[test]
+fn a_rename_reaches_every_device_and_board() {
+    let (a, b) = paired();
+    let id = a.core.create_board("MLG", "mlg").unwrap();
+    wait_for(45, "b opens the board", || b.core.board_coord(&id).is_ok());
+    let p = a.core.set_person_name("Stephen H").unwrap();
+    assert_eq!(p.name, "Stephen H");
+    assert_eq!(a.core.person().name, "Stephen H");
+    let people = |c: &Core| {
+        c.board_list()
+            .into_iter()
+            .find(|s| s.board_id == id)
+            .map(|s| s.people)
+            .unwrap_or_default()
+    };
+    wait_for(45, "a's board shows the new name", || {
+        people(&a.core) == ["Stephen H"]
+    });
+    wait_for(45, "b takes the new name", || {
+        b.core.person().name == "Stephen H"
+    });
+    wait_for(45, "b's copy of the board shows it", || {
+        people(&b.core) == ["Stephen H"]
+    });
+    // The same name again writes nothing new; an empty one is refused.
+    let before = a.core.store().list(&Filter::default()).unwrap().len();
+    a.core.set_person_name("Stephen H").unwrap();
+    assert_eq!(
+        a.core.store().list(&Filter::default()).unwrap().len(),
+        before
+    );
+    assert!(a.core.set_person_name("   ").is_err());
+    a.core.close().unwrap();
+    b.core.close().unwrap();
+}

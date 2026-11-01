@@ -233,6 +233,26 @@ impl Services {
                 self.fold_copy(&ev);
             } else if ev.kind == kinds::BOARD_CARD_OF {
                 self.fold_card_key(&ev);
+            } else if ev.kind == kinds::PERSON_PROFILE {
+                self.follow_person_name();
+            }
+        }
+    }
+
+    /// The person renamed themself, here or on another of their devices
+    /// (card #183): person.json takes the newest person.profile's name, and
+    /// each open board gets a member.profile with it.
+    pub(crate) fn follow_person_name(&self) {
+        let name = self.chain.profile_name();
+        if !name.is_empty()
+            && let Err(e) = self.ident.set_name(&name)
+        {
+            crate::log(&format!("person name: {e}"));
+            return;
+        }
+        for b in self.boards.list() {
+            if let Err(e) = self.keep_current(&b) {
+                crate::log(&format!("person name on board {}: {e}", b.id));
             }
         }
     }

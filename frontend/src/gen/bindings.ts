@@ -121,6 +121,10 @@ export const commands = {
 	settingsTestNotification: () => __TAURI_INVOKE<null>("settings_test_notification"),
 	settingsGetLaunchAtLogin: () => __TAURI_INVOKE<boolean>("settings_get_launch_at_login"),
 	settingsSetLaunchAtLogin: (enabled: boolean) => __TAURI_INVOKE<null>("settings_set_launch_at_login", { enabled }),
+	/**  The person's name (card #183). */
+	settingsGetYourName: () => __TAURI_INVOKE<string>("settings_get_your_name"),
+	/**  The person renames themself; returns the name as kept. */
+	settingsSetYourName: (name: string) => __TAURI_INVOKE<string>("settings_set_your_name", { name }),
 	attachmentsInfo: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_info", { sha }),
 	attachmentsFetch: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_fetch", { sha }),
 	attachmentsSave: (sha: string) => __TAURI_INVOKE<string>("attachments_save", { sha }),
