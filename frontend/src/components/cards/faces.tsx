@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { minidenticon } from "minidenticons"
 import { AgentHover } from "@/components/cards/agent-hover"
 import { Avatar, AvatarBadge } from "@/components/ui/avatar"
@@ -13,18 +14,23 @@ import { cn } from "@/lib/utils"
 // an offline device, is faded; a contested lease rings it amber
 // (docs/design/v0.4-devices.md §9). Hovering an agent's face shows its
 // hover card (card #104): name, device, and its cards; noHover leaves it
-// out where the face already sits in a popup.
+// out where the face already sits in a popup. inline is the small face
+// beside a name in a thread row (card #121): about the name's height, in
+// the text's colour (grey for the person or a gone agent), and in its
+// device colour only while the face or its row (group/row) is hovered.
 export function Face({
   who,
   watching,
   noDot,
   noHover,
+  inline,
   className,
 }: {
   who: AgentRef
   watching?: boolean
   noDot?: boolean
   noHover?: boolean
+  inline?: boolean
   className?: string
 }) {
   const person = who.status === "person"
@@ -42,6 +48,28 @@ export function Face({
   ]
     .filter(Boolean)
     .join(" · ")
+  if (inline) {
+    const face = (
+      <span
+        className={cn(
+          "inline-flex size-3.5 shrink-0 items-center justify-center",
+          person || gone ? "text-muted-foreground" : "text-ink",
+          "transition-colors group-hover/row:text-(--face-tint) hover:text-(--face-tint)",
+          (gone || who.offline) && "opacity-55",
+          className
+        )}
+        style={
+          { "--face-tint": tint || "var(--color-primary)" } as CSSProperties
+        }
+        title={noHover || person ? title : undefined}
+        aria-label={title}
+        role="img"
+      >
+        <Pixels cells={person ? personCells : cells(who.key)} full />
+      </span>
+    )
+    return noHover || person ? face : <AgentHover who={who} trigger={face} />
+  }
   const face = (
     <Avatar
       size="sm"
@@ -134,11 +162,17 @@ function Identicon({ seed }: { seed: string }) {
 
 // Pixels draws a 5x5 pattern in currentColor at 4px a square, so it
 // stays crisp at 20px.
-function Pixels({ cells }: { cells: [number, number][] }) {
+function Pixels({
+  cells,
+  full,
+}: {
+  cells: [number, number][]
+  full?: boolean
+}) {
   return (
     <svg
       viewBox="0 0 5 5"
-      className="size-5"
+      className={full ? "size-full" : "size-5"}
       fill="currentColor"
       shapeRendering="crispEdges"
       aria-hidden
