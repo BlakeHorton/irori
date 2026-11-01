@@ -1105,8 +1105,8 @@ export function CommentBox({
         }}
         placeholder={
           reply
-            ? "Reply… (@ an agent, # a card)"
-            : "Comment on the card (@ to bring in an agent, # for a card)"
+            ? "Reply…"
+            : "Comment on the card…"
         }
         aria-label={reply ? "Your reply" : "Your comment on the card"}
         className="max-h-48 min-h-10 bg-card"
