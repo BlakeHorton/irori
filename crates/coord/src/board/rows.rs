@@ -93,6 +93,9 @@ crate::go_struct! {
         pub blocker: Option<BlockerRow> = "blocker" "omit",
         pub outcome: Option<Outcome> = "outcome" "omit",
         pub withdrawn: bool = "withdrawn" "omit",
+        /// The person reopens their resolved thread (card #169): its ask
+        /// is open again. Older folds see a plain reopened card.
+        pub reopen_ask: bool = "reopenAsk" "omit",
         pub by: String = "by",
         pub at: GoTime = "at",
     }
@@ -303,6 +306,29 @@ crate::go_struct! {
         pub doing: Option<bool> = "doing" "omit",
         /// Sets the step's owner; `Some("")` clears it (card #86).
         pub owner: Option<String> = "owner" "omit",
+        /// The holder's one line on what's done and what's next (card
+        /// #137), shown on the card as "Left off". Older folds ignore it.
+        pub left_off: String = "leftOff" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    /// task.where (card #137): where the holder's work on a card is.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskWhereRow {
+        pub task_id: String = "taskId",
+        /// The holder it describes.
+        pub who: String = "who",
+        pub cwd: String = "cwd" "omit",
+        /// The git worktree's root; empty outside a repo.
+        pub worktree: String = "worktree" "omit",
+        pub branch: String = "branch" "omit",
+        /// The last commit (HEAD's sha).
+        pub head: String = "head" "omit",
+        /// origin's copy of the branch is at HEAD.
+        pub pushed: bool = "pushed" "omit",
         pub by: String = "by",
         pub at: GoTime = "at",
     }

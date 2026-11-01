@@ -370,6 +370,7 @@ export function CardPage({
                   />
                 )
               )}
+              <WhereLines detail={detail} now={now} />
             </Section>
 
             <Section
@@ -985,6 +986,56 @@ function cardFiles(d: CardDetail): FileRef[] {
   return out
 }
 
+// WhereLines is where the card's work is and where its holder left off
+// (card #137): the branch, its last commit and whether it's pushed, the
+// worktree and the device, then the holder's last line on what's done and
+// what's next. So whoever picks the card up after a crash can find it.
+function WhereLines({ detail, now }: { detail: CardDetail; now: Date }) {
+  const w = detail.where
+  const l = detail.leftOff
+  if (!w && !l) return null
+  return (
+    <div className="grid gap-1.5 border-t border-border pt-2.5 text-xs">
+      {l && (
+        <p className="text-muted-foreground">
+          <span className="font-medium text-ink-2">Left off:</span>{" "}
+          {plainLine(l.text)}
+          <span className="text-muted-foreground/70">
+            {" "}
+            · {name(l.by)}, {relativeTime(parseTime(l.at), now)}
+          </span>
+        </p>
+      )}
+      {w && (
+        <div className="grid gap-0.5 text-muted-foreground">
+          <p className="flex flex-wrap items-center gap-x-1.5">
+            <span className="font-medium text-ink-2">Where:</span>
+            <span className="font-mono text-ink-2">
+              {plainLine(w.branch) || "detached"}
+            </span>
+            {w.head && (
+              <span className="font-mono">@ {plainLine(w.head).slice(0, 7)}</span>
+            )}
+            <Badge variant={w.pushed ? "success" : "warning"}>
+              {w.pushed ? "Pushed" : "Not pushed"}
+            </Badge>
+          </p>
+          <p
+            className="truncate font-mono text-[11px]"
+            title={plainLine(w.worktree)}
+          >
+            {plainLine(w.worktree)}
+          </p>
+          <p className="text-[11px]">
+            on {plainLine(w.who.where) || "this device"} · {name(w.who)} ·
+            seen {relativeTime(parseTime(w.at), now)}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Section({
   title,
   last,
@@ -1105,8 +1156,8 @@ export function CommentBox({
         }}
         placeholder={
           reply
-            ? "Reply… (@ an agent, # a card)"
-            : "Comment on the card (@ to bring in an agent, # for a card)"
+            ? "Reply…"
+            : "Comment on the card…"
         }
         aria-label={reply ? "Your reply" : "Your comment on the card"}
         className="max-h-48 min-h-10 bg-card"

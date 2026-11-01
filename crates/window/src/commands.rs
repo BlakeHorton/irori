@@ -468,6 +468,13 @@ pub async fn board_resolve_thread(w: W<'_>, id: String) -> R<()> {
     w.resolve_thread(&id)
 }
 
+/// A resolved thread is live again (card #169).
+#[tauri::command]
+#[specta::specta]
+pub async fn board_reopen_thread(w: W<'_>, id: String) -> R<()> {
+    w.reopen_thread(&id)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_move_pin(w: W<'_>, id: String, before: String) -> R<()> {
@@ -880,6 +887,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_threads,
             board_card_ref,
             board_resolve_thread,
+            board_reopen_thread,
             board_comment_modify,
             board_comment_modify_cancel,
             board_comment_modify_save,

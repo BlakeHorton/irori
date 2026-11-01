@@ -200,6 +200,7 @@ fn options_persist() {
         sound: false,
         volume: 3.0,
         corner: "middle".into(),
+        confetti: false,
     });
     err.unwrap();
     let want = Options {
@@ -207,6 +208,7 @@ fn options_persist() {
         sound: false,
         volume: 1.0,
         corner: CORNER_TOP_RIGHT.into(),
+        confetti: false,
     };
     assert_eq!(got, want);
     assert_eq!(heard.lock().unwrap().clone(), Some(want.clone()));
@@ -284,4 +286,24 @@ fn test_card_opens_the_board() {
     f.press(TEST_ID, "Open Board");
     let t = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert!(t.tab == "board" && t.ref_.is_empty());
+}
+
+#[test]
+fn confetti_is_saved_only_while_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let on = Options {
+        confetti: true,
+        ..Options::default()
+    };
+    notify::save(dir.path(), &on).unwrap();
+    let b = std::fs::read_to_string(dir.path().join(notify::SETTINGS_FILE)).unwrap();
+    assert!(b.contains("\"confetti\": true"), "{b}");
+    assert_eq!(notify::load(dir.path()), on);
+    notify::save(dir.path(), &Options::default()).unwrap();
+    let b = std::fs::read_to_string(dir.path().join(notify::SETTINGS_FILE)).unwrap();
+    assert!(
+        !b.contains("confetti"),
+        "off leaves the file as Go wrote it: {b}"
+    );
+    assert!(!notify::load(dir.path()).confetti);
 }

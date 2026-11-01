@@ -237,6 +237,67 @@ impl Fold {
 }
 
 impl Fold {
+    /// The person reopens their resolved thread `id` (card #169): it is a
+    /// live thread again. Their next reply goes to the agents that
+    /// answered it; with none, it goes out to an idle agent as a new
+    /// thread would. Agents don't reopen threads.
+    pub(crate) fn reopen_thread(&mut self, by: &str, id: &str) -> super::error::Result<Task> {
+        let t = self.any_task(id)?.clone();
+        let Some(a) = t.ask.clone().filter(|a| a.thread) else {
+            return Err(super::error::invalid(format!(
+                "{} isn't a thread",
+                t.short_ref()
+            )));
+        };
+        // On a board, the member who started it (card #134).
+        if !self.is_owner(by) || (self.on_board && t.created_by != by) {
+            return Err(super::error::not_allowed(
+                "only the person who started a thread reopens it",
+            ));
+        }
+        if a.is_open() {
+            return Err(super::error::bad_state(format!(
+                "{} is open already",
+                t.short_ref()
+            )));
+        }
+        let at = self.stamp();
+        self.write(
+            by,
+            store::kinds::TASK_STATUS,
+            &TaskStateRow {
+                task_id: id.into(),
+                state: SUBMITTED.into(),
+                note: "reopened by the person".into(),
+                reopen_ask: true,
+                by: by.into(),
+                at,
+                ..TaskStateRow::default()
+            },
+        )?;
+        // Only the device that owns the ask writes its take rows; on a
+        // board another device of the same person leaves them to it.
+        if a.owner != self.dev {
+            return Ok(self.tasks[id].clone());
+        }
+        let answered = !self.thread_repliers(id).is_empty();
+        let since = self.stamp();
+        self.write_take(
+            id,
+            TakeStateRow {
+                reason: if answered {
+                    TAKE_ANSWERED.into()
+                } else {
+                    super::asks::TAKE_REOPENED.into()
+                },
+                told: a.told,
+                since,
+                ..TakeStateRow::default()
+            },
+        )?;
+        Ok(self.tasks[id].clone())
+    }
+
     /// The person resolves thread `id`: closed as answered. Agents don't.
     pub(crate) fn resolve_thread(&mut self, by: &str, id: &str) -> super::error::Result<Task> {
         let t = self.any_task(id)?;

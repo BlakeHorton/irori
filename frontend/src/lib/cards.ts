@@ -397,6 +397,14 @@ export const threads = {
     sampleThreadState.set(id, "resolved")
     sampleChanged()
   },
+
+  // reopen brings a resolved thread back (card #169): live again, the
+  // person's next reply going to the agents that answered.
+  async reopen(id: string): Promise<void> {
+    if (inWails()) return BoardService.ReopenThread(id)
+    sampleThreadState.set(id, "answered")
+    sampleChanged()
+  },
 }
 
 // cardRef is what a #ref names across every board on this device, done
@@ -492,6 +500,8 @@ function summary(c: CardDetail): CardSummary {
     openBlockers: c.openBlockers,
     blockerQuestion: c.blockerQuestion,
     ready: c.ready,
+    where: c.where,
+    leftOff: c.leftOff,
     waiting: c.waiting,
     working: c.working,
     watching: c.watching,

@@ -95,6 +95,8 @@ pub const MAX_DONE_CARD: i64 = 200;
 
 pub const MAX_QUESTION: usize = 200;
 pub const MAX_CONTEXT: usize = 800;
+/// A Left off line (card #137).
+pub const MAX_LEFT_OFF: usize = 300;
 /// A done check's question, its one answer, and its context when the
 /// agent gave no note (card #112).
 pub const DONE_QUESTION: &str = "Is this done?";
@@ -526,7 +528,28 @@ impl Coord {
         self.lock().set_steps(by, id, steps)
     }
     pub fn set_step(&self, by: &str, id: &str, step: &str, u: StepUpdate) -> Result<Task> {
-        self.lock().set_step(by, id, step, u)
+        self.lock().set_step(by, id, step, u, "")
+    }
+    /// set_step with the holder's one line on what's done and what's next
+    /// (card #137), shown on the card as "Left off".
+    pub fn set_step_left_off(
+        &self,
+        by: &str,
+        id: &str,
+        step: &str,
+        u: StepUpdate,
+        left_off: &str,
+    ) -> Result<Task> {
+        self.lock().set_step(by, id, step, u, left_off)
+    }
+    /// Where the holder's work on card id is (card #137); true when it
+    /// wrote a row (the place changed). Private board only.
+    pub fn set_where(&self, id: &str, w: Where) -> Result<bool> {
+        let mut f = self.lock();
+        if f.on_board {
+            return Ok(false);
+        }
+        f.set_where(id, w)
     }
     pub fn watch(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().watch(by, id, true)
@@ -834,6 +857,11 @@ impl Coord {
     /// The person resolves their thread (card #116): it closes, answered.
     pub fn resolve_thread(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().resolve_thread(by, id)
+    }
+    /// The person reopens their resolved thread (card #169): live again,
+    /// their next reply going to the agents that answered it.
+    pub fn reopen_thread(&self, by: &str, id: &str) -> Result<Task> {
+        self.lock().reopen_thread(by, id)
     }
     pub fn ask_again(&self, by: &str, id: &str) -> Result<()> {
         self.lock().ask_again(by, id)

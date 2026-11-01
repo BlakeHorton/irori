@@ -907,4 +907,14 @@ fn a_board_thread_among_two_people() {
     assert!(is_terminal(&t.state), "{t:?}");
     sync(&a, &b);
     assert!(is_terminal(&b.c.get_task(&tk.id).unwrap().state));
+
+    // Reopening is the starter's too (card #169); it's live on both sides.
+    assert!(b.c.reopen_thread(P2, &tk.id).is_err(), "p2 didn't start it");
+    a.c.reopen_thread(P1, &tk.id).unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let t = s.c.get_task(&tk.id).unwrap();
+        assert!(t.open_ask().is_some_and(|a| a.thread), "{t:?}");
+        assert_eq!(s.c.thread_to(&tk.id), [CARD3]);
+    }
 }

@@ -37,7 +37,7 @@ These are carried in the board tools' descriptions and in a short block the mod 
 > When a card's work is done, check it yourself (tests, and the real app for anything the person sees), then set it completed with proof: what changed, how you checked it, the commit, and screenshots of a UI change. The person confirms it (Done) or says why not, and it comes back to you; don't keep it as a record.
 > Put new work up unheld and let Irori hand it out: it goes to one free agent at a time, and on to the next if that one can't take it. Don't pick someone off the roster, and don't take a card yourself while you hold one in progress: one card at a time (`board_join` refuses a second). `board_assign` only when one agent is clearly the right one (the person chose it, or it built the piece being changed). If Irori hands you a card, `board_join` it and start; if you can't take it on now, `board_leave` it and it goes to the next free agent.
 > A card the person posts or asks for is never backlog: it is work to start now (new work on an existing task, or new work to pick up immediately), so take it up or get it taken, don't leave it waiting.
-> When you take a card, give it steps and keep them ticked.
+> When you take a card, give it steps and keep them ticked. At each step, commit and push your branch (WIP is fine) and tick it with `left_off`: one line on what's done and what's next.
 > When an answer or a comment changes what a card is for, `board_edit` it so its title, objective and done-when say what it is now, and redo its steps: never leave the old title on new work.
 > When you need the person, raise one blocker per question (never several asks in one note): context for a newcomer, options when there are real choices, and your recommendation marked.
 > Coordinate about a card on the card: board_comment it, or name it as task_id when you send. To bring in another agent, mention it: @name in text (its exact name from the agents tool), or its name or key in mention. A mention wakes that agent now and, on a card, makes it a watcher (never a holder). Use direct messages only for things not about a card.
@@ -773,6 +773,15 @@ Stephen, card #112, 2026-10-31: the person has the final say on whether a card i
 - **Not done.** The person's own words are an ordinary answer: the agent hears them (a woken or next-turn `answered` notice), the card shows "Waiting on agent", and the agent works on. When it sets `completed` again, the earlier check (open or answered) is resolved ("asked again") and a fresh one is raised, so one check waits on the person at a time.
 - **In the window.** The card's `ready` flag gives its pill "Ready for you" (green) when the check is the only thing waiting on the person; the check's chip says the same, its box is green, its own-words field says "Or say why it isn't done", and its button is Not done. It counts under Needs a decision like any blocker.
 - **Tools.** `board_status completed` from an agent answers that the card waits on the person's Done (naming the check), not that it folded into Done.
+
+## Where the work is
+
+Card #137, 2026-11-01: a card says where its work is and where its holder left off, so anyone can pick it up if the holder's machine stops.
+
+- **Where** (`task.where`, private cards only: worktree paths never reach a shared board). The holder's device writes it: the Core's coord sweep, for each open private card a local session holds as its holder, reads that session's latest working directory (capture's: where its last command ran after any `cd`, or its last edited file sits; else the session's start folder) as a git place: worktree root, branch, HEAD's sha, and pushed (origin's copy of the branch is at HEAD), read from the ref files with no git process. `board_join` and `board_step` write it at once too. A row is written only when the place changed, and only for a git place; a git place is never replaced by a folder outside git, so a new holder still in its home folder doesn't hide the branch. The fold keeps the latest; it adds no thread line and doesn't move `updated_at`, so commits don't reorder the grid.
+- **Left off.** `board_step` takes `left_off`: one line on what's done and what's next, on the step row (`leftOff`; older folds ignore it). A tick without it gets a nudge in the result to give one and to push. The card keeps the latest.
+- **Handing over.** The tools' card lines show `where:` and `left off:` while the card is open. `board_join` by a new holder starts with "Picking up where it was:" and the last Where (with "continue from that branch", or a warning that it isn't pushed) and Left off, read before its own place can replace them; assignment and offer notices carry the same lines.
+- **In the window.** The card's Progress section ends with Left off (who, when) and Where: branch @ commit, Pushed or Not pushed, the worktree, the device and holder, when it was seen. A tile shows one dim "Left off:" line.
 
 ## Pinned cards
 

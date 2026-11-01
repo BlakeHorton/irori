@@ -29,6 +29,7 @@ const sampleOptions = NotifyOptions({
   sound: true,
   volume: 0.6,
   corner: "top-right",
+  confetti: false,
 })
 
 export interface SettingsState {

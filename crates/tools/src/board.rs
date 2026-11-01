@@ -294,6 +294,16 @@ impl Inner {
             }
             b += "\n";
         }
+        // Where the work is and where it left off (card #137).
+        if !coord::is_terminal(&t.state) {
+            // Only a git place helps an agent pick the work up.
+            if let Some(w) = t.where_.as_ref().filter(|w| !w.worktree.is_empty()) {
+                b += &format!("  where: {}\n", one_line(&w.line(), 200));
+            }
+            if let Some(l) = &t.left_off {
+                b += &format!("  left off: {}\n", quoted(&one_line(&l.text, 200), 200));
+            }
+        }
         if t.state == coord::BLOCKED {
             let mut open = t.open_blockers();
             if open.is_empty() {
@@ -425,6 +435,44 @@ impl Inner {
 
     fn line(&self, t: &Task) -> String {
         self.card_line(t, None, &self.roster(), &self.now())
+    }
+
+    /// Writes where `key`'s work on card t is (card #137) right away, when
+    /// it holds the card: its latest working directory (capture's, else
+    /// its session's) as a git place. The Core's sweep keeps it current.
+    pub(crate) fn note_where(&self, key: &str, t: &Task) {
+        if t.holder != key || t.shared || coord::is_terminal(&t.state) {
+            return;
+        }
+        let dir = self
+            .b
+            .capture()
+            .and_then(|c| c.session_dir(key))
+            .or_else(|| {
+                self.b
+                    .agents()
+                    .into_iter()
+                    .find(|a| a.key == key)
+                    .map(|a| a.cwd)
+            })
+            .unwrap_or_default();
+        // Only a git place is worth a row: a folder outside git says
+        // nothing about where the work is.
+        let Some(g) = capture::gitlink::place(&dir) else {
+            return;
+        };
+        let w = coord::Where {
+            who: key.to_string(),
+            cwd: dir,
+            worktree: g.worktree,
+            branch: g.branch,
+            head: g.head,
+            pushed: g.pushed,
+            ..coord::Where::default()
+        };
+        if let Ok((co, _)) = self.on(&t.id, &[]) {
+            let _ = co.set_where(&t.id, w);
+        }
     }
 }
 
@@ -1439,6 +1487,7 @@ const STEP_ARGS: &[(&str, Ty)] = &[
     ("done", Ty::OptBool),
     ("doing", Ty::OptBool),
     ("owner", Ty::OptStr),
+    ("left_off", Ty::Str),
 ];
 
 pub(crate) fn board_step(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -1489,16 +1538,26 @@ pub(crate) fn board_step(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             Err(e) => return map_err(e),
         }
     }
+    let left_off = trim(a.str("left_off"));
     if done.is_some() || doing.is_some() {
-        match co.set_step(&as_[0], &id, sid, StepUpdate { done, doing }) {
+        match co.set_step_left_off(&as_[0], &id, sid, StepUpdate { done, doing }, left_off) {
             Ok(got) => t = Some(got),
             Err(e) => return map_err(e),
         }
     }
     let t = t.expect("one change was asked");
+    s.note_where(&c.sender.key, &t);
     let (d, n) = t.progress();
+    let mut nudge = String::new();
+    if done == Some(true) && left_off.is_empty() {
+        nudge = format!(
+            "\nSay where you left off: board_step task_id={} step_id={} done=true left_off=\"<one line: what's done, what's next>\". It shows on the card for whoever picks it up if this machine stops. Commit and push your branch (WIP is fine) at each step for the same reason.",
+            t.short_ref(),
+            one_line(sid, 20)
+        );
+    }
     format!(
-        "{}: steps {d}/{n} done.{told}\n{}",
+        "{}: steps {d}/{n} done.{told}{nudge}\n{}",
         t.short_ref(),
         s.line(&t)
     )
@@ -1574,6 +1633,13 @@ pub(crate) fn board_join(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    // Where the last holder's work is and where it left off (card #137),
+    // read before this agent's own place can replace it.
+    let handover = if cur.holders.iter().any(|h| *h == as_[0]) {
+        String::new()
+    } else {
+        cur.handover_lines()
+    };
     let r = if cur.shared {
         co.join(&as_[0], &id, &as_[0])
     } else {
@@ -1587,6 +1653,13 @@ pub(crate) fn board_join(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if t.shared && t.holders.len() > 1 {
         out += ", with the others on it; leases keep you off each other's files";
     }
+    if !handover.is_empty() {
+        out += &format!(
+            ". Picking up where it was:{handover}\nWork from that branch (fetch it if it's pushed), not a fresh one"
+        );
+    }
+    s.note_where(&c.sender.key, &t);
+    let t = co.get_task(&t.id).unwrap_or(t);
     format!(
         "{out}. Post its state with board_status as you go.\n{}",
         s.line(&t)
