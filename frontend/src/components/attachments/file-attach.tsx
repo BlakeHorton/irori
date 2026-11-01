@@ -1,6 +1,5 @@
 import {
-  useEffect,
-  useMemo,
+  useCallback,
   useRef,
   useState,
   type ClipboardEvent,
@@ -147,12 +146,18 @@ function PendingFile({
 }) {
   const name = file.name || "pasted image"
   const image = Previewable.test(file.type) && file.size <= MaxThumb
-  // One object URL per file, let go when the file leaves the list.
-  const url = useMemo(
-    () => (image ? URL.createObjectURL(file) : null),
-    [file, image]
+  // One object URL per picture, made as its <img> mounts and let go as it
+  // unmounts (a ref with cleanup, React 19). A memo with an effect that
+  // revokes it broke under StrictMode, which unmounts once on mount.
+  const showFile = useCallback(
+    (el: HTMLImageElement | null) => {
+      if (!el) return
+      const u = URL.createObjectURL(file)
+      el.src = u
+      return () => URL.revokeObjectURL(u)
+    },
+    [file]
   )
-  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url])
   const remove = (
     <button
       type="button"
@@ -165,11 +170,11 @@ function PendingFile({
       <XIcon className="size-3" />
     </button>
   )
-  if (image && url) {
+  if (image) {
     return (
       <li className="group relative" title={name}>
         <img
-          src={url}
+          ref={showFile}
           alt={name}
           draggable={false}
           className="h-20 max-w-40 min-w-12 rounded-md object-cover ring-1 ring-border"
