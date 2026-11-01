@@ -640,3 +640,78 @@ fn an_open_card_reaches_the_other_persons_free_agent_per_the_setting() {
         "{offers:?}"
     );
 }
+
+/// Card #187: a thread on a shared board can mention another person and
+/// their agents. Bob's mentioned agent hears it first, woken, on Bob's
+/// device; Bob gets a notification that opens the thread; the board log
+/// keeps the mentions in board form.
+#[test]
+fn a_board_thread_mention_reaches_the_other_person_and_their_agent() {
+    let cards = Arc::new(Cards::default());
+    let notes = notify::Notifier::new(notify::Config {
+        toaster: Some(cards.clone()),
+        ..notify::Config::default()
+    });
+    let t = two_people_with(Some(notes));
+    let b1 = t.b().board_key(&t.board, &t.rb.key_a).unwrap();
+    let bob = Two::person(t.b());
+    let m = |key: &str, name: &str| coord::Mention {
+        key: key.into(),
+        name: name.into(),
+        gone: false,
+    };
+    let (th, _) = t
+        .a()
+        .board_ask(
+            &t.board,
+            coord::NewAsk {
+                text: "@bob @alpha which build is faster?".into(),
+                mentions: vec![
+                    m(&bob, "bob"),
+                    m(&b1, "alpha"),
+                    // A private key never goes in a board log.
+                    m("dev1/aaaaaaaa-1111-4111-8111-111111111111", "mine"),
+                ],
+                thread: true,
+                ..coord::NewAsk::default()
+            },
+        )
+        .unwrap();
+    let a = th.ask.clone().unwrap();
+    let keys: Vec<&str> = a.mentions.iter().map(|m| m.key.as_str()).collect();
+    assert_eq!(keys, vec![bob.as_str(), b1.as_str()], "{a:?}");
+    assert_eq!(
+        a.heard,
+        vec![b1.clone()],
+        "the agent, not the person: {a:?}"
+    );
+    t.sync();
+
+    // Bob's agent: woken with the thread.
+    let ds = wait_bridged(t.b(), &t.rb.key_a, 1);
+    let (d, msg) = (&ds[0], &ds[0].message);
+    assert_eq!(d.mode, mode::WAKE, "{d:?}");
+    assert_eq!(msg.board.kind, row_kind::ASK);
+    assert!(
+        msg.text.contains("started a thread") && msg.text.contains("which build is faster?"),
+        "{}",
+        msg.text
+    );
+    // Bob's other agent isn't named: it doesn't hear it first.
+    assert!(bridged(t.b(), &t.rb.key_b).is_empty());
+
+    // Bob: a notification that opens the thread.
+    wait_for(10, "bob's mention card", || !cards.mentions().is_empty());
+    let got = cards.mentions();
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(got[0].1.contains("mentioned you on"), "{:?}", got[0]);
+    assert!(got[0].2.contains("which build is faster?"), "{:?}", got[0]);
+
+    // Bob's copy of the log keeps the same board-form mentions.
+    let co_b = t.b().board_coord(&t.board).unwrap();
+    let theirs = co_b.get_task(&th.id).and_then(|x| x.ask).unwrap();
+    assert_eq!(theirs.mentions.len(), 2, "{theirs:?}");
+    t.sync();
+    settle_bridged(t.b(), &t.rb.key_a, 1);
+    assert_eq!(cards.mentions().len(), 1);
+}

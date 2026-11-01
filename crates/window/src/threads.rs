@@ -141,12 +141,6 @@ impl Window {
                 )
                 .map_err(|e| e.to_string())?
         } else {
-            if !mentions.is_empty() {
-                return Err(
-                    "mentions work in threads on your own board; on a shared board, name a card (#12)"
-                        .into(),
-                );
-            }
             if !files.is_empty() {
                 return Err(
                     "files go with a thread on your own board only; on a shared board, attach them on a card"
@@ -158,6 +152,9 @@ impl Window {
                     board_id,
                     NewAsk {
                         text: text.into(),
+                        // Board keys (card #187): another person, their
+                        // agents, or this person's own agents on the board.
+                        mentions: self.plan_mentions_on(board_id, mentions).log,
                         thread: true,
                         ..Default::default()
                     },

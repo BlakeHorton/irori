@@ -568,21 +568,24 @@ fn a_shared_card_keeps_board_mentions_in_the_log() {
     assert_eq!(p.text, "@cedar @Blake look");
 }
 
+/// Card #187: an ask on a shared board keeps its board-form mentions and
+/// drops any other key.
 #[test]
-fn a_shared_board_ask_refuses_mentions() {
+fn a_shared_board_ask_keeps_board_form_mentions() {
     let b = board();
-    want_err(
+    let (t, _) =
         b.c.post_ask(
             BOARD_PERSON,
             NewAsk {
-                text: "@cedar?".into(),
-                mentions: vec![m(BOARD_CARD, "cedar")],
+                text: "@cedar @oak?".into(),
+                mentions: vec![m(BOARD_CARD, "cedar"), m("dev-x/oak", "oak")],
                 ..NewAsk::default()
             },
             &[],
-        ),
-        ErrorKind::Invalid,
-    );
+        )
+        .unwrap();
+    let keys: Vec<String> = t.ask.unwrap().mentions.into_iter().map(|m| m.key).collect();
+    assert_eq!(keys, [BOARD_CARD]);
 }
 
 #[test]
@@ -623,9 +626,10 @@ fn a_board_row_folds_only_board_form_mentions() {
     assert_eq!(cm.text, "@cedar look");
     let keys: Vec<&str> = cm.mentions.iter().map(|m| m.key.as_str()).collect();
     assert_eq!(keys, [BOARD_CARD]);
-    // An ask's mentions on a board stay out until #187.
+    // An ask's board-form mentions fold too (card #187).
     let a = c.get_task("t_ask").unwrap().ask.unwrap();
-    assert!(a.mentions.is_empty(), "{:?}", a.mentions);
+    let keys: Vec<&str> = a.mentions.iter().map(|m| m.key.as_str()).collect();
+    assert_eq!(keys, [BOARD_CARD]);
 }
 
 /// Card #98: the mention names its holder by name, "name (key)".

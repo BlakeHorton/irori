@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
 import { MaxComment, threads } from "@/lib/cards"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
-import { composing } from "@/lib/mentions"
+import { composing, MentionBoard } from "@/lib/mentions"
 import { errorText } from "@/lib/talk"
 
 // AskBox is the box over the grid that starts a thread (cards #116, #134):
@@ -69,13 +69,11 @@ export function AskBox({
     setLine(null)
     try {
       const res = onBoard
-        ? await threads.start(text, [], [], onBoard)
+        ? await threads.start(text, mentions, [], onBoard)
         : await threads.start(text, mentions, files)
       // On a board the other people's agents are told by their own
       // devices: count every agent the thread's round names.
-      const n = onBoard
-        ? (res.task.ask?.told ?? 0)
-        : (res.told.to?.length ?? 0)
+      const n = onBoard ? (res.task.ask?.told ?? 0) : (res.told.to?.length ?? 0)
       setLine({
         text:
           n === 0
@@ -93,74 +91,77 @@ export function AskBox({
     }
   }
 
+  // On a board the @ picker offers its other people and their agents too
+  // (cards #177, #187); they hear it through their own devices.
   return (
-    <form
-      className="grid gap-1"
-      onSubmit={(e) => void submit(e)}
-      {...attach.drop}
-    >
-      <div className="flex items-start gap-2 p-1.5 glass-panel">
-        <MentionTextarea
-          autoSize
-          rows={1}
-          value={text}
-          mentions={onBoard ? [] : mentions}
-          disabledMentions={
-            onBoard
-              ? "Mentions work in threads on your own board; name a card (#12) here"
-              : undefined
-          }
-          maxLength={MaxComment}
-          onChange={(v, ms) => {
-            setText(v)
-            setMentions(ms)
-            setLine(null)
-          }}
-          onPaste={(e) => {
-            if (attach.onPaste(e)) setLine(null)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
-              e.preventDefault()
-              e.currentTarget.form?.requestSubmit()
-            }
-          }}
-          placeholder="Ask about anything…"
-          aria-label="Start a thread"
-          className="max-h-40 min-h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-transparent"
-          // readOnly, not disabled: disabling the focused box would blur it,
-          // and the next message would need a click back in.
-          readOnly={busy}
-          aria-busy={busy}
-        />
-        {/* The controls ride the box's first line (h-9, its min height)
+    <MentionBoard.Provider value={onBoard}>
+      <form
+        className="grid gap-1"
+        onSubmit={(e) => void submit(e)}
+        {...attach.drop}
+      >
+        <div className="flex items-start gap-2 p-1.5 glass-panel">
+          <MentionTextarea
+            autoSize
+            rows={1}
+            value={text}
+            mentions={mentions}
+            maxLength={MaxComment}
+            onChange={(v, ms) => {
+              setText(v)
+              setMentions(ms)
+              setLine(null)
+            }}
+            onPaste={(e) => {
+              if (attach.onPaste(e)) setLine(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
+                e.preventDefault()
+                e.currentTarget.form?.requestSubmit()
+              }
+            }}
+            placeholder="Ask about anything…"
+            aria-label="Start a thread"
+            className="max-h-40 min-h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-transparent"
+            // readOnly, not disabled: disabling the focused box would blur it,
+            // and the next message would need a click back in.
+            readOnly={busy}
+            aria-busy={busy}
+          />
+          {/* The controls ride the box's first line (h-9, its min height)
             whatever their own heights, and stay up top as it grows. */}
-        <div className="flex h-9 shrink-0 items-center gap-2">
-          {attach.input}
-          <AttachButton attach={attach} disabled={busy || !!onBoard} />
-          <Button
-            type="submit"
-            size="sm"
-            className="shrink-0"
-            disabled={busy || !text.trim()}
-          >
-            {busy ? "Sending…" : "Send"}
-          </Button>
+          <div className="flex h-9 shrink-0 items-center gap-2">
+            {attach.input}
+            <AttachButton attach={attach} disabled={busy || !!onBoard} />
+            <Button
+              type="submit"
+              size="sm"
+              className="shrink-0"
+              disabled={busy || !text.trim()}
+            >
+              {busy ? "Sending…" : "Send"}
+            </Button>
+          </div>
         </div>
-      </div>
-      <PendingFiles attach={attach} disabled={busy} label="Files with the thread" />
-      {line && (
-        <p
-          className={
-            line.error
-              ? "px-1 text-xs text-destructive"
-              : "px-1 text-xs text-muted-foreground"
-          }
-          role={line.error ? "alert" : undefined}
-        >
-          {line.text}
-        </p>
-      )}
-    </form>
+        <PendingFiles
+          attach={attach}
+          disabled={busy}
+          label="Files with the thread"
+        />
+        {line && (
+          <p
+            className={
+              line.error
+                ? "px-1 text-xs text-destructive"
+                : "px-1 text-xs text-muted-foreground"
+            }
+            role={line.error ? "alert" : undefined}
+          >
+            {line.text}
+          </p>
+        )}
+      </form>
+    </MentionBoard.Provider>
   )
 }

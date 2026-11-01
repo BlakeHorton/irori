@@ -245,12 +245,19 @@ impl Window {
     /// Checks the keys the picker recorded against every device's roster.
     /// `id`: the card they go on, whose log may want board keys.
     pub(crate) fn plan_mentions(&self, id: &str, given: &[ts::Mention]) -> Plan {
-        let roster = self.core.mesh_agents();
         let board = if id.is_empty() {
             String::new()
         } else {
             self.core.route(id).map(|(b, _)| b).unwrap_or_default()
         };
+        self.plan_mentions_on(&board, given)
+    }
+
+    /// [`Self::plan_mentions`] for something new on board `board` ("" your
+    /// own), such as a thread (card #187): the log gets board keys.
+    pub(crate) fn plan_mentions_on(&self, board: &str, given: &[ts::Mention]) -> Plan {
+        let roster = self.core.mesh_agents();
+        let board = board.to_string();
         let user = self.core.user_sender().key;
         let mut plan = Plan::default();
         for g in given {

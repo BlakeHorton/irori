@@ -238,9 +238,14 @@ impl Fold {
             repo_key: a.repo_key.clone(),
             owner: ev.device_id.clone(),
             since: t.created_at,
-            // Never from a board log, as for comments (board.md "Mentions").
+            // A board log carries mentions in board form only (cards #177,
+            // #187); anything else another device wrote is dropped here.
             mentions: if self.on_board {
-                Vec::new()
+                a.mentions
+                    .iter()
+                    .filter(|m| super::mention::board_form(&m.key))
+                    .cloned()
+                    .collect()
             } else {
                 a.mentions.clone()
             },
@@ -731,12 +736,14 @@ impl Fold {
         if !self.is_owner(&by) {
             return Err(not_allowed("only the person asks the room"));
         }
-        if self.on_board && !input.mentions.is_empty() {
-            return Err(invalid(
-                "mentions work on an ask on your own board; on a shared board, ask the room",
-            ));
+        // On a shared board only board-form keys (agent:<cardId>,
+        // person:<personId>) go in the log: every member's Core resolves
+        // them (card #187, as #177 did for comments).
+        let mut given = input.mentions.clone();
+        if self.on_board {
+            given.retain(|m| super::mention::board_form(&m.key));
         }
-        let mentions = self.check_mentions(&by, &input.mentions)?;
+        let mentions = self.check_mentions(&by, &given)?;
         let repo_key = trim_space(&input.repo_key).to_string();
         if !repo_key.is_empty() {
             check_repo_key(&repo_key)?;

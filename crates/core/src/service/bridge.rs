@@ -41,6 +41,8 @@ struct RowFields {
     text: String,
     /// A comment's mentions, in board form (card #177).
     mentions: Vec<RowMention>,
+    /// A task.created's ask: a board thread's mentions (card #187).
+    ask: Option<RowAsk>,
     wake: bool,
     to: String,
     answer: String,
@@ -53,6 +55,13 @@ struct RowFields {
     reason: String,
     heard: Vec<String>,
     since: String,
+}
+
+/// A task.created row's ask field, for its mentions.
+#[derive(Deserialize, Default, Clone)]
+#[serde(default)]
+struct RowAsk {
+    mentions: Vec<RowMention>,
 }
 
 /// One mention on a board row: the board key it names (`agent:<cardId>`
@@ -89,6 +98,13 @@ impl Services {
     /// Bridges one board row, live from `b`'s follower.
     pub(crate) fn bridge_row(&self, b: &BoardLog, ev: &Event) {
         if ev.seq == 0 {
+            return;
+        }
+        // A thread (or ask) naming this person: a notification on each of
+        // their devices that opens it (card #187). Their agents it names
+        // hear it from the round's board.ask.state.
+        if ev.kind == kinds::TASK_CREATED {
+            self.ask_mention(b, ev);
             return;
         }
         let bridged = matches!(
@@ -219,6 +235,41 @@ impl Services {
         }
     }
 
+    /// A board thread or ask that names this person (card #187): the same
+    /// notification a comment mention posts, opening the thread's card.
+    fn ask_mention(&self, b: &BoardLog, ev: &Event) {
+        let Ok(mut f) = serde_json::from_slice::<RowFields>(&ev.payload) else {
+            return;
+        };
+        let me = self.person_id();
+        let me_key = format!("{PERSON_ACTOR_PREFIX}{me}");
+        let named = f
+            .ask
+            .as_ref()
+            .is_some_and(|a| a.mentions.iter().any(|m| m.key == me_key));
+        if f.task_id.is_empty() || !named {
+            return;
+        }
+        let Some(person) = b.verifier.person_of(&ev.device_id) else {
+            return;
+        };
+        if person.is_empty() || person == me {
+            return;
+        }
+        let co = b.coord();
+        let Some(t) = co
+            .get_task(&f.task_id)
+            .or_else(|| co.catch_up().ok().and_then(|()| co.get_task(&f.task_id)))
+        else {
+            return;
+        };
+        let who = self.board_person_name(b, &person);
+        if f.text.is_empty() {
+            f.text = t.objective.clone();
+        }
+        self.mention_note(&t, &who, &f);
+    }
+
     /// The desktop notification for a comment that mentions this person:
     /// "<who> mentioned you on <title>", opening the card at the comment.
     /// Every device of the person posts its own, so it shows wherever they
@@ -304,7 +355,7 @@ impl Services {
                 wake: young,
                 text: Box::new(move |name| {
                     format!(
-                        "{name} started a thread on this board ({refs}). It's a question or a conversation, not a card:\n{objective}\nYou hear it first because it names your card. If you can answer, answer in the thread with board_comment {short}; if it isn't about your work, leave it. If no agent answers within {}s, Irori hands it to one idle agent. {}",
+                        "{name} started a thread on this board ({refs}). It's a question or a conversation, not a card:\n{objective}\nYou hear it first because it names your card or you. If you can answer, answer in the thread with board_comment {short}; if it isn't about your work, leave it. If no agent answers within {}s, Irori hands it to one idle agent. {}",
                         coord::THREAD_QUIET.as_secs(),
                         coord::THREAD_NOT_YOURS
                     )
