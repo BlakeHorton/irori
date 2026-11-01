@@ -95,8 +95,16 @@ function world(
   const appended: Array<{ type: string; text: string; agentId?: string }> = []
   const registered: Array<{ name: string; description: string; inputSchema?: unknown }> = []
   const toasts: string[] = []
+  const aborted: string[] = []
 
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  // Stop (card #207): the turn the mod cuts.
+  on('turn.abort', ($, e) => {
+    aborted.push(e.turnId)
+    return { value: undefined } as never
+  })
+  // A tool beneath the mod's gate (card #207): runs when the gate lets it.
+  on('tool.call', { tool: 'Bash' }, () => ({ result: 'ran Bash' }) as never)
   on('session.id', () => ({ value: SESSION }) as never)
   on('command.register', () => ({ value: { command: 'irori' } }) as never)
   on('ui.toast', ($, e) => {
@@ -157,7 +165,7 @@ function world(
       yield { stream: 'stdout' as const, text }
     }
   })
-  return { children, spawned, calls, submitted, appended, registered, toasts }
+  return { children, spawned, calls, submitted, appended, registered, toasts, aborted }
 }
 
 const posts = (calls: Call[], path: string) => calls.filter(c => c.method === 'POST' && c.url === API + path)
@@ -174,7 +182,7 @@ describe('attach', () => {
       await band.unmount()
     }
     const ran = await $.command.run(irori(''))
-    expect(ran.text).toContain('irori mod 0.4.4')
+    expect(ran.text).toContain('irori mod 0.5.0')
     expect(ran.text).toContain('set iroriPath')
   })
 
@@ -182,7 +190,7 @@ describe('attach', () => {
     const w = world(on)
     await $.session.start({ cwd: 'C:/work/api', surface: 'terminal', isInteractive: true })
     await until(() => w.children.length === 1, 'spawn')
-    expect(w.spawned[0]).toEqual([IRORI, 'attach', '--session', SESSION, '--cwd', 'C:/work/api', '--mod-version', '0.4.4'])
+    expect(w.spawned[0]).toEqual([IRORI, 'attach', '--session', SESSION, '--cwd', 'C:/work/api', '--mod-version', '0.5.0'])
 
     // hello split across two pieces, a blank keepalive, and a stray log line.
     const h = line(hello)
@@ -630,7 +638,7 @@ describe('/irori', () => {
     }
     expect(w.calls.filter(c => c.url.endsWith('/v1/policy'))).toEqual([])
     const status = await $.command.run(irori(''))
-    expect(status.text).toContain('irori mod 0.4.4')
+    expect(status.text).toContain('irori mod 0.5.0')
     expect(status.text).toContain('Attached as api work')
   })
 
@@ -716,5 +724,58 @@ describe('held cards (GitHub #3)', () => {
     w.children[0]!.write(line(hello))
     await until(() => w.registered.length === 2, 'hello')
     expect((await $.classic.UserPromptSubmit({ prompt: 'hi' } as never)).additionalContext ?? []).toEqual([])
+  })
+})
+
+describe('stop and pause (card #207)', () => {
+  test('a stop cuts the running turn, then submits; a pause refuses other tools until resume', OPTIONS, async ($, on) => {
+    const w = world(on)
+    await $.session.start({ cwd: 'C:/work/api', surface: 'terminal', isInteractive: true })
+    await until(() => w.children.length === 1, 'spawn')
+    w.children[0]!.write(line(hello))
+    await until(() => w.registered.length === 2, 'tools registered')
+
+    // A wake starts a long turn.
+    const prompt1 = `${TOKEN}\nwork on the lexer`
+    w.children[0]!.write(line({ type: 'deliver', token: TOKEN, deliveryIds: ['del_1'], prompt: prompt1, from: 'bob' }))
+    await until(() => w.submitted.length === 1, 'first submit')
+    await $.turn.start({ text: prompt1, turnId: 'turn-1' })
+    await until(() => posts(w.calls, '/v1/deliveries/engaged').length === 1, 'engaged')
+
+    // The person's stop, pausing #7: the turn is cut before the stop's prompt goes in.
+    const STOP = '[irori-wake:wake_STOP]'
+    const prompt2 = `STOP from Stephen: your running turn was cut.\n\n${STOP}\nwhy is it red?`
+    w.children[0]!.write(line({ type: 'deliver', token: STOP, deliveryIds: ['del_2'], prompt: prompt2, from: 'Stephen', stop: true, pause: ['#7'] }))
+    await until(() => w.submitted.length === 2, 'stop submit')
+    expect(w.aborted).toEqual(['turn-1'])
+    expect(w.submitted[1]).toBe(prompt2)
+    // The cut turn's wake is reported ended, so the Core's gate opens.
+    await until(() => posts(w.calls, '/v1/deliveries/turn-ended').length === 1, 'turn-ended')
+    expect(posts(w.calls, '/v1/deliveries/turn-ended')[0]!.body).toBe(JSON.stringify({ token: TOKEN, turnId: 'turn-1' }))
+
+    // Paused: other tools are refused with why; Irori's own still run.
+    const refused = await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
+    expect(String(refused.result)).toContain('Stephen paused #7')
+    const irori = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
+    expect(String(irori.result)).toContain('Sent')
+
+    // Resume: tools run again. An idle session's stop cuts nothing.
+    const RES = '[irori-wake:wake_RES]'
+    w.children[0]!.write(line({ type: 'deliver', token: RES, deliveryIds: ['del_3'], prompt: `${RES}\nresumed #7`, from: 'Stephen', resume: ['#7'] }))
+    await until(() => w.submitted.length === 3, 'resume submit')
+    const ran = await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
+    expect(String(ran.result)).toBe('ran Bash')
+    expect(w.aborted).toEqual(['turn-1'])
+  })
+
+  test('at hello the paused cards this session holds come from the board', OPTIONS, async ($, on) => {
+    const w = world(on, { board: { working: [{ short: '7', paused: true, holders: [hello.agentKey] }] } })
+    await $.session.start({ cwd: 'C:/work/api', surface: 'terminal', isInteractive: true })
+    await until(() => w.children.length === 1, 'spawn')
+    w.children[0]!.write(line(hello))
+    await until(() => w.calls.some(c => c.url.includes('/v1/board')), 'board read')
+    await pause(50)
+    const refused = await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
+    expect(String(refused.result)).toContain('paused #7')
   })
 })
