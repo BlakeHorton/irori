@@ -20,6 +20,7 @@ export const TaskState = {
   Failed: "failed",
   Canceled: "canceled",
   Blocked: "blocked",
+  InReview: "in_review",
 } as const satisfies Record<string, B.TaskState | "">
 export type TaskState = B.TaskState
 

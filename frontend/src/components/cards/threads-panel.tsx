@@ -238,6 +238,7 @@ const cardStates: Record<string, "info" | "success" | "warning" | "slate"> = {
   working: "info",
   input_required: "warning",
   blocked: "warning",
+  in_review: "info",
   completed: "success",
 }
 

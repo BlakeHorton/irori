@@ -30,6 +30,9 @@ describe("busy", () => {
     expect(busy(card(TaskState.Completed, [agent("busy")]))).toBe(false)
     expect(busy(card(TaskState.Canceled, [agent("busy")]))).toBe(false)
   })
+  test("in review doesn't: its holder is free for other work (card #191)", () => {
+    expect(busy(card(TaskState.InReview, [agent("busy")]))).toBe(false)
+  })
   test("one busy holder among idle ones is enough", () => {
     expect(busy(card(TaskState.Working, [agent("idle"), agent("busy")]))).toBe(true)
   })

@@ -9,7 +9,7 @@ const card = (state: TaskState, openBlockers = 0) =>
 
 describe("filters", () => {
   test("Closed is the last tab (card #57)", () => {
-    expect(filters.map((f) => f.id)).toEqual(["all", "decide", "mine", "done"])
+    expect(filters.map((f) => f.id)).toEqual(["all", "decide", "review", "mine", "done"])
     expect(filters.at(-1)?.label).toBe("Closed")
   })
   test("Closed narrows by outcome", () => {
@@ -35,6 +35,12 @@ describe("filters", () => {
     expect(matches(card(TaskState.Blocked, 1), "decide")).toBe(true)
     expect(matches(card(TaskState.Working), "mine")).toBe(true)
     expect(matches(card(TaskState.Canceled), "mine")).toBe(false)
+  })
+  test("In review holds the cards waiting on their review (card #191)", () => {
+    expect(matches(card(TaskState.InReview), "review")).toBe(true)
+    expect(matches(card(TaskState.Working), "review")).toBe(false)
+    expect(matches(card(TaskState.InReview), "all")).toBe(true)
+    expect(asFilter("review")).toBe("review")
   })
   test("asFilter reads a known id, else all", () => {
     expect(asFilter("done")).toBe("done")
