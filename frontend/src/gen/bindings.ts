@@ -916,6 +916,7 @@ export type NewCardInput = {
 	 *  from its page. "": the person's own board.
 	 */
 	board?: string,
+	/**
 	 *  Files pasted, dropped or picked in the form (card #124): they go on
 	 *  the card as the person's first comment, and with the hand-out.
 	 */
