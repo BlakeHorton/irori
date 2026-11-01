@@ -53,6 +53,7 @@ struct ProfileRow {
     pos: RowPos,
     pub_hex: String,
     root_id: String,
+    name: String,
 }
 
 /// One certified device (GUI JSON `{cert, revoked, cut?}`).
@@ -77,6 +78,8 @@ struct State {
     rotations: Vec<RotationRow>,
     profiles: Vec<ProfileRow>,
     profile: bool,
+    /// The newest counted person.profile's name.
+    name: String,
     bad: i64,
     seen: HashSet<(String, i64)>,
     valid: BTreeMap<String, Cert>,
@@ -239,11 +242,20 @@ impl State {
             .into_iter()
             .map(|(d, a)| (d, a.cert))
             .collect();
-        let profile = self.profiles.iter().any(|p| {
+        let counted = |p: &&ProfileRow| {
             ever.contains_key(&p.pos.writer)
                 && trusted(&keys, &p.pub_hex)
                 && p.root_id == self.root_id
-        });
+        };
+        let profile = self.profiles.iter().any(|p| counted(&p));
+        // The person's name is the newest counted profile's (card #183).
+        self.name = self
+            .profiles
+            .iter()
+            .filter(counted)
+            .max_by(|a, b| a.pos.cmp(&b.pos))
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
         self.valid = valid;
         self.cuts = cuts;
         self.claims = claims;
@@ -376,6 +388,7 @@ impl Chain {
                     pos,
                     pub_hex: p.person_pub,
                     root_id: p.root_device_id,
+                    name: p.name,
                 });
             }
             _ => return,
@@ -475,6 +488,12 @@ impl Chain {
     /// Whether this person's person.profile is held.
     pub fn has_profile(&self) -> bool {
         self.lock().profile
+    }
+
+    /// The person's name as their newest counted person.profile gives it
+    /// (card #183); "" before any.
+    pub fn profile_name(&self) -> String {
+        self.lock().name.clone()
     }
 
     /// Person rows for this person that failed their checks.

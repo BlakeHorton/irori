@@ -121,6 +121,10 @@ export const commands = {
 	settingsTestNotification: () => __TAURI_INVOKE<null>("settings_test_notification"),
 	settingsGetLaunchAtLogin: () => __TAURI_INVOKE<boolean>("settings_get_launch_at_login"),
 	settingsSetLaunchAtLogin: (enabled: boolean) => __TAURI_INVOKE<null>("settings_set_launch_at_login", { enabled }),
+	/**  The person's name (card #183). */
+	settingsGetYourName: () => __TAURI_INVOKE<string>("settings_get_your_name"),
+	/**  The person renames themself; returns the name as kept. */
+	settingsSetYourName: (name: string) => __TAURI_INVOKE<string>("settings_set_your_name", { name }),
 	attachmentsInfo: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_info", { sha }),
 	attachmentsFetch: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_fetch", { sha }),
 	attachmentsSave: (sha: string) => __TAURI_INVOKE<string>("attachments_save", { sha }),
@@ -585,6 +589,18 @@ export type CardSummary = {
 	 */
 	ready?: boolean,
 	waiting: number,
+	/**
+	 *  Open blockers that wait on something other than the person: another
+	 *  card, a lease, an agent, something external (card #158). They close
+	 *  by themselves, so they are not counted in open_blockers.
+	 */
+	waitingOn?: number,
+	/**
+	 *  What the first of those waits on, as the window names it: "#12" for
+	 *  a card, the agent's name, the resource or the outside thing.
+	 */
+	waitOn?: string,
+	waitQuestion?: string,
 	working: AgentRef[],
 	watching: AgentRef[],
 	holder: CardHolder,

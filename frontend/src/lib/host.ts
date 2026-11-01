@@ -218,6 +218,8 @@ export const SettingsService = {
   TestNotification: () => done(commands.settingsTestNotification()),
   GetLaunchAtLogin: () => call(commands.settingsGetLaunchAtLogin()),
   SetLaunchAtLogin: (enabled: boolean) => done(commands.settingsSetLaunchAtLogin(enabled)),
+  GetYourName: () => call(commands.settingsGetYourName()),
+  SetYourName: (name: string) => call(commands.settingsSetYourName(name)),
 }
 
 export const AttachmentsService = {
