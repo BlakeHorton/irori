@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { MenuIcon, PlusIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ export function AppHeader({
   onNewCard,
   onNewBoard,
   section,
+  onMenu,
 }: {
   roster: Roster
   // The page's title (Home, Boards, a board's name) and a line beside it.
@@ -32,12 +34,25 @@ export function AppHeader({
   onNewBoard: () => void
   // Where the window is; null on a card's page.
   section?: Section | null
+  // Opens the nav drawer; its button shows only on a narrow window (card #227).
+  onMenu?: () => void
 }) {
   return (
     <header className="sticky top-0 z-20 border-x-0! border-t-0! glass-panel">
-      <div className="mx-auto flex h-14 max-w-[1920px] items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-[1920px] items-center gap-2 px-2 sm:gap-3 sm:px-6 md:px-4">
+        {onMenu && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="-ml-1 md:hidden"
+            aria-label="Open the menu"
+            onClick={onMenu}
+          >
+            <MenuIcon className="size-5" aria-hidden />
+          </Button>
+        )}
         {bar ?? (
-          <h1 className="flex min-w-0 items-baseline gap-2 text-lg font-semibold text-ink">
+          <h1 className="flex min-w-0 items-baseline gap-2 truncate text-lg font-semibold text-ink">
             {title}
           </h1>
         )}
@@ -47,7 +62,7 @@ export function AppHeader({
           </span>
         )}
         {roster.source === "sample" && (
-          <Badge variant="warning" title="Not connected to the Irori app">
+          <Badge variant="warning" className="hidden sm:inline-flex" title="Not connected to the Irori app">
             Sample data
           </Badge>
         )}
@@ -57,22 +72,26 @@ export function AppHeader({
             <Button
               size="sm"
               onClick={onNewBoard}
+              aria-label="New board"
               title="Make a board for a project, or join one with an invite"
             >
-              + New board
+              <PlusIcon aria-hidden className="sm:hidden" />
+              <span className="hidden sm:inline">+ New board</span>
             </Button>
           ) : (
             section && (
               <Button
                 size="sm"
                 onClick={onNewCard}
+                aria-label="New card"
                 title={
                   section.kind === "board"
                     ? "Make a card on this board"
                     : "Make a card for an agent to pick up"
                 }
               >
-                + New card
+                <PlusIcon aria-hidden className="sm:hidden" />
+                <span className="hidden sm:inline">+ New card</span>
               </Button>
             )
           )}

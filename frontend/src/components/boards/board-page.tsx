@@ -176,7 +176,7 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
             onChange={(e) => setName(e.target.value)}
             maxLength={MaxBoardName}
             aria-label="Board name"
-            className="h-8 w-64"
+            className="h-8 w-40 sm:w-64"
             autoFocus
           />
           <Button type="submit" size="sm" className="h-8" disabled={!name.trim()}>
@@ -206,16 +206,18 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
           variant="ghost"
           size="sm"
           aria-pressed={!!b.pinned}
+          aria-label={b.pinned ? "Unpin" : "Pin"}
           onClick={() => void pin()}
           title={b.pinned ? "Take it out of the sidebar" : "Keep it in the sidebar, on all your devices"}
         >
           {b.pinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
-          {b.pinned ? "Unpin" : "Pin"}
+          <span className="hidden sm:inline">{b.pinned ? "Unpin" : "Pin"}</span>
         </Button>
         {b.owner && !renaming && (
           <Button
             variant="ghost"
             size="sm"
+            className="hidden sm:inline-flex"
             onClick={() => {
               setName(b.name)
               setRenaming(true)
@@ -224,7 +226,19 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
             Rename
           </Button>
         )}
-        <BoardActionsMenu board={b} reload={reload} onError={setError} />
+        <BoardActionsMenu
+          board={b}
+          reload={reload}
+          onError={setError}
+          onRename={
+            b.owner && !renaming
+              ? () => {
+                  setName(b.name)
+                  setRenaming(true)
+                }
+              : undefined
+          }
+        />
       </span>
     </div>
   )
@@ -237,10 +251,14 @@ function BoardActionsMenu({
   board: b,
   reload,
   onError,
+  onRename,
 }: {
   board: BoardSummary
   reload: () => Promise<unknown>
   onError: (error: string) => void
+  // Rename for owners: in the menu only below sm, where the header has no
+  // room for its button (card #227).
+  onRename?: () => void
 }) {
   const [asking, setAsking] = useState<"leave" | "forgetNow" | "forgetHere" | null>(null)
   const asks: Record<"leave" | "forgetNow" | "forgetHere", ConfirmAsk> = {
@@ -302,6 +320,11 @@ function BoardActionsMenu({
           <EllipsisIcon aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto">
+          {onRename && (
+            <DropdownMenuItem className="sm:hidden" onClick={onRename}>
+              Rename
+            </DropdownMenuItem>
+          )}
           {b.leaving ? (
             <DropdownMenuItem variant="destructive" onClick={() => setAsking("forgetNow")}>
               Forget now

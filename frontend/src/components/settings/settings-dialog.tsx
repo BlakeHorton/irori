@@ -95,13 +95,13 @@ export function SettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         initialFocus={currentRef}
-        className="h-[min(640px,calc(100vh-4rem))] grid-cols-[13rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-0 p-0 sm:max-w-3xl"
+        className="h-[min(640px,calc(100dvh-2rem))] grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:h-[min(640px,calc(100vh-4rem))] sm:max-w-3xl sm:grid-cols-[13rem_minmax(0,1fr)] sm:grid-rows-[minmax(0,1fr)]"
       >
         <nav
           aria-label="Settings sections"
-          className="flex flex-col gap-0.5 border-r border-border p-3"
+          className="flex flex-row flex-wrap gap-1 border-b border-border p-3 pr-12 sm:flex-col sm:flex-nowrap sm:gap-0.5 sm:border-r sm:border-b-0 sm:pr-3"
         >
-          <DialogTitle className="px-2 pt-1 pb-3 text-base">
+          <DialogTitle className="w-full px-2 pt-1 pb-2 text-base sm:pb-3">
             Settings
           </DialogTitle>
           {settingsSections.map((s) => {
@@ -123,7 +123,7 @@ export function SettingsDialog({
             )
           })}
         </nav>
-        <section className="flex min-h-0 flex-col gap-3 overflow-y-auto p-5 pr-12">
+        <section className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4 sm:p-5 sm:pr-12">
           <div className="grid gap-0.5">
             <h2 className="text-base font-semibold text-ink">{here.label}</h2>
             <DialogDescription>{here.hint}</DialogDescription>

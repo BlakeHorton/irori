@@ -221,14 +221,14 @@ function HeldRow({
     d.decidedBy === SystemKey ? "Irori" : d.decidedBy ? name(d.decidedBy) : ""
 
   return (
-    <li className="grid gap-1 border-b border-border py-2.5 text-[13px] last:border-b-0">
+    <li className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 border-b border-border py-2.5 text-[13px] last:border-b-0">
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <span className="font-medium text-ink">{from}</span>
         <span className="text-muted-foreground" aria-hidden>
           {"->"}
         </span>
         <span className="sr-only">to</span>
-        <span className="font-medium text-ink">{to}</span>
+        <span className="min-w-0 font-medium break-all text-ink">{to}</span>
         {card && (
           <Button
             size="xs"

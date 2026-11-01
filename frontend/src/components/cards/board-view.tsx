@@ -8,7 +8,7 @@
 // notification's Open); the cards are every live card, and BoardView
 // keeps the scope's; Closed comes in already scoped (useDoneCards).
 
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 
 import {
   BoardBar,
@@ -28,6 +28,7 @@ import {
   type BoardView as View,
 } from "@/components/canvas/switch"
 import { Badge } from "@/components/ui/badge"
+import { useNarrow } from "@/lib/media"
 import { TaskState } from "@/lib/models"
 import { Button } from "@/components/ui/button"
 import {
@@ -177,8 +178,24 @@ export function BoardView({
 
   const openThreads =
     threads?.list.filter((t) => t.state !== "resolved").length ?? 0
+  // A phone or a narrow window (card #227): one column, and Threads is a
+  // full-screen sheet its button opens (opening a thread opens it too).
+  const narrow = useNarrow()
+  const openThread = threads?.open ?? ""
+  const [sheet, setSheet] = useState(() => narrow && !!openThread)
+  const [sheetFor, setSheetFor] = useState(openThread)
+  if (sheetFor !== openThread) {
+    setSheetFor(openThread)
+    if (narrow && openThread) setSheet(true)
+  }
   const showThreads =
-    !!threads && !threads.hidden && (threads.list.length > 0 || !!threads.open)
+    !narrow &&
+    !!threads &&
+    !threads.hidden &&
+    (threads.list.length > 0 || !!threads.open)
+  const threadsButton =
+    !!threads &&
+    (narrow ? threads.list.length > 0 || !!threads.open : !showThreads && threads.list.length > 0)
   // The app is exactly the window's height (card #170): beside the Board
   // the Threads column scrolls on its own; without it the Board does.
   const panel = showThreads && threads && (
@@ -192,7 +209,24 @@ export function BoardView({
     />
   )
   const withThreads = (main: ReactNode) =>
-    aside ? (
+    narrow ? (
+      <div className="-mx-1 grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-4 overflow-y-auto px-1 pb-10">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3.5">{main}</div>
+        {aside}
+        {sheet && threads && (
+          <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-2 pb-10">
+            <ThreadsPanel
+              threads={threads.list}
+              open={threads.open}
+              onOpen={threads.onOpen}
+              onHide={() => setSheet(false)}
+              now={now}
+              why={threads.why}
+            />
+          </div>
+        )}
+      </div>
+    ) : aside ? (
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <div className={boardColumn}>{main}</div>
         <div className="-mr-1 grid min-h-0 shrink-0 content-start gap-3.5 overflow-y-auto pr-1 pb-4 lg:w-[360px]">
@@ -218,6 +252,22 @@ export function BoardView({
       <div className={boardColumn}>{main}</div>
     )
 
+  const threadsBtn = threads && threadsButton && (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => (narrow ? setSheet(true) : threads.onHide(false))}
+      title="Show the Threads panel"
+    >
+      Threads
+      {openThreads > 0 && (
+        <Badge variant="slate" className="tabular-nums">
+          {openThreads}
+        </Badge>
+      )}
+    </Button>
+  )
+
   if (mine.length === 0 && filter !== "done")
     return (
       <>
@@ -230,6 +280,7 @@ export function BoardView({
               decide={0}
               only={["all", "done"]}
             />
+            {threadsBtn && <span className="flex justify-end">{threadsBtn}</span>}
             {notice}
             {empty}
           </>
@@ -259,22 +310,8 @@ export function BoardView({
                 withPrivate
               />
             )}
-            <span className="ml-auto flex items-center gap-2">
-              {threads && !showThreads && threads.list.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => threads.onHide(false)}
-                  title="Show the Threads panel"
-                >
-                  Threads
-                  {openThreads > 0 && (
-                    <Badge variant="slate" className="tabular-nums">
-                      {openThreads}
-                    </Badge>
-                  )}
-                </Button>
-              )}
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              {threadsBtn}
               <SearchBox query={query} onQuery={onQuery} />
               <ViewSwitch view={view} onView={onView} />
             </span>
