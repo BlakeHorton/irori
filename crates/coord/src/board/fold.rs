@@ -985,6 +985,7 @@ impl Fold {
             shared: p.shared,
             links,
             tag: self.tag(),
+            from: p.from.clone(),
             ..Task::default()
         };
         self.fold_ask_created(&mut task, p.ask.as_ref(), ev, &p.by);
@@ -1004,7 +1005,16 @@ impl Fold {
                 let also = pt.holders.clone();
                 self.touch(ev, &ti, t, &p.by, &what, true, also);
             }
-            None => self.touch(ev, &ti, t, &p.by, "put the card up", false, Vec::new()),
+            None => {
+                let what = match self.tasks.get(&p.from).filter(|_| !p.from.is_empty()) {
+                    Some(th) => format!("put the card up from the thread {}", th.short_ref()),
+                    None => "put the card up".to_string(),
+                };
+                self.touch(ev, &ti, t, &p.by, &what, false, Vec::new())
+            }
+        }
+        if !p.from.is_empty() {
+            self.fold_made(ev, &p.from, &p.task_id, t, &p.by, "made");
         }
         self.note(Change {
             kind: TASK_CHANGED.into(),
@@ -1043,9 +1053,16 @@ impl Fold {
         }
         // The person reopens their resolved thread (card #169): its ask is
         // live again, and rows after this one fold as an open ask's.
+        // On a board every member's fold must agree: the member who started
+        // it, not this device's person (card #134).
+        let starter = if self.on_board {
+            p.by == t.created_by && p.by.starts_with(kinds::PERSON_ACTOR_PREFIX)
+        } else {
+            self.is_owner(&p.by)
+        };
         if p.reopen_ask
             && !is_terminal(&p.state)
-            && self.is_owner(&p.by)
+            && starter
             && t.ask.as_ref().is_some_and(|a| a.thread && !a.is_open())
         {
             if let Some(a) = t.ask.as_mut() {
@@ -1943,6 +1960,11 @@ pub(crate) fn restore_state(t: &Task) -> &'static str {
 /// The activity kind of a card-mention line (card #114). Not a row kind:
 /// the line is folded from a `task.comment`.
 pub(crate) const MENTIONED_KIND: &str = "task.mentioned";
+
+/// The activity kind of a thread's "made #12 from this thread" line (card
+/// #155). Not a row kind: folded from the card's `task.created` or
+/// `task.edited`.
+pub const MADE_KIND: &str = "task.made";
 
 /// The card refs in text: `#12` (tag None) or `mlg#12`, each a whole word
 /// (start, whitespace or "(" before; not a digit or letter after). The

@@ -293,6 +293,24 @@ impl Services {
         };
         let ask_me = self.inbox.autonomy(&b.id) == inbox::autonomy::ASK;
         let (refs, short, objective) = (t.refs(), t.short_ref(), t.objective.clone());
+        if a.thread {
+            // A board thread (card #134): the agents on the cards it names
+            // hear it first, woken, while it is young.
+            return Some(Plan {
+                kind: row_kind::ASK,
+                card_id: String::new(),
+                to: f.heard,
+                row: format!("ask:{}@{}", t.id, f.since),
+                wake: young,
+                text: Box::new(move |name| {
+                    format!(
+                        "{name} started a thread on this board ({refs}). It's a question or a conversation, not a card:\n{objective}\nYou hear it first because it names your card. If you can answer, answer in the thread with board_comment {short}; if it isn't about your work, leave it. If no agent answers within {}s, Irori hands it to one idle agent. {}",
+                        coord::THREAD_QUIET.as_secs(),
+                        coord::THREAD_NOT_YOURS
+                    )
+                }),
+            });
+        }
         Some(Plan {
             kind: row_kind::ASK,
             card_id: String::new(),
@@ -324,6 +342,21 @@ impl Services {
         }
         let ask_me = self.inbox.autonomy(&b.id) == inbox::autonomy::ASK;
         let (refs, short, objective) = (t.refs(), t.short_ref(), t.objective.clone());
+        if a.thread {
+            return Some(Plan {
+                kind: row_kind::ASK,
+                card_id: String::new(),
+                row: format!("ask:{}@{}:{}", t.id, f.since, f.taker),
+                to: vec![f.taker],
+                wake: true,
+                text: Box::new(move |name| {
+                    format!(
+                        "{name} started a thread on this board ({refs}), and Irori handed it to you. It's a question or a conversation, not a card:\n{objective}\nAnswer it in the thread with board_comment {short}: read it first, in case an agent already answered. {} If you can't answer it now, board_leave {short} and it goes to the next idle agent; ending your turn without answering does the same.",
+                        coord::THREAD_NOT_YOURS
+                    )
+                }),
+            });
+        }
         Some(Plan {
             kind: row_kind::ASK,
             card_id: String::new(),
@@ -487,6 +520,13 @@ fn row_plan(co: &Coord, me: &str, ev: &Event, f: RowFields, t: &Task) -> Option<
         } else {
             vec![f.to.clone()]
         }
+    } else if ev.kind == kinds::TASK_COMMENT
+        && card_id.is_empty()
+        && t.open_ask().is_some_and(|a| a.thread)
+    {
+        // A person's follow-up in a board thread (card #134) goes to the
+        // agents that answered, as on the private board; nobody holds it.
+        co.thread_to(&t.id)
     } else {
         let mut v = t.holders.clone();
         v.extend(t.watchers.iter().cloned());

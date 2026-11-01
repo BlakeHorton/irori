@@ -1,16 +1,18 @@
-import { useEffect, useRef, useState } from "react"
+import { useContext, useEffect, useRef, useState } from "react"
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { RichText } from "@/components/common/rich-text"
 import { CommentBox } from "./card-detail"
+import { AgentCards } from "./agent-hover"
 import { Face } from "./faces"
 import { Thread } from "./thread"
 import {
   displayName,
   threads as threadsApi,
   useCard,
+  type ThreadCard,
   type ThreadSummary,
 } from "@/lib/cards"
 import { parseTime, plainLine, relativeTime } from "@/lib/irori"
@@ -216,8 +218,46 @@ function ThreadRow({
           </span>
         )}
       </button>
+      {t.cards.length > 0 && <ThreadCards cards={t.cards} />}
       {open && <ThreadView t={t} now={now} />}
     </section>
+  )
+}
+
+// cardStates colour a card chip by its state.
+const cardStates: Record<string, "info" | "success" | "warning" | "slate"> = {
+  working: "info",
+  input_required: "warning",
+  blocked: "warning",
+  completed: "success",
+}
+
+// ThreadCards are the cards made or changed from a thread (card #155),
+// each one click from its page.
+function ThreadCards({ cards }: { cards: ThreadCard[] }) {
+  const ctx = useContext(AgentCards)
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+      Cards:
+      {cards.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          className="min-w-0 max-w-full"
+          title={`${plainLine(c.title)} (${c.state.replace("_", " ")})`}
+          disabled={!ctx}
+          onClick={() => ctx?.onOpen(c.id)}
+        >
+          <Badge
+            variant={cardStates[c.state] ?? "slate"}
+            className="h-4 max-w-full gap-1 px-1 text-[10.5px]"
+          >
+            <span className="font-mono">#{plainLine(c.short)}</span>
+            <span className="truncate">{plainLine(c.title)}</span>
+          </Badge>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -228,7 +268,10 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const resolved = t.state === "resolved"
-  const items = (detail?.thread ?? []).filter((it) => it.kind !== "event")
+  // Events stay out, but a card made from the thread is part of the answer.
+  const items = (detail?.thread ?? []).filter(
+    (it) => it.kind !== "event" || it.made
+  )
   const act = (f: (id: string) => Promise<void>) => async () => {
     if (busy) return
     setBusy(true)

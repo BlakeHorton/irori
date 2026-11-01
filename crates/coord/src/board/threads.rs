@@ -8,14 +8,22 @@
 //! answered: nobody holds it (an agent in a thread can still take cards),
 //! and the person's follow-ups go to the agents that answered. It stays
 //! open until the person resolves it.
+//!
+//! On a shared board (card #134) a thread is the same, among that board's
+//! agents and people: its rows live in the board's log, the agents on the
+//! board's cards it names hear it first, and one idle agent of any member
+//! gets it after the quiet spell. Another member's comment is a person's,
+//! not an answer; the person who started it resolves it. Mentions stay off
+//! board logs, as for every board ask.
 
 use std::collections::BTreeSet;
 use std::time::Duration;
 
 use gocompat::time::GoTime;
+use store::Event;
 
 use super::asks::TAKE_POSTED;
-use super::fold::{Fold, card_refs};
+use super::fold::{Fold, MADE_KIND, Touch, card_refs, line_of};
 use super::rows::*;
 use super::types::*;
 use super::util::{SWEEPER, cut, deeper};
@@ -30,15 +38,37 @@ pub const TAKE_ANSWERED: &str = "answered";
 
 const MAX_THREAD_NOTICE: usize = 1200;
 
-const NOT_YOURS_TO_CLOSE: &str = "Don't ask_close it: the person resolves it when they're done. If it leads to work, make or change cards (board_create, board_edit, board_comment) and say so in the thread.";
+/// What every agent in a thread hears about closing it.
+pub const NOT_YOURS_TO_CLOSE: &str = "Don't ask_close it: the person resolves it when they're done. If your answer says you'll do work, make the card with board_create from=<this thread's #ref> (or board_edit the card it changes): the thread then shows the card. If you do it with no card, say so plainly in the thread.";
 
 impl Fold {
+    /// Whether `key` is a person, not an agent: this device's person, or on
+    /// a board any member's person actor.
+    pub(crate) fn is_person(&self, key: &str) -> bool {
+        self.is_owner(key) || (self.on_board && key.starts_with(store::kinds::PERSON_ACTOR_PREFIX))
+    }
+
+    /// Who hears a person's follow-up in thread `t` now: the agents that
+    /// answered, or before any answer, the ones it went to (and its taker).
+    pub(crate) fn thread_to(&self, t: &Task) -> Vec<String> {
+        let a = t.ask.clone().unwrap_or_default();
+        let to = self.thread_repliers(&t.id);
+        if !to.is_empty() || a.reason == TAKE_ANSWERED {
+            return to;
+        }
+        let mut to = a.heard.clone();
+        if !a.taker.is_empty() && !to.contains(&a.taker) {
+            to.push(a.taker.clone());
+        }
+        to
+    }
+
     /// The agents a new thread goes to first: those holding the open cards
     /// its text names, then the agents it @mentions (live ones).
     pub(crate) fn thread_hearers(&self, text: &str, mentions: &[Mention]) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         let push = |k: &str, out: &mut Vec<String>| {
-            if !k.is_empty() && k != SWEEPER && !self.is_owner(k) && !out.iter().any(|o| o == k) {
+            if !k.is_empty() && k != SWEEPER && !self.is_person(k) && !out.iter().any(|o| o == k) {
                 out.push(k.to_string());
             }
         };
@@ -71,7 +101,7 @@ impl Fold {
             .comments
             .values()
             .filter(|c| {
-                c.task_id == id && c.msg_id.is_empty() && !self.is_owner(&c.by) && c.by != SWEEPER
+                c.task_id == id && c.msg_id.is_empty() && !self.is_person(&c.by) && c.by != SWEEPER
             })
             .collect();
         cs.sort_by(|a, b| gotime::cmp(&a.at, &b.at).then_with(|| a.id.cmp(&b.id)));
@@ -100,7 +130,7 @@ impl Fold {
         // An agent's answer since it last went out.
         let answered = self.comments.values().any(|c| {
             c.task_id == id
-                && !self.is_owner(&c.by)
+                && !self.is_person(&c.by)
                 && c.by != SWEEPER
                 && c.msg_id.is_empty()
                 && !gotime::before(&c.at, &a.since)
@@ -144,6 +174,9 @@ impl Fold {
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> super::error::Result<Vec<Notice>> {
         let a = t.ask.clone().unwrap_or_default();
+        // On a board another member's agents run on their devices: this one
+        // can't tell if they're live, and they hear it through the bridge.
+        let around = if self.on_board { None } else { around };
         let live = |k: &String| k != by && around.is_none_or(|f| f(k));
         let mut to: Vec<String> = self
             .thread_repliers(&t.id)
@@ -161,6 +194,10 @@ impl Fold {
             }
         }
         if to.is_empty() {
+            // Only the device that owns the ask hands it out again.
+            if a.owner != self.dev {
+                return Ok(Vec::new());
+            }
             self.write_take(
                 &t.id,
                 TakeStateRow {
@@ -213,9 +250,10 @@ impl Fold {
                 t.short_ref()
             )));
         };
-        if !self.is_owner(by) {
+        // On a board, the member who started it (card #134).
+        if !self.is_owner(by) || (self.on_board && t.created_by != by) {
             return Err(super::error::not_allowed(
-                "only the person reopens their thread",
+                "only the person who started a thread reopens it",
             ));
         }
         if a.is_open() {
@@ -238,6 +276,11 @@ impl Fold {
                 ..TaskStateRow::default()
             },
         )?;
+        // Only the device that owns the ask writes its take rows; on a
+        // board another device of the same person leaves them to it.
+        if a.owner != self.dev {
+            return Ok(self.tasks[id].clone());
+        }
         let answered = !self.thread_repliers(id).is_empty();
         let since = self.stamp();
         self.write_take(
@@ -256,6 +299,80 @@ impl Fold {
         Ok(self.tasks[id].clone())
     }
 
+    /// Whether `id` is a thread the person hasn't resolved.
+    pub(crate) fn open_thread(&self, id: &str) -> bool {
+        self.tasks.get(id).is_some_and(|t| {
+            t.ask
+                .as_ref()
+                .is_some_and(|a| a.thread && a.outcome.is_none())
+                && !is_terminal(&t.state)
+        })
+    }
+
+    /// The thread a card `by` makes or changes comes from (card #155):
+    /// `from` (a thread's ref) when given, else the one open thread `by`
+    /// answered or was handed. None, or more than one: no thread.
+    pub(crate) fn thread_from(&self, by: &str, from: &str) -> super::error::Result<String> {
+        if !from.trim().is_empty() {
+            let id = self.task_ref_locked(from)?;
+            let t = self.any_task(&id)?;
+            if !t.ask.as_ref().is_some_and(|a| a.thread) {
+                return Err(super::error::invalid(format!(
+                    "from: {} isn't a thread; give the #ref of the person's thread the work came from",
+                    t.short_ref()
+                )));
+            }
+            return Ok(id);
+        }
+        if by.is_empty() || by == SWEEPER || self.is_owner(by) {
+            return Ok(String::new());
+        }
+        let mut hits = self.tasks.values().filter(|t| {
+            self.open_thread(&t.id)
+                && (t.ask.as_ref().is_some_and(|a| a.taker == by)
+                    || self.thread_repliers(&t.id).iter().any(|k| k == by))
+        });
+        Ok(match (hits.next(), hits.next()) {
+            (Some(t), None) => t.id.clone(),
+            _ => String::new(),
+        })
+    }
+
+    /// Card `card` was made or changed from thread `thread` (card #155):
+    /// the thread lists it and gets a line, "made #155 from this thread".
+    /// Derived from the card's row, like a mention: no row of its own.
+    pub(crate) fn fold_made(
+        &mut self,
+        ev: &Event,
+        thread: &str,
+        card: &str,
+        at: GoTime,
+        by: &str,
+        verb: &str,
+    ) {
+        let Some(cref) = self.tasks.get(card).map(|t| t.short_ref()) else {
+            return;
+        };
+        let Some(th) = self.tasks.get_mut(thread) else {
+            return;
+        };
+        if !th.ask.as_ref().is_some_and(|a| a.thread) {
+            return;
+        }
+        if !th.made.iter().any(|c| c == card) {
+            th.made.push(card.into());
+        }
+        let ti = Touch::of(th);
+        let mut line = line_of(ev, at, by, &format!("{verb} {cref} from this thread"));
+        line.kind = MADE_KIND.into();
+        self.touch_line(&ti, line, true, Vec::new());
+        self.note(Change {
+            kind: TASK_CHANGED.into(),
+            task_id: thread.into(),
+            ..Change::default()
+        });
+    }
+
     /// The person resolves thread `id`: closed as answered. Agents don't.
     pub(crate) fn resolve_thread(&mut self, by: &str, id: &str) -> super::error::Result<Task> {
         let t = self.any_task(id)?;
@@ -265,9 +382,10 @@ impl Fold {
                 t.short_ref()
             )));
         }
-        if !self.is_owner(by) {
+        // On a board, the member who started it.
+        if !self.is_owner(by) || (self.on_board && t.created_by != by) {
             return Err(super::error::not_allowed(
-                "only the person resolves their thread",
+                "only the person who started a thread resolves it",
             ));
         }
         self.ask_close(

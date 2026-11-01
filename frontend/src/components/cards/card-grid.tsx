@@ -19,6 +19,7 @@ import {
   type DoneState,
 } from "@/lib/cards"
 import { plainLine, relativeTime } from "@/lib/irori"
+import { cardMatches, matching } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import {
   AskLine,
@@ -59,14 +60,17 @@ export function asFilter(id: string | null): Filter {
   return filters.find((f) => f.id === id)?.id ?? "all"
 }
 
-// shownCards is the grid under filter f. A subtask that matches brings its
-// parent's tile along, before it, so it is seen in context; context holds
-// the ids shown only for that.
+// shownCards is the grid under filter f and the search box's query (card
+// #171). A subtask that matches brings its parent's tile along, before it,
+// so it is seen in context; context holds the ids shown only for that.
 export function shownCards(
   cards: CardSummary[],
-  f: Filter
+  f: Filter,
+  query = ""
 ): { shown: CardSummary[]; context: Set<string> } {
-  const keep = new Set(cards.filter((c) => matches(c, f)).map((c) => c.id))
+  const keep = new Set(
+    cards.filter((c) => matches(c, f) && cardMatches(c, query)).map((c) => c.id)
+  )
   const context = new Set<string>()
   for (const c of cards) {
     const parent = c.parent?.id
@@ -573,17 +577,22 @@ export function ofOutcome(cs: CardSummary[], o: Outcome): CardSummary[] {
 // DoneGrid is the Closed filter: done, canceled and failed cards, the
 // latest first, a page at a time, each with its outcome badge, narrowed
 // by outcome.
+// DoneGrid is the Closed tab. With a search query (card #171) it shows only
+// the loaded closed cards that match.
 export function DoneGrid({
-  done,
+  done: all,
+  query = "",
   selected,
   onSelect,
   now,
 }: {
   done: DoneState
+  query?: string
   selected: string
   onSelect: (id: string) => void
   now: Date
 }) {
+  const done = { ...all, cards: matching(all.cards, query) }
   const [outcome, setOutcome] = useState<Outcome>("any")
   if (done.error && !done.cards.length)
     return (
@@ -593,11 +602,30 @@ export function DoneGrid({
     )
   if (done.loading && !done.cards.length)
     return <p className="px-1 text-sm text-muted-foreground">Loading…</p>
-  if (!done.cards.length)
+  if (!done.cards.length && !all.cards.length)
     return (
       <p className="px-1 text-[12.5px] text-muted-foreground">
         Nothing closed yet.
       </p>
+    )
+  if (!done.cards.length)
+    return (
+      <>
+        <p className="px-1 text-[12.5px] text-muted-foreground">
+          No cards match
+          {done.more ? " among these; Show more looks further back." : "."}
+        </p>
+        {done.more && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="self-center"
+            onClick={done.loadMore}
+          >
+            Show more
+          </Button>
+        )}
+      </>
     )
   const shown = ofOutcome(done.cards, outcome)
   return (

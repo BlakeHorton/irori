@@ -55,8 +55,8 @@ pub mod timers;
 pub use crate::members::Member;
 pub use crate::meshnode::BoardParts;
 pub use crate::service::boards::{
-    BOARDS_DIR, BoardAgent, BoardIdentity, BoardInfo, BoardSummary, Error as BoardError,
-    SharePreview, SharedCopy, SubtaskPreview, new_board_id, valid_board_id,
+    BOARDS_DIR, BoardAgent, BoardIdentity, BoardInfo, BoardMember, BoardSummary,
+    Error as BoardError, SharePreview, SharedCopy, SubtaskPreview, new_board_id, valid_board_id,
 };
 pub use crate::service::invites::{InviteStatus, InviteWatchFn};
 pub use crate::service::{

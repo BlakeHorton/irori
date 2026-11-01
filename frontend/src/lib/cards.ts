@@ -42,6 +42,7 @@ import {
   type Mention,
   type NewCardInput,
   type Step,
+  type ThreadCard,
 } from "./models"
 import {
   EventDevicesChanged,
@@ -79,6 +80,7 @@ export type {
   MentionCandidate,
   NewCardInput,
   Step,
+  ThreadCard,
   ThreadSummary,
   Told,
 }
@@ -211,6 +213,8 @@ function sampleState(): CardDetail[] {
 // keeps the real ones.
 const sampleThreadIds = new Set<string>()
 const sampleThreadState = new Map<string, string>()
+// sampleThreadBoard is the shared board a sample thread was started on.
+const sampleThreadBoard = new Map<string, string>()
 
 // sampleThread is one of the sample's threads.
 function sampleThread(
@@ -304,8 +308,12 @@ function sampleThreadSeed(now: Date): CardDetail[] {
 }
 
 // sampleThreads is BoardService.Threads on the sample.
-function sampleThreads(): ThreadSummary[] {
-  const all = sampleState().filter((c) => sampleThreadIds.has(c.id))
+function sampleThreads(boardId = ""): ThreadSummary[] {
+  const all = sampleState().filter(
+    (c) =>
+      sampleThreadIds.has(c.id) &&
+      (sampleThreadBoard.get(c.id) ?? "") === boardId
+  )
   const rows = all.map((c) => {
     const replies = c.thread.filter((it) => it.kind === "comment")
     const last = replies[replies.length - 1]
@@ -325,6 +333,7 @@ function sampleThreads(): ThreadSummary[] {
       replies: replies.length,
       lastBy: last?.who,
       lastText: last?.text ?? "",
+      cards: [],
       at: c.updatedAt,
       updatedAt: last?.at ?? c.updatedAt,
     })
@@ -342,24 +351,33 @@ function sampleThreads(): ThreadSummary[] {
 // threads is the Threads panel's side of the Board (card #116): the
 // header box starts one, the panel lists them, the person resolves them.
 // Replies go through cards.comment, like any card's.
+// boardId (card #134) is a shared board's: its threads, started from its
+// page, are in its log; "" is your own board.
 export const threads = {
-  async list(): Promise<ThreadSummary[]> {
-    if (inWails()) return (await BoardService.Threads()) ?? []
-    return sampleThreads()
+  async list(boardId = ""): Promise<ThreadSummary[]> {
+    if (inWails()) return (await BoardService.Threads(boardId)) ?? []
+    return sampleThreads(boardId)
   },
 
   // start is the header box's message as a thread: the agents on the
   // cards it names (#12) and the ones it @mentions hear it first; after
   // 45s with no answer, one idle agent gets it.
-  // files (picked, dropped or pasted) go on it as an ask's do (card #124).
+  // files (picked, dropped or pasted) go on it as an ask's do (card
+  // #124). boardId starts it on that shared board (card #134): no
+  // mentions or files there.
   async start(
     text: string,
     mentions: Mention[] = [],
-    files: File[] = []
+    files: File[] = [],
+    boardId = ""
   ): Promise<TaskResult> {
     checkUploads(files)
     if (inWails()) {
-      if (!files.length) return BoardService.StartThread(text, mentions)
+      if (!files.length) return BoardService.StartThread(text, mentions, boardId)
+      if (boardId)
+        throw new Error(
+          "files go with a thread on your own board only; on a shared board, attach them on a card"
+        )
       return BoardService.StartThreadWithFiles(
         text,
         mentions,
@@ -382,6 +400,7 @@ export const threads = {
       ),
       ...cs,
     ]
+    if (boardId) sampleThreadBoard.set(id, boardId)
     sampleChanged()
     return TaskResult({
       task: { id } as TaskResult["task"],
@@ -463,11 +482,12 @@ export function useCardRef(r: string): RefTarget | null | undefined {
 }
 
 // useThreads is the Threads panel's rows, fresh on every card change.
-export function useThreads(): {
+export function useThreads(boardId = ""): {
   threads: ThreadSummary[]
   error: string | null
 } {
-  const { value, error, reload } = useLatest<ThreadSummary[]>(threads.list, [])
+  const load = useCallback(() => threads.list(boardId), [boardId])
+  const { value, error, reload } = useLatest<ThreadSummary[]>(load, [])
   useFresh(reload, error, true)
   return { threads: value, error }
 }
@@ -517,6 +537,11 @@ function summary(c: CardDetail): CardSummary {
     pinned: c.pinned,
     pinRank: c.pinRank,
     pos: c.pos,
+    // As crates/window's search_text (card #171), less the creator.
+    searchText: [c.goal, c.doneWhen, ...c.steps.map((s) => s.text)]
+      .map((w) => w.trim())
+      .filter(Boolean)
+      .join("\n"),
   })
 }
 
@@ -546,80 +571,6 @@ async function uploadOf(f: File): Promise<UploadFile> {
   for (let i = 0; i < bytes.length; i += 0x8000)
     bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return UploadFile({ name: f.name || "pasted.png", data: btoa(bin) })
-}
-
-// sampleAsk is BoardService.Ask on the sample: a new ask first in the
-// grid, heard by the sample's idle agents.
-function sampleAsk(
-  text: string,
-  repoKey: string,
-  wake: boolean,
-  mentions: Mention[]
-): TaskResult {
-  const t = text.trim()
-  if (!t) throw new Error("coord: invalid input: an empty comment")
-  const now = new Date().toISOString()
-  const cs = sampleState()
-  const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
-  // With mentions, only the agents it names hear it.
-  const named = sampleMentions(mentions)
-  const heard = mentions.length
-    ? named.filter((m) => !m.gone).map((m) => m.who.key)
-    : ["sample-heron"]
-  const first = t.split(/\r?\n/)[0].replace(/\s+/g, " ")
-  const c = {
-    ...cs[0],
-    id: `sample-ask-${Date.now()}`,
-    short: String(top + 1),
-    shortWas: "",
-    title: first.length > 80 ? first.slice(0, 79) + "…" : first,
-    goal: t,
-    doneWhen: "",
-    note: "",
-    state: TaskState.Submitted,
-    repoKey,
-    steps: [],
-    blockers: [],
-    prs: [],
-    links: [],
-    comments: [],
-    working: [],
-    watching: [],
-    progress: { done: 0, total: 0 },
-    openBlockers: 0,
-    waiting: 0,
-    blockerQuestion: "",
-    holder: cs[0].holder,
-    recent: [],
-    thread: [
-      CardThreadItem({
-        id: "sample-ask-post",
-        kind: "event",
-        at: now,
-        who: sampleYou,
-        text: "You asked the room",
-      }),
-    ],
-    threadEarlier: 0,
-    historyTrimmed: false,
-    updatedAt: now,
-    ask: CardAsk({
-      state: AskState.Open,
-      told: heard.length,
-      owner: "This PC",
-      wake,
-      taker: null,
-      outcome: null,
-      mentions: named.length ? named : undefined,
-    }),
-  } as CardDetail
-  sample = [c, ...cs]
-  sampleChanged()
-  return TaskResult({
-    task: { id: c.id } as TaskResult["task"],
-    told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }),
-    mentioned: sampleOutcomes(named),
-  })
 }
 
 // sampleBoardOf finds a sample board by id; lib/boards.ts sets it (it
@@ -1342,39 +1293,6 @@ export const cards = {
     return sampleComment(id, text, wake, mentions)
   },
 
-  // ask posts the person's prompt to the room: every free agent hears it
-  // (in repoKey's repo when one is named), at its next turn or, with wake,
-  // now. One of them takes it.
-  // files (picked, dropped or pasted) go on the ask's card, and the agent
-  // that takes it fetches them (card #25).
-  // boardId posts it to that shared board instead (v0.5 §9): every
-  // member's free agents hear it. A board ask names no repo and takes no
-  // files. With mentions it goes only to the agents they name, woken, in
-  // any repo.
-  async ask(
-    text: string,
-    repoKey = "",
-    wake = false,
-    files: File[] = [],
-    boardId = "",
-    mentions: Mention[] = []
-  ): Promise<TaskResult> {
-    checkUploads(files)
-    if (inWails()) {
-      if (!files.length)
-        return BoardService.Ask(text, repoKey, wake, boardId, mentions)
-      return BoardService.AskWithFiles(
-        text,
-        repoKey,
-        wake,
-        await Promise.all(files.map(uploadOf)),
-        boardId,
-        mentions
-      )
-    }
-    return sampleAsk(text, repoKey, wake, mentions)
-  },
-
   // askAgain is Wake them on an ask nobody took.
   async askAgain(id: string): Promise<void> {
     if (inWails()) return BoardService.AskAgain(id)
@@ -1892,6 +1810,20 @@ export function workLabel(c: {
 // cardFromHash reads one back ("" for the grid).
 export function cardHash(id: string): string {
   return `#card/${encodeURIComponent(id)}`
+}
+
+// openTarget reads a notification's ref: "task:<id>" opens the card,
+// "task:<id>/comment:<commentId>" opens it at that comment (card #177).
+// Anything else is null.
+export function openTarget(
+  ref: string
+): { card: string; comment: string } | null {
+  if (!ref.startsWith("task:")) return null
+  const rest = ref.slice("task:".length)
+  const i = rest.indexOf("/comment:")
+  const card = i < 0 ? rest : rest.slice(0, i)
+  const comment = i < 0 ? "" : rest.slice(i + "/comment:".length)
+  return card ? { card, comment } : null
 }
 
 export function cardFromHash(hash: string): string {

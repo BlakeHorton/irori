@@ -61,11 +61,17 @@ export const commands = {
 	 */
 	boardCreate: (input: NewCardInput) => __TAURI_INVOKE<TaskResult>("board_create", { input }),
 	/**  The header box's message as a thread (card #116). */
-	boardStartThread: (text: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions }),
-	/**  A thread with files (card #124), as an ask takes them. */
+	boardStartThread: (text: string, mentions: Mention[], boardId: string) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions, boardId }),
+	/**
+	 *  A thread with files (card #124), as an ask takes them; your own
+	 *  board only.
+	 */
 	boardStartThreadWithFiles: (text: string, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<TaskResult>("board_start_thread_with_files", { text, mentions, files }),
-	/**  The Threads panel: open threads, then the newest resolved. */
-	boardThreads: () => __TAURI_INVOKE<ThreadSummary[]>("board_threads"),
+	/**
+	 *  The Threads panel: open threads, then the newest resolved; your own
+	 *  board's, or with `board_id` that shared board's (card #134).
+	 */
+	boardThreads: (boardId: string) => __TAURI_INVOKE<ThreadSummary[]>("board_threads", { boardId }),
 	/**  What a #ref in text names (card #144), or null. */
 	boardCardRef: (r: string) => __TAURI_INVOKE<RefTarget | null>("board_card_ref", { r }),
 	/**  Resolve on a thread: the person is done with it. */
@@ -621,6 +627,8 @@ export type CardSummary = {
 	talking: AgentRef[],
 	ask?: CardAsk | null,
 	parent?: CardRef | null,
+	/**  The person's thread this card was made from (card #155). */
+	fromThread?: CardRef | null,
 	subtasks?: number,
 	subtaskBlocked?: string,
 	pinned?: boolean,
@@ -634,6 +642,12 @@ export type CardSummary = {
 	where?: CardWhere | null,
 	/**  The holder's last line on what's done and what's next (card #137). */
 	leftOff?: CardLeftOff | null,
+	/**
+	 *  The card's words the grid doesn't show, for the Board's search box
+	 *  (card #171): its objective, done-when, step texts and its creator's
+	 *  name, one per line.
+	 */
+	searchText?: string,
 };
 
 /**  One entry of a card's thread. */
@@ -668,6 +682,11 @@ export type CardThreadItem = {
 	edit?: string,
 	/**  The person edited it before any agent read it. */
 	edited?: boolean,
+	/**
+	 *  An event saying a card was made or changed from this thread (card
+	 *  #155): the Threads panel keeps it among the answers.
+	 */
+	made?: boolean,
 };
 
 /**
@@ -921,6 +940,12 @@ export type MentionCandidate = {
 	cwd: string,
 	/**  repo_label(repoKey), or "". */
 	repo: string,
+	/**
+	 *  Set for another person on a shared board, or one of their agents:
+	 *  the board they can be mentioned on (card #177). The picker offers
+	 *  them only in a box on that board's cards.
+	 */
+	board?: string,
 };
 
 /**  One mention's outcome after a send. */
@@ -1210,6 +1235,8 @@ export type Task = {
 	returned?: Returned,
 	parent?: string,
 	subtasks?: string[],
+	from?: string,
+	made?: string[],
 	rollup?: Rollup,
 	pinned?: boolean,
 	pinRank?: number,
@@ -1225,6 +1252,14 @@ export type TaskResult = {
 
 /**  coord.TaskState. */
 export type TaskState = "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" | "blocked";
+
+/**  A card made or changed from a thread, as its chip shows it. */
+export type ThreadCard = {
+	id: string,
+	short: string,
+	title: string,
+	state: string,
+};
 
 /**  One thread in the panel. */
 export type ThreadSummary = {
@@ -1246,6 +1281,8 @@ export type ThreadSummary = {
 	/**  The newest reply, by anyone. */
 	lastBy?: AgentRef | null,
 	lastText?: string,
+	/**  The cards made or changed from it (card #155), first first. */
+	cards: ThreadCard[],
 	at: string,
 	updatedAt: string,
 };

@@ -2002,6 +2002,10 @@ impl Fold {
             return Ok(t);
         }
         let at = self.stamp();
+        let mut from = self.thread_from(&by, &e.from)?;
+        if from == id {
+            from.clear();
+        }
         self.write(
             &by,
             self.ask_kind(kinds::TASK_EDITED),
@@ -2011,6 +2015,7 @@ impl Fold {
                 objective: obj,
                 done_criteria: done,
                 by: by.clone(),
+                from,
                 at,
                 ..TaskEditedRow::default()
             },

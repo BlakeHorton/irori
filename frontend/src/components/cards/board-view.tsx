@@ -18,6 +18,7 @@ import {
   shownCards,
   type Filter,
 } from "@/components/cards/card-grid"
+import { SearchBox } from "@/components/cards/search-box"
 import { ThreadsPanel } from "@/components/cards/threads-panel"
 import {
   BoardCanvas,
@@ -72,6 +73,8 @@ export function BoardView({
   onFilter,
   view,
   onView,
+  query,
+  onQuery,
   selected,
   onOpen,
   now,
@@ -88,6 +91,9 @@ export function BoardView({
   onFilter: (f: Filter) => void
   view: View
   onView: (v: View) => void
+  // query is the search box's words (card #171), kept in App like the view.
+  query: string
+  onQuery: (q: string) => void
   selected: string
   onOpen: (id: string) => void
   now: Date
@@ -104,7 +110,7 @@ export function BoardView({
   const mine = cards.filter((c) => inScope(c, scope))
   const chips = deviceChips(mine)
   const active = activeFilter(filter, chips)
-  const { shown, context } = shownCards(mine, active)
+  const { shown, context } = shownCards(mine, active, query)
   // The Pinned group: pinned cards in their order, each pinned parent with
   // its subtasks (as BoardService.Cards lists them).
   const pinnedGroup = shown.filter(
@@ -188,6 +194,7 @@ export function BoardView({
                   )}
                 </Button>
               )}
+              <SearchBox query={query} onQuery={onQuery} />
               <ViewSwitch view={view} onView={onView} />
             </span>
           </div>
@@ -195,6 +202,7 @@ export function BoardView({
           {active === "done" ? (
             <DoneGrid
               done={done}
+              query={query}
               selected={selected}
               onSelect={onOpen}
               now={now}
@@ -230,7 +238,9 @@ export function BoardView({
             </>
           ) : (
             <p className="px-1 text-[12.5px] text-muted-foreground">
-              {active === "decide" && nothingDecide
+              {query.trim()
+                ? "No cards match."
+                : active === "decide" && nothingDecide
                 ? nothingDecide
                 : "Nothing here with this filter."}
             </p>

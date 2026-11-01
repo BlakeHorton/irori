@@ -434,11 +434,13 @@ pub async fn board_start_thread(
     w: W<'_>,
     text: String,
     mentions: Vec<crate::ts::Mention>,
+    board_id: String,
 ) -> R<TaskResult> {
-    w.start_thread(&text, &mentions, &[])
+    w.start_thread(&text, &mentions, &[], &board_id)
 }
 
-/// A thread with files (card #124), as an ask takes them.
+/// A thread with files (card #124), as an ask takes them; your own
+/// board only.
 #[tauri::command]
 #[specta::specta]
 pub async fn board_start_thread_with_files(
@@ -447,7 +449,7 @@ pub async fn board_start_thread_with_files(
     mentions: Vec<crate::ts::Mention>,
     files: Vec<UploadFile>,
 ) -> R<TaskResult> {
-    blocking(&w, move |w| w.start_thread(&text, &mentions, &files)).await
+    blocking(&w, move |w| w.start_thread(&text, &mentions, &files, "")).await
 }
 
 /// What a #ref in text names (card #144), or null.
@@ -457,11 +459,12 @@ pub async fn board_card_ref(w: W<'_>, r: String) -> R<Option<crate::threads::Ref
     Ok(w.card_ref(&r))
 }
 
-/// The Threads panel: open threads, then the newest resolved.
+/// The Threads panel: open threads, then the newest resolved; your own
+/// board's, or with `board_id` that shared board's (card #134).
 #[tauri::command]
 #[specta::specta]
-pub async fn board_threads(w: W<'_>) -> R<Vec<crate::threads::ThreadSummary>> {
-    Ok(w.threads())
+pub async fn board_threads(w: W<'_>, board_id: String) -> R<Vec<crate::threads::ThreadSummary>> {
+    Ok(w.threads(&board_id))
 }
 
 /// Resolve on a thread: the person is done with it.

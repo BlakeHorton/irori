@@ -21,12 +21,14 @@ import { BoardView, ScopeOwn } from "@/components/cards/board-view"
 import {
   cardFromHash,
   cardHash,
+  openTarget,
   useCard,
   useCards,
   useDoneCards,
   useThreads,
 } from "@/lib/cards"
 import { useBoards } from "@/lib/boards"
+import { FocusComment } from "@/lib/thread"
 import { useNow, useRoster } from "@/lib/irori"
 import { previewFlag } from "@/lib/preview"
 import { onOpen } from "@/lib/settings"
@@ -101,7 +103,14 @@ export function App() {
   )
   // List or Canvas (card #93): the grid, or the board as a flow chart.
   const [view, setView] = useBoardView()
+  // query is the search box's words (card #171): it narrows Home's and a
+  // board page's cards, List, Canvas and Closed alike.
+  const [query, setQuery] = useState("")
   const [open, setOpen] = useState(() => cardFromHash(window.location.hash))
+  // The comment a notification opened its card at (card #177).
+  const [focus, setFocus] = useState<{ card: string; comment: string } | null>(
+    null
+  )
   // last is the card last opened, marked in the grid on the way back. In
   // the browser preview ?from=<id> sets it, to see the grid as Back leaves
   // it.
@@ -293,8 +302,10 @@ export function App() {
           setMessage(ref)
           return
         }
-        if (!ref.startsWith("task:")) return
-        const id = ref.slice("task:".length)
+        const to = openTarget(ref)
+        if (!to) return
+        const id = to.card
+        setFocus(to.comment ? to : null)
         // A card the filter hides: show them all, so Back finds it.
         const c = cardsNow.current.find((x) => x.id === id)
         if (c && !matches(c, filterNow.current)) setFilter("all")
@@ -359,6 +370,9 @@ export function App() {
         )}
         {open ? (
           <Scroll>
+          <FocusComment.Provider
+            value={focus && focus.card === open ? focus.comment : ""}
+          >
           <CardPage
             key={open}
             summary={
@@ -372,6 +386,7 @@ export function App() {
             onBack={back}
             onOpen={openCard}
           />
+          </FocusComment.Provider>
           </Scroll>
         ) : section.kind === "boards" ? (
           <Scroll>
@@ -393,6 +408,8 @@ export function App() {
             onTab={setBoardTab}
             view={view}
             onView={setView}
+            query={query}
+            onQuery={setQuery}
             selected={last}
             onOpen={openCard}
             now={now}
@@ -409,17 +426,13 @@ export function App() {
             onFilter={setFilter}
             view={view}
             onView={setView}
+            query={query}
+            onQuery={setQuery}
             selected={last}
             onOpen={openCard}
             now={now}
             header={
-              <AskBox
-                onAsked={(id) => {
-                  setLast(id)
-                  setFilter("all")
-                }}
-                onThread={startedThread}
-              />
+              <AskBox onThread={startedThread} />
             }
             notice={<BoardsNeedYou cards={boardDecide} boards={boards} />}
             empty={<EmptyCards />}

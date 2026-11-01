@@ -92,6 +92,7 @@ export type Target = B.Target
 export type Task = B.Task
 export type TaskResult = B.TaskResult
 export type TaskState = B.TaskState
+export type ThreadCard = B.ThreadCard
 export type ThreadSummary = B.ThreadSummary
 export type Told = B.Told
 export type Trust = B.Trust
@@ -484,9 +485,14 @@ export function TaskResult(p: Partial<B.TaskResult> = {}): B.TaskResult {
   return { "task": Task(), "told": Told(), ...p } as B.TaskResult
 }
 
+/** ThreadCard with Go's zero values for every field left out. */
+export function ThreadCard(p: Partial<B.ThreadCard> = {}): B.ThreadCard {
+  return { "id": "", "short": "", "title": "", "state": "", ...p } as B.ThreadCard
+}
+
 /** ThreadSummary with Go's zero values for every field left out. */
 export function ThreadSummary(p: Partial<B.ThreadSummary> = {}): B.ThreadSummary {
-  return { "id": "", "short": "", "title": "", "text": "", "state": "", "told": [], "answeredBy": [], "replies": 0, "at": "", "updatedAt": "", ...p } as B.ThreadSummary
+  return { "id": "", "short": "", "title": "", "text": "", "state": "", "told": [], "answeredBy": [], "replies": 0, "cards": [], "at": "", "updatedAt": "", ...p } as B.ThreadSummary
 }
 
 /** Told with Go's zero values for every field left out. */

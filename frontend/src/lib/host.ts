@@ -130,16 +130,6 @@ export const BoardService = {
     call(commands.boardAnswer(taskId, blockerId, option, text, wake, mentions)),
   ResolveBlocker: (taskId: string, blockerId: string, note: string, mentions: B.Mention[]) =>
     call(commands.boardResolveBlocker(taskId, blockerId, note, mentions)),
-  Ask: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: B.Mention[]) =>
-    call(commands.boardAsk(text, repoKey, wake, boardId, mentions)),
-  AskWithFiles: (
-    text: string,
-    repoKey: string,
-    wake: boolean,
-    files: B.UploadFile[],
-    boardId: string,
-    mentions: B.Mention[]
-  ) => call(commands.boardAskWithFiles(text, repoKey, wake, files, boardId, mentions)),
   MentionCandidates: () => call(commands.boardMentionCandidates()),
   AskAgain: (id: string) => done(commands.boardAskAgain(id)),
   AskRepos: () => call(commands.boardAskRepos()),
@@ -150,11 +140,11 @@ export const BoardService = {
   MovePin: (id: string, before: string) => done(commands.boardMovePin(id, before)),
   Place: (id: string, x: number, y: number) => done(commands.boardPlace(id, x, y)),
   Create: (input: B.NewCardInput) => call(commands.boardCreate(input)),
-  StartThread: (text: string, mentions: B.Mention[]) =>
-    call(commands.boardStartThread(text, mentions)),
+  StartThread: (text: string, mentions: B.Mention[], boardId: string) =>
+    call(commands.boardStartThread(text, mentions, boardId)),
   StartThreadWithFiles: (text: string, mentions: B.Mention[], files: B.UploadFile[]) =>
     call(commands.boardStartThreadWithFiles(text, mentions, files)),
-  Threads: () => call(commands.boardThreads()),
+  Threads: (boardId: string) => call(commands.boardThreads(boardId)),
   CardRef: (r: string) => call(commands.boardCardRef(r)),
   ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
   ReopenThread: (id: string) => done(commands.boardReopenThread(id)),

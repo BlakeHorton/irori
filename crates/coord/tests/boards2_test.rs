@@ -960,3 +960,126 @@ fn a_hand_out_from_another_device_counts_nowhere() {
         assert!(s.c.get_task(&t.id).unwrap().live_offer().is_none());
     }
 }
+
+fn idle(key: &str, dev: &str) -> coord::roster::AgentCard {
+    coord::roster::AgentCard {
+        key: key.into(),
+        device_id: dev.into(),
+        status: "idle".into(),
+        ..Default::default()
+    }
+}
+
+/// A thread on a shared board (card #134): the agents on the board's card
+/// it names hear it first; another member's comment is a person's, not an
+/// answer; after the quiet spell one idle agent of any member gets it; the
+/// person's follow-up goes to the agent that answered, on both sides; only
+/// the member who started it resolves it.
+#[test]
+fn a_board_thread_among_two_people() {
+    let (a, b, _) = two_people();
+    let card = shared_card(&a, &b);
+    let (tk, n) =
+        a.c.post_ask(
+            P1,
+            NewAsk {
+                text: format!("Is #{} still moving?", card.short),
+                thread: true,
+                ..NewAsk::default()
+            },
+            &[],
+        )
+        .unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let ask = s.c.get_task(&tk.id).unwrap().ask.unwrap();
+        assert!(ask.thread && ask.taker.is_empty(), "{ask:?}");
+        assert_eq!(ask.heard, [CARD1, CARD2], "both holders of the named card");
+    }
+    assert!(
+        n.to == [CARD1, CARD2] && n.text.contains("started a thread"),
+        "{n:?}"
+    );
+    assert_eq!(b.c.thread_to(&tk.id), [CARD1, CARD2]);
+
+    // p2 (a person) comments: not an answer, so it is still unanswered.
+    b.c.person_comment(P2, &tk.id, "I'd like to know too.", false, &[], None)
+        .unwrap();
+    sync(&a, &b);
+    a.c.sweep_asks(&[]).unwrap();
+    assert_eq!(a.c.get_task(&tk.id).unwrap().ask.unwrap().reason, "posted");
+
+    // Quiet: one idle agent of either person gets it; here p2's card3.
+    a.clk.add(Duration::from_secs(46));
+    b.clk.add(Duration::from_secs(46));
+    let ns = a.c.sweep_asks(&[idle(CARD3, "dev-b")]).unwrap();
+    assert!(
+        ns.len() == 1 && ns[0].to == [CARD3] && ns[0].text.contains("handed it to you"),
+        "{ns:?}"
+    );
+    sync(&a, &b);
+    assert_eq!(b.c.get_task(&tk.id).unwrap().ask.unwrap().taker, CARD3);
+    // p2's device never writes the thread's take rows.
+    b.c.sweep_asks(&[idle(CARD3, "dev-b")]).unwrap();
+
+    // card3 answers on p2's device: answered on both, nobody holds it.
+    b.c.add_comment(CARD3, &tk.id, "Yes, merged an hour ago.", false)
+        .unwrap();
+    sync(&a, &b);
+    a.c.sweep_asks(&[]).unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let t = s.c.get_task(&tk.id).unwrap();
+        let ask = t.ask.unwrap();
+        assert!(ask.reason == "answered" && ask.taker.is_empty(), "{ask:?}");
+        assert!(t.holders.is_empty());
+        assert_eq!(s.c.thread_to(&tk.id), [CARD3], "the follow-up's audience");
+    }
+
+    // p1's follow-up from dev-a reaches card3 (p2's agent hears it through
+    // its own device's bridge, from thread_to).
+    let (_, ns) =
+        a.c.person_comment(
+            P1,
+            &tk.id,
+            "Thanks, and the docs?",
+            false,
+            &[],
+            Some(&|_| false),
+        )
+        .unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [CARD3] && ns[0].wake, "{ns:?}");
+
+    // Agents and the other member don't resolve it; p1 does.
+    let close = |s: &Side, by: &str| {
+        s.c.ask_close(
+            by,
+            &tk.id,
+            AskOutcome {
+                kind: OUTCOME_ANSWERED.into(),
+                note: "done".into(),
+                ..AskOutcome::default()
+            },
+        )
+    };
+    assert!(close(&b, CARD3).is_err());
+    assert!(
+        b.c.resolve_thread(P2, &tk.id).is_err(),
+        "p2 didn't start it"
+    );
+    assert!(close(&b, P2).is_err(), "nor ask_close it");
+    let t = a.c.resolve_thread(P1, &tk.id).unwrap();
+    assert!(is_terminal(&t.state), "{t:?}");
+    sync(&a, &b);
+    assert!(is_terminal(&b.c.get_task(&tk.id).unwrap().state));
+
+    // Reopening is the starter's too (card #169); it's live on both sides.
+    assert!(b.c.reopen_thread(P2, &tk.id).is_err(), "p2 didn't start it");
+    a.c.reopen_thread(P1, &tk.id).unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let t = s.c.get_task(&tk.id).unwrap();
+        assert!(t.open_ask().is_some_and(|a| a.thread), "{t:?}");
+        assert_eq!(s.c.thread_to(&tk.id), [CARD3]);
+    }
+}

@@ -403,6 +403,18 @@ fn a_mention_reaches_the_other_person_and_their_agent() {
     let b1 = t.b().board_key(&t.board, &t.rb.key_a).unwrap();
     let b2 = t.b().board_key(&t.board, &t.rb.key_b).unwrap();
     let bob = Two::person(t.b());
+    // Alice's Core lists Bob as a person she can mention there, not herself.
+    let people = t.a().board_people();
+    assert!(
+        people
+            .iter()
+            .any(|p| p.key == bob && p.board_id == t.board && !p.name.is_empty()),
+        "{people:?}"
+    );
+    assert!(
+        !people.iter().any(|p| p.key == Two::person(t.a())),
+        "{people:?}"
+    );
     let co_a = t.a().board_coord(&t.board).unwrap();
     let card = co_a
         .create_task(

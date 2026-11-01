@@ -754,7 +754,7 @@ fn a_thread_from_the_header_box() {
     let r = Rig::new();
     let t = held_task(&r);
     let res =
-        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[])
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[], "")
             .unwrap();
     let id = res.task.id.clone();
     assert_eq!(
@@ -763,7 +763,7 @@ fn a_thread_from_the_header_box() {
         "alpha holds the card it names"
     );
     assert!(r.w.cards().iter().all(|c| c.id != id), "not in the grid");
-    let ts = r.w.threads();
+    let ts = r.w.threads("");
     assert_eq!(ts.len(), 1);
     assert_eq!((ts[0].state.as_str(), ts[0].told.len()), ("waiting", 1));
 
@@ -771,7 +771,7 @@ fn a_thread_from_the_header_box() {
         .coord()
         .add_comment(&r.key_a, &id, "Yes, half done.", false)
         .unwrap();
-    let ts = r.w.threads();
+    let ts = r.w.threads("");
     assert_eq!(ts[0].state, "answered");
     assert_eq!(ts[0].last_text, "Yes, half done.");
     let c = r.w.comment(&id, "Thanks", "wake", &[], &[]).unwrap();
@@ -782,7 +782,7 @@ fn a_thread_from_the_header_box() {
     );
 
     r.w.resolve_thread(&id).unwrap();
-    assert_eq!(r.w.threads()[0].state, "resolved");
+    assert_eq!(r.w.threads("")[0].state, "resolved");
     let done = r.w.done_cards(0, "").unwrap();
     assert!(
         done.cards.iter().all(|c| c.id != id),
@@ -832,6 +832,7 @@ fn files_with_a_thread_a_reply_and_a_new_card() {
             &format!("What is this on #{}?", t.short),
             &[],
             &[up("shot.png", b"\x89PNG one")],
+            "",
         )
         .unwrap();
     let id = res.task.id.clone();
@@ -899,7 +900,7 @@ fn a_resolved_thread_reopens_from_the_window() {
     let r = Rig::new();
     let t = held_task(&r);
     let id =
-        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[])
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[], "")
             .unwrap()
             .task
             .id;
@@ -909,7 +910,7 @@ fn a_resolved_thread_reopens_from_the_window() {
         .unwrap();
     r.w.resolve_thread(&id).unwrap();
     r.w.reopen_thread(&id).unwrap();
-    assert_eq!(r.w.threads()[0].state, "answered", "live again");
+    assert_eq!(r.w.threads("")[0].state, "answered", "live again");
     assert!(
         r.w.cards().iter().all(|c| c.id != id),
         "still not in the grid"
@@ -922,7 +923,7 @@ fn a_resolved_thread_reopens_from_the_window() {
     // The card page's Reopen does the same for a resolved thread.
     r.w.resolve_thread(&id).unwrap();
     r.w.reopen(&id).unwrap();
-    assert_eq!(r.w.threads()[0].state, "answered");
+    assert_eq!(r.w.threads("")[0].state, "answered");
 }
 
 /// Card #144: a #ref in text names a done card or a resolved thread too,
@@ -940,7 +941,7 @@ fn card_ref_finds_done_cards_and_threads() {
     assert_eq!(got.title, "ship it");
 
     let th =
-        r.w.start_thread("Where do the builds go?", &[], &[])
+        r.w.start_thread("Where do the builds go?", &[], &[], "")
             .unwrap()
             .task;
     let got = r.w.card_ref(&format!("#{}", th.short)).expect("a thread");

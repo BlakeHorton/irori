@@ -386,6 +386,13 @@ pub struct Task {
     pub parent: String,
     #[serde(skip_serializing_if = "omit")]
     pub subtasks: Vec<String>,
+    /// The thread this card was made from (card #155).
+    #[serde(skip_serializing_if = "omit")]
+    pub from: String,
+    /// On a thread: the cards made or changed from it, first first.
+    /// Derived from the cards' rows.
+    #[serde(skip_serializing_if = "omit")]
+    pub made: Vec<String>,
     #[serde(skip_serializing_if = "omit")]
     pub rollup: Option<Rollup>,
     #[serde(skip_serializing_if = "omit")]
@@ -511,6 +518,9 @@ pub struct NewTask {
     pub steps: Vec<Step>,
     /// A short ref or task id: makes the task a subtask of that card.
     pub parent: String,
+    /// A thread's short ref or task id: the card is made from it (card
+    /// #155). Empty: the one open thread the caller answered, if any.
+    pub from: String,
 }
 
 /// Narrows `list_tasks`; zero values mean any.
@@ -880,6 +890,9 @@ pub struct TaskEdit {
     pub title: Option<String>,
     pub objective: Option<String>,
     pub done_when: Option<String>,
+    /// A thread's short ref or task id: the change comes from it (card
+    /// #155). Empty: the one open thread the caller answered, if any.
+    pub from: String,
 }
 
 /// ask_close's input.

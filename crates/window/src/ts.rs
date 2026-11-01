@@ -565,6 +565,10 @@ pub struct Task {
     #[specta(optional)]
     pub subtasks: Vec<String>,
     #[specta(optional)]
+    pub from: String,
+    #[specta(optional)]
+    pub made: Vec<String>,
+    #[specta(optional)]
     pub rollup: Rollup,
     #[specta(optional)]
     pub pinned: bool,

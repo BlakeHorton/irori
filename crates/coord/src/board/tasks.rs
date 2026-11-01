@@ -35,6 +35,8 @@ pub(crate) struct CleanTask {
     pub repo_key: String,
     pub reason: String,
     pub parent: String,
+    /// The thread it was made from (card #155).
+    pub from: String,
     pub scope: Vec<String>,
     pub links: Vec<Link>,
     pub shared: bool,
@@ -109,6 +111,7 @@ pub(crate) fn clean_new(by: &str, nt: &NewTask) -> Result<CleanTask> {
         blocked_by: nt.blocked_by.clone(),
         steps: new_steps(&steps),
         parent: String::new(),
+        from: String::new(),
     })
 }
 
@@ -119,6 +122,10 @@ impl Fold {
             let pid = self.task_ref_locked(&nt.parent)?;
             self.check_parent(&pid, "")?;
             ct.parent = pid;
+        }
+        // A subtask comes from its parent, not a thread, unless named.
+        if nt.parent.is_empty() || !nt.from.trim().is_empty() {
+            ct.from = self.thread_from(&ct.by, &nt.from)?;
         }
         let by = ct.by.clone();
         self.create_locked(&by, ct)
@@ -154,6 +161,7 @@ impl Fold {
                 shared: ct.shared,
                 links: ct.links.clone(),
                 parent: ct.parent.clone(),
+                from: ct.from.clone(),
                 by: by.into(),
                 at,
                 ask: None,
