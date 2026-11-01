@@ -1616,10 +1616,19 @@ export const DonePageSize = 30
 
 // loadDone is BoardService.DoneCards: limit closed cards, the latest
 // change first, after cursor before ("" for the top).
-async function loadDone(limit: number, before: string): Promise<DonePage> {
-  if (inWails()) return BoardService.DoneCards(limit, before)
+async function loadDone(
+  limit: number,
+  before: string,
+  scope = ""
+): Promise<DonePage> {
+  if (inWails())
+    return scope
+      ? BoardService.DoneCardsIn(limit, before, scope)
+      : BoardService.DoneCards(limit, before)
+  const inScope = (c: { board?: string | null }) =>
+    !scope || (scope === "own" ? !c.board : c.board === scope)
   const done = sampleState()
-    .filter((c) => over(c) && !sampleThreadIds.has(c.id))
+    .filter((c) => over(c) && !sampleThreadIds.has(c.id) && inScope(c))
     .sort((a, b) => updated(b) - updated(a) || (a.id < b.id ? 1 : -1))
   const from = before ? done.findIndex((c) => c.id === before) + 1 : 0
   const page = done.slice(from, from + limit)
@@ -1640,7 +1649,9 @@ export type DoneState = {
 // useDoneCards is the Done tab: closed cards, the latest first, read only
 // while active. Show more appends the next page; a card change re-reads
 // as many from the top as are showing, so a card that closes moves in.
-export function useDoneCards(active: boolean): DoneState {
+// scope pages one page's cards on their own (card #161): "own" for Home,
+// a board id for its page, "" for every card.
+export function useDoneCards(active: boolean, scope = ""): DoneState {
   const [st, setSt] = useState<{
     cards: CardSummary[]
     next: string
@@ -1653,14 +1664,14 @@ export function useDoneCards(active: boolean): DoneState {
   const reload = useCallback(async () => {
     const n = ++req.current
     try {
-      const p = await loadDone(shown.current, "")
+      const p = await loadDone(shown.current, "", scope)
       if (n !== req.current) return
       setSt({ cards: p.cards ?? [], next: p.next, loading: false, error: null })
     } catch (err) {
       if (n !== req.current) return
       setSt((s) => ({ ...s, loading: false, error: errText(err) }))
     }
-  }, [])
+  }, [scope])
 
   // loadMore raises how many cards the tab shows and reloads them all, so
   // a reload that races it (a board change, focus) loads the raised count
