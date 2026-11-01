@@ -106,6 +106,12 @@ impl Services {
                 format_args!("{person_id} isn't on board {board_id}"),
             ));
         }
+        if b.verifier.membership().owner(person_id) {
+            return Err(Error::coord(
+                CK::NotAllowed,
+                "an owner can't remove another owner: owners are equals, and only they can leave",
+            ));
+        }
         let cut = self.member_cut(&b, person_id)?;
         let row = self.ident.board_member_removed_row(
             epoch,
@@ -158,6 +164,12 @@ impl Services {
         };
         if p.role == role {
             return Ok(());
+        }
+        if role == BOARD_MEMBER && p.role == BOARD_OWNER && person_id != self.person_id() {
+            return Err(Error::coord(
+                CK::NotAllowed,
+                "an owner can't make another owner a member: only they can step down",
+            ));
         }
         if role == BOARD_MEMBER && m.members.iter().filter(|p| m.owner(&p.person_id)).count() <= 1 {
             return Err(Error::coord(

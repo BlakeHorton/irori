@@ -6,7 +6,8 @@
 //!
 //! Two layers, because a cut can't be undone:
 //! - authority (only grows): who has been an owner since when, which
-//!   removals and leaves count, and so each gone person's cuts;
+//!   removals and leaves count (never a removal of an owner: owners are
+//!   equals, card #142), and so each gone person's cuts;
 //! - state, the ordered fold in (hlc, device, seq) order: who is a member
 //!   now and with which role. Every ignored row is a [`Conflict`].
 
@@ -380,17 +381,54 @@ pub fn fold_membership(
         }
         m.pins.insert(d.who.clone(), d.pin.clone()); // the earliest counted add pins
     }
+    // Owners are equals (card #142): a removal counts only against someone
+    // who wasn't an owner at the time. They were one when their latest
+    // counted owner grant (or the board.created) comes before the removal
+    // and they didn't step down or leave, signing it themselves, between
+    // the two. Grants come from the authority above, so this is fixed too.
+    let grant_at = |who: &str, at: &RowAt| -> Option<RowAt> {
+        let mut g = (c.by == who && c.at < *at).then(|| c.at.clone());
+        for d in &ds {
+            let grant = (d.kind == kinds::BOARD_MEMBER_ADDED || d.kind == kinds::BOARD_MEMBER_ROLE)
+                && d.role == BOARD_OWNER;
+            if grant
+                && d.who == who
+                && d.at < *at
+                && g.as_ref().is_none_or(|g| *g < d.at)
+                && owner_before(&since, &d.by, &d.at)
+                && authored(d)
+            {
+                g = Some(d.at.clone());
+            }
+        }
+        g
+    };
+    let owner_when = |who: &str, at: &RowAt| -> bool {
+        let Some(g) = grant_at(who, at) else {
+            return false;
+        };
+        !ds.iter().any(|d| {
+            let ended = (d.kind == kinds::BOARD_MEMBER_ROLE && d.role == BOARD_MEMBER)
+                || d.kind == kinds::BOARD_MEMBER_LEFT;
+            ended && d.who == who && d.by == who && g < d.at && d.at < *at && authored(d)
+        })
+    };
+    let mut removed_owner: BTreeSet<RowAt> = BTreeSet::new();
     let mut honoured: BTreeSet<RowAt> = BTreeSet::new();
     let mut gone: BTreeMap<String, Vec<&MRow>> = BTreeMap::new();
     for d in &ds {
         if !m.pins.contains_key(&d.who) {
             continue;
         }
-        let counts = (d.kind == kinds::BOARD_MEMBER_REMOVED
+        let removal = d.kind == kinds::BOARD_MEMBER_REMOVED
             && d.who != d.by
             && owner_before(&since, &d.by, &d.at)
-            && authored(d))
-            || (d.kind == kinds::BOARD_MEMBER_LEFT && authored(d));
+            && authored(d);
+        if removal && owner_when(&d.who, &d.at) {
+            removed_owner.insert(d.at.clone());
+            continue;
+        }
+        let counts = removal || (d.kind == kinds::BOARD_MEMBER_LEFT && authored(d));
         if counts {
             honoured.insert(d.at.clone());
             gone.entry(d.who.clone()).or_default().push(d);
@@ -597,6 +635,16 @@ pub fn fold_membership(
                     );
                 } else if e.is_some_and(|e| e.role == BOARD_OWNER)
                     && d.role == BOARD_MEMBER
+                    && d.by != d.who
+                {
+                    // Owners are equals (card #142): only they step down.
+                    conflict(
+                        &mut conflicts,
+                        d,
+                        "an owner can't make another owner a member",
+                    );
+                } else if e.is_some_and(|e| e.role == BOARD_OWNER)
+                    && d.role == BOARD_MEMBER
                     && owners(&people) == 1
                 {
                     conflict(&mut conflicts, d, "the last owner can't stop being one");
@@ -608,7 +656,9 @@ pub fn fold_membership(
                 let left = d.kind == kinds::BOARD_MEMBER_LEFT;
                 let state = if left { MEMBER_LEFT } else { MEMBER_REMOVED };
                 if !honoured.contains(&d.at) {
-                    if left {
+                    if removed_owner.contains(&d.at) {
+                        conflict(&mut conflicts, d, "an owner can't remove another owner");
+                    } else if left {
                         conflict(&mut conflicts, d, "it isn't signed by the person leaving");
                     } else {
                         conflict(&mut conflicts, d, "only an owner removes members");

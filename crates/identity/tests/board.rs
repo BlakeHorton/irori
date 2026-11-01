@@ -726,11 +726,13 @@ fn board_removal_in_the_store() {
     let base = [
         f.cert(&s, 1, "pc", "pc"),
         f.board_created(&s),
-        f.member_added(&s, "pc", &b, "owner"),
+        f.member_added(&s, "pc", &b, "member"),
         f.member_added(&s, "pc", &c, "member"),
         f.cert(&b, 1, "bpc", "bpc"),
         f.cert(&c, 1, "cpc", "cpc"),
     ];
+    // b is a member, so its removal of s counts nowhere (only owners
+    // remove, and never another owner: card #142).
     let s_removes_b = f.member_removed(&s, "pc", &b, &[("bpc", 1)]);
     let b_removes_s = f.member_removed(&b, "bpc", &s, &[("pc", 4)]);
     let b_later = f.profile("bpc", &b.pid, "");
@@ -766,21 +768,17 @@ fn board_removal_in_the_store() {
     let first = run(&[&s_removes_b, &b_removes_s, &c_leaves]);
     let second = run(&[&b_removes_s, &c_leaves, &s_removes_b]);
     let mut want_roles = [
-        format!("{}=owner/removed", s.pid),
-        format!("{}=owner/removed", b.pid),
+        format!("{}=owner/active", s.pid),
+        format!("{}=member/removed", b.pid),
         format!("{}=member/left", c.pid),
     ];
     want_roles.sort();
     let want = (
         want_roles.join(" "),
-        [
-            ("bpc".to_string(), 1i64),
-            ("pc".into(), 4),
-            ("cpc".into(), 2),
-        ]
-        .into_iter()
-        .collect::<BTreeMap<_, _>>(),
-        4,
+        [("bpc".to_string(), 1i64), ("cpc".into(), 2)]
+            .into_iter()
+            .collect::<BTreeMap<_, _>>(),
+        3,
     );
     assert_eq!(first, want);
     assert_eq!(second, want);

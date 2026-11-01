@@ -304,7 +304,7 @@ fn fold_membership_rules() {
             board_name: "",
         },
         Case {
-            name: "a promote before the removal is undone by it",
+            name: "a promote before the removal makes it a removal of an owner: refused (#142)",
             rows: |b| {
                 b.created("s");
                 b.added("s-pc", "s", "c", "owner");
@@ -312,18 +312,18 @@ fn fold_membership_rules() {
                 b.role("c-pc", "c", "d", "owner");
                 b.removed("s-pc", "s", "d", cut(&[("d-pc", 0)]));
             },
-            roles: "c=owner/active d=owner/removed s=owner/active",
-            cuts: &[("d-pc", 0)],
-            conflicts: &[],
+            roles: "c=owner/active d=owner/active s=owner/active",
+            cuts: &[],
+            conflicts: &["board.member.removed d: an owner can't remove another owner"],
             board_name: "",
         },
         Case {
             name: "a removed person's rows are ignored until an owner adds them again",
             rows: |b| {
                 b.created("s");
-                b.added("s-pc", "s", "b", "owner");
+                b.added("s-pc", "s", "b", "member");
                 b.removed("s-pc", "s", "b", cut(&[("b-pc", 1)]));
-                b.role("s-pc", "s", "b", "member");
+                b.role("s-pc", "s", "b", "owner");
                 b.added("s-pc", "s", "b", "member");
             },
             roles: "b=member/active s=owner/active",
@@ -368,7 +368,7 @@ fn fold_membership_rules() {
             board_name: "",
         },
         Case {
-            name: "two owners removing each other while apart are both removed",
+            name: "two owners removing each other while apart: neither counts (#142)",
             rows: |b| {
                 b.created("s");
                 b.added("s-pc", "s", "b", "owner");
@@ -376,9 +376,69 @@ fn fold_membership_rules() {
                 b.removed("s-pc", "s", "b", cut(&[("b-pc", 0)]));
                 b.removed("b-pc", "b", "s", cut(&[("s-pc", 3), ("s-mac", 0)]));
             },
-            roles: "b=owner/removed c=member/active s=owner/removed",
-            cuts: &[("b-pc", 0), ("s-pc", 3), ("s-mac", 0)],
-            conflicts: &["board.member.removed s: its remover was no longer an owner"],
+            roles: "b=owner/active c=member/active s=owner/active",
+            cuts: &[],
+            conflicts: &[
+                "board.member.removed b: an owner can't remove another owner",
+                "board.member.removed s: an owner can't remove another owner",
+            ],
+            board_name: "",
+        },
+        Case {
+            name: "an owner can't make another owner a member (#142)",
+            rows: |b| {
+                b.created("s");
+                b.added("s-pc", "s", "b", "owner");
+                b.role("s-pc", "s", "b", "member");
+                b.role("b-pc", "b", "s", "member");
+            },
+            roles: "b=owner/active s=owner/active",
+            cuts: &[],
+            conflicts: &[
+                "board.member.role b: an owner can't make another owner a member",
+                "board.member.role s: an owner can't make another owner a member",
+            ],
+            board_name: "",
+        },
+        Case {
+            name: "an owner who stepped down can be removed like any member (#142)",
+            rows: |b| {
+                b.created("s");
+                b.added("s-pc", "s", "b", "owner");
+                b.role("b-pc", "b", "b", "member");
+                b.removed("s-pc", "s", "b", cut(&[("b-pc", 1)]));
+            },
+            roles: "b=member/removed s=owner/active",
+            cuts: &[("b-pc", 1)],
+            conflicts: &[],
+            board_name: "",
+        },
+        Case {
+            name: "an owner who left and came back as a member can be removed (#142)",
+            rows: |b| {
+                b.created("s");
+                b.added("s-pc", "s", "b", "owner");
+                b.left("b-pc", "b", cut(&[]));
+                b.added("s-pc", "s", "b", "member");
+                b.removed("s-pc", "s", "b", cut(&[]));
+            },
+            roles: "b=member/removed s=owner/active",
+            cuts: &[("b-pc", 0)],
+            conflicts: &[],
+            board_name: "",
+        },
+        Case {
+            name: "a removal before the promote stands; the promote after it doesn't revive them (#142)",
+            rows: |b| {
+                b.created("s");
+                b.added("s-pc", "s", "c", "owner");
+                b.added("s-pc", "s", "d", "member");
+                b.removed("s-pc", "s", "d", cut(&[("d-pc", 0)]));
+                b.role("c-pc", "c", "d", "owner");
+            },
+            roles: "c=owner/active d=member/removed s=owner/active",
+            cuts: &[("d-pc", 0)],
+            conflicts: &["board.member.role d: they were removed or left"],
             board_name: "",
         },
         Case {
@@ -559,7 +619,7 @@ fn owner_at_reads_the_owners_at_the_row() {
     let mut b = Mb::default();
     b.created("s"); // hlc 1
     b.added("s-pc", "s", "b", "owner"); // 2
-    b.role("s-pc", "s", "b", "member"); // 3
+    b.role("b-pc", "b", "b", "member"); // 3: b steps down
     b.added("s-pc", "s", "c", "member"); // 4
     b.removed("s-pc", "s", "c", cut(&[])); // 5
     let at = |hlc: u64| RowAt {

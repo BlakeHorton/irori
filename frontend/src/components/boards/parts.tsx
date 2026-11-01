@@ -594,19 +594,19 @@ export function BoardSettingsPanel({
                         />
                       )
                     ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          void save(() =>
-                            actions.setRole(boardId, m.personId, m.owner ? "member" : "owner")
-                          )
-                        }
-                      >
-                        {m.owner ? "Make a member" : "Make an owner"}
-                      </Button>
+                      // Owners are equals (card #142): another owner has
+                      // neither Make a member nor Remove.
+                      !m.owner && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void save(() => actions.setRole(boardId, m.personId, "owner"))}
+                        >
+                          Make an owner
+                        </Button>
+                      )
                     )}
-                    {!m.me && (
+                    {!m.me && !m.owner && (
                       <ConfirmButton
                         label="Remove"
                         variant="destructive"
