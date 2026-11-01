@@ -378,6 +378,17 @@ crate::go_struct! {
 
 crate::go_struct! {
     #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskPausedRow {
+        pub task_id: String = "taskId",
+        pub paused: bool = "paused",
+        pub note: String = "note",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    #[derive(Debug, Clone, Default, PartialEq)]
     pub struct TaskArchivedRow {
         pub task_id: String = "taskId",
         pub archived: bool = "archived",

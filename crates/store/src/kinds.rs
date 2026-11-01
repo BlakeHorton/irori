@@ -144,6 +144,9 @@ kinds! {
     /// #138): search and show still find it. The private log only, so a
     /// shared board's card is cleared for this person alone.
     TASK_ARCHIVED = "task.archived" => Replicated, Refuses;
+    /// The person paused a card (card #207): its holders are stopped and
+    /// their tools refused until Resume. The private log only.
+    TASK_PAUSED = "task.paused" => Replicated, Refuses;
     // capture
     CAPTURE_TURN = "capture.turn" => Replicated, Refuses;
     CAPTURE_EDIT = "capture.edit" => Replicated, Refuses;

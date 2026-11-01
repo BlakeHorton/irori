@@ -409,6 +409,29 @@ fn test_archive() {
     assert!(!e.c.archived_ids().contains(&a.id));
 }
 
+/// The person pauses an open card and resumes it (card #207): only the
+/// person, never a closed card, a second pause changes nothing, and the
+/// pause survives a reopen of the log.
+#[test]
+fn test_pause() {
+    let e = Env::new();
+    let a = e.c.create_task(ALICE, nt("a")).unwrap();
+    let done = e.c.create_task(ALICE, nt("done")).unwrap();
+    e.c.set_task_state(USER, &done.id, CANCELED, "").unwrap();
+    want_err(e.c.pause(ALICE, &a.id, true, ""), ErrorKind::NotAllowed);
+    want_err(e.c.pause(USER, &done.id, true, ""), ErrorKind::Invalid);
+    want_err(e.c.pause(USER, "nope", true, ""), ErrorKind::NotFound);
+    assert!(e.c.paused_ids().is_empty());
+    let (t, changed) = e.c.pause(USER, &a.id, true, "wait for me").unwrap();
+    assert!(changed && t.id == a.id);
+    assert!(!e.c.pause(USER, &a.id, true, "").unwrap().1, "already paused");
+    assert!(e.c.paused_ids().contains(&a.id));
+    let back = e.reopen();
+    assert_eq!(back.paused_ids(), e.c.paused_ids());
+    assert!(e.c.pause(USER, &a.id, false, "").unwrap().1);
+    assert!(e.c.paused_ids().is_empty());
+}
+
 fn event(dev: &str, seq: i64, at: u64, actor: &str, kind: &str, raw: Vec<u8>) -> Event {
     Event {
         device_id: dev.into(),

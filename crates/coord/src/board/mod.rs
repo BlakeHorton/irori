@@ -619,6 +619,15 @@ impl Coord {
     pub fn archived_ids(&self) -> std::collections::HashSet<String> {
         self.lock().archived_ids()
     }
+    /// The person pauses a card or resumes it (card #207); returns the
+    /// card and whether anything changed.
+    pub fn pause(&self, by: &str, id: &str, paused: bool, note: &str) -> Result<(Task, bool)> {
+        self.lock().pause(by, id, paused, note)
+    }
+    /// The cards the person paused (card #207).
+    pub fn paused_ids(&self) -> std::collections::HashSet<String> {
+        self.lock().paused_ids()
+    }
     pub fn pin(&self, by: &str, id: &str, pinned: bool) -> Result<Task> {
         self.lock().pin(by, id, pinned, "", false)
     }

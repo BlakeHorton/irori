@@ -522,6 +522,91 @@ impl Fold {
         Ok(n)
     }
 
+    /// Folds task.paused (card #207): the person's only; the newest row for
+    /// a card wins.
+    pub(crate) fn fold_paused(&mut self, ev: &Event) {
+        let Some(p) = row::<TaskPausedRow>(&ev.payload) else {
+            return;
+        };
+        if p.task_id.is_empty() {
+            return;
+        }
+        if ev.actor != "user" || !self.is_owner(&p.by) {
+            self.ignore(&ev.device_id);
+            return;
+        }
+        let at = RowPos::of(ev);
+        if let Some((_, old)) = self.paused.get(&p.task_id)
+            && !old.before(&at)
+        {
+            return;
+        }
+        self.paused.insert(p.task_id.clone(), (p.paused, at));
+        if self.tasks.contains_key(&p.task_id) {
+            self.note(Change {
+                kind: TASK_CHANGED.into(),
+                task_id: p.task_id,
+                ..Change::default()
+            });
+        }
+    }
+
+    /// The person pauses a card, or resumes it (card #207). Only this
+    /// log's open cards; a shared board's card isn't paused (its holders
+    /// may be another person's). Returns the card, and whether the row was
+    /// written (false: it already was so).
+    pub(crate) fn pause(
+        &mut self,
+        by: &str,
+        id: &str,
+        paused: bool,
+        note: &str,
+    ) -> Result<(Task, bool)> {
+        let by = trim_space(by).to_string();
+        if !self.is_owner(&by) {
+            return Err(not_allowed("only the person pauses a card"));
+        }
+        if self.on_board {
+            return Err(invalid("a shared board's card can't be paused"));
+        }
+        let Some(t) = self.tasks.get(id).cloned() else {
+            return Err(not_found(format!("task {}", quote(id))));
+        };
+        if paused && is_terminal(effective_state(&t)) {
+            return Err(invalid(format!("{} is closed: nothing to pause", t.short_ref())));
+        }
+        if self.is_paused(id) == paused {
+            return Ok((t, false));
+        }
+        let at = self.stamp();
+        self.write(
+            &by,
+            kinds::TASK_PAUSED,
+            &TaskPausedRow {
+                task_id: id.to_string(),
+                paused,
+                note: trim_space(note).to_string(),
+                by: by.clone(),
+                at,
+            },
+        )?;
+        Ok((t, true))
+    }
+
+    /// Whether the person paused the card (card #207).
+    pub(crate) fn is_paused(&self, id: &str) -> bool {
+        self.paused.get(id).map(|(p, _)| *p).unwrap_or(false)
+    }
+
+    /// The ids the person paused (card #207).
+    pub(crate) fn paused_ids(&self) -> std::collections::HashSet<String> {
+        self.paused
+            .iter()
+            .filter(|(_, (p, _))| *p)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     /// The ids the person cleared (card #138).
     pub(crate) fn archived_ids(&self) -> std::collections::HashSet<String> {
         self.archived
