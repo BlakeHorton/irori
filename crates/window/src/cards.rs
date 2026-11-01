@@ -270,6 +270,12 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub left_off: Option<CardLeftOff>,
+    /// The card's words the grid doesn't show, for the Board's search box
+    /// (card #171): its objective, done-when, step texts and its creator's
+    /// name, one per line.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub search_text: String,
 }
 
 /// Where a card's work is (card #137), as its holder's device last saw it.
@@ -991,12 +997,38 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
         s.accent = p.colors.get(&s.devices[0]).cloned().unwrap_or_default();
     }
     s.ask = card_ask(t, p, None);
+    s.search_text = search_text(t, p);
     if let Some(ret) = &t.returned
         && t.holders.is_empty()
     {
         s.returned = Some(p.ref_(&ret.was));
     }
     s
+}
+
+/// search_text is `t`'s words for the search box (card #171): objective,
+/// done-when, each step's text and its creator's name, one per line.
+fn search_text(t: &Task, p: &People) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for w in [&t.objective, &t.done_criteria] {
+        let w = w.trim();
+        if !w.is_empty() {
+            lines.push(w.to_string());
+        }
+    }
+    for st in &t.steps {
+        let w = st.text.trim();
+        if !w.is_empty() {
+            lines.push(w.to_string());
+        }
+    }
+    if !t.created_by.is_empty() {
+        let who = p.ref_(&t.created_by);
+        if !who.name.is_empty() {
+            lines.push(who.name);
+        }
+    }
+    lines.join("\n")
 }
 
 /// `t`'s CardAsk, or None when `t` isn't an ask. `refr` names another

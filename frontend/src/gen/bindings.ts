@@ -626,6 +626,12 @@ export type CardSummary = {
 	where?: CardWhere | null,
 	/**  The holder's last line on what's done and what's next (card #137). */
 	leftOff?: CardLeftOff | null,
+	/**
+	 *  The card's words the grid doesn't show, for the Board's search box
+	 *  (card #171): its objective, done-when, step texts and its creator's
+	 *  name, one per line.
+	 */
+	searchText?: string,
 };
 
 /**  One entry of a card's thread. */

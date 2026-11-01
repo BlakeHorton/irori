@@ -517,6 +517,11 @@ function summary(c: CardDetail): CardSummary {
     pinned: c.pinned,
     pinRank: c.pinRank,
     pos: c.pos,
+    // As crates/window's search_text (card #171), less the creator.
+    searchText: [c.goal, c.doneWhen, ...c.steps.map((s) => s.text)]
+      .map((w) => w.trim())
+      .filter(Boolean)
+      .join("\n"),
   })
 }
 

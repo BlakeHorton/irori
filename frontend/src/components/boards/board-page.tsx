@@ -8,6 +8,7 @@ import { ArrowLeftIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
 import { CardGrid, DoneGrid, shownCards } from "@/components/cards/card-grid"
+import { SearchBox } from "@/components/cards/search-box"
 import { BoardCanvas, ViewSwitch, type BoardView } from "@/components/canvas/switch"
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,8 @@ export function BoardPage({
   onTab,
   view,
   onView,
+  query,
+  onQuery,
   selected,
   onOpen,
   now,
@@ -48,6 +51,8 @@ export function BoardPage({
   onTab: (t: Tab) => void
   view: BoardView
   onView: (v: BoardView) => void
+  query: string
+  onQuery: (q: string) => void
   selected: string
   onOpen: (id: string) => void
   now: Date
@@ -67,7 +72,8 @@ export function BoardPage({
   const decide = own.filter((c) => c.openBlockers > 0).length
   const { shown, context } = shownCards(
     own,
-    tab === "decide" ? "decide" : tab === "done" ? "done" : "all"
+    tab === "decide" ? "decide" : tab === "done" ? "done" : "all",
+    query
   )
   const closed = { ...done, cards: done.cards.filter((c) => c.board === boardId) }
   return (
@@ -97,19 +103,22 @@ export function BoardPage({
                 )}
               </Button>
             ))}
-            <span className="ml-auto">
+            <span className="ml-auto flex items-center gap-2">
+              <SearchBox query={query} onQuery={onQuery} />
               <ViewSwitch view={view} onView={onView} />
             </span>
           </div>
           {tab === "done" ? (
-            <DoneGrid done={closed} selected={selected} onSelect={onOpen} now={now} />
+            <DoneGrid done={closed} query={query} selected={selected} onSelect={onOpen} now={now} />
           ) : view === "canvas" ? (
             <BoardCanvas cards={shown} onOpen={onOpen} />
           ) : shown.length ? (
             <CardGrid cards={shown} context={context} selected={selected} onSelect={onOpen} />
           ) : (
             <p className="px-1 text-[12.5px] text-muted-foreground">
-              {tab === "decide"
+              {query.trim()
+                ? "No cards match."
+                : tab === "decide"
                 ? "Nothing on this board waits on you."
                 : "No cards on this board yet. Ask the room above, or share a card to it from its page."}
             </p>
