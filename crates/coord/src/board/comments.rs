@@ -1125,7 +1125,7 @@ impl Fold {
                 v.done.push(card);
             } else if self.needs_you(t, &viewer, agent_viewer) {
                 v.needs_you.push(card);
-            } else if state == BLOCKED {
+            } else if state == BLOCKED && !t.all_answered() {
                 v.blocked.push(card);
             } else if !t.holders.is_empty() {
                 v.working.push(card);

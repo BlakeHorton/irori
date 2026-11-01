@@ -108,8 +108,8 @@ A blocker is a small thread of its own. The person's answer doesn't resolve it: 
 | State | When | Who acts next |
 |---|---|---|
 | open | nobody has answered; an agent's reply before the person's answer only adds context | the person, or any agent with `board_unblock` |
-| answered | the person answered last; the answer is sent to the raiser | the raiser or a holder: resolve or reply. Out of the person's Needs you, in the raiser's |
-| replied | an agent replied after the person's answer | the person: answer again, or mark it resolved |
+| answered | the person answered last, or an agent replied after the answer with nothing `missing` (card #204: it acted on the answer); the answer is sent to the raiser | the raiser or a holder: resolve it. Out of the person's Needs you, in the raiser's; a card whose open items are all answered reads Working, not Blocked |
+| replied | an agent asked back after the person's answer: its reply gave `missing` | the person: answer again, or mark it resolved |
 | open again (revised) | an agent revised the item: a new question, context or options, or none | the person: pick from the current options or answer in their own words |
 | resolved | `blocker.resolved` arrived; shows the resolver's note beside the check (else the answer) | nobody |
 | closed | closed without an answer (`board_unblock` without `blocker_id`, a state change, the sweeper) | nobody |

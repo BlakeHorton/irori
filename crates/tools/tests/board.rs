@@ -1859,9 +1859,16 @@ fn test_blocker_tool_descriptions() {
     has(
         tools::BOARD_INSTRUCTIONS,
         &[
-            "replies to a blocker with a question",
+            "reply with a question",
             "never offer the same options again",
+            // Card #204: resolve when acting on the answer; missing asks back.
+            "in the same turn you act on the answer",
+            "give missing or revise it",
         ],
+    );
+    has(
+        comment["description"].as_str().unwrap(),
+        &["waits on you, not them", "To ask them back, give missing"],
     );
 }
 

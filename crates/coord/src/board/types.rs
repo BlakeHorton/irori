@@ -410,6 +410,14 @@ pub struct Task {
 }
 
 impl Task {
+    /// Every open item the person answered (card #204): the card waits on
+    /// its holder acting on the answers, so it reads Working, not blocked on
+    /// them. False with no open item.
+    pub fn all_answered(&self) -> bool {
+        let mut open = self.blockers.iter().filter(|b| b.open()).peekable();
+        open.peek().is_some() && open.all(|b| b.status == BLOCKER_ANSWERED)
+    }
+
     /// How a card is named: `#12`, `mlg#12` on a shared board, or
     /// `task:<id>` before the fold numbered it.
     pub fn short_ref(&self) -> String {

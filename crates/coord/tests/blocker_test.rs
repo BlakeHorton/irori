@@ -482,7 +482,7 @@ fn test_answer_notice_recipients() {
     assert_eq!(
         n.text,
         format!(
-            "{USER} answered the blocker on \"db\" (#1, task:{id}, blocker b1).\nQuestion: which db?\nAnswer: postgres\nIt is not resolved yet. When you have what you need: board_unblock task_id={id} blocker_id=b1 note=\"<one line on what you will do now>\". If the answer doesn't settle it: board_comment task_id={id} blocker_id=b1 with what is still missing. If it is a question or changes what is being decided, answer it there, then resolve the blocker if that settles it, or revise it with board_block task_id={id} blocker_id=b1 with the question and options that fit now (or none); never offer the same options again.\nshow task:{id} for the card, its comments and links.",
+            "{USER} answered the blocker on \"db\" (#1, task:{id}, blocker b1).\nQuestion: which db?\nAnswer: postgres\nIt is not resolved yet. When you have what you need, resolve it now, in the turn you act on it: board_unblock task_id={id} blocker_id=b1 note=\"<one line on what you will do now>\"; an answered blocker left open waits on you. If the answer doesn't settle it: board_comment task_id={id} blocker_id=b1 with missing (what you still need from them), which puts it before the person again. If it is a question or changes what is being decided, answer it there, then resolve the blocker if that settles it, or revise it with board_block task_id={id} blocker_id=b1 with the question and options that fit now (or none); never offer the same options again.\nshow task:{id} for the card, its comments and links.",
             id = task.id
         )
     );
@@ -520,9 +520,65 @@ fn test_needs_you_by_blocker_state() {
     e.c.answer(USER, &task.id, "b1", text("which one is signed?"))
         .unwrap();
     check("answered", false, true);
+    // A plain reply acts on the answer (card #204): still the raiser's turn.
     reply(&e.c, ALICE, &task.id, "b1", "Wintun is.", &[]);
-    check("replied", true, false);
+    check("plain reply", false, true);
+    // Asking back with what is missing puts it before the person again.
+    reply(&e.c, ALICE, &task.id, "b1", "Which port?", &["the port"]);
+    check("asked back", true, false);
+    e.c.answer(USER, &task.id, "b1", text("4242")).unwrap();
+    check("answered again", false, true);
 }
+
+/// Card #204: once the person answered and the holder replied or went on
+/// working, the card reads Working and leaves the person's Needs you.
+#[test]
+fn test_answered_blocker_reads_working() {
+    let e = Env::new();
+    let task = raised_on(&e);
+    let group = |viewer: &str| {
+        let v = e.c.board(&BoardFilter {
+            viewer: viewer.into(),
+            ..BoardFilter::default()
+        });
+        let has = |g: &[Card]| g.iter().any(|c| c.task.id == task.id);
+        (has(&v.needs_you), has(&v.blocked), has(&v.working))
+    };
+    assert_eq!(group(USER), (true, false, false), "open: on the person");
+    e.c.answer(USER, &task.id, "b1", text("which one is signed?"))
+        .unwrap();
+    assert_eq!(group(USER), (false, false, true), "answered: working");
+    reply(&e.c, ALICE, &task.id, "b1", "Wintun is; going with it.", &[]);
+    let (got, b) = blocker_of(&e.c, &task.id, "b1");
+    assert!(
+        b.status == BLOCKER_ANSWERED && b.open() && got.state == BLOCKED && got.all_answered(),
+        "{b:?}"
+    );
+    assert_eq!(group(USER), (false, false, true), "plain reply: still working");
+    e.c.set_steps(
+        ALICE,
+        &task.id,
+        vec![Step {
+            id: "s1".into(),
+            text: "wire Wintun".into(),
+            ..Step::default()
+        }],
+    )
+    .unwrap();
+    assert_eq!(group(USER), (false, false, true), "a step: still working");
+    // A second, unanswered blocker puts it back before the person.
+    e.c.raise(
+        ALICE,
+        &task.id,
+        NewBlocker {
+            question: "Ship today?".into(),
+            ..NewBlocker::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(group(USER), (true, false, false), "a new question");
+}
+
 
 #[test]
 fn test_old_peer_resolve() {

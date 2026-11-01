@@ -97,8 +97,9 @@ export const MaxAnswer = 500
 export const MaxComment = 4000
 
 // BlockerState mirrors the Go constants on CardBlocker.state: open (no
-// answer yet), answered (the person answered; it waits on the raiser),
-// replied (an agent replied to the answer; back with the person),
+// answer yet), answered (the person answered; it waits on the raiser,
+// also after a plain reply from the agent, card #204), replied (an agent
+// asked back with what it still needs; back with the person),
 // resolved, and closed without an answer.
 export const BlockerState = {
   Open: "open",

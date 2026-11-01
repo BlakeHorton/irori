@@ -173,10 +173,17 @@ pub(crate) fn refresh_blocker(
     if n == 0 {
         return;
     }
-    if cs[n - 1].person {
+    let Some(last_person) = cs.iter().rposition(|c| c.person) else {
+        return;
+    };
+    if last_person == n - 1 || cs[n - 1].missing.is_empty() {
+        // The person's answer stands, or an agent replied after it with
+        // nothing missing: it acted on the answer (card #204), so the item
+        // waits on the agent to resolve it, not on the person.
         b.status = BLOCKER_ANSWERED.into();
-        b.sent_to = cs[n - 1].to.clone();
-    } else if cs[..n - 1].iter().any(|c| c.person) {
+        b.sent_to = cs[last_person].to.clone();
+    } else {
+        // An agent asked back: what it still needs puts it before the person.
         b.status = BLOCKER_REPLIED.into();
         b.missing = cs[n - 1].missing.clone();
     }
@@ -1463,7 +1470,7 @@ impl Fold {
                 ));
             }
             s.push_str(&format!(
-                "\nIt is not resolved yet. When you have what you need: board_unblock task_id={id} blocker_id={} note=\"<one line on what you will do now>\". If the answer doesn't settle it: board_comment task_id={id} blocker_id={} with what is still missing. If it is a question or changes what is being decided, answer it there, then resolve the blocker if that settles it, or revise it with board_block task_id={id} blocker_id={} with the question and options that fit now (or none); never offer the same options again.",
+                "\nIt is not resolved yet. When you have what you need, resolve it now, in the turn you act on it: board_unblock task_id={id} blocker_id={} note=\"<one line on what you will do now>\"; an answered blocker left open waits on you. If the answer doesn't settle it: board_comment task_id={id} blocker_id={} with missing (what you still need from them), which puts it before the person again. If it is a question or changes what is being decided, answer it there, then resolve the blocker if that settles it, or revise it with board_block task_id={id} blocker_id={} with the question and options that fit now (or none); never offer the same options again.",
                 b.id, b.id, b.id
             ));
             s.push_str(&deeper(id));

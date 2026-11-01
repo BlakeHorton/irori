@@ -162,6 +162,10 @@ impl Inner {
     ) -> String {
         let mut b = String::new();
         let mut state = coord::effective_state(t).to_string();
+        if state == coord::BLOCKED && t.all_answered() {
+            // The person answered every open item (card #204): its holder's turn.
+            state = "working, answered".into();
+        }
         if t.open_ask().is_some() {
             state = "ask".into();
         }
