@@ -165,6 +165,19 @@ fn idle(key: &str) -> AgentCard {
     }
 }
 
+/// Idle agents, the first idle longest: the hand-out picks in this order.
+fn idle_in_order(keys: &[&str]) -> Vec<AgentCard> {
+    keys.iter()
+        .enumerate()
+        .map(|(i, k)| AgentCard {
+            updated_at: gocompat::time::GoTime::from_system(
+                std::time::UNIX_EPOCH + Duration::from_secs(1_000 + i as u64),
+            ),
+            ..idle(k)
+        })
+        .collect()
+}
+
 fn set_receive(c: &Core, board: &str, preset: &str) {
     c.inbox()
         .set_receive(
@@ -576,7 +589,7 @@ fn an_open_card_reaches_the_other_persons_free_agent_per_the_setting() {
     t.a().set_open_cards(&t.board, "any").unwrap();
     t.sync();
     assert_eq!(t.b().board_info(&t.board).unwrap().open_cards, "any");
-    co.sweep_asks(&[idle(&b1), idle(&b2)]).unwrap();
+    co.sweep_asks(&idle_in_order(&[&b1, &b2])).unwrap();
     t.sync();
     let ds = wait_bridged(t.b(), &t.rb.key_a, 1);
     let m = &ds[0].message;
@@ -594,7 +607,7 @@ fn an_open_card_reaches_the_other_persons_free_agent_per_the_setting() {
     let cb = t.b().board_coord(&t.board).unwrap();
     cb.leave(&b1, &first.id, &b1).unwrap();
     t.sync();
-    co.sweep_asks(&[idle(&b1), idle(&b2)]).unwrap();
+    co.sweep_asks(&idle_in_order(&[&b1, &b2])).unwrap();
     t.sync();
     wait_bridged(t.b(), &t.rb.key_b, 1);
     settle_bridged(t.b(), &t.rb.key_a, 1);
