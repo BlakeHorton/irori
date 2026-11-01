@@ -106,6 +106,11 @@ export function CardPage({
   onOpen?: (id: string) => void
 }) {
   const [answered, setAnswered] = useState<Answered | null>(null)
+  // The done check lifted to the top (card #140) stays there once answered
+  // (Not done, or Done), so its told line and state aren't lost to a move.
+  const [lifted, setLifted] = useState<{ card: string; id: string } | null>(
+    null
+  )
   const { boards } = useBoards()
   const back = (
     <Button
@@ -172,8 +177,20 @@ export function CardPage({
   )
   const files = cardFiles(detail)
   const showNote = !!detail.note && detail.state !== TaskState.InputRequired
+  // Ready for you (cards #112, #140): an agent finished and brought proof.
+  // Its done check leads the page: screenshots, the proof, then Done and
+  // Not done; it isn't listed again under Blockers.
+  const readyNow = detail.ready ? open.find((b) => b.doneCheck) : undefined
+  if (readyNow && (lifted?.card !== detail.id || lifted.id !== readyNow.id))
+    setLifted({ card: detail.id, id: readyNow.id })
+  const ready =
+    readyNow ??
+    (lifted?.card === detail.id
+      ? detail.blockers.find((b) => b.id === lifted.id)
+      : undefined)
+  const blockers = detail.blockers.filter((b) => b !== ready)
   const hasObjective = !!(detail.goal || detail.doneWhen || showNote)
-  const hasBlockers = detail.blockers.length > 0 || legacy || !!answered
+  const hasBlockers = blockers.length > 0 || legacy || !!answered
   return (
     <article className="grid gap-3" aria-label="Card">
       {back}
@@ -200,7 +217,9 @@ export function CardPage({
       ) : (
         <ProgressStrip detail={detail} spinning={spinning} />
       )}
-      {!over(detail) && !openAsk(detail) && <CloseBar detail={detail} />}
+      {!over(detail) && !openAsk(detail) && (
+        <CloseBar detail={detail} ready={!!readyNow} />
+      )}
       {over(detail) &&
         (detail.sharedTo && !detail.sharedTo.withdrawn ? (
           <SharedToBar detail={detail} onOpen={onOpen} />
@@ -208,8 +227,21 @@ export function CardPage({
           <ReopenBar detail={detail} />
         ))}
       <div className="grid items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(0,360px)] min-[900px]:grid-rows-[auto_1fr] min-[1600px]:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
-        {(hasObjective || hasBlockers) && (
+        {(ready || hasObjective || hasBlockers) && (
           <Card className="gap-0 py-0! min-[900px]:col-start-1 min-[900px]:row-start-1">
+            {ready && (
+              <Section
+                title={readyNow ? "Ready for you" : "Done check"}
+                last={!hasObjective && !hasBlockers}
+              >
+                <BlockerItem
+                  cardId={detail.id}
+                  blocker={ready}
+                  now={now}
+                  onNoteAnswered={() => {}}
+                />
+              </Section>
+            )}
             {hasObjective && (
               <Section
                 title={openAsk(detail) ? "You asked" : "Objective"}
@@ -269,7 +301,7 @@ export function CardPage({
                     <ToldLine told={answered.told} raiser={answered.to} />
                   </div>
                 )}
-                {detail.blockers.map((b) => (
+                {blockers.map((b) => (
                   <BlockerItem
                     key={b.id}
                     cardId={detail.id}
@@ -450,7 +482,9 @@ function AskStatus({
 // (card #57): Done or Canceled, with an optional note the agents on it
 // hear. A parent ends with its subtasks: Canceled cancels them too, and
 // Done waits for them (Coord refuses it while one is open).
-function CloseBar({ detail }: { detail: CardDetail }) {
+// CloseBar closes a card by hand. While it is Ready for you, the done
+// check at the top has Done, so only Cancel stays here (card #140).
+function CloseBar({ detail, ready }: { detail: CardDetail; ready?: boolean }) {
   const [note, setNote] = useDraft(`${detail.id}/close`)
   const close = (state: TaskState) => async () => {
     await cards.close(detail.id, state, note)
@@ -470,12 +504,14 @@ function CloseBar({ detail }: { detail: CardDetail }) {
         aria-label="Why you close the card"
         className="h-8 w-56 text-xs"
       />
-      <ConfirmButton
-        label="Done"
-        question="Mark this card done? It moves to Closed, and whoever is on it hears."
-        confirmLabel="Mark done"
-        onConfirm={close(TaskState.Completed)}
-      />
+      {!ready && (
+        <ConfirmButton
+          label="Done"
+          question="Mark this card done? It moves to Closed, and whoever is on it hears."
+          confirmLabel="Mark done"
+          onConfirm={close(TaskState.Completed)}
+        />
+      )}
       <ConfirmButton
         label="Cancel card"
         question={
@@ -1181,10 +1217,7 @@ function BlockerItem({
 
   const markResolved = (e: FormEvent) => {
     e.preventDefault()
-    void run(
-      () => cards.resolveBlocker(cardId, b.id, note, noteMentions),
-      null
-    )
+    void run(() => cards.resolveBlocker(cardId, b.id, note, noteMentions), null)
   }
 
   const form = showForm ? (
@@ -1257,8 +1290,8 @@ function BlockerItem({
               : b.doneCheck
                 ? "Or say why it isn't done; it goes back to the agent"
                 : b.options.length
-                ? "Or answer in your own words"
-                : "Answer in your own words"
+                  ? "Or answer in your own words"
+                  : "Answer in your own words"
           }
           aria-label={`${replying ? "Your reply on" : "Your answer to"}: ${plainLine(b.question)}`}
           className="max-h-40 min-h-9 min-w-0 flex-1 bg-card py-1.5"
@@ -1348,6 +1381,7 @@ function BlockerItem({
           </Badge>
         )}
       </div>
+      {b.doneCheck && <AttachmentList attachments={b.attachments ?? []} />}
       {b.context && (
         <RichText text={b.context} className="text-[12.5px] text-ink-2" />
       )}
@@ -1362,7 +1396,7 @@ function BlockerItem({
           ))}
         </div>
       )}
-      <AttachmentList attachments={b.attachments ?? []} />
+      {!b.doneCheck && <AttachmentList attachments={b.attachments ?? []} />}
       <div className="text-[11.5px] text-muted-foreground">
         Raised by {name(b.raisedBy)} ·{" "}
         <time dateTime={raised?.toISOString()} title={raised?.toLocaleString()}>
@@ -1649,7 +1683,9 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
                     waiting for it
                   </span>
                 ) : (
-                  <span title={w.handoff || undefined}>offered, not taken up yet</span>
+                  <span title={w.handoff || undefined}>
+                    offered, not taken up yet
+                  </span>
                 )
               ) : (
                 <PersonStatus card={detail} who={w} />
@@ -1659,7 +1695,7 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
             )}
           </span>
           {role === "working" && w.assigned && w.handoff && (
-            <p className="col-span-3 whitespace-pre-wrap break-words pl-[30px] text-xs text-muted-foreground">
+            <p className="col-span-3 pl-[30px] text-xs break-words whitespace-pre-wrap text-muted-foreground">
               Hand-off note: {w.handoff}
             </p>
           )}

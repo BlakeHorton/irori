@@ -1662,7 +1662,13 @@ pub(crate) fn board_assign(s: &Inner, c: &Caller, raw: &[u8]) -> String {
 
 // --- board_status / board_link ---
 
-const STATUS_ARGS: &[(&str, Ty)] = &[("task_id", Ty::Str), ("state", Ty::Str), ("note", Ty::Str)];
+const STATUS_ARGS: &[(&str, Ty)] = &[
+    ("task_id", Ty::Str),
+    ("state", Ty::Str),
+    ("note", Ty::Str),
+    ("proof", Ty::Str),
+    ("attach", Ty::Strs),
+];
 
 const BOARD_STATES: [&str; 5] = [
     coord::WORKING,
@@ -1691,11 +1697,49 @@ pub(crate) fn board_status(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if st == coord::INPUT_REQUIRED {
         return s.input_required(&id, trim(a.str("note")));
     }
+    let proof = trim(a.str("proof"));
+    let paths = a.strs("attach");
+    let completing = st == coord::COMPLETED;
+    if !completing && (!proof.is_empty() || paths.iter().any(|p| !trim(p).is_empty())) {
+        return err_text("proof and attach go with completed.");
+    }
     let (co, as_) = match s.on(&id, std::slice::from_ref(&c.sender.key)) {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
-    let t = match co.set_task_state(&as_[0], &id, &st, trim(a.str("note"))) {
+    // An agent's completed waits on the person's Done, so it brings proof
+    // they can decide on without digging (card #140): the text is the done
+    // check's context, the files its attachments. Coord refuses one without
+    // proof after its own refusals (not the holder, open subtasks, an ask).
+    if proof.chars().count() > coord::MAX_OBJECTIVE {
+        return err_text(&format!(
+            "proof longer than {} characters.",
+            coord::MAX_OBJECTIVE
+        ));
+    }
+    let files = if completing && !proof.is_empty() {
+        match s.attach_files(c, &paths) {
+            Ok(f) => f,
+            Err(m) => return m,
+        }
+    } else {
+        Vec::new()
+    };
+    // With the done check on, completed's text is the proof alone: a note
+    // doesn't stand in for it.
+    let note = if completing && (!proof.is_empty() || co.done_check()) {
+        proof
+    } else {
+        trim(a.str("note"))
+    };
+    let t = match co.set_task_state_with(
+        &as_[0],
+        &id,
+        &st,
+        note,
+        files.iter().map(to_coord).collect(),
+        completing,
+    ) {
         Ok(t) => t,
         Err(e) => return map_err(e),
     };
@@ -1706,9 +1750,10 @@ pub(crate) fn board_status(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     {
         {
             return format!(
-                "{} waits on the person to confirm it's done (done check {}). Their Done closes it; if they say why it isn't done, you hear it as an answered blocker: fix it, then set completed again. Keep holding it until then.\n{}",
+                "{} waits on the person to confirm it's done (done check {}{}). Their Done closes it; if they say why it isn't done, you hear it as an answered blocker: fix it, then set completed again. Keep holding it until then.\n{}",
                 t.short_ref(),
                 one_line(&b.id, 20),
+                attached_line(&files),
                 s.line(&t)
             );
         }
