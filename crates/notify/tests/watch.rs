@@ -583,9 +583,15 @@ fn watch_board_ignores_the_persons_own_moves() {
     );
 }
 
-#[test]
-fn watch_unclaimed_ask() {
-    let r = rig();
+/// Posts an ask that alpha is handed and gives back, so it waits unclaimed
+/// with one agent told.
+fn ask_told_one(r: &Rig) -> Task {
+    let alpha: Vec<CoordCard> = r
+        .ros
+        .agents()
+        .into_iter()
+        .filter(|c| c.key == KEY_A)
+        .collect();
     let (ask, _) =
         r.co.post_ask(
             USER,
@@ -593,35 +599,37 @@ fn watch_unclaimed_ask() {
                 text: "who can look at the release notes?".into(),
                 ..NewAsk::default()
             },
-            &[],
+            &alpha,
         )
         .unwrap();
-    let id = unclaimed_id(&ask.id);
-    r.fake.wait_post(&id);
-    let c = r.fake.card(&id);
-    assert!(c.title.contains("Nobody took") && c.title.contains(&format!("#{}", ask.short)));
-    let labels: Vec<&str> = c.actions.iter().map(|a| a.label.as_str()).collect();
-    assert_eq!(labels, vec!["Wake them", "Close"]);
-    r.fake.press(&id, "Wake them");
-    wait_for("Wake them writes a reopen request", || {
-        r.st.list(&store::Filter {
-            kinds: vec!["take.requested".into()],
-            ..Default::default()
-        })
-        .unwrap()
-        .len()
-            == 1
-    });
-    // Nobody is free: the owner's sweep opens it again, still unclaimed,
-    // and the card comes back to say so.
+    assert_eq!(r.co.get_task(&ask.id).unwrap().ask.unwrap().taker, KEY_A);
+    r.co.leave(KEY_A, &ask.id, KEY_A).unwrap();
     r.co.sweep_asks(&[]).unwrap();
-    r.fake.wait_post(&id);
-    assert!(r.fake.card(&id).body.contains("You woke them"));
-    r.co.ask_claim(KEY_A, &ask.id, Duration::from_secs(1))
-        .unwrap();
-    r.fake.wait_gone(&id);
+    let a = r.co.get_task(&ask.id).unwrap().ask.unwrap();
+    assert!(a.unclaimed && a.told == 1 && a.taker.is_empty(), "{a:?}");
+    ask
+}
 
-    let (two, _) =
+/// The take requests written so far (giving an ask back writes one too).
+fn requests(r: &Rig) -> usize {
+    r.st.list(&store::Filter {
+        kinds: vec!["take.requested".into()],
+        ..Default::default()
+    })
+    .unwrap()
+    .len()
+}
+
+fn labels(c: &toast::Note) -> Vec<&str> {
+    c.actions.iter().map(|a| a.label.as_str()).collect()
+}
+
+#[test]
+fn watch_unclaimed_ask() {
+    let r = rig();
+    // Nobody free (told == 0): Open and Later, nothing that wakes again or
+    // ends the ask, and it says it waits for a free agent.
+    let (ask, _) =
         r.co.post_ask(
             USER,
             NewAsk {
@@ -631,10 +639,53 @@ fn watch_unclaimed_ask() {
             &[],
         )
         .unwrap();
-    r.fake.wait_post(&unclaimed_id(&two.id));
-    r.fake.press(&unclaimed_id(&two.id), "Close");
-    r.fake.wait_gone(&unclaimed_id(&two.id));
-    assert_eq!(r.co.get_task(&two.id).unwrap().state, coord::CANCELED);
+    let id = unclaimed_id(&ask.id);
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert!(c.title.contains("Nobody took") && c.title.contains(&format!("#{}", ask.short)));
+    assert!(c.body.contains("first agent that is"), "{c:?}");
+    assert_eq!(labels(&c), vec!["Open", "Later"]);
+    let before = requests(&r);
+    r.fake.press(&id, "Later");
+    // Later only dismisses: the ask stays open, nothing is requested, and
+    // nothing reposts it while it waits.
+    r.co.sweep_asks(&[]).unwrap();
+    r.fake.no_post(Duration::from_millis(150));
+    assert_eq!(requests(&r), before);
+    let still = r.co.get_task(&ask.id).unwrap();
+    assert!(still.state != coord::CANCELED && still.ask.unwrap().is_open());
+
+    // Told but none took it: Wake them clears heard.
+    let ask = ask_told_one(&r);
+    let id = unclaimed_id(&ask.id);
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert!(c.body.contains("1 agents were told"), "{c:?}");
+    assert_eq!(labels(&c), vec!["Wake them", "Later"]);
+    let before = requests(&r);
+    r.fake.press(&id, "Wake them");
+    wait_for("Wake them writes a reopen request", || {
+        requests(&r) == before + 1
+    });
+    // Nobody is free now: the owner's sweep opens it again, still
+    // unclaimed, and the card comes back without Wake them.
+    r.co.sweep_asks(&[]).unwrap();
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert!(
+        c.body.contains("You woke them") && c.body.contains("first agent"),
+        "{c:?}"
+    );
+    assert_eq!(labels(&c), vec!["Open", "Later"]);
+    r.fake.press(&id, "Open");
+    let t = r.opened();
+    assert!(
+        t.tab == TAB_BOARD && t.ref_ == format!("task:{}", ask.id),
+        "{t:?}"
+    );
+    r.co.ask_claim(KEY_A, &ask.id, Duration::from_secs(1))
+        .unwrap();
+    r.fake.wait_gone(&id);
 }
 
 #[test]
@@ -675,28 +726,12 @@ fn watch_unclaimed_ask_woken_in_one_tick() {
             ..Default::default()
         },
     );
-    let (ask, _) =
-        r.co.post_ask(
-            USER,
-            NewAsk {
-                text: "who can look at the release notes?".into(),
-                ..NewAsk::default()
-            },
-            &[],
-        )
-        .unwrap();
+    let ask = ask_told_one(&r);
     let id = unclaimed_id(&ask.id);
     r.fake.wait_post(&id);
+    let before = requests(&r);
     r.fake.press(&id, "Wake them");
-    wait_for("the reopen request", || {
-        r.st.list(&store::Filter {
-            kinds: vec!["take.requested".into()],
-            ..Default::default()
-        })
-        .unwrap()
-        .len()
-            == 1
-    });
+    wait_for("the reopen request", || requests(&r) == before + 1);
     r.co.sweep_asks(&[]).unwrap();
     let got = r.co.get_task(&ask.id).unwrap().ask.unwrap();
     assert!(got.reason == coord::TAKE_REOPENED && got.since.equal(&tick));
