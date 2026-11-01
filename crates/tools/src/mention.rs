@@ -171,7 +171,9 @@ pub(crate) fn outcomes(ms: &[Mention], rs: &[NoticeResult]) -> Vec<(Mention, Got
             if m.gone {
                 return (m.clone(), Got::Gone);
             }
-            if on_board(&m.key) {
+            // A board key is another person or their agent: this device's
+            // own agents resolve to private keys (card #186).
+            if coord::board_form(&m.key) {
                 return (m.clone(), Got::Board);
             }
             let got = match rs.iter().find(|r| r.to == m.key) {
@@ -187,12 +189,6 @@ pub(crate) fn outcomes(ms: &[Mention], rs: &[NoticeResult]) -> Vec<(Mention, Got
             (m.clone(), got)
         })
         .collect()
-}
-
-/// Whether `key` is a board key for another person or their agent: this
-/// device's own agents resolve to their private keys (card #186).
-fn on_board(key: &str) -> bool {
-    key.starts_with("person:") || key.starts_with("agent:")
 }
 
 fn named(m: &Mention) -> String {
