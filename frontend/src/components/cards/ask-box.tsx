@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { PaperclipIcon, XIcon } from "lucide-react"
+import { useEffect, useState, type FormEvent } from "react"
 
-import { FileKindIcon } from "@/components/attachments"
+import {
+  AttachButton,
+  PendingFiles,
+  useFileAttach,
+} from "@/components/attachments"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { MentionTextarea } from "@/components/common/mention-textarea"
@@ -10,7 +13,6 @@ import { useBoards } from "@/lib/boards"
 import {
   cards,
   MaxComment,
-  MaxUploadFiles,
   threads,
   type AskRepo,
 } from "@/lib/cards"
@@ -32,6 +34,7 @@ import { errorText } from "@/lib/talk"
 // their own devices. There is no board picker (card #102): to ask on
 // another board, go to that board. A board's agents carry no repo, and a
 // board ask takes no files yet, so the repo chip and the clip step aside.
+// A thread (card #116) takes files like an ask (card #124).
 // An @mention (card #77) narrows it: only the agents it names hear it,
 // woken, in any repo, so the repo chip steps aside too. Mentions work on
 // your own board only.
@@ -63,15 +66,9 @@ export function AskBox({
   // board's page keeps the ask.
   const thread = !onBoard && !!onThread
   const [busy, setBusy] = useState(false)
-  const [files, setFiles] = useState<File[]>([])
-  const picker = useRef<HTMLInputElement>(null)
-  const addFiles = (list: FileList | File[] | null | undefined) => {
-    const add = Array.from(list ?? [])
-    // A thread takes no files yet (card #116).
-    if (!add.length || thread) return
-    setFiles((fs) => [...fs, ...add].slice(0, MaxUploadFiles))
-    setLine(null)
-  }
+  // A thread takes files as an ask does (card #124).
+  const attach = useFileAttach(busy)
+  const files = attach.files
   const [line, setLine] = useState<{ text: string; error?: boolean } | null>(
     null
   )
@@ -101,7 +98,7 @@ export function AskBox({
     setLine(null)
     if (thread) {
       try {
-        const res = await threads.start(text, mentions)
+        const res = await threads.start(text, mentions, files)
         const n = res.told.to?.length ?? 0
         setLine({
           text:
@@ -111,6 +108,7 @@ export function AskBox({
         })
         setText("")
         setMentions([])
+        attach.clear()
         onThread?.(res.task.id)
       } catch (err) {
         setLine({ text: errorText(err), error: true })
@@ -141,7 +139,7 @@ export function AskBox({
       })
       setText("")
       setMentions([])
-      setFiles([])
+      attach.clear()
       onAsked(res.task.id)
     } catch (err) {
       setLine({ text: errorText(err), error: true })
@@ -154,14 +152,7 @@ export function AskBox({
     <form
       className="grid gap-1"
       onSubmit={(e) => void submit(e)}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("Files")) e.preventDefault()
-      }}
-      onDrop={(e) => {
-        if (!e.dataTransfer.files.length) return
-        e.preventDefault()
-        if (!busy) addFiles(e.dataTransfer.files)
-      }}
+      {...attach.drop}
     >
       <div className="flex items-start gap-2 p-1.5 glass-panel">
         <MentionTextarea
@@ -179,10 +170,7 @@ export function AskBox({
             setLine(null)
           }}
           onPaste={(e) => {
-            // A pasted screenshot is a file; pasted text stays text.
-            if (busy || !e.clipboardData.files.length) return
-            e.preventDefault()
-            addFiles(e.clipboardData.files)
+            if (attach.onPaste(e)) setLine(null)
           }}
           onKeyDown={(e) => {
             if (
@@ -237,30 +225,8 @@ export function AskBox({
               ]}
             />
           )}
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              addFiles(e.target.files)
-              e.target.value = ""
-            }}
-          />
-          {!thread && (
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            className="shrink-0"
-            title="Add files (or drop them here, or paste a screenshot)"
-            aria-label="Add files"
-            disabled={busy || !!onBoard || files.length >= MaxUploadFiles}
-            onClick={() => picker.current?.click()}
-          >
-            <PaperclipIcon />
-          </Button>
-          )}
+          {attach.input}
+          <AttachButton attach={attach} disabled={busy || !!onBoard} />
           <Button
             type="submit"
             size="sm"
@@ -271,21 +237,11 @@ export function AskBox({
           </Button>
         </div>
       </div>
-      {files.length > 0 && (
-        <ul
-          className="flex flex-wrap gap-2 px-1"
-          aria-label="Files with the ask"
-        >
-          {files.map((f, i) => (
-            <PendingFile
-              key={fileKey(f)}
-              file={f}
-              disabled={busy}
-              onRemove={() => setFiles((fs) => fs.filter((_, j) => j !== i))}
-            />
-          ))}
-        </ul>
-      )}
+      <PendingFiles
+        attach={attach}
+        disabled={busy}
+        label={thread ? "Files with the thread" : "Files with the ask"}
+      />
       {line && (
         <p
           className={
@@ -299,81 +255,5 @@ export function AskBox({
         </p>
       )}
     </form>
-  )
-}
-
-// fileKey keeps a pending file's row (and its preview) when another one
-// before it is removed.
-const keys = new WeakMap<File, string>()
-let nextKey = 0
-function fileKey(f: File): string {
-  let k = keys.get(f)
-  if (!k) keys.set(f, (k = `f${nextKey++}`))
-  return k
-}
-
-// Pictures the webview can draw: these show as a thumbnail before sending.
-const Previewable = /^image\/(png|jpe?g|gif|webp|bmp|avif|svg\+xml)$/i
-const MaxThumb = 32 << 20
-
-// PendingFile is one file waiting to go with the ask (card #73): a pasted
-// or picked picture shows itself, anything else an icon for its kind and
-// its name. Either one has an × to take it back off.
-function PendingFile({
-  file,
-  disabled,
-  onRemove,
-}: {
-  file: File
-  disabled: boolean
-  onRemove: () => void
-}) {
-  const name = file.name || "pasted image"
-  const image = Previewable.test(file.type) && file.size <= MaxThumb
-  // One object URL per file, let go when the file leaves the list.
-  const url = useMemo(
-    () => (image ? URL.createObjectURL(file) : null),
-    [file, image]
-  )
-  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url])
-  const remove = (
-    <button
-      type="button"
-      className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-      aria-label={`Remove ${name}`}
-      title="Remove"
-      disabled={disabled}
-      onClick={onRemove}
-    >
-      <XIcon className="size-3" />
-    </button>
-  )
-  if (image && url) {
-    return (
-      <li className="group relative" title={name}>
-        <img
-          src={url}
-          alt={name}
-          draggable={false}
-          className="h-20 max-w-40 min-w-12 rounded-md object-cover ring-1 ring-border"
-        />
-        <span className="absolute top-1 right-1 flex rounded-full bg-background/85 p-0.5 shadow-sm ring-1 ring-border">
-          {remove}
-        </span>
-      </li>
-    )
-  }
-  return (
-    <li className="flex h-8 items-center gap-1.5 rounded-md bg-secondary px-2 text-xs ring-1 ring-border">
-      <FileKindIcon
-        name={file.name}
-        mime={file.type}
-        className="size-4 shrink-0 text-muted-foreground"
-      />
-      <span className="max-w-48 truncate" title={name}>
-        {name}
-      </span>
-      {remove}
-    </li>
   )
 }

@@ -255,7 +255,22 @@ pub async fn board_comment(
     tell: String,
     mentions: Vec<ts::Mention>,
 ) -> R<CommentResult> {
-    w.comment(&id, &text, &tell, &mentions)
+    w.comment(&id, &text, &tell, &mentions, &[])
+}
+
+/// Comment with files (card #124): pasted, dropped or picked in the
+/// comment or thread Reply box.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_comment_with_files(
+    w: W<'_>,
+    id: String,
+    text: String,
+    tell: String,
+    mentions: Vec<ts::Mention>,
+    files: Vec<UploadFile>,
+) -> R<CommentResult> {
+    blocking(&w, move |w| w.comment(&id, &text, &tell, &mentions, &files)).await
 }
 
 #[tauri::command]
@@ -402,7 +417,8 @@ pub async fn board_comment_modify_save(
 #[tauri::command]
 #[specta::specta]
 pub async fn board_create(w: W<'_>, input: crate::new_card::NewCardInput) -> R<TaskResult> {
-    w.create_card(input)
+    // Its files (card #124) are stored off the bridge thread, as an ask's.
+    blocking(&w, move |w| w.create_card(input)).await
 }
 
 /// The header box's message as a thread (card #116).
@@ -413,7 +429,19 @@ pub async fn board_start_thread(
     text: String,
     mentions: Vec<crate::ts::Mention>,
 ) -> R<TaskResult> {
-    w.start_thread(&text, &mentions)
+    w.start_thread(&text, &mentions, &[])
+}
+
+/// A thread with files (card #124), as an ask takes them.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_start_thread_with_files(
+    w: W<'_>,
+    text: String,
+    mentions: Vec<crate::ts::Mention>,
+    files: Vec<UploadFile>,
+) -> R<TaskResult> {
+    blocking(&w, move |w| w.start_thread(&text, &mentions, &files)).await
 }
 
 /// What a #ref in text names (card #144), or null.
@@ -830,6 +858,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_done_cards_in,
             board_message,
             board_comment,
+            board_comment_with_files,
             board_answer,
             board_resolve_blocker,
             board_ask,
@@ -844,6 +873,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_place,
             board_create,
             board_start_thread,
+            board_start_thread_with_files,
             board_threads,
             board_card_ref,
             board_resolve_thread,

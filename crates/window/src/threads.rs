@@ -11,7 +11,7 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::Window;
-use crate::board::{TaskResult, Told};
+use crate::board::{TaskResult, Told, UploadFile};
 use crate::cards::AgentRef;
 use crate::ts;
 
@@ -91,8 +91,15 @@ impl Window {
     }
 
     /// BoardService.StartThread: the header box's message, as a thread.
-    pub fn start_thread(&self, text: &str, mentions: &[ts::Mention]) -> Result<TaskResult, String> {
+    /// Its files go on the thread like an ask's (card #124).
+    pub fn start_thread(
+        &self,
+        text: &str,
+        mentions: &[ts::Mention],
+        files: &[UploadFile],
+    ) -> Result<TaskResult, String> {
         let plan = self.plan_mentions("", mentions);
+        let refs = self.store_uploads(files)?;
         let co = self.core.coord();
         let (t, n) = co
             .post_ask(
@@ -100,6 +107,7 @@ impl Window {
                 NewAsk {
                     text: text.into(),
                     mentions: plan.log.clone(),
+                    files: refs.iter().map(crate::coord_ref).collect(),
                     thread: true,
                     ..Default::default()
                 },

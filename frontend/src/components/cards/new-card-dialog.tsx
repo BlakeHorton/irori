@@ -1,5 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react"
 
+import {
+  AttachButton,
+  PendingFiles,
+  useFileAttach,
+} from "@/components/attachments"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,7 +30,9 @@ import { errorText } from "@/lib/talk"
 // from the header, no ask. Title is all it needs; goal, done-when and the
 // repo say more. With nobody picked, Irori hands it to one free agent (the
 // one idle longest), as it does any unheld card; picking an agent hands it
-// to that one, woken. onMade gets the new card's id.
+// to that one, woken. Files go with it (card #124): the clip, a drop on
+// the form, or a screenshot pasted in any field; they go on the card as
+// its first comment and with the hand-out. onMade gets the new card's id.
 export function NewCardDialog({
   open,
   onClose,
@@ -43,6 +50,7 @@ export function NewCardDialog({
   const [repos, setRepos] = useState<AskRepo[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const attach = useFileAttach(busy)
   const agents = useMentionCandidates(open).filter((c) => c.who.live)
 
   useEffect(() => {
@@ -61,6 +69,7 @@ export function NewCardDialog({
     setRepoKey("")
     setAssignTo("")
     setError(null)
+    attach.clear()
   }
 
   const submit = async (e: FormEvent) => {
@@ -73,13 +82,10 @@ export function NewCardDialog({
     setBusy(true)
     setError(null)
     try {
-      const res = await cards.create({
-        title,
-        objective,
-        doneWhen,
-        repoKey,
-        assignTo,
-      })
+      const res = await cards.create(
+        { title, objective, doneWhen, repoKey, assignTo },
+        attach.files
+      )
       reset()
       onMade(res.task.id)
       onClose()
@@ -93,7 +99,12 @@ export function NewCardDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="sm:max-w-lg">
-        <form className="grid gap-3" onSubmit={(e) => void submit(e)}>
+        <form
+          className="grid gap-3"
+          onSubmit={(e) => void submit(e)}
+          onPaste={(e) => void attach.onPaste(e)}
+          {...attach.drop}
+        >
           <DialogHeader>
             <DialogTitle>New card</DialogTitle>
             <DialogDescription>
@@ -161,8 +172,18 @@ export function NewCardDialog({
               ]}
             />
           </div>
+          <PendingFiles
+            attach={attach}
+            disabled={busy}
+            label="Files with the card"
+            className="flex flex-wrap gap-2"
+          />
           {error && <p className="text-xs text-destructive">{error}</p>}
           <DialogFooter>
+            {attach.input}
+            <span className="mr-auto">
+              <AttachButton attach={attach} disabled={busy} />
+            </span>
             <Button
               type="button"
               variant="ghost"
