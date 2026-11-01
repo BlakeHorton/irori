@@ -26,6 +26,7 @@ struct State {
     model: Model,
     set_pause: Option<SetPause>,
     open_held: Option<Action>,
+    open_wind_down: Option<Action>,
     restart: Option<Restart>,
 }
 
@@ -152,6 +153,15 @@ impl Tray {
         });
     }
 
+    /// Wind down all agents… opens the window's Wind down dialog (card #220).
+    pub fn set_wind_down_opener(&self, open: Action) {
+        self.edit(|st| {
+            st.model.can_wind_down = true;
+            st.open_wind_down = Some(open);
+            true
+        });
+    }
+
     /// Go `SetUpdater` + its `update:status` rebuilds: `Some((version,
     /// restart))` while an update is ready, `None` otherwise.
     pub fn set_update(&self, ready: Option<(String, Restart)>) {
@@ -233,12 +243,13 @@ impl Tray {
     }
 
     fn clicked(self: &Arc<Self>, item: &str) {
-        let (paused, set_pause, open_held, restart) = {
+        let (paused, set_pause, open_held, open_wind_down, restart) = {
             let st = self.st.lock().unwrap_or_else(|e| e.into_inner());
             (
                 st.model.counts.paused,
                 st.set_pause.clone(),
                 st.open_held.clone(),
+                st.open_wind_down.clone(),
                 st.restart.clone(),
             )
         };
@@ -246,6 +257,11 @@ impl Tray {
             id::OPEN => super::show(&self.app),
             id::HELD => {
                 if let Some(f) = open_held {
+                    f();
+                }
+            }
+            id::WIND_DOWN => {
+                if let Some(f) = open_wind_down {
                     f();
                 }
             }

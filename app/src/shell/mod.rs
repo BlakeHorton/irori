@@ -213,6 +213,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
                             ref_: String::new(),
                         })
                     }));
+                    let n = core.notifier().clone();
+                    tray.set_wind_down_opener(Arc::new(move || {
+                        n.open(notify::Target {
+                            tab: TAB_WIND_DOWN.into(),
+                            ref_: String::new(),
+                        })
+                    }));
                     app.manage(tray);
                 }
                 update::wire(app.handle(), &updater, tray_for_update, &notifier);
@@ -355,6 +362,9 @@ fn wire_window(app: &AppHandle, window: &Arc<Window>) {
 
 /// A card's Open (Go `notifier.SetOpener`): show the window, then tell
 /// the page which tab and ref to open (`app:open`).
+/// app:open's tab for the window's Wind down dialog (card #220).
+pub const TAB_WIND_DOWN: &str = "wind-down";
+
 fn wire_opener(app: &AppHandle, n: &notify::Notifier) {
     let h = app.clone();
     n.set_opener(move |t| {

@@ -9,6 +9,7 @@
 //! [N held messages…]               only while some are held
 //! sep
 //! [x] Pause wakes on <device>      once the pause setter is wired
+//! [Wind down all agents…]          once the window opener is wired (card #220)
 //! [x] Launch at login
 //! sep
 //! Quit Irori
@@ -21,6 +22,7 @@ pub mod id {
     pub const STATUS: &str = "status";
     pub const HELD: &str = "held";
     pub const PAUSE: &str = "pause";
+    pub const WIND_DOWN: &str = "wind_down";
     pub const LOGIN: &str = "login";
     pub const QUIT: &str = "quit";
 }
@@ -50,6 +52,9 @@ pub struct Model {
     /// Whether the held line opens the Held list (Go `SetHeldOpener`);
     /// without an opener it is disabled.
     pub can_open_held: bool,
+    /// Whether "Wind down all agents…" opens the window's dialog (card
+    /// #220); without an opener it is hidden.
+    pub can_wind_down: bool,
     /// The version of an update that is downloaded and ready.
     pub update_ready: Option<String>,
     /// The live launch-at-login state.
@@ -121,6 +126,10 @@ pub fn agents_line(agents: usize, busy: usize) -> String {
     }
 }
 
+/// The tray's Wind down all (card #220): opens the window's dialog, where
+/// the person confirms.
+pub const WIND_DOWN_LABEL: &str = "Wind down all agents…";
+
 /// Go `rebuild`: the whole menu.
 pub fn lines(m: &Model) -> Vec<Line> {
     let mut out = Vec::new();
@@ -160,6 +169,13 @@ pub fn lines(m: &Model) -> Vec<Line> {
             id: id::PAUSE,
             label: pause_label(&m.device),
             checked: m.counts.paused,
+        });
+    }
+    if m.can_wind_down {
+        out.push(Line::Item {
+            id: id::WIND_DOWN,
+            label: WIND_DOWN_LABEL.into(),
+            enabled: true,
         });
     }
     out.push(Line::Check {
@@ -251,6 +267,7 @@ mod tests {
             device: "PC".into(),
             can_pause: true,
             can_open_held: false,
+            can_wind_down: true,
             update_ready: Some("0.6.1".into()),
             login: true,
         });
@@ -283,6 +300,11 @@ mod tests {
                     id: id::PAUSE,
                     label: "Pause wakes on PC".into(),
                     checked: true
+                },
+                Line::Item {
+                    id: id::WIND_DOWN,
+                    label: "Wind down all agents…".into(),
+                    enabled: true
                 },
                 Line::Check {
                     id: id::LOGIN,

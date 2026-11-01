@@ -13,6 +13,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
+import { WindDownDialog } from "@/components/wind-down-dialog"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
@@ -160,6 +161,8 @@ export function App() {
   const [heldFrom, setHeldFrom] = useState("")
   // New card (card #116): its dialog is open.
   const [newCard, setNewCard] = useState(false)
+  // Wind down all (card #220): the header's button and the tray's item.
+  const [windDown, setWindDown] = useState(false)
   const [newBoard, setNewBoard] = useState(false)
   // Threads (card #116): the panel beside the Board, the thread unfolded
   // in it, and whether the person hid it (kept across launches).
@@ -321,6 +324,10 @@ export function App() {
     () =>
       onOpen((target) => {
         const ref = target.ref ?? ""
+        if (target.tab === "wind-down") {
+          setWindDown(true)
+          return
+        }
         if (target.tab === "held") {
           openHeld(ref)
           return
@@ -501,6 +508,7 @@ export function App() {
         }
         onNewCard={() => setNewCard(true)}
         onNewBoard={() => setNewBoard(true)}
+        onWindDown={() => setWindDown(true)}
         section={open ? null : section}
       />
       <main className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 px-4 pt-[18px] pb-[env(safe-area-inset-bottom)] sm:px-6">
@@ -588,6 +596,15 @@ export function App() {
         )}
       </main>
       </div>
+      {windDown && (
+        <WindDownDialog
+          agents={{
+            here: roster.agents.filter((a) => a.deviceId === roster.device?.id).length,
+            all: roster.agents.length,
+          }}
+          onClose={() => setWindDown(false)}
+        />
+      )}
       <NewCardDialog
         open={newCard}
         onClose={() => setNewCard(false)}

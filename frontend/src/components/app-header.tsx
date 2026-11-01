@@ -19,6 +19,7 @@ export function AppHeader({
   actions,
   onNewCard,
   onNewBoard,
+  onWindDown,
   section,
   onMenu,
 }: {
@@ -32,6 +33,8 @@ export function AppHeader({
   actions?: ReactNode
   onNewCard: () => void
   onNewBoard: () => void
+  // Wind down all (card #220): opens its dialog.
+  onWindDown?: () => void
   // Where the window is; null on a card's page.
   section?: Section | null
   // Opens the nav drawer; its button shows only on a narrow window (card #227).
@@ -68,6 +71,16 @@ export function AppHeader({
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {actions}
+          {onWindDown && roster.source !== "sample" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onWindDown}
+              title="Ask every agent to save its place, hand back its cards and stop"
+            >
+              Wind down
+            </Button>
+          )}
           {section?.kind === "boards" ? (
             <Button
               size="sm"
