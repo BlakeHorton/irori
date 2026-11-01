@@ -2031,10 +2031,18 @@ fn test_board_status_completed_waits_on_the_persons_done() {
     let a = call_a();
     let id = h.new_card(&a, json!({"title": "lexer"}));
     h.okj(&a, "board_join", json!({"task_id": id}));
-    let out = h.okj(
+    // Card #140: with the done check on, completed needs proof.
+    h.failsj(
         &a,
         "board_status",
         json!({"task_id": id, "state": "completed", "note": "tabs kept"}),
+        &["completed needs proof", "what you saw in the real app"],
+    );
+    assert_eq!(h.b.co.get_task(&id).unwrap().state, coord::WORKING);
+    let out = h.okj(
+        &a,
+        "board_status",
+        json!({"task_id": id, "state": "completed", "proof": "tabs kept\nChecked: cargo test."}),
     );
     has(
         &out,
@@ -2045,6 +2053,64 @@ fn test_board_status_completed_waits_on_the_persons_done() {
         ],
     );
     has_not(&out, &["folds into Done", "is completed now"]);
+    let check = &h.b.co.get_task(&id).unwrap().open_blockers()[0];
+    assert!(check.done_check && check.context == "tabs kept\nChecked: cargo test.");
     let board = h.okj(&a, "board", json!({}));
     has(&board, &["Is this done?"]);
+}
+
+/// Card #140: completed's screenshots ride on the done check beside the
+/// proof; proof and attach belong to completed only.
+#[test]
+fn test_board_status_completed_attaches_proof_files() {
+    DONE_CHECK.with(|c| c.set(true));
+    let h = new_harness();
+    let _ = h.b.attacher.set(Arc::new(NamedFiles));
+    let a = call_a();
+    let id = h.new_card(&a, json!({"title": "panel"}));
+    h.okj(&a, "board_join", json!({"task_id": id}));
+    h.failsj(
+        &a,
+        "board_status",
+        json!({"task_id": id, "state": "working", "proof": "x"}),
+        &["proof and attach go with completed"],
+    );
+    let out = h.okj(
+        &a,
+        "board_status",
+        json!({"task_id": id, "state": "completed", "proof": "Fits now.",
+               "attach": ["shots/narrow.png", "shots/wide.png"]}),
+    );
+    has(&out, &["done check b1 with narrow.png", "wide.png"]);
+    // Someone who may not change the card hears that, not "needs proof".
+    let other = h.new_card(&a, json!({"title": "not b's"}));
+    let out = h.callj(
+        &call_b(),
+        "board_status",
+        json!({"task_id": other, "state": "completed"}),
+    );
+    has_not(&out, &["needs proof"]);
+    assert!(out.starts_with("Error: "), "{out}");
+    let check = &h.b.co.get_task(&id).unwrap().open_blockers()[0];
+    let names: Vec<&str> = check.attachments.iter().map(|f| f.name.as_str()).collect();
+    assert!(
+        check.done_check && check.context == "Fits now.",
+        "{check:?}"
+    );
+    assert_eq!(names, vec!["narrow.png", "wide.png"]);
+}
+
+/// Without the done check, completed still closes with a plain note.
+#[test]
+fn test_board_status_completed_without_done_check_needs_no_proof() {
+    let h = new_harness();
+    let a = call_a();
+    let id = h.new_card(&a, json!({"title": "lexer"}));
+    h.okj(&a, "board_join", json!({"task_id": id}));
+    let out = h.okj(
+        &a,
+        "board_status",
+        json!({"task_id": id, "state": "completed", "note": "done"}),
+    );
+    has(&out, &["is completed now"]);
 }

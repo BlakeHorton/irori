@@ -305,6 +305,21 @@ impl Fold {
         s: &str,
         note: &str,
     ) -> Result<Task> {
+        self.set_task_state_with(by, id, s, note, Vec::new(), false)
+    }
+
+    /// [`Self::set_task_state`] with proof files (card #140): an agent's
+    /// completed puts them on its done check beside the note, so the person
+    /// sees how it was checked. Any other change ignores them.
+    pub(crate) fn set_task_state_with(
+        &mut self,
+        by: &str,
+        id: &str,
+        s: &str,
+        note: &str,
+        files: Vec<FileRef>,
+        need_proof: bool,
+    ) -> Result<Task> {
         let by = caller(by)?;
         if !valid_state(s) {
             return Err(bad_state(format!(
@@ -361,7 +376,7 @@ impl Fold {
         // sweeper, a parent completing with its subtasks (fold), and an
         // ask's outcome (above).
         if s == COMPLETED && self.done_check && self.is_agent_key(&by) {
-            return self.ask_done(&by, &t, &note);
+            return self.ask_done(&by, &t, &note, files, need_proof);
         }
         if t.state == s && t.note == note {
             return Ok(t);

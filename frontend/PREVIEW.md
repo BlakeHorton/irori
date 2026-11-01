@@ -34,7 +34,7 @@ unchanged.
 | `/?open=board:task:sample-card-1` | a card's page with blockers, a PR and a long thread |
 | `/?open=board:task:sample-card-2` | a blocker with recommended answers |
 | `/?open=board:task:sample-card-5` | a done card with a reviewed PR |
-| `/?open=board:task:sample-card-12` | Ready for you: an agent says it's done; Done closes it, Not done sends your words back (card #112) |
+| `/?open=board:task:sample-card-12` | Ready for you: an agent says it's done, its proof (screenshot, then how it was checked) at the top; Done closes it, Not done sends your words back (cards #112, #140) |
 | `/?open=inbox:sample-delivery-1` | a message Irori held (Release, Dismiss) |
 | `/?open=inbox:sample-delivery-6` | a message an agent sent you (Reply) |
 | `/?open=held` | the Held list: three held (one by Pause all), and History with a dismissed one to release |

@@ -196,3 +196,127 @@ fn an_old_windows_done_closes_on_the_next_completed() {
     assert_eq!(closed.state, COMPLETED);
     assert!(done_checks(&closed).is_empty());
 }
+
+/// Card #140: an agent's completed brings proof. The whole note (past the
+/// 800-character blocker context) and its screenshots ride on the done
+/// check, fold again on replay, and stay on the card after the person's
+/// Done closes it.
+#[test]
+fn proof_rides_on_the_done_check() {
+    let e = env();
+    assert!(e.c.done_check());
+    let t = claimed(&e);
+    let shot = FileRef {
+        sha256: "ab".repeat(32),
+        name: "shot.png".into(),
+        size: 12,
+        mime: "image/png".into(),
+        device: "dev-a".into(),
+    };
+    let note = format!(
+        "Widened the dock collider.\nChecked: cargo test, and 20 dockings in the app.\nCommit abc123.\n{}",
+        "Caveat: ".repeat(150).trim_end()
+    );
+    assert!(note.chars().count() > 800);
+    let got =
+        e.c.set_task_state_with(BOB, &t.id, COMPLETED, &note, vec![shot.clone()], true)
+            .unwrap();
+    assert_eq!(got.state, BLOCKED);
+    let b = done_checks(&got)[0].clone();
+    assert_eq!(b.context, note, "the whole proof, not cut at 800");
+    assert_eq!(b.attachments, vec![shot.clone()]);
+
+    let again = e.reopen().get_task(&t.id).unwrap();
+    assert_eq!(done_checks(&again)[0].attachments, vec![shot.clone()]);
+
+    e.c.answer(
+        USER,
+        &t.id,
+        &b.id,
+        BlockerAnswer {
+            pick: 1,
+            resolve: true,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    let closed = e.c.set_task_state(USER, &t.id, COMPLETED, "").unwrap();
+    assert_eq!(closed.state, COMPLETED);
+    assert!(
+        closed
+            .blockers
+            .iter()
+            .any(|x| x.id == b.id && x.context == note && x.attachments == vec![shot.clone()]),
+        "the proof stays on the closed card"
+    );
+}
+
+#[test]
+fn proof_files_are_capped() {
+    let e = env();
+    let t = claimed(&e);
+    let files: Vec<FileRef> = (0..11)
+        .map(|i| FileRef {
+            sha256: format!("{i:02}").repeat(32),
+            name: format!("{i}.png"),
+            size: 1,
+            mime: "image/png".into(),
+            device: "dev-a".into(),
+        })
+        .collect();
+    assert!(
+        e.c.set_task_state_with(BOB, &t.id, COMPLETED, "done", files, true)
+            .is_err()
+    );
+    assert_eq!(e.c.get_task(&t.id).unwrap().state, WORKING);
+}
+
+/// Card #140: coord refuses an agent's completed with no proof when asked
+/// to, but only after its own refusals; once the person said Done the card
+/// closes without one; the person never needs it.
+#[test]
+fn proof_is_required_after_other_refusals() {
+    let e = env();
+    let t = claimed(&e);
+    let err =
+        e.c.set_task_state_with(BOB, &t.id, COMPLETED, "", Vec::new(), true)
+            .unwrap_err()
+            .to_string();
+    assert!(err.contains(NEEDS_PROOF), "{err}");
+    assert_eq!(e.c.get_task(&t.id).unwrap().state, WORKING);
+    // Someone who may not change it hears that, not "needs proof".
+    let err =
+        e.c.set_task_state_with(CAROL, &t.id, COMPLETED, "", Vec::new(), true)
+            .unwrap_err()
+            .to_string();
+    assert!(!err.contains("needs proof"), "{err}");
+    // The person's completed needs none.
+    let got =
+        e.c.set_task_state_with(USER, &t.id, COMPLETED, "", Vec::new(), true)
+            .unwrap();
+    assert_eq!(got.state, COMPLETED);
+}
+
+/// Card #140: a done check's long proof doesn't stop its raiser revising
+/// it (revise checks a done check's context against MAX_OBJECTIVE).
+#[test]
+fn a_long_proof_check_can_be_revised() {
+    let e = env();
+    let t = claimed(&e);
+    let note = "checked ".repeat(200).trim_end().to_string();
+    assert!(note.chars().count() > 800);
+    let got =
+        e.c.set_task_state_with(BOB, &t.id, COMPLETED, &note, Vec::new(), true)
+            .unwrap();
+    let b = done_checks(&got)[0].clone();
+    e.c.revise(
+        BOB,
+        &t.id,
+        &b.id,
+        BlockerRevision {
+            question: "Is this done now?".into(),
+            ..BlockerRevision::default()
+        },
+    )
+    .unwrap();
+}

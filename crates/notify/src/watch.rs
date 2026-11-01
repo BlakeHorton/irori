@@ -98,6 +98,9 @@ impl AskSource for Book {
 pub trait RoomSource: Send + Sync {
     fn ask_again(&self, by: &str, id: &str) -> Result<(), String>;
     fn set_task_state(&self, by: &str, id: &str, state: &str, note: &str) -> Result<(), String>;
+    /// The person's Done on a card's open done check (card #112, #130):
+    /// resolve it with Done and close the card, as the window's Done does.
+    fn mark_done(&self, by: &str, id: &str) -> Result<(), String>;
 }
 
 impl RoomSource for Coord {
@@ -109,6 +112,49 @@ impl RoomSource for Coord {
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
+    fn mark_done(&self, by: &str, id: &str) -> Result<(), String> {
+        mark_done(self, by, id).map(|_| ())
+    }
+}
+
+/// The person's Done on card `id`'s done check, from a finished card's
+/// Mark Done (cards #112, #130): resolve it with Done and close the card as
+/// `by`, as the window's Done does. The notices are for the agent that
+/// finished it; the caller routes them. Refused while the card has any
+/// other open question (one raised after the card went up), or no check.
+pub fn mark_done(co: &Coord, by: &str, id: &str) -> Result<Vec<coord::Notice>, String> {
+    let t = co
+        .get_task(id)
+        .ok_or_else(|| format!("no such card {id}"))?;
+    let open = t.open_blockers();
+    if open.iter().any(|b| !b.done_check) {
+        return Err(format!(
+            "{} has an open question besides its done check: open it",
+            t.short_ref()
+        ));
+    }
+    let Some((b, pick)) = open.iter().rev().find_map(|b| {
+        b.options
+            .iter()
+            .position(|o| o.answer == coord::DONE_ANSWER)
+            .map(|i| (b, i as i64 + 1))
+    }) else {
+        return Err(format!("{} isn't waiting on a done check", t.short_ref()));
+    };
+    let (_, ns) = co
+        .answer(
+            by,
+            id,
+            &b.id,
+            coord::BlockerAnswer {
+                pick,
+                resolve: true,
+                ..coord::BlockerAnswer::default()
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    Coord::set_task_state(co, by, id, coord::COMPLETED, "").map_err(|e| e.to_string())?;
+    Ok(ns)
 }
 
 /// What Watch follows and acts through.
@@ -581,25 +627,34 @@ impl Ctx<'_> {
         unclaimed: &mut HashMap<String, Opening>,
         returned: &mut HashMap<String, String>,
     ) {
+        // A card's key is its id, plus its done check while that is all it
+        // waits on (card #140): new proof, or the last other question
+        // closing, changes the key and posts the card again in place.
         let mut now = HashSet::new();
+        let mut here = HashSet::new();
         for c in &v.needs_you {
-            now.insert(c.task.id.clone());
-            if needs.contains(&c.task.id) {
+            let key = needs_key_of(&c.task);
+            here.insert(c.task.id.clone());
+            now.insert(key.clone());
+            if needs.contains(&key) {
                 continue;
             }
-            needs.insert(c.task.id.clone());
+            needs.insert(key);
             if post && self.agent_moved(&c.task) {
                 self.n.post(self.needs_note(c));
             }
         }
         let left: Vec<String> = needs
             .iter()
-            .filter(|id| !now.contains(*id))
+            .filter(|k| !now.contains(*k))
             .cloned()
             .collect();
-        for id in left {
-            needs.remove(&id);
-            self.n.clear(&needs_id(&id));
+        for k in left {
+            needs.remove(&k);
+            let id = k.split('#').next().unwrap_or_default();
+            if !here.contains(id) {
+                self.n.clear(&needs_id(id));
+            }
         }
         if self.room.is_some() {
             self.unclaimed_asks(v, post, unclaimed);
@@ -788,6 +843,13 @@ impl Ctx<'_> {
     fn needs_note(&self, c: &Card) -> Note {
         let t = &c.task;
         let agent = self.name(&self.needs_key(t));
+        // An agent's completed waits on the person's Done (card #112): good
+        // news, so green with a check, worded as ready to look over, never
+        // "blocked on you" (card #130). Any other open question wins.
+        let open = t.open_blockers();
+        if !open.is_empty() && open.iter().all(|b| b.done_check) {
+            return self.finished_note(t, &agent);
+        }
         let (mut title, body) = if t.state == coord::BLOCKED {
             let mut body = t.reason.clone();
             if !t.title.is_empty() && t.title != t.reason {
@@ -823,5 +885,82 @@ impl Ctx<'_> {
             on_click: Some(open),
             ..Note::default()
         }
+    }
+
+    /// A card an agent finished, waiting on the person's Done (card #130):
+    /// Open shows it; Mark Done closes it from here when this device can
+    /// act on the room, else Later.
+    fn finished_note(&self, t: &Task, agent: &str) -> Note {
+        let mut title = format!("{agent} finished “{}”", preview(&t.title));
+        if !t.short.is_empty() {
+            title += &format!(" (#{})", t.short);
+        }
+        let open = self.opener(t);
+        let open2 = open.clone();
+        let mut actions = vec![Action::new("Open", move || open2())];
+        match &self.room {
+            Some(r) => {
+                let (r, user, id) = (r.clone(), self.user.to_string(), t.id.clone());
+                actions.push(Action::new("Mark Done", move || {
+                    if let Err(e) = r.mark_done(&user, &id) {
+                        eprintln!("notify: mark done {id}: {e}");
+                    }
+                }));
+            }
+            None => actions.push(Action::close("Later")),
+        }
+        Note {
+            id: needs_id(&t.id),
+            title,
+            body: finished_body(t),
+            level: Level::Success,
+            sticky: true,
+            actions,
+            on_click: Some(open),
+            ..Note::default()
+        }
+    }
+}
+
+/// A finished card's body (card #140): the first line of the agent's
+/// proof, and how many screenshots came with it; the plain "ready" line
+/// when there is no proof. The line is taken before [`preview`], which
+/// flattens the whole text into one.
+fn finished_body(t: &Task) -> String {
+    const READY: &str = "Ready for you to look over and mark Done.";
+    let Some(check) = t.blockers.iter().rev().find(|b| b.open() && b.done_check) else {
+        return READY.into();
+    };
+    let first = check
+        .context
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .filter(|_| check.context.trim() != coord::DONE_CONTEXT);
+    let shots = check
+        .attachments
+        .iter()
+        .filter(|f| f.mime.starts_with("image/"))
+        .count();
+    let shots = match shots {
+        0 => String::new(),
+        1 => " · 1 screenshot".into(),
+        n => format!(" · {n} screenshots"),
+    };
+    match first {
+        Some(l) => format!("{}{shots}", preview(l)),
+        None if !shots.is_empty() => format!("{READY}{shots}"),
+        None => READY.into(),
+    }
+}
+
+/// The Needs you set's key for t: its id, and `#` and the done check it
+/// waits on when every open item is one (see `board`). Task ids are ULIDs,
+/// never holding a `#`.
+fn needs_key_of(t: &Task) -> String {
+    let open = t.open_blockers();
+    match open.last() {
+        Some(b) if open.iter().all(|b| b.done_check) => format!("{}#{}", t.id, b.id),
+        _ => t.id.clone(),
     }
 }
