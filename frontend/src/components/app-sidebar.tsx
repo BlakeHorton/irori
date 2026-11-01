@@ -1,14 +1,17 @@
 // AppSidebar is the window's nav (card #135): Home, Boards and Held, then
 // the boards and cards you pinned, and at the bottom this device, how the
 // agents stand, and Settings. Its top button folds it to icons; the window
-// remembers that on this device.
+// remembers that on this device. On a phone or a narrow window (card #227)
+// it is a drawer over the page instead: the header's menu button opens it,
+// and a tap outside, Escape or going somewhere closes it.
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
   HomeIcon,
   InboxIcon,
   LayoutGridIcon,
   PanelLeftIcon,
+  XIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -20,6 +23,7 @@ import type { BoardSummary } from "@/lib/boards"
 import type { CardSummary } from "@/lib/cards"
 import { plainLine, type Roster } from "@/lib/irori"
 import { go, type Section } from "@/lib/nav"
+import { useNarrow } from "@/lib/media"
 import { previewFlag } from "@/lib/preview"
 import { cn } from "@/lib/utils"
 
@@ -45,6 +49,8 @@ export function AppSidebar({
   cards,
   openCard,
   onOpenCard,
+  drawer = false,
+  onDrawer,
 }: {
   roster: Roster
   held: number
@@ -59,8 +65,22 @@ export function AppSidebar({
   // The card whose page is open, if any.
   openCard: string
   onOpenCard: (id: string) => void
+  // Narrow windows: the drawer is open, and closing it.
+  drawer?: boolean
+  onDrawer?: (open: boolean) => void
 }) {
-  const [folded, setFolded] = useState(readFolded)
+  const narrow = useNarrow()
+  const [foldedPref, setFolded] = useState(readFolded)
+  // A drawer is never folded: it is the full nav, over the page.
+  const folded = foldedPref && !narrow
+  useEffect(() => {
+    if (!narrow || !drawer) return
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDrawer?.(false)
+    }
+    window.addEventListener("keydown", key)
+    return () => window.removeEventListener("keydown", key)
+  }, [narrow, drawer, onDrawer])
   const fold = (f: boolean) => {
     setFolded(f)
     try {
@@ -93,12 +113,27 @@ export function AppSidebar({
     section.kind === s.kind &&
     (s.kind !== "board" || (section.kind === "board" && section.id === s.id))
 
+  // Shut, the drawer stays mounted off-screen: Settings lives in it.
   return (
+    <>
+    {narrow && drawer && (
+      <div
+        aria-hidden
+        className="fixed inset-0 z-40 bg-black/50"
+        onClick={() => onDrawer?.(false)}
+      />
+    )}
     <aside
       aria-label="Navigation"
       className={cn(
-        "flex h-svh shrink-0 flex-col border-r border-border bg-sidebar/60 transition-[width]",
-        folded ? "w-14" : "w-60"
+        "flex h-svh shrink-0 flex-col border-r border-border transition-[width]",
+        narrow
+          ? cn(
+              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-sidebar shadow-xl transition-transform",
+              !drawer && "invisible -translate-x-full"
+            )
+          : "bg-sidebar/60",
+        !narrow && (folded ? "w-14" : "w-60")
       )}
     >
       <div
@@ -120,6 +155,16 @@ export function AppSidebar({
             </span>
           </span>
         )}
+        {narrow ? (
+        <button
+          type="button"
+          onClick={() => onDrawer?.(false)}
+          aria-label="Close the menu"
+          className="ml-auto flex size-11 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-ink"
+        >
+          <XIcon className="size-5" aria-hidden />
+        </button>
+        ) : (
         <button
           type="button"
           onClick={() => fold(!folded)}
@@ -133,6 +178,7 @@ export function AppSidebar({
         >
           <PanelLeftIcon className="size-4" aria-hidden />
         </button>
+        )}
       </div>
 
       <nav
@@ -249,6 +295,7 @@ export function AppSidebar({
         <SettingsMenu version={version} />
       </div>
     </aside>
+    </>
   )
 }
 
@@ -279,7 +326,7 @@ function NavItem({
       aria-label={folded ? `${label}${count ? ` (${count})` : ""}` : undefined}
       title={folded ? label : undefined}
       className={cn(
-        "relative flex h-9 items-center gap-3 rounded-md text-left text-sm text-ink-2 hover:bg-secondary hover:text-ink",
+        "relative flex h-9 items-center gap-3 pointer-coarse:h-11 rounded-md text-left text-sm text-ink-2 hover:bg-secondary hover:text-ink",
         folded ? "justify-center px-0" : "px-2.5",
         current && "bg-secondary font-medium text-ink"
       )}
@@ -359,7 +406,7 @@ function PinRow({
       aria-current={current ? "page" : undefined}
       aria-label={folded ? title : undefined}
       className={cn(
-        "flex h-8 items-center gap-2.5 rounded-md text-left text-sm text-ink-2 hover:bg-secondary hover:text-ink",
+        "flex h-8 items-center gap-2.5 rounded-md pointer-coarse:h-11 text-left text-sm text-ink-2 hover:bg-secondary hover:text-ink",
         folded ? "justify-center px-0" : "px-2.5",
         current && "bg-secondary font-medium text-ink"
       )}

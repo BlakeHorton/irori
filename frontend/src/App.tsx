@@ -456,6 +456,16 @@ export function App() {
     [cards, openCard, threadList, openThread]
   )
 
+  // The nav drawer on a narrow window (card #227): it closes when you go
+  // somewhere, as a phone's drawer does.
+  const [drawer, setDrawer] = useState(false)
+  const where = open ? `card:${open}` : `${section.kind}:${section.kind === "board" ? section.id : ""}`
+  const [drawerAt, setDrawerAt] = useState(where)
+  if (drawerAt !== where) {
+    setDrawerAt(where)
+    setDrawer(false)
+  }
+
   return (
     <AgentCards.Provider value={agentCards}>
     <div className="flex h-svh overflow-hidden bg-background">
@@ -470,9 +480,12 @@ export function App() {
         cards={cards}
         openCard={open}
         onOpenCard={openCard}
+        drawer={drawer}
+        onDrawer={setDrawer}
       />
       <div className="flex min-w-0 flex-1 flex-col">
       <AppHeader
+        onMenu={() => setDrawer(true)}
         roster={roster}
         title={
           open
