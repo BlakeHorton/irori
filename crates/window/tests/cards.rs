@@ -864,4 +864,29 @@ fn files_with_a_thread_a_reply_and_a_new_card() {
         .unwrap();
     assert_eq!(files_on(&r, &res.task.id), vec!["crash.txt"]);
     assert_eq!(heard(&r), vec![vec!["crash.txt".to_string()]]);
+
+    // Nobody picked: Irori offers it to a free agent, files and all.
+    let res =
+        r.w.create_card(irori_window::new_card::NewCardInput {
+            title: "And this one".into(),
+            files: vec![up("second.txt", b"more")],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(files_on(&r, &res.task.id), vec!["second.txt"]);
+    let to = res.told.to.clone();
+    assert_eq!(to.len(), 1, "offered to one free agent: {:?}", res.told);
+    let got: Vec<Vec<String>> = ib
+        .for_agent(&to[0], true, 100)
+        .into_iter()
+        .filter(|d| d.message.text.contains("And this one"))
+        .map(|d| {
+            d.message
+                .attachments
+                .iter()
+                .map(|a| a.name.clone())
+                .collect()
+        })
+        .collect();
+    assert_eq!(got, vec![vec!["second.txt".to_string()]]);
 }
