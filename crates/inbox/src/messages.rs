@@ -637,6 +637,41 @@ impl Inbox {
         })
     }
 
+    /// The newest `limit` deliveries of notices about a comment (ref
+    /// `comment:<id>`, reason `reasons`), each with whether its recipient
+    /// read it: took it up in a turn, answered or skipped it itself
+    /// (card #159). A dismissed, moved or rejected one is left out; one
+    /// Irori closed unread (gone, stale) stays, unread.
+    pub fn comment_notices(&self, reasons: &[&str], limit: usize) -> Vec<(Delivery, bool)> {
+        self.read(|b| {
+            let mut out = Vec::new();
+            for id in b.order.iter().rev() {
+                if out.len() >= limit {
+                    break;
+                }
+                let d = &b.dels[id];
+                if matches!(d.d.state.as_str(), st::DISMISSED | st::MOVED | st::REJECTED) {
+                    continue;
+                }
+                let Some(m) = b.msgs.get(&d.d.message_id) else {
+                    continue;
+                };
+                if !m.notice
+                    || !m.ref_.starts_with("comment:")
+                    || !reasons.contains(&m.reason.as_str())
+                {
+                    continue;
+                }
+                let read = d.engaged_once
+                    || d.self_closed
+                    || d.d.state == st::ENGAGED
+                    || d.d.state == st::ANSWERED;
+                out.push((b.copy_out(d), read));
+            }
+            out
+        })
+    }
+
     /// Every open delivery, held ones included (in id order).
     pub fn open(&self) -> Vec<Delivery> {
         self.read(|b| b.open_recs().map(|d| b.copy_out(d)).collect())

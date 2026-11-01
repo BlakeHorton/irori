@@ -413,6 +413,13 @@ function ThreadRow({
           </div>
         )}
         <AttachmentList attachments={item.attachments ?? []} />
+        {l.waiting.length > 0 && (
+          <ul className="grid gap-0.5 text-[11px] text-muted-foreground">
+            {l.waiting.map((w) => (
+              <li key={w}>{plainLine(w)}</li>
+            ))}
+          </ul>
+        )}
         {cardId && edit === EditState.Can && (
           <Button
             size="xs"
