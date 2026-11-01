@@ -379,8 +379,16 @@ impl Window {
     }
 
     /// BoardService.Pin.
+    /// A shared board's card is pinned in the person's own log (card
+    /// #161): theirs alone, ordered with their private pins.
     pub fn pin(&self, id: &str, pinned: bool) -> Result<(), String> {
-        let (co, keys) = self.private_only(trim(id))?;
+        let (co, keys) = self.on(trim(id), &[])?;
+        let mine = self.core.coord();
+        if !std::sync::Arc::ptr_eq(&co, mine) {
+            return mine
+                .pin_ref(&self.user_key(), trim(id), pinned, "", false)
+                .map_err(|e| e.to_string());
+        }
         co.pin(&keys[0], trim(id), pinned)
             .map(|_| ())
             .map_err(|e| e.to_string())
@@ -396,7 +404,13 @@ impl Window {
 
     /// BoardService.MovePin: just before another pinned card ("" last).
     pub fn move_pin(&self, id: &str, before: &str) -> Result<(), String> {
-        let (co, keys) = self.private_only(trim(id))?;
+        let (co, keys) = self.on(trim(id), &[])?;
+        let mine = self.core.coord();
+        if !std::sync::Arc::ptr_eq(&co, mine) {
+            return mine
+                .pin_ref(&self.user_key(), trim(id), true, trim(before), true)
+                .map_err(|e| e.to_string());
+        }
         co.move_pin(&keys[0], trim(id), trim(before))
             .map(|_| ())
             .map_err(|e| e.to_string())
