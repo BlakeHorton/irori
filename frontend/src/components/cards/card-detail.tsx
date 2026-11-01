@@ -695,12 +695,8 @@ function PageHeader({
             {shortRepo(card.repoKey)}
           </span>
         )}
-        {/* Pins are private-board rows; a shared card isn't pinned. */}
-        {card.scope === "board" ? (
-          <span className="ml-auto" />
-        ) : (
-          <PinButton card={card} />
-        )}
+        {/* A shared card pins in your own log, yours alone (card #161). */}
+        <PinButton card={card} />
         {extra}
       </div>
       <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance text-ink">
