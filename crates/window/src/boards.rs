@@ -355,6 +355,9 @@ pub struct BoardSettings {
     pub autonomy: String,
     /// The board has its own autonomy row (else it inherits).
     pub autonomy_own: bool,
+    /// shared or private: where this person's threads on the board live
+    /// (card #185).
+    pub threads: String,
     /// "Leaving…" (§4.4).
     pub leaving: bool,
     /// Owners only: each membership row the board ignored, in a line
@@ -434,6 +437,7 @@ impl Window {
                 .autonomy_settings()
                 .iter()
                 .any(|s| s.board_id == board_id),
+            threads: ib.threads_mode(board_id),
             leaving,
             conflicts,
             reviewers: self
@@ -558,6 +562,24 @@ impl Window {
                 inbox::AutonomySetting {
                     board_id: board_id.into(),
                     preset: preset.into(),
+                },
+                &self.core.user_sender().key,
+            )
+            .map_err(|e| e.to_string())?;
+        self.boards_settings(board_id)
+    }
+
+    /// BoardsService.SetThreads (card #185): this person's threads on the
+    /// board are shared with every member or private to them and their own
+    /// agents. Threads already started stay where they are.
+    pub fn boards_set_threads(&self, board_id: &str, mode: &str) -> Result<BoardSettings, String> {
+        self.core.board_info(board_id).map_err(text)?;
+        self.core
+            .inbox()
+            .set_threads_mode(
+                inbox::ThreadsSetting {
+                    board_id: board_id.into(),
+                    preset: mode.into(),
                 },
                 &self.core.user_sender().key,
             )

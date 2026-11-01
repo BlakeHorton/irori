@@ -57,6 +57,22 @@ pub mod autonomy {
     }
 }
 
+/// Where the person's threads on a shared board live (card #185).
+pub mod threads_mode {
+    /// In the board's log: every member and their agents see them (#134).
+    pub const SHARED: &str = "shared";
+    /// In the person's own log: only their own agents hear them, and they
+    /// never reach another member's devices.
+    pub const PRIVATE: &str = "private";
+
+    pub fn valid(p: &str) -> bool {
+        matches!(p, SHARED | PRIVATE)
+    }
+}
+
+/// The threads mode with no row: shared, as #134 landed it.
+pub const THREADS_DEFAULT: &str = threads_mode::SHARED;
+
 /// The receive preset with no row: Open (§7.2).
 pub const RECEIVE_DEFAULT: &str = receive::OPEN;
 /// The autonomy preset with no row: Trusted (§7.3).
@@ -165,6 +181,24 @@ pub struct ReceiveSetting {
     pub preset: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub people: Vec<String>,
+}
+
+/// One threads.set row (card #185): the person's threads on a board are
+/// shared or private.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct ThreadsSetting {
+    #[serde(rename = "boardId")]
+    pub board_id: String,
+    /// One of [`threads_mode`]; `""` clears the row.
+    pub preset: String,
+}
+
+#[derive(Serialize)]
+struct ThreadsRow<'a> {
+    #[serde(flatten)]
+    s: &'a ThreadsSetting,
+    by: &'a str,
+    at: gocompat::time::GoTime,
 }
 
 /// One autonomy.set row (§7.3): a preset for a board, or for every board.
@@ -302,6 +336,14 @@ impl Inner {
         }
     }
 
+    pub(crate) fn threads_for(&self, board_id: &str) -> String {
+        self.threads
+            .get(board_id)
+            .map(|r| r.val.preset.clone())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| THREADS_DEFAULT.into())
+    }
+
     pub(crate) fn autonomy_for(&self, board_id: &str) -> String {
         for k in [board_id, ""] {
             if let Some(r) = self.autonomy.get(k)
@@ -340,7 +382,23 @@ impl Inner {
             self.ignore(&ev.device_id);
             return Ok(());
         }
-        if receive_row {
+        if ev.kind == kinds::THREADS_SET {
+            let val = ThreadsSetting {
+                board_id: s(&o, "boardId"),
+                preset: s(&o, "preset"),
+            };
+            let k = val.board_id.clone();
+            if !k.is_empty() && newer(self.threads.get(&k), ev) {
+                self.threads.insert(
+                    k,
+                    Setting {
+                        hlc: ev.hlc,
+                        dev: ev.device_id.clone(),
+                        val,
+                    },
+                );
+            }
+        } else if receive_row {
             let val = ReceiveSetting {
                 board_id: s(&o, "boardId"),
                 person_id: s(&o, "personId"),
@@ -594,6 +652,36 @@ impl Inbox {
             }
             let at = b.now();
             b.emit(by, kinds::RECEIVE_SET, &ReceiveRow { s: &set, by, at })
+        })
+    }
+
+    /// Where the person's threads on board live (card #185): shared or
+    /// private.
+    pub fn threads_mode(&self, board_id: &str) -> String {
+        self.read(|b| b.threads_for(board_id))
+    }
+
+    /// Writes a threads.set row; the person only.
+    pub fn set_threads_mode(&self, mut set: ThreadsSetting, by: &str) -> Result<()> {
+        set.board_id = trim(&set.board_id).into();
+        set.preset = trim(&set.preset).into();
+        if set.board_id.is_empty() {
+            return Err(Error::other("inbox: the threads setting is per board"));
+        }
+        if !set.preset.is_empty() && !threads_mode::valid(&set.preset) {
+            return Err(Error::other(format!(
+                "inbox: unknown threads setting {} (shared or private)",
+                quote(&set.preset)
+            )));
+        }
+        self.mutate(|b| {
+            if !b.is_owner(by) {
+                return Err(Error::other(
+                    "inbox: only the person changes where their threads live, in the app",
+                ));
+            }
+            let at = b.now();
+            b.emit(by, kinds::THREADS_SET, &ThreadsRow { s: &set, by, at })
         })
     }
 

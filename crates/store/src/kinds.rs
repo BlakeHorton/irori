@@ -194,6 +194,9 @@ kinds! {
     BOARD_FORGOT = "board.forgot" => Replicated, Refuses;
     RECEIVE_SET = "receive.set" => Replicated, Refuses;
     AUTONOMY_SET = "autonomy.set" => Replicated, Refuses;
+    /// The person's threads on a shared board: shared with every member,
+    /// or private to them and their own agents (card #185).
+    THREADS_SET = "threads.set" => Replicated, Refuses;
     /// `{privateTaskId, boardId, taskId}`.
     SHARED_COPY = "board.sharedcopy" => Replicated, Refuses;
     /// `{boardId, cardId, agentKey}`.

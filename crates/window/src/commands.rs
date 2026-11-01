@@ -611,6 +611,12 @@ pub async fn boards_set_autonomy(w: W<'_>, board_id: String, preset: String) -> 
 
 #[tauri::command]
 #[specta::specta]
+pub async fn boards_set_threads(w: W<'_>, board_id: String, mode: String) -> R<BoardSettings> {
+    w.boards_set_threads(&board_id, &mode)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn boards_set_reviewer(
     w: W<'_>,
     board_id: String,
@@ -945,6 +951,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             boards_set_open_cards,
             boards_set_receive,
             boards_set_autonomy,
+            boards_set_threads,
             boards_set_reviewer,
             boards_invite,
             boards_join_invite,

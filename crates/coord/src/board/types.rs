@@ -276,6 +276,10 @@ pub struct Ask {
     /// stays open until the person resolves it.
     #[serde(skip_serializing_if = "omit")]
     pub thread: bool,
+    /// A private thread about this shared board (card #185): in the
+    /// person's own log, heard only by their own agents.
+    #[serde(skip_serializing_if = "omit")]
+    pub board: String,
 }
 
 impl Ask {
@@ -872,6 +876,9 @@ pub struct NewAsk {
     /// A thread (card #116): the agents on the cards it names and the ones
     /// it mentions hear it first; one idle agent after a quiet spell.
     pub thread: bool,
+    /// A private thread about this shared board (card #185); private log
+    /// only.
+    pub board: String,
 }
 
 /// ask_claim's answer.

@@ -191,6 +191,15 @@ function ThreadRow({
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">
             {plainLine(t.title)}
           </span>
+          {t.private && (
+            <Badge
+              variant="slate"
+              className="h-4 shrink-0 px-1.5 text-[10.5px]"
+              title="Only you and your own agents see this thread; it never reaches other members' devices"
+            >
+              Private
+            </Badge>
+          )}
           {badge && (
             <Badge
               variant={badge.variant}

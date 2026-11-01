@@ -17,6 +17,9 @@ crate::go_struct! {
         pub mentions: Vec<Mention> = "mentions" "omit",
         /// A thread (card #116): a conversation, not a card.
         pub thread: bool = "thread" "omit",
+        /// A private thread about a shared board (card #185): it lives in
+        /// the person's own log and shows on that board's page.
+        pub board: String = "board" "omit",
     }
 }
 

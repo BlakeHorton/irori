@@ -777,3 +777,121 @@ fn another_members_agent_can_be_mentioned_on_its_board() {
         item.mentions
     );
 }
+
+/// Card #185: with "My threads" private on a shared board, a thread lives
+/// in the person's own log, tagged with the board: only their own agents
+/// hear it, its text never enters the board's log (so no other member's
+/// device gets it), and naming another member's agent is refused. Shared
+/// threads still go in the board's log (#134).
+#[test]
+fn private_board_threads_stay_in_your_own_log() {
+    let r = Rig::new();
+    let w = &r.w;
+    let b = w.boards_create("Horton", "horton").unwrap();
+    let card_id = "fedcba9876543210fedcba9876543210";
+    let friend = format!("{AGENT_ACTOR_PREFIX}{card_id}");
+    w.core
+        .board_store(&b.board_id)
+        .unwrap()
+        .append(
+            &friend,
+            kinds::AGENT_CARD,
+            &serde_json::json!({"cardId": card_id, "name": "otter", "kind": "claude",
+                "personId": "friend-person", "status": "idle"}),
+        )
+        .unwrap();
+    wait("the friend's agent card folds", || {
+        w.core.board_agents().iter().any(|a| a.key == friend)
+    });
+    let co = w.core.board_coord(&b.board_id).unwrap();
+    let me = w
+        .core
+        .board_key(&b.board_id, &w.core.user_sender().key)
+        .unwrap();
+    let new = |title: &str| {
+        co.create_task(
+            &me,
+            coord::NewTask {
+                title: title.into(),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+    // One card held by my agent alpha, one by the friend's otter.
+    let mine = new("my work");
+    let alpha = w.core.board_key(&b.board_id, &r.key_a).unwrap();
+    co.claim_task(&alpha, &mine.id).unwrap();
+    let theirs = new("their work");
+    co.claim_task(&friend, &theirs.id).unwrap();
+
+    assert_eq!(w.boards_settings(&b.board_id).unwrap().threads, "shared");
+    let s = w.boards_set_threads(&b.board_id, "private").unwrap();
+    assert_eq!(s.threads, "private");
+
+    let text = format!(
+        "Secret plan: are horton#{} and horton#{} still moving?",
+        mine.short, theirs.short
+    );
+    let res = w.start_thread(&text, &[], &[], &b.board_id).unwrap();
+    let id = res.task.id.clone();
+    assert_eq!(res.told.to, vec![r.key_a.clone()], "only my agent hears it");
+    // It is in my own log, tagged with the board, and not on the board.
+    let t = w.core.coord().get_task(&id).expect("in my own log");
+    assert_eq!(t.ask.unwrap().board, b.board_id);
+    assert!(co.get_task(&id).is_none(), "not in the board's log");
+    let board_rows = w
+        .core
+        .board_store(&b.board_id)
+        .unwrap()
+        .list(&store::Filter {
+            limit: store::MAX_LIST_LIMIT,
+            ..store::Filter::default()
+        })
+        .unwrap();
+    assert!(
+        board_rows
+            .iter()
+            .all(|e| !String::from_utf8_lossy(&e.payload).contains("Secret plan")),
+        "the thread's text never enters the board's log"
+    );
+    // The board's page lists it, marked private; your own board's doesn't.
+    let on_board = w.threads(&b.board_id);
+    let mine_t = on_board
+        .iter()
+        .find(|x| x.id == id)
+        .expect("on the board page");
+    assert!(mine_t.private);
+    assert!(w.threads("").iter().all(|x| x.id != id));
+
+    // Naming the friend's agent is refused: it would reach their device.
+    let err = w
+        .start_thread(
+            "otter, a word?",
+            &[irori_window::ts::Mention {
+                key: friend.clone(),
+                name: "otter".into(),
+                gone: false,
+            }],
+            &[],
+            &b.board_id,
+        )
+        .unwrap_err();
+    assert!(err.contains("another member's"), "{err}");
+
+    // Back to shared: a new thread goes in the board's log, as #134 does.
+    w.boards_set_threads(&b.board_id, "shared").unwrap();
+    let res = w
+        .start_thread("Shared question for everyone", &[], &[], &b.board_id)
+        .unwrap();
+    assert!(
+        co.get_task(&res.task.id).is_some(),
+        "a shared thread is on the board"
+    );
+    let listed = w.threads(&b.board_id);
+    assert!(listed.iter().any(|x| x.id == res.task.id && !x.private));
+    assert!(
+        listed.iter().any(|x| x.id == id && x.private),
+        "the private one stays"
+    );
+}

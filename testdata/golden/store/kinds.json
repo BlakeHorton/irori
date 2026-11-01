@@ -171,6 +171,7 @@
   "task.steps": "accepts",
   "task.watched": "accepts",
   "task.where": "refuses",
+  "threads.set": "refuses",
   "turn.ended": "refuses",
   "turn.engaged": "refuses",
   "wake.issued": "refuses"
@@ -1134,6 +1135,7 @@
   "task.steps": "replicated",
   "task.watched": "replicated",
   "task.where": "replicated",
+  "threads.set": "replicated",
   "turn.ended": "replicated",
   "turn.engaged": "replicated",
   "wake.issued": "replicated"

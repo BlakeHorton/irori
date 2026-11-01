@@ -245,6 +245,11 @@ impl Fold {
                 a.mentions.clone()
             },
             thread: a.thread,
+            board: if self.on_board {
+                String::new()
+            } else {
+                a.board.clone()
+            },
             ..Ask::default()
         });
     }
@@ -757,6 +762,11 @@ impl Fold {
                     repo_key: repo_key.clone(),
                     mentions: mentions.clone(),
                     thread: input.thread,
+                    board: if self.on_board || !input.thread {
+                        String::new()
+                    } else {
+                        input.board.trim().to_string()
+                    },
                 }),
                 by: by.clone(),
                 at,

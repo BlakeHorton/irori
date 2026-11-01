@@ -48,7 +48,8 @@ use serde::Serialize;
 pub use attach::safe_name;
 pub use bridge::{
     AUTONOMY_DEFAULT, AutonomySetting, BOARD_KIND, BoardFrom, BridgeRow, RECEIVE_DEFAULT,
-    ReceiveSetting, autonomy, board_sender_key, receive, receive_decision, row_kind,
+    ReceiveSetting, THREADS_DEFAULT, ThreadsSetting, autonomy, board_sender_key, receive,
+    receive_decision, row_kind, threads_mode,
 };
 pub use edit::{EditState, editing};
 pub use fence::{batch, fence, fence_prompt};
@@ -209,7 +210,7 @@ pub const API_KEY_PREFIX: &str = "api:";
 pub mod kinds {
     pub use store::kinds::{
         AGENT_ALIAS, AGENT_NAME, AGENT_SEEN, AUTONOMY_SET, DELIVERY_DECIDED, DELIVERY_STATE,
-        MESSAGE_SENT, POLICY_SET, RECEIVE_SET, TURN_ENDED, TURN_ENGAGED, WAKE_ISSUED,
+        MESSAGE_SENT, POLICY_SET, RECEIVE_SET, THREADS_SET, TURN_ENDED, TURN_ENGAGED, WAKE_ISSUED,
     };
 }
 

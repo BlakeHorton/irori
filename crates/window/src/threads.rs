@@ -61,6 +61,9 @@ pub struct ThreadSummary {
     pub at: GoTime,
     #[specta(type = ts::Time)]
     pub updated_at: GoTime,
+    /// A private thread about a shared board (card #185): in your own log,
+    /// heard only by your agents, never on other members' devices.
+    pub private: bool,
 }
 
 /// What a #ref in text names (card #144): a card or a thread, live or
@@ -116,7 +119,11 @@ impl Window {
         board_id: &str,
     ) -> Result<TaskResult, String> {
         let board_id = crate::trim(board_id);
-        let (t, n) = if board_id.is_empty() {
+        let private = !board_id.is_empty()
+            && self.core.inbox().threads_mode(board_id) == inbox::threads_mode::PRIVATE;
+        let (t, n) = if private {
+            self.private_board_thread(text, mentions, files, board_id)?
+        } else if board_id.is_empty() {
             let plan = self.plan_mentions("", mentions);
             let refs = self.store_uploads(files)?;
             self.core
@@ -177,23 +184,103 @@ impl Window {
         })
     }
 
+    /// A private thread about shared board `board_id` (card #185): it goes
+    /// in your own log, tagged with the board, and only your own agents
+    /// hear it: yours among the holders of the board cards it names, and
+    /// the ones you mention. Naming another member's agent is refused, so
+    /// its text never reaches their devices.
+    fn private_board_thread(
+        &self,
+        text: &str,
+        mentions: &[ts::Mention],
+        files: &[UploadFile],
+        board_id: &str,
+    ) -> Result<(Task, coord::Notice), String> {
+        let bc = self.core.board_coord(board_id).map_err(|e| e.to_string())?;
+        let theirs = |k: &str| {
+            k.starts_with(store::kinds::AGENT_ACTOR_PREFIX)
+                || k.starts_with(store::kinds::PERSON_ACTOR_PREFIX)
+        };
+        // Checked before the mentions are resolved: another member's agent
+        // isn't one of yours, so resolving would drop it without a word.
+        if let Some(m) = mentions
+            .iter()
+            .find(|m| theirs(&self.core.private_key(&m.key)))
+        {
+            return Err(format!(
+                "your threads on this board are private, so only your own agents hear them: {} is another member's. Switch \"My threads\" to shared in the board's settings to talk with them.",
+                if m.name.is_empty() { &m.key } else { &m.name }
+            ));
+        }
+        let plan = self.plan_mentions("", mentions);
+        let mut log: Vec<coord::Mention> = plan
+            .log
+            .iter()
+            .map(|m| coord::Mention {
+                key: self.core.private_key(&m.key),
+                ..m.clone()
+            })
+            .collect();
+        // Your agents on the board cards it names hear it first, as on your
+        // own board; other members' holders don't.
+        for h in bc.thread_hearers(text, &[]) {
+            let k = self.core.private_key(&h);
+            if theirs(&k) || log.iter().any(|m| m.key == k) {
+                continue;
+            }
+            let name = self.people().ref_(&k).name;
+            log.push(coord::Mention {
+                key: k,
+                name,
+                ..coord::Mention::default()
+            });
+        }
+        let refs = self.store_uploads(files)?;
+        self.core
+            .coord()
+            .post_ask(
+                &self.user_key(),
+                NewAsk {
+                    text: text.into(),
+                    mentions: log,
+                    files: refs.iter().map(crate::coord_ref).collect(),
+                    thread: true,
+                    board: board_id.into(),
+                    ..Default::default()
+                },
+                &self.core.ask_agents(),
+            )
+            .map_err(|e| e.to_string())
+    }
+
     /// BoardService.Threads: open threads, newest first, then the newest
     /// resolved ones: your own board's, or with `board_id` that shared
     /// board's.
     pub fn threads(&self, board_id: &str) -> Vec<ThreadSummary> {
         let board_id = crate::trim(board_id);
-        let co = if board_id.is_empty() {
-            self.core.coord().clone()
-        } else {
-            match self.core.board_coord(board_id) {
-                Ok(c) => c,
-                Err(_) => return Vec::new(),
+        // Where the threads come from: your own board's are your log's,
+        // minus the private ones about a shared board; a shared board's are
+        // its log's plus your private ones about it (card #185).
+        let own = self.core.coord().clone();
+        let about = |t: &Task| t.ask.as_ref().map(|a| a.board.clone()).unwrap_or_default();
+        let mut found: Vec<(std::sync::Arc<coord::Coord>, Task, bool)> = Vec::new();
+        for t in own.list_tasks(&coord::TaskFilter::default()) {
+            if is_thread(&t) && about(&t) == board_id {
+                found.push((own.clone(), t, !board_id.is_empty()));
             }
-        };
+        }
+        if !board_id.is_empty() {
+            let Ok(bc) = self.core.board_coord(board_id) else {
+                return Vec::new();
+            };
+            for t in bc.list_tasks(&coord::TaskFilter::default()) {
+                found.push((bc.clone(), t, false));
+            }
+        }
         let p = self.people();
         let mut open = Vec::new();
         let mut done = Vec::new();
-        for t in co.list_tasks(&coord::TaskFilter::default()) {
+        for (co, t, private) in found {
             if !is_thread(&t) || t.withdrawn {
                 continue;
             }
@@ -253,6 +340,7 @@ impl Window {
                     .collect(),
                 at: t.created_at,
                 updated_at: t.updated_at,
+                private,
             };
             if resolved {
                 done.push(s);

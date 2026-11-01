@@ -37,6 +37,7 @@ pub(crate) const REPLAY_KINDS: &[&str] = &[
     kinds::DELIVERY_DECIDED,
     kinds::RECEIVE_SET,
     kinds::AUTONOMY_SET,
+    kinds::THREADS_SET,
 ];
 
 /// The device-local rows New folds.
@@ -612,6 +613,8 @@ pub(crate) struct Inner {
     pub receive: BTreeMap<(String, String), crate::bridge::Setting<crate::ReceiveSetting>>,
     /// autonomy.set rows by boardId.
     pub autonomy: BTreeMap<String, crate::bridge::Setting<crate::AutonomySetting>>,
+    /// threads.set rows by boardId (card #185).
+    pub threads: BTreeMap<String, crate::bridge::Setting<crate::ThreadsSetting>>,
     /// Board rows bridged, as `<boardId>/<row>><agent>`.
     pub bridged: HashSet<String>,
 
@@ -742,6 +745,7 @@ impl Inbox {
             pairs: HashMap::new(),
             receive: BTreeMap::new(),
             autonomy: BTreeMap::new(),
+            threads: BTreeMap::new(),
             bridged: HashSet::new(),
             reach: BTreeMap::new(),
             gone_since: BTreeMap::new(),
@@ -1045,7 +1049,9 @@ impl Inner {
                 }
                 self.note(ChangeKind::Updated, "", &id);
             }
-            kinds::RECEIVE_SET | kinds::AUTONOMY_SET => self.apply_setting(ev)?,
+            kinds::RECEIVE_SET | kinds::AUTONOMY_SET | kinds::THREADS_SET => {
+                self.apply_setting(ev)?
+            }
             kinds::AGENT_SEEN => {
                 if let Some((key, name)) = decode_seen(&ev.payload)
                     && !key.is_empty()

@@ -102,6 +102,7 @@ export const commands = {
 	boardsSetOpenCards: (boardId: string, to: string) => __TAURI_INVOKE<BoardSettings>("boards_set_open_cards", { boardId, to }),
 	boardsSetReceive: (boardId: string, preset: string, people: string[]) => __TAURI_INVOKE<BoardSettings>("boards_set_receive", { boardId, preset, people }),
 	boardsSetAutonomy: (boardId: string, preset: string) => __TAURI_INVOKE<BoardSettings>("boards_set_autonomy", { boardId, preset }),
+	boardsSetThreads: (boardId: string, mode: string) => __TAURI_INVOKE<BoardSettings>("boards_set_threads", { boardId, mode }),
 	boardsSetReviewer: (boardId: string, agent: string, repo: string) => __TAURI_INVOKE<BoardSettings>("boards_set_reviewer", { boardId, agent, repo }),
 	boardsInvite: (boardId: string) => __TAURI_INVOKE<InviteStatus>("boards_invite", { boardId }),
 	boardsJoinInvite: (link: string) => __TAURI_INVOKE<InviteStatus>("boards_join_invite", { link }),
@@ -342,6 +343,11 @@ export type BoardSettings = {
 	autonomy: string,
 	/**  The board has its own autonomy row (else it inherits). */
 	autonomyOwn: boolean,
+	/**
+	 *  shared or private: where this person's threads on the board live
+	 *  (card #185).
+	 */
+	threads: string,
 	/**  "Leaving…" (§4.4). */
 	leaving: boolean,
 	/**
@@ -1285,6 +1291,11 @@ export type ThreadSummary = {
 	cards: ThreadCard[],
 	at: string,
 	updatedAt: string,
+	/**
+	 *  A private thread about a shared board (card #185): in your own log,
+	 *  heard only by your agents, never on other members' devices.
+	 */
+	private: boolean,
 };
 
 /**  Who an action's notice went to. */

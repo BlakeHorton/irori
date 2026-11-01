@@ -162,7 +162,7 @@ export function BoardReviewer(p: Partial<B.BoardReviewer> = {}): B.BoardReviewer
 
 /** BoardSettings with Go's zero values for every field left out. */
 export function BoardSettings(p: Partial<B.BoardSettings> = {}): B.BoardSettings {
-  return { "boardId": "", "members": [], "receive": "", "people": [], "receiveOwn": false, "autonomy": "", "autonomyOwn": false, "leaving": false, "conflicts": [], "reviewers": [], "agents": [], "openCards": "", ...p } as B.BoardSettings
+  return { "boardId": "", "members": [], "receive": "", "people": [], "receiveOwn": false, "autonomy": "", "autonomyOwn": false, "threads": "", "leaving": false, "conflicts": [], "reviewers": [], "agents": [], "openCards": "", ...p } as B.BoardSettings
 }
 
 /** BoardSummary with Go's zero values for every field left out. */
@@ -492,7 +492,7 @@ export function ThreadCard(p: Partial<B.ThreadCard> = {}): B.ThreadCard {
 
 /** ThreadSummary with Go's zero values for every field left out. */
 export function ThreadSummary(p: Partial<B.ThreadSummary> = {}): B.ThreadSummary {
-  return { "id": "", "short": "", "title": "", "text": "", "state": "", "told": [], "answeredBy": [], "replies": 0, "cards": [], "at": "", "updatedAt": "", ...p } as B.ThreadSummary
+  return { "id": "", "short": "", "title": "", "text": "", "state": "", "told": [], "answeredBy": [], "replies": 0, "cards": [], "at": "", "updatedAt": "", "private": false, ...p } as B.ThreadSummary
 }
 
 /** Told with Go's zero values for every field left out. */

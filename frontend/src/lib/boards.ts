@@ -74,6 +74,12 @@ export const OpenCardsChoices = [
   },
 ] as const
 
+// ThreadsModes are where your threads on a shared board live (card #185).
+export const ThreadsModes = [
+  { value: "shared", label: "Shared", hint: "Every member and their agents see your threads on this board." },
+  { value: "private", label: "Private", hint: "Only you and your own agents see them; they never reach other members' devices." },
+] as const
+
 // MaxBoardName mirrors identity.MaxBoardName.
 export const MaxBoardName = 60
 
@@ -303,6 +309,7 @@ export const boards = {
       receiveOwn: false,
       autonomy: "trusted",
       autonomyOwn: false,
+      threads: "shared",
       leaving: false,
       conflicts: [],
       reviewers: [],
@@ -336,6 +343,15 @@ export const boards = {
     if (inWails()) return BoardsService.SetOpenCards(boardId, to)
     const s = await boards.settings(boardId)
     Object.assign(s, { openCards: to })
+    return BoardSettings(s)
+  },
+
+  // setThreads sets where your threads on the board live: shared or
+  // private (card #185).
+  async setThreads(boardId: string, mode: string): Promise<BoardSettings> {
+    if (inWails()) return BoardsService.SetThreads(boardId, mode)
+    const s = await boards.settings(boardId)
+    Object.assign(s, { threads: mode || "shared" })
     return BoardSettings(s)
   },
 

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import {
   AutonomyPresets,
   OpenCardsChoices,
+  ThreadsModes,
   boards as actions,
   InviteState,
   ReceivePresets,
@@ -727,6 +728,26 @@ export function BoardSettingsPanel({
         <p className="text-muted-foreground">
           {openCardsHint}
           {!amOwner && " One setting for the whole board; its owners change it."}
+        </p>
+      </section>
+      <section className="grid gap-1" aria-label="My threads">
+        <span className="font-semibold text-ink">My threads</span>
+        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Where my threads live">
+          {ThreadsModes.map((m) => (
+            <Button
+              key={m.value}
+              size="sm"
+              variant={s.threads === m.value ? "secondary" : "ghost"}
+              role="radio"
+              aria-checked={s.threads === m.value}
+              onClick={() => void save(() => actions.setThreads(boardId, m.value))}
+            >
+              {m.label}
+            </Button>
+          ))}
+        </div>
+        <p className="text-muted-foreground">
+          {ThreadsModes.find((m) => m.value === s.threads)?.hint}
         </p>
       </section>
       <Reviewers s={s} save={save} />

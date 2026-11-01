@@ -828,6 +828,12 @@ impl Coord {
 
     // ---- asks ----
 
+    /// The agents a thread with this text would go to first: the holders
+    /// of the open cards it names (#12), then the mentioned ones.
+    pub fn thread_hearers(&self, text: &str, mentions: &[Mention]) -> Vec<String> {
+        self.lock().thread_hearers(text, mentions)
+    }
+
     pub fn post_ask(
         &self,
         by: &str,
