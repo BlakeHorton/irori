@@ -120,10 +120,9 @@ fn shrink(src: &[u8], w: u32, h: u32, tw: u32, th: u32) -> Vec<u8> {
                 }
             }
             let o = &mut out[(ty * tw + tx) * 4..][..4];
-            if a > 0 {
-                o[0] = ((r + a / 2) / a) as u8;
-                o[1] = ((g + a / 2) / a) as u8;
-                o[2] = ((b + a / 2) / a) as u8;
+            // Fully transparent (a == 0) stays black: its colour never shows.
+            for (ch, c) in o.iter_mut().zip([r, g, b]) {
+                *ch = (c + a / 2).checked_div(a).unwrap_or(0) as u8;
             }
             o[3] = ((a + n / 2) / n) as u8;
         }
