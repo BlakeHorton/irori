@@ -303,15 +303,41 @@ impl Fold {
         });
     }
 
-    /// What this device does for the unheld cards its agents posted: hands
-    /// each on when the agent it went to gave it back, ended its turn
-    /// without taking it, or went away, and hands out the ones waiting
-    /// when an agent is free. Never by time waited.
+    /// Whether this device runs card t's hand-out: on the private board,
+    /// a card its agents posted; on a shared board, a card it made (card
+    /// #174).
+    fn hands_out(&self, t: &Task) -> bool {
+        if self.on_board {
+            return self.origin.get(&t.id) == Some(&self.dev);
+        }
+        owner::device_of(&t.created_by) == self.dev
+    }
+
+    /// The agents card t may go to (card #174): on a shared board set to
+    /// the author's agents, those of the member who made it; else all.
+    fn offer_pool(&self, t: &Task, agents: &[AgentCard]) -> Vec<AgentCard> {
+        let any = self.open_cards_any.as_ref().is_some_and(|f| f());
+        let (true, false, Some(kp)) = (self.on_board, any, &self.key_person) else {
+            return agents.to_vec();
+        };
+        let author = kp(&t.created_by);
+        if author.is_empty() {
+            return Vec::new();
+        }
+        agents
+            .iter()
+            .filter(|a| kp(&a.key) == author)
+            .cloned()
+            .collect()
+    }
+
+    /// What this device does for the unheld cards its agents posted (on a
+    /// shared board, the cards it made): hands each on when the agent it
+    /// went to gave it back, ended its turn without taking it, or went
+    /// away, and hands out the ones waiting when an agent is free. Never
+    /// by time waited.
     pub(crate) fn sweep_offers(&mut self, agents: &[AgentCard]) -> (Vec<Notice>, Result<()>) {
         let mut out = Vec::new();
-        if self.on_board {
-            return (out, Ok(()));
-        }
         let in_roster: HashMap<&str, &AgentCard> =
             agents.iter().map(|a| (a.key.as_str(), a)).collect();
         // Cards posted here that never had a hand-out (posted before 0.7.1,
@@ -322,7 +348,7 @@ impl Fold {
             .values()
             .filter(|t| {
                 (t.live_offer().is_some() || (t.offer.is_none() && offerable(t)))
-                    && owner::device_of(&t.created_by) == self.dev
+                    && self.hands_out(t)
             })
             .map(|t| (t.created_at, t.id.clone()))
             .collect();
@@ -357,7 +383,8 @@ impl Fold {
                 let t = self.tasks[id].clone();
                 let mut skip = heard.clone();
                 skip.push(t.created_by.clone());
-                let free = self.free_for(&t, agents, &skip);
+                let pool = self.offer_pool(&t, agents);
+                let free = self.free_for(&t, &pool, &skip);
                 let now = self.stamp();
                 if let Some(pick) = free.first() {
                     heard.push(pick.clone());

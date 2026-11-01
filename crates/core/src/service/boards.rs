@@ -1034,8 +1034,9 @@ impl Services {
         }
         let me = self.person_actor();
         let co = {
-            let (ch, v1, v2, v3, v4, v5) = (
+            let (ch, v1, v2, v3, v4, v5, v6) = (
                 self.chain.clone(),
+                v.clone(),
                 v.clone(),
                 v.clone(),
                 v.clone(),
@@ -1068,6 +1069,12 @@ impl Services {
                         })
                     })),
                     tag: Some(Arc::new(move || v4.membership().tag)),
+                    // Who open cards go to (card #174), as the board's
+                    // owners last set it.
+                    open_cards_any: Some(Arc::new(move || {
+                        open_cards_of(&v6.membership())
+                            == irori_identity::membership::OPEN_CARDS_ANY
+                    })),
                     // The cancel rule reads the owners at the row's place
                     // (v0.5 §5.3); no place means now.
                     board_owner: Some(Arc::new(move |p: &str, at: Option<&coord::RowPos>| {

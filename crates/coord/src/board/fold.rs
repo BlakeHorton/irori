@@ -203,6 +203,11 @@ pub struct Fold {
     pub(crate) on_board: bool,
     pub(crate) done_check: bool,
     pub(crate) person: String,
+    /// See [`super::Options::open_cards_any`].
+    pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// On a board, the device that wrote each card's task.created: it runs
+    /// the card's hand-out (card #174).
+    pub(crate) origin: HashMap<String, String>,
     pub(crate) key_person: Option<StrFn>,
     pub(crate) dev_person: Option<StrFn>,
     pub(crate) tag_fn: Option<Arc<dyn Fn() -> String + Send + Sync>>,
@@ -328,6 +333,8 @@ impl Fold {
             done_check: o.done_check,
             person,
             key_person: o.key_person,
+            open_cards_any: o.open_cards_any,
+            origin: HashMap::new(),
             dev_person: o.device_person,
             tag_fn: o.tag,
             board_owner: o.board_owner,
@@ -949,6 +956,9 @@ impl Fold {
             ..Task::default()
         };
         self.fold_ask_created(&mut task, p.ask.as_ref(), ev, &p.by);
+        if self.on_board {
+            self.origin.insert(p.task_id.clone(), ev.device_id.clone());
+        }
         self.sync_pin(&mut task);
         self.tasks.insert(p.task_id.clone(), task);
         if !p.parent.is_empty() {
@@ -1702,6 +1712,9 @@ impl Fold {
             kinds::LEASE_RELEASED => true,
             // The take lock: its fold counts only the asking device's.
             kinds::BOARD_ASK_STATE => true,
+            // A hand-out counts from the device that runs it: the one that
+            // made the card (card #174).
+            kinds::TASK_OFFERED => self.origin.get(&p.task_id) == Some(&ev.device_id),
             kinds::TASK_LEFT => self.may_write(&p.who, &ev.device_id),
             kinds::TASK_STATUS | kinds::BLOCKER_RESOLVED => match self.tasks.get(&p.task_id) {
                 None => true,

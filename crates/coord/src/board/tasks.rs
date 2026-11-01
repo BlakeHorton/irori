@@ -816,6 +816,7 @@ impl Fold {
         self.activity.clear();
         self.claims.clear();
         self.claimed.clear();
+        self.origin.clear();
         self.short_groups.clear();
         self.short_idx.clear();
         self.last.clear();

@@ -10,6 +10,8 @@
 //!   watchers and assignees (the assignee alone for an assignment);
 //! - a board ask (§9): the asking device's `board.ask.state` telling free
 //!   agents, to those of them this device hosts, once per round;
+//! - an open card handed out (card #174): the device that made it hands it
+//!   to one free agent at a time, and the one it names hears it here;
 //! - a review request (§10), to the agent it names or, without one, to
 //!   this person's dedicated reviewer for the card's repo or the board;
 //! - a lease release request (§5.4), to the lease's holder only.
@@ -87,6 +89,7 @@ impl Services {
                 | kinds::TASK_STATUS
                 | kinds::REVIEW_REQUESTED
                 | kinds::BOARD_ASK_STATE
+                | kinds::TASK_OFFERED
         );
         if !bridged {
             return;
@@ -118,6 +121,8 @@ impl Services {
         };
         let plan = if ev.kind == kinds::BOARD_ASK_STATE {
             self.ask_plan(b, ev, f, &t)
+        } else if ev.kind == kinds::TASK_OFFERED {
+            offer_plan(co, f, &t)
         } else {
             row_plan(co, &me, ev, f, &t)
         };
@@ -290,6 +295,50 @@ impl Services {
             people: s.people,
         }
     }
+}
+
+/// An open card the device that made it handed to an agent (card #174):
+/// that agent alone hears it, woken, once per hand-out. The board fold
+/// counts a hand-out only from that device, so one it ignored (or that is
+/// already stale: taken, passed on) tells nobody.
+fn offer_plan(co: &Coord, f: RowFields, t: &Task) -> Option<Plan> {
+    if f.reason != coord::OFFER_HANDED || f.to.is_empty() || f.since.is_empty() {
+        return None;
+    }
+    let live = |t: &Task| t.live_offer().is_some_and(|o| o.to == f.to);
+    let t = if live(t) {
+        t.clone()
+    } else {
+        co.catch_up().ok()?;
+        co.get_task(&t.id).filter(live)?
+    };
+    let (title, refs, short) = (t.title.clone(), t.refs(), t.short_ref());
+    let (objective, done) = (t.objective.clone(), t.done_criteria.clone());
+    Some(Plan {
+        kind: row_kind::ASK,
+        card_id: String::new(),
+        row: format!("offer:{}@{}:{}", t.id, f.since, f.to),
+        to: vec![f.to],
+        wake: true,
+        text: Box::new(move |name| {
+            let mut s = format!(
+                "{name} put up a card, and Irori handed it to you: {} ({refs})",
+                gocompat::quote::quote(&title)
+            );
+            if objective.is_empty() {
+                s.push('.');
+            } else {
+                s.push_str(&format!(":\n{objective}"));
+            }
+            if !done.is_empty() {
+                s.push_str(&format!("\nDone when: {done}"));
+            }
+            s.push_str(&format!(
+                "\nIt is yours to take: board_join {short} and start. If you can't take it on now, board_leave {short} and it goes to the next free agent."
+            ));
+            s
+        }),
+    })
 }
 
 /// A card row's plan: a comment, an assignment, a blocker change, a review

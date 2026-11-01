@@ -55,6 +55,18 @@ fn side(dev: &str, person: &str, owners: &Owners) -> Side {
 
 /// side, with the person's done check (card #112) on or off.
 fn side_with(dev: &str, person: &str, owners: &Owners, done_check: bool) -> Side {
+    side_opts(dev, person, owners, done_check, None)
+}
+
+/// side_with, reading "open cards go to any member's agents" (card #174)
+/// from `any`.
+fn side_opts(
+    dev: &str,
+    person: &str,
+    owners: &Owners,
+    done_check: bool,
+    any: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Side {
     let clk = Clk(Arc::new(Mutex::new(fixed_now())));
     let c2 = clk.clone();
     let dir = tempfile::tempdir().unwrap();
@@ -87,6 +99,10 @@ fn side_with(dev: &str, person: &str, owners: &Owners, done_check: bool) -> Side
                 who == p && at.map_or(*until == u64::MAX, |at| *from < at.hlc && at.hlc < *until)
             })
         })),
+        open_cards_any: any.map(|f| {
+            Arc::new(move || f.load(std::sync::atomic::Ordering::SeqCst))
+                as Arc<dyn Fn() -> bool + Send + Sync>
+        }),
         ..Options::default()
     };
     let c = Coord::new(st.clone(), None, o).unwrap();
@@ -794,4 +810,148 @@ fn side_reopen(s: Side, person: &str, owners: &Owners) -> Side {
     };
     let c = Coord::new(s.st.clone(), None, o).unwrap();
     Side { c, ..s }
+}
+
+/// The board's roster as each side sees it: c1 is p1's, c2 and c3 are
+/// p2's. `idle` are idle (the earlier in the list idle longest); the rest
+/// are busy.
+fn roster(idle: &[&str]) -> Vec<coord::roster::AgentCard> {
+    [CARD1, CARD2, CARD3]
+        .iter()
+        .map(|k| coord::roster::AgentCard {
+            key: (*k).into(),
+            status: if idle.contains(k) { "idle" } else { "busy" }.into(),
+            updated_at: hours(idle.iter().position(|i| i == k).unwrap_or(9) as u64),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// p1 on dev-a and p2 on dev-b, with "open cards go to" a switch.
+fn two_people_any(any: &Arc<std::sync::atomic::AtomicBool>) -> (Side, Side) {
+    let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
+    let a = side_opts("dev-a", P1, &owners, false, Some(any.clone()));
+    let b = side_opts("dev-b", P2, &owners, false, Some(any.clone()));
+    a.st.append(
+        P1,
+        kinds::BOARD_CREATED,
+        &raw(r#"{"boardId":"b","creator":{"personId":"p1"},"name":"mlg","tag":"mlg"}"#),
+    )
+    .unwrap();
+    a.st.append(
+        P1,
+        kinds::BOARD_MEMBER_ADDED,
+        &raw(r#"{"personId":"p2","role":"member"}"#),
+    )
+    .unwrap();
+    a.st.append(
+        CARD1,
+        kinds::AGENT_CARD,
+        &raw(r#"{"cardId":"c1","personId":"p1","status":"active"}"#),
+    )
+    .unwrap();
+    pull(&a, &b);
+    for c in ["c2", "c3"] {
+        b.st.append(
+            &format!("agent:{c}"),
+            kinds::AGENT_CARD,
+            &raw(&format!(
+                r#"{{"cardId":"{c}","personId":"p2","status":"active"}}"#
+            )),
+        )
+        .unwrap();
+    }
+    sync(&a, &b);
+    (a, b)
+}
+
+/// Card #174, the author's agents (the default): p1's open card goes only
+/// to p1's free agent, and only p1's device hands it out.
+#[test]
+fn open_cards_go_to_the_authors_agents() {
+    let any = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (a, b) = two_people_any(&any);
+    let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
+    sync(&a, &b);
+    // p2's device runs no hand-out for p1's card.
+    let (ns, r) = b.c.sweep_asks_partial(&roster(&[CARD2, CARD3, CARD1]));
+    r.unwrap();
+    assert!(ns.is_empty(), "{ns:?}");
+    // p1's agent is busy: p2's free agents don't get it; it waits.
+    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
+    r.unwrap();
+    assert!(ns.is_empty(), "{ns:?}");
+    // p1's agent goes idle: it gets it.
+    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD1]));
+    r.unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [CARD1], "{ns:?}");
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let o = s.c.get_task(&t.id).unwrap().live_offer().cloned().unwrap();
+        assert_eq!(o.to, CARD1);
+    }
+}
+
+/// Card #174, any member's agents: p1's card goes to one free agent at a
+/// time, on either person's device; passing on moves it to the next, and
+/// once one takes it nobody else is offered it.
+#[test]
+fn open_cards_go_to_any_members_agents_one_at_a_time() {
+    let any = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let (a, b) = two_people_any(&any);
+    let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
+    sync(&a, &b);
+    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
+    r.unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [CARD2], "idle longest: {ns:?}");
+    sync(&a, &b);
+    assert_eq!(b.c.get_task(&t.id).unwrap().live_offer().unwrap().to, CARD2);
+    // A sweep with nothing new tells nobody again.
+    let (ns, _) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
+    assert!(ns.is_empty(), "{ns:?}");
+    // p2's agent gives it back on p2's device; p1's device hands it on.
+    b.c.leave(CARD2, &t.id, CARD2).unwrap();
+    sync(&a, &b);
+    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
+    r.unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [CARD3], "{ns:?}");
+    sync(&a, &b);
+    // c3 takes it: held, and nobody else is offered it.
+    b.c.claim_task(CARD3, &t.id).unwrap();
+    sync(&a, &b);
+    let (ns, _) = a.c.sweep_asks_partial(&roster(&[CARD1, CARD2]));
+    assert!(ns.is_empty(), "{ns:?}");
+    for s in [&a, &b] {
+        let t = s.c.get_task(&t.id).unwrap();
+        assert_eq!(t.holders, vec![CARD3.to_string()]);
+        assert!(t.live_offer().is_none());
+    }
+    // Back to the author's agents: a new card of p1's skips p2's agents.
+    any.store(false, std::sync::atomic::Ordering::SeqCst);
+    a.c.create_task(P1, nt("Second", "")).unwrap();
+    let (ns, _) = a.c.sweep_asks_partial(&roster(&[CARD2]));
+    assert!(ns.is_empty(), "{ns:?}");
+}
+
+/// Card #174: a hand-out row only counts from the device that made the
+/// card, so another device can't point it at its own agent.
+#[test]
+fn a_hand_out_from_another_device_counts_nowhere() {
+    let any = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let (a, b) = two_people_any(&any);
+    let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
+    sync(&a, &b);
+    b.st.append(
+        "irori",
+        kinds::TASK_OFFERED,
+        &raw(&format!(
+            r#"{{"taskId":"{}","to":"{CARD3}","reason":"handed","heard":["{CARD3}"]}}"#,
+            t.id
+        )),
+    )
+    .unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        assert!(s.c.get_task(&t.id).unwrap().live_offer().is_none());
+    }
 }

@@ -177,6 +177,10 @@ pub struct Options {
     /// person's devices serve the file to the board's members. `None`
     /// offers nothing.
     pub holds_file: Option<KeyFn>,
+    /// On a board, whether its open cards go to any member's free agents
+    /// (card #174); `None` or false: only to the author's own. Read when
+    /// the hand-out runs, so a change to the setting applies at once.
+    pub open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 /// The board rows that carry their writer's hop across the bridge.
