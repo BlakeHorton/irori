@@ -3,13 +3,6 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -34,7 +27,7 @@ const roleChoices = [
   { value: "node", label: "Always-on node" },
 ]
 
-// DevicesDialog is Settings → Devices (docs/design/v0.4-devices.md §3, §9):
+// DevicesPanel is Settings → Devices and connections (docs/design/v0.4-devices.md §3, §9):
 // each device, this one first, with one status dot, when it was last seen,
 // at most one warning line and Remove; then Pair a device (the code, then
 // the words the new device shows, typed here, then this device's key typed
@@ -42,26 +35,13 @@ const roleChoices = [
 // its key typed here; from outside the home, the server's address too).
 // The Home server section sits above them (§7.1). Paths and counters stay
 // in GET /v1/devices?detail=1.
-export function DevicesDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
+export function DevicesPanel({ open }: { open: boolean }) {
   const { devices, error, reload } = useDevices(open)
   const { status, setStatus } = usePairing(open)
   const now = useNow(5000)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-3 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Devices</DialogTitle>
-          <DialogDescription>
-            Your devices share one inbox and one Board.
-          </DialogDescription>
-        </DialogHeader>
+    <div className="grid gap-3">
         <ul className="grid gap-1.5" aria-label="Your devices">
           {devices.map((d) => (
             <DeviceRow
@@ -89,8 +69,7 @@ export function DevicesDialog({
           reaches another device stays there, so a secret an agent wrote that
           the scrubber missed is copied for good.
         </p>
-      </DialogContent>
-    </Dialog>
+    </div>
   )
 }
 

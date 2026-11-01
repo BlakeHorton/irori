@@ -39,12 +39,12 @@ unchanged.
 | `/?open=inbox:sample-delivery-6` | a message an agent sent you (Reply) |
 | `/?open=held` | the Held list: three held (one by Pause all), and History with a dismissed one to release |
 | `/?open=held:sample-device/grok-sample7` | the Held list showing one sender's, as a held notification opens it |
-| `/?devices` | the Devices dialog (this PC, a MacBook, an offline node) |
+| `/?devices` | Settings at Devices and connections (this PC, a MacBook, an offline node) |
 | `/?boards` | the Boards dialog: two boards of your own (MLG, Website refresh), New board |
 | `/?filter=board:sample-board-mlg` | the grid on the MLG board's chip: mlg#1 and mlg#2 |
 | `/?open=board:task:sample-board-1` | a card on a shared board: `mlg#1`, "Visible to", Withdraw |
 | `/?share=sample-card-10#card/sample-card-10` | Share to board's preview, with a path in the goal taken out |
-| `/?settings` | the settings popover |
+| `/?settings` | Settings (card #132): Notifications; `?settings=devices`, `=people`, `=app` open those sections |
 | `/?update=ready` | the update card (`downloading`, `installing` too) |
 | `/?empty` | no cards yet |
 | `/?from=sample-card-4` | the grid as a card's Back leaves it (that card marked and focused) |

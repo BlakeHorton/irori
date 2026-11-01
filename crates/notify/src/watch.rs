@@ -98,9 +98,6 @@ impl AskSource for Book {
 pub trait RoomSource: Send + Sync {
     fn ask_again(&self, by: &str, id: &str) -> Result<(), String>;
     fn set_task_state(&self, by: &str, id: &str, state: &str, note: &str) -> Result<(), String>;
-    /// The person's Done on a card's open done check (card #112, #130):
-    /// resolve it with Done and close the card, as the window's Done does.
-    fn mark_done(&self, by: &str, id: &str) -> Result<(), String>;
 }
 
 impl RoomSource for Coord {
@@ -109,38 +106,6 @@ impl RoomSource for Coord {
     }
     fn set_task_state(&self, by: &str, id: &str, state: &str, note: &str) -> Result<(), String> {
         Coord::set_task_state(self, by, id, state, note)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-    fn mark_done(&self, by: &str, id: &str) -> Result<(), String> {
-        let t = self
-            .get_task(id)
-            .ok_or_else(|| format!("no such card {id}"))?;
-        let Some((b, pick)) = t
-            .blockers
-            .iter()
-            .filter(|b| b.open() && b.done_check)
-            .find_map(|b| {
-                b.options
-                    .iter()
-                    .position(|o| o.answer == coord::DONE_ANSWER)
-                    .map(|i| (b, i as i64 + 1))
-            })
-        else {
-            return Err(format!("{} isn't waiting on a done check", t.short_ref()));
-        };
-        self.answer(
-            by,
-            id,
-            &b.id,
-            coord::BlockerAnswer {
-                pick,
-                resolve: true,
-                ..coord::BlockerAnswer::default()
-            },
-        )
-        .map_err(|e| e.to_string())?;
-        Coord::set_task_state(self, by, id, coord::COMPLETED, "")
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -823,13 +788,6 @@ impl Ctx<'_> {
     fn needs_note(&self, c: &Card) -> Note {
         let t = &c.task;
         let agent = self.name(&self.needs_key(t));
-        // An agent's completed waits on the person's Done (card #112): good
-        // news, so green with a check, worded as ready to look over, never
-        // "blocked on you" (card #130). Any other open question wins.
-        let open = t.open_blockers();
-        if !open.is_empty() && open.iter().all(|b| b.done_check) {
-            return self.finished_note(t, &agent);
-        }
         let (mut title, body) = if t.state == coord::BLOCKED {
             let mut body = t.reason.clone();
             if !t.title.is_empty() && t.title != t.reason {
@@ -862,40 +820,6 @@ impl Ctx<'_> {
                 Action::new("Answer", move || open2()),
                 Action::close("Later"),
             ],
-            on_click: Some(open),
-            ..Note::default()
-        }
-    }
-
-    /// A card an agent finished, waiting on the person's Done (card #130):
-    /// Open shows it; Mark Done closes it from here when this device can
-    /// act on the room, else Later.
-    fn finished_note(&self, t: &Task, agent: &str) -> Note {
-        let mut title = format!("{agent} finished “{}”", preview(&t.title));
-        if !t.short.is_empty() {
-            title += &format!(" (#{})", t.short);
-        }
-        let open = self.opener(t);
-        let open2 = open.clone();
-        let mut actions = vec![Action::new("Open", move || open2())];
-        match &self.room {
-            Some(r) => {
-                let (r, user, id) = (r.clone(), self.user.to_string(), t.id.clone());
-                actions.push(Action::new("Mark Done", move || {
-                    if let Err(e) = r.mark_done(&user, &id) {
-                        eprintln!("notify: mark done {id}: {e}");
-                    }
-                }));
-            }
-            None => actions.push(Action::close("Later")),
-        }
-        Note {
-            id: needs_id(&t.id),
-            title,
-            body: "Ready for you to look over and mark Done.".into(),
-            level: Level::Success,
-            sticky: true,
-            actions,
             on_click: Some(open),
             ..Note::default()
         }
