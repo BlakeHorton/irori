@@ -214,7 +214,7 @@ export function BoardView({
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3.5">{main}</div>
         {aside}
         {sheet && threads && (
-          <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-2 pb-10">
+          <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
             <ThreadsPanel
               threads={threads.list}
               open={threads.open}

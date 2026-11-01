@@ -129,7 +129,8 @@ export function AppSidebar({
         "flex h-svh shrink-0 flex-col border-r border-border transition-[width]",
         narrow
           ? cn(
-              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-sidebar shadow-xl transition-transform",
+              // Clear Android's status and gesture bars (edge to edge, card #227).
+              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl transition-transform",
               !drawer && "invisible -translate-x-full"
             )
           : "bg-sidebar/60",

@@ -503,7 +503,7 @@ export function App() {
         onNewBoard={() => setNewBoard(true)}
         section={open ? null : section}
       />
-      <main className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 px-4 pt-[18px] sm:px-6">
+      <main className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 px-4 pt-[18px] pb-[env(safe-area-inset-bottom)] sm:px-6">
         <UpdateBanner />
         {error && (
           <p className="glass-panel border-destructive/50! px-3 py-2 text-sm text-destructive" role="alert">
