@@ -146,6 +146,20 @@ impl Window {
         mentions: &[ts::Mention],
         files: &[crate::board::UploadFile],
     ) -> Result<Vec<MentionOutcome>, String> {
+        self.inbox_reply_mode(id, text, mentions, files, ::inbox::mode::WAKE)
+    }
+
+    /// [`Self::inbox_reply_files`] with the reply's mode: `wake`, or `stop`
+    /// (card #207): the sender's running turn is cut and this is its next
+    /// prompt.
+    pub fn inbox_reply_mode(
+        &self,
+        id: &str,
+        text: &str,
+        mentions: &[ts::Mention],
+        files: &[crate::board::UploadFile],
+        md: &str,
+    ) -> Result<Vec<MentionOutcome>, String> {
         let ib = self.core.inbox();
         let plan = self.plan_mentions("", mentions);
         let me = self.core.user_sender();
@@ -154,7 +168,7 @@ impl Window {
             .iter()
             .map(crate::inbox_ref)
             .collect();
-        let r = ib.reply_files(&me, trim(id), text, &plan.inbox(), &refs);
+        let r = ib.reply_files_mode(&me, trim(id), text, &plan.inbox(), &refs, md);
         let mut out = Vec::new();
         if let Ok((m, nd)) = &r
             && !m.mentions.is_empty()

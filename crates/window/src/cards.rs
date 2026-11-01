@@ -263,6 +263,10 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
     pub pinned: bool,
+    /// The person paused the card (card #207).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub paused: bool,
     #[serde(skip_serializing_if = "is_zero_f")]
     #[specta(optional, type = i64)]
     pub pin_rank: f64,
@@ -921,6 +925,7 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
         subtasks: t.subtasks.len() as i64,
         pinned: t.pinned,
         pin_rank: t.pin_rank,
+        paused: t.paused,
         ..CardSummary::default()
     };
     if let Some(r) = &t.rollup {

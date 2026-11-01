@@ -542,6 +542,9 @@ impl Fold {
             return;
         }
         self.paused.insert(p.task_id.clone(), (p.paused, at));
+        if let Some(t) = self.tasks.get_mut(&p.task_id) {
+            t.paused = p.paused;
+        }
         if self.tasks.contains_key(&p.task_id) {
             self.note(Change {
                 kind: TASK_CHANGED.into(),
@@ -676,6 +679,7 @@ impl Fold {
         let r = self.pins.get(&t.id).cloned().unwrap_or_default();
         t.pinned = r.pinned;
         t.pin_rank = if r.pinned { r.rank } else { 0.0 };
+        t.paused = self.is_paused(&t.id);
     }
 
     pub(crate) fn pin(

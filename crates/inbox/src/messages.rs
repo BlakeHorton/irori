@@ -386,6 +386,26 @@ impl Inbox {
         mentions: &[Mention],
         files: &[crate::FileRef],
     ) -> Result<(Message, Delivery)> {
+        self.reply_files_mode(from, did, text, mentions, files, mode::WAKE)
+    }
+
+    /// [`Inbox::reply_files`] with the reply's mode: `wake`, or the person's
+    /// `stop` (card #207), which cuts the sender's running turn.
+    pub fn reply_files_mode(
+        &self,
+        from: &Sender,
+        did: &str,
+        text: &str,
+        mentions: &[Mention],
+        files: &[crate::FileRef],
+        md: &str,
+    ) -> Result<(Message, Delivery)> {
+        if md != mode::WAKE && md != mode::STOP {
+            return Err(Error::other(format!(
+                "inbox: a reply wakes or stops, not {}",
+                quote(md)
+            )));
+        }
         self.mutate(|b| {
             let d = b.mine(&from.key, did)?;
             match d.d.state.as_str() {
@@ -398,8 +418,13 @@ impl Inbox {
                     format!("message {}", quote(&d.d.message_id)),
                 ));
             };
+            if md == mode::STOP && !b.is_person(from) {
+                return Err(Error::other(
+                    "inbox: only the person may stop an agent (mode stop)",
+                ));
+            }
             let o = SendOptions {
-                mode: mode::WAKE.into(),
+                mode: md.into(),
                 ref_: orig.ref_.clone(),
                 mentions: mentions.to_vec(),
                 attachments: files.to_vec(),

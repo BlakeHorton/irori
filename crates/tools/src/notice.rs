@@ -143,6 +143,7 @@ pub fn inbox_notice(n: &Notice) -> inbox::notice::Notice {
         text: n.text.clone(),
         ref_: n.reference.clone(),
         wake: n.wake,
+        stop: n.stop,
         attachments: n
             .attachments
             .iter()

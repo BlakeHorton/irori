@@ -90,6 +90,9 @@ pub struct UploadFile {
 enum Tell {
     NextTurn,
     Wake,
+    /// The person's stop (card #207): the holders' turns are cut and the
+    /// comment is their next prompt; watchers are woken.
+    Stop,
     None,
 }
 
@@ -97,9 +100,10 @@ fn parse_tell(s: &str) -> Result<Tell, String> {
     match crate::trim(s) {
         "" | "next_turn" => Ok(Tell::NextTurn),
         "wake" => Ok(Tell::Wake),
+        "stop" => Ok(Tell::Stop),
         "none" => Ok(Tell::None),
         _ => Err(format!(
-            "tell is next_turn, wake or none, not {}",
+            "tell is next_turn, wake, stop or none, not {}",
             gocompat::quote::quote(s)
         )),
     }
@@ -131,9 +135,14 @@ impl Window {
         if n.wake {
             told.mode = inbox::mode::WAKE.into();
         }
+        let mut n = n.clone();
+        if tl == Tell::Stop && !n.watching {
+            n.stop = true;
+            told.mode = inbox::mode::STOP.into();
+        }
         if let Err(e) = self
             .core
-            .route_notices(&self.core.user_sender(), std::slice::from_ref(n))
+            .route_notices(&self.core.user_sender(), std::slice::from_ref(&n))
         {
             told.error = e;
         }
@@ -208,7 +217,7 @@ impl Window {
                 &me,
                 id,
                 text,
-                tl == Tell::Wake,
+                tl == Tell::Wake || tl == Tell::Stop,
                 &plan.log,
                 refs,
                 Some(&around),

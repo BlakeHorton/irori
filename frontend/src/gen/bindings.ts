@@ -63,6 +63,21 @@ export const commands = {
 	boardClose: (id: string, state: string, note: string) => __TAURI_INVOKE<Task>("board_close", { id, state, note }),
 	boardDelete: (id: string) => __TAURI_INVOKE<null>("board_delete", { id }),
 	boardPin: (id: string, pinned: boolean) => __TAURI_INVOKE<null>("board_pin", { id, pinned }),
+	/**
+	 *  Pause on a card (card #207): its holders are stopped and their tools
+	 *  refused until Resume (`paused: false`). Returns who was told.
+	 */
+	boardPause: (id: string, paused: boolean, note: string) => __TAURI_INVOKE<string[]>("board_pause", { id, paused, note }),
+	/**
+	 *  Stop on an agent (card #207): cuts its running turn; `text` (empty: a
+	 *  plain "stop and wait") is its next prompt.
+	 */
+	agentStop: (key: string, text: string) => __TAURI_INVOKE<null>("agent_stop", { key, text }),
+	/**
+	 *  Stop and read on a message's Reply (card #207): the sender's running
+	 *  turn is cut and the reply is its next prompt.
+	 */
+	inboxReplyStop: (id: string, text: string) => __TAURI_INVOKE<MentionOutcome[]>("inbox_reply_stop", { id, text }),
 	boardPlace: (id: string, x: number, y: number) => __TAURI_INVOKE<null>("board_place", { id, x, y }),
 	/**
 	 *  New card (card #116): a card on the person's own board, handed to one
@@ -672,6 +687,8 @@ export type CardSummary = {
 	subtasks?: number,
 	subtaskBlocked?: string,
 	pinned?: boolean,
+	/**  The person paused the card (card #207). */
+	paused?: boolean,
 	pinRank?: number,
 	/**  Where the card sits on the Board's canvas (card #93), once placed. */
 	pos?: CanvasPos | null,

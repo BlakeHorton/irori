@@ -407,6 +407,10 @@ pub struct Task {
     pub pinned: bool,
     #[serde(skip_serializing_if = "omit")]
     pub pin_rank: f64,
+    /// The person paused the card (card #207): its holders' tools are off
+    /// until Resume. Copied on at read time, like the pin.
+    #[serde(skip_serializing_if = "omit")]
+    pub paused: bool,
 }
 
 impl Task {
@@ -704,6 +708,10 @@ pub struct Notice {
     pub watching: bool,
     #[serde(skip_serializing_if = "omit")]
     pub person: bool,
+    /// The person's stop (card #207): sent with mode stop. Set by the
+    /// window only, never by coord.
+    #[serde(skip_serializing_if = "omit")]
+    pub stop: bool,
 }
 
 crate::go_struct! {

@@ -448,6 +448,30 @@ pub async fn board_pin(w: W<'_>, id: String, pinned: bool) -> R<()> {
     w.pin(&id, pinned)
 }
 
+/// Pause on a card (card #207): its holders are stopped and their tools
+/// refused until Resume (`paused: false`). Returns who was told.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_pause(w: W<'_>, id: String, paused: bool, note: String) -> R<Vec<String>> {
+    w.pause(&id, paused, &note)
+}
+
+/// Stop on an agent (card #207): cuts its running turn; `text` (empty: a
+/// plain "stop and wait") is its next prompt.
+#[tauri::command]
+#[specta::specta]
+pub async fn agent_stop(w: W<'_>, key: String, text: String) -> R<()> {
+    w.agent_stop(&key, &text)
+}
+
+/// Stop and read on a message's Reply (card #207): the sender's running
+/// turn is cut and the reply is its next prompt.
+#[tauri::command]
+#[specta::specta]
+pub async fn inbox_reply_stop(w: W<'_>, id: String, text: String) -> R<Vec<MentionOutcome>> {
+    w.inbox_reply_mode(&id, &text, &[], &[], ::inbox::mode::STOP)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_place(w: W<'_>, id: String, x: i64, y: i64) -> R<()> {
@@ -996,6 +1020,9 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_close,
             board_delete,
             board_pin,
+            board_pause,
+            agent_stop,
+            inbox_reply_stop,
             board_place,
             board_create,
             board_start_thread,

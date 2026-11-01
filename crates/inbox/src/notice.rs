@@ -23,6 +23,8 @@ pub struct Notice {
     pub ref_: String,
     /// Wake the recipients instead of telling them at their next turn.
     pub wake: bool,
+    /// The person's stop (card #207): mode stop, over `wake`.
+    pub stop: bool,
     pub attachments: Vec<FileRef>,
 }
 
@@ -49,7 +51,13 @@ pub fn route_notice(
     if n.to.is_empty() {
         return vec![];
     }
-    let md = if n.wake { mode::WAKE } else { mode::NEXT_TURN };
+    let md = if n.stop {
+        mode::STOP
+    } else if n.wake {
+        mode::WAKE
+    } else {
+        mode::NEXT_TURN
+    };
     let mut out = Vec::with_capacity(n.to.len());
     for to in &n.to {
         if to.is_empty() || *to == from.key {
