@@ -108,6 +108,20 @@ struct Rig {
 
 type Wrap = Arc<dyn Fn(&str, &str) -> String + Send + Sync>;
 
+/// The sha256 of the one screenshot the rig's device holds.
+const LOCAL_SHOT: &str = "abababababababababababababababababababababababababababababababab";
+
+fn tiny_png() -> Vec<u8> {
+    let mut out = vec![];
+    let mut e = png::Encoder::new(&mut out, 4, 2);
+    e.set_color(png::ColorType::Rgb);
+    e.set_depth(png::BitDepth::Eight);
+    let mut w = e.write_header().unwrap();
+    w.write_image_data(&[90u8; 4 * 2 * 3]).unwrap();
+    w.finish().unwrap();
+    out
+}
+
 fn rig_with(wrap: Option<Wrap>, opts: coord::Options) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let st = open_store(dir.path());
@@ -142,6 +156,10 @@ fn rig_with(wrap: Option<Wrap>, opts: coord::Options) -> Rig {
             None => base,
         }
     });
+    // This device holds one screenshot (card #149): LOCAL_SHOT, a 4x2 PNG.
+    let shot = dir.path().join("shot.png");
+    std::fs::write(&shot, tiny_png()).unwrap();
+    let file: notify::FileFn = Arc::new(move |sha: &str| (sha == LOCAL_SHOT).then(|| shot.clone()));
     let handle = watch(
         &n,
         Sources {
@@ -150,6 +168,7 @@ fn rig_with(wrap: Option<Wrap>, opts: coord::Options) -> Rig {
             user: USER.into(),
             name: Some(name),
             room: Some(co.clone()),
+            file: Some(file),
             ..Sources::default()
         },
     );
@@ -442,6 +461,13 @@ fn watch_board_finished_is_ready_to_review() {
         .fake
         .wait_title(&id, "alpha finished “ship the release” (#1)");
     assert_eq!(c.body, "Release notes cut for 0.4. · 1 screenshot");
+    // Card #149: that screenshot is on this device, so it is the thumbnail.
+    let img = c
+        .image
+        .clone()
+        .expect("the proof's screenshot as a thumbnail");
+    assert_eq!((img.w, img.h), (4, 2));
+    assert_eq!(&img.rgba[..4], &[90, 90, 90, 255]);
     assert_eq!(c.kind, toast::Kind::Success);
     let labels: Vec<&str> = c.actions.iter().map(|a| a.label.as_str()).collect();
     assert_eq!(labels, vec!["Open", "Mark Done"]);
@@ -481,19 +507,35 @@ fn watch_board_finished_follows_new_proof() {
     .unwrap();
     r.fake.wait_title(&id, "alpha finished “ship it” (#1)");
     assert_eq!(r.fake.card(&id).body, "First try.");
+    assert!(
+        r.fake.card(&id).image.is_none(),
+        "no screenshot, no thumbnail"
+    );
+    // Card #149: a screenshot another device holds gives no thumbnail.
+    let elsewhere = coord::FileRef {
+        sha256: "cd".repeat(32),
+        name: "other.png".into(),
+        size: 12,
+        mime: "image/png".into(),
+        device: "dev2".into(),
+    };
     r.co.set_task_state_with(
         KEY_A,
         &task.id,
         coord::COMPLETED,
         "Second try.
 more",
-        Vec::new(),
+        vec![elsewhere],
         true,
     )
     .unwrap();
     wait_for("the card shows the new proof", || {
-        r.fake.is_live(&id) && r.fake.card(&id).body == "Second try."
+        r.fake.is_live(&id) && r.fake.card(&id).body == "Second try. · 1 screenshot"
     });
+    assert!(
+        r.fake.card(&id).image.is_none(),
+        "not on this device: no thumbnail"
+    );
 
     // A real question after the card went up: Mark Done refuses.
     r.co.raise(

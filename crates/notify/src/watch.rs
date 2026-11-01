@@ -426,6 +426,7 @@ pub struct BoardCards {
     is_owner: Option<OwnerFn>,
     name: Option<NameFn>,
     room: Option<Arc<dyn RoomSource>>,
+    file: Option<FileFn>,
     needs: HashSet<String>,
     unclaimed: HashMap<String, Opening>,
     returned: HashMap<String, String>,
@@ -439,6 +440,7 @@ impl BoardCards {
             is_owner: s.is_owner.clone(),
             name: s.name.clone(),
             room: s.room.clone(),
+            file: s.file.clone(),
             needs: HashSet::new(),
             unclaimed: HashMap::new(),
             returned: HashMap::new(),
@@ -453,6 +455,7 @@ impl BoardCards {
             is_owner: &self.is_owner,
             name: &self.name,
             room: &self.room,
+            file: &self.file,
         };
         st.board(
             v,
@@ -471,6 +474,7 @@ impl BoardCards {
             is_owner: &self.is_owner,
             name: &self.name,
             room: &self.room,
+            file: &self.file,
         };
         st.returned_cards(v, post, &mut self.returned);
     }
@@ -492,6 +496,7 @@ impl BoardCards {
             is_owner: &self.is_owner,
             name: &self.name,
             room: &self.room,
+            file: &self.file,
         }
     }
 }
@@ -503,6 +508,7 @@ struct Ctx<'a> {
     is_owner: &'a Option<OwnerFn>,
     name: &'a Option<NameFn>,
     room: &'a Option<Arc<dyn RoomSource>>,
+    file: &'a Option<FileFn>,
 }
 
 impl State {
@@ -513,6 +519,7 @@ impl State {
             is_owner: &self.s.is_owner,
             name: &self.s.name,
             room: &self.s.room,
+            file: &self.s.file,
         }
     }
 
@@ -921,6 +928,8 @@ impl Ctx<'_> {
             id: needs_id(&t.id),
             title,
             body: finished_body(t),
+            image: finished_shot(t)
+                .and_then(|sha| crate::thumb::attachment_thumbnail(self.file.as_ref(), sha)),
             level: Level::Success,
             sticky: true,
             actions,
@@ -960,6 +969,19 @@ fn finished_body(t: &Task) -> String {
         None if !shots.is_empty() => format!("{READY}{shots}"),
         None => READY.into(),
     }
+}
+
+/// The sha256 of the first screenshot on t's newest open done check, the
+/// same check [`finished_body`] reads (card #149).
+fn finished_shot(t: &Task) -> Option<&str> {
+    t.blockers
+        .iter()
+        .rev()
+        .find(|b| b.open() && b.done_check)?
+        .attachments
+        .iter()
+        .find(|f| f.mime.starts_with("image/"))
+        .map(|f| f.sha256.as_str())
 }
 
 /// The Needs you set's key for t: its id, and `#` and the done check it
