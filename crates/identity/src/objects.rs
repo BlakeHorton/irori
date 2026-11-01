@@ -405,6 +405,22 @@ pub struct BoardRenamed {
 go_struct!(BoardRenamed { "name" => name: str, "by" => by: str, "at" => at: time,
     "personEpoch" => person_epoch: int, "personSig" => person_sig: str });
 
+/// `board.opencards` (card #174): who the board's open cards go to,
+/// [`crate::membership::OPEN_CARDS_AUTHOR`] or
+/// [`crate::membership::OPEN_CARDS_ANY`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardOpenCards {
+    pub to: String,
+    pub by: String,
+    pub at: GoTime,
+    pub person_epoch: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub person_sig: String,
+}
+go_struct!(BoardOpenCards { "to" => to: str, "by" => by: str, "at" => at: time,
+    "personEpoch" => person_epoch: int, "personSig" => person_sig: str });
+
 /// `board.member.added`: an owner pins a person. `person_epoch` is the
 /// added person's; `by_epoch` is the signer's.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]

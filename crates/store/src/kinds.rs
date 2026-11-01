@@ -163,6 +163,7 @@ kinds! {
     // v0.5 shared boards: board logs only
     BOARD_CREATED = "board.created" => Replicated, Accepts;
     BOARD_RENAMED = "board.renamed" => Replicated, Accepts;
+    BOARD_OPEN_CARDS = "board.opencards" => Replicated, Accepts;
     BOARD_MEMBER_ADDED = "board.member.added" => Replicated, Accepts;
     BOARD_MEMBER_ROLE = "board.member.role" => Replicated, Accepts;
     BOARD_MEMBER_REMOVED = "board.member.removed" => Replicated, Accepts;

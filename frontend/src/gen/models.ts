@@ -158,7 +158,7 @@ export function BoardReviewer(p: Partial<B.BoardReviewer> = {}): B.BoardReviewer
 
 /** BoardSettings with Go's zero values for every field left out. */
 export function BoardSettings(p: Partial<B.BoardSettings> = {}): B.BoardSettings {
-  return { "boardId": "", "members": [], "receive": "", "people": [], "receiveOwn": false, "autonomy": "", "autonomyOwn": false, "leaving": false, "conflicts": [], "reviewers": [], "agents": [], ...p } as B.BoardSettings
+  return { "boardId": "", "members": [], "receive": "", "people": [], "receiveOwn": false, "autonomy": "", "autonomyOwn": false, "leaving": false, "conflicts": [], "reviewers": [], "agents": [], "openCards": "", ...p } as B.BoardSettings
 }
 
 /** BoardSummary with Go's zero values for every field left out. */

@@ -877,6 +877,24 @@ impl Identity {
         Ok(p)
     }
 
+    /// A `board.opencards` payload (card #174): open cards go to `to`.
+    pub fn board_open_cards_row(
+        &self,
+        epoch: i64,
+        to: &str,
+        at: GoTime,
+    ) -> Result<crate::objects::BoardOpenCards, Error> {
+        let mut p = crate::objects::BoardOpenCards {
+            to: to.into(),
+            by: self.current().id,
+            at: at.utc(),
+            person_epoch: epoch,
+            person_sig: String::new(),
+        };
+        p.person_sig = self.sign_epoch(epoch, &p)?;
+        Ok(p)
+    }
+
     /// A `board.member.added` payload pinning `pin`.
     pub fn board_member_added_row(
         &self,

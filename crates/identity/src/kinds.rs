@@ -9,6 +9,8 @@ pub const PERSON_PROFILE: &str = "person.profile";
 
 pub const BOARD_CREATED: &str = "board.created";
 pub const BOARD_RENAMED: &str = "board.renamed";
+/// Who a shared board's open cards go to (card #174), by an owner.
+pub const BOARD_OPEN_CARDS: &str = "board.opencards";
 pub const BOARD_MEMBER_ADDED: &str = "board.member.added";
 pub const BOARD_MEMBER_ROLE: &str = "board.member.role";
 pub const BOARD_MEMBER_REMOVED: &str = "board.member.removed";
@@ -39,6 +41,7 @@ pub fn is_membership_kind(kind: &str) -> bool {
         kind,
         BOARD_CREATED
             | BOARD_RENAMED
+            | BOARD_OPEN_CARDS
             | BOARD_MEMBER_ADDED
             | BOARD_MEMBER_ROLE
             | BOARD_MEMBER_REMOVED

@@ -22,6 +22,11 @@ use crate::objects::{
 use crate::row::RowRef;
 
 pub const BOARD_OWNER: &str = "owner";
+/// A shared board's open cards go to their author's own free agents (card
+/// #174): the default, with no `board.opencards` row.
+pub const OPEN_CARDS_AUTHOR: &str = "author";
+/// A shared board's open cards go to any member's free agents.
+pub const OPEN_CARDS_ANY: &str = "any";
 pub const BOARD_MEMBER: &str = "member";
 pub const MEMBER_ACTIVE: &str = "active";
 pub const MEMBER_REMOVED: &str = "removed";
@@ -151,6 +156,10 @@ pub struct Membership {
     pub gone: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts: Vec<Conflict>,
+    /// Who open cards go to (card #174): "" (no row: the author's agents)
+    /// or one of OPEN_CARDS_AUTHOR, OPEN_CARDS_ANY.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub open_cards: String,
     /// Each time a person became or stopped being an active owner, in
     /// fold order: what [`Membership::owner_at`] reads.
     #[serde(skip)]
@@ -197,6 +206,7 @@ struct MRow {
     role: String,
     pin: MemberPin,
     cut: Option<BTreeMap<String, i64>>,
+    open_cards: String,
 }
 
 fn body_of<T: Serialize>(v: &T) -> Option<Vec<u8>> {
@@ -229,6 +239,14 @@ fn decode_membership(r: &MembershipRow) -> Option<MRow> {
             d.epoch = p.person_epoch;
             d.body = body_of(&p);
             d.name = p.name;
+        }
+        kinds::BOARD_OPEN_CARDS => {
+            let mut p: crate::objects::BoardOpenCards = decode(&r.payload)?;
+            d.sig = std::mem::take(&mut p.person_sig);
+            d.by = p.by.clone();
+            d.epoch = p.person_epoch;
+            d.body = body_of(&p);
+            d.open_cards = p.to;
         }
         kinds::BOARD_MEMBER_ADDED => {
             let mut p: BoardMemberAdded = decode(&r.payload)?;
@@ -429,6 +447,7 @@ pub fn fold_membership(
     let mcuts = m.cuts.clone();
     let pins = m.pins.clone();
     let mut name = m.name.clone();
+    let mut open_cards = m.open_cards.clone();
     let past = |at: &RowAt| {
         if let Some(cut) = mcuts.get(&at.device)
             && at.seq > *cut
@@ -509,6 +528,21 @@ pub fn fold_membership(
                     conflict(&mut conflicts, d, "the name is not a board name");
                 } else {
                     name = d.name.clone();
+                }
+            }
+            kinds::BOARD_OPEN_CARDS => {
+                if !authored(d) {
+                    conflict(&mut conflicts, d, "its signature doesn't count");
+                } else if !may_set_open_cards(&people, &d.by) {
+                    conflict(&mut conflicts, d, OPEN_CARDS_WHO);
+                } else if d.open_cards != OPEN_CARDS_AUTHOR && d.open_cards != OPEN_CARDS_ANY {
+                    conflict(
+                        &mut conflicts,
+                        d,
+                        "open cards go to the author's agents or any member's",
+                    );
+                } else {
+                    open_cards = d.open_cards.clone();
                 }
             }
             kinds::BOARD_MEMBER_ADDED => {
@@ -618,6 +652,7 @@ pub fn fold_membership(
         note_owner(&people, &mut owner_changes, d);
     }
     m.name = name;
+    m.open_cards = open_cards;
     m.conflicts = conflicts;
     m.owner_changes = owner_changes;
     m.members = order
@@ -626,6 +661,17 @@ pub fn fold_membership(
         .collect();
     m
 }
+
+/// Who may set where a board's open cards go (card #174): an active
+/// owner, like every board-wide row.
+pub fn may_set_open_cards(people: &BTreeMap<String, BoardPerson>, by: &str) -> bool {
+    people
+        .get(by)
+        .is_some_and(|e| e.state == MEMBER_ACTIVE && e.role == BOARD_OWNER)
+}
+
+/// What a refused open-cards row says.
+const OPEN_CARDS_WHO: &str = "only an owner sets where open cards go";
 
 /// A board name: 1 to 80 runes, no surrounding space, no control
 /// characters (Go `ValidBoardName`).

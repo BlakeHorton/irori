@@ -581,3 +581,59 @@ fn owner_at_reads_the_owners_at_the_row() {
         assert!(!m.owner_at("nobody", &at(9)));
     }
 }
+
+/// Card #174: an owner sets where the board's open cards go; a member's
+/// row, a bad value or an unsigned row is a conflict. In any arrival order
+/// the latest counted row wins.
+#[test]
+fn open_cards_setting() {
+    let set = |b: &mut Mb, dev: &str, by: &str, to: &str| {
+        let r = BoardOpenCards {
+            to: to.into(),
+            by: by.into(),
+            person_epoch: 1,
+            person_sig: format!("ok:{by}"),
+            ..Default::default()
+        };
+        b.add(dev, kinds::BOARD_OPEN_CARDS, &r);
+    };
+    let keys = test_keys();
+
+    let mut b = Mb::default();
+    b.created("s");
+    b.added("s-pc", "s", "b", "member");
+    assert_eq!(
+        fold_membership("bd", &anchor_s(), &b.rows, &keys).open_cards,
+        "",
+        "no row: the default (the author's agents)"
+    );
+    set(&mut b, "s-pc", "s", "any");
+    set(&mut b, "b-pc", "b", "author");
+    set(&mut b, "s-mac", "s", "everyone");
+    let m = fold_membership("bd", &anchor_s(), &b.rows, &keys);
+    assert_eq!(m.open_cards, "any");
+    let why: Vec<&str> = m
+        .conflicts
+        .iter()
+        .filter(|c| c.kind == kinds::BOARD_OPEN_CARDS)
+        .map(|c| c.reason.as_str())
+        .collect();
+    assert_eq!(
+        why,
+        vec![
+            "only an owner sets where open cards go",
+            "open cards go to the author's agents or any member's"
+        ]
+    );
+    // Promoted, b may set it; the newest counted row wins in any order.
+    b.role("s-pc", "s", "b", "owner");
+    set(&mut b, "b-pc", "b", "author");
+    let want = fold_membership("bd", &anchor_s(), &b.rows, &keys).open_cards;
+    assert_eq!(want, "author");
+    let mut rows = b.rows.clone();
+    rows.reverse();
+    assert_eq!(
+        fold_membership("bd", &anchor_s(), &rows, &keys).open_cards,
+        want
+    );
+}

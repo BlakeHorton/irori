@@ -523,6 +523,17 @@ pub async fn boards_remove_member(
     .await
 }
 
+/// Who a shared board's open cards go to (card #174).
+#[tauri::command]
+#[specta::specta]
+pub async fn boards_set_open_cards(w: W<'_>, board_id: String, to: String) -> R<BoardSettings> {
+    blocking(&w, move |w| {
+        w.boards_set_open_cards(&board_id, &to)?;
+        w.boards_settings(&board_id)
+    })
+    .await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn boards_set_role(
@@ -894,6 +905,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             boards_share,
             boards_withdraw,
             boards_settings,
+            boards_set_open_cards,
             boards_set_receive,
             boards_set_autonomy,
             boards_set_reviewer,

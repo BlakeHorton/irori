@@ -90,6 +90,8 @@ export const commands = {
 	boardsShare: (taskId: string, boardId: string, hash: string) => __TAURI_INVOKE<string>("boards_share", { taskId, boardId, hash }),
 	boardsWithdraw: (taskId: string) => __TAURI_INVOKE<string>("boards_withdraw", { taskId }),
 	boardsSettings: (boardId: string) => __TAURI_INVOKE<BoardSettings>("boards_settings", { boardId }),
+	/**  Who a shared board's open cards go to (card #174). */
+	boardsSetOpenCards: (boardId: string, to: string) => __TAURI_INVOKE<BoardSettings>("boards_set_open_cards", { boardId, to }),
 	boardsSetReceive: (boardId: string, preset: string, people: string[]) => __TAURI_INVOKE<BoardSettings>("boards_set_receive", { boardId, preset, people }),
 	boardsSetAutonomy: (boardId: string, preset: string) => __TAURI_INVOKE<BoardSettings>("boards_set_autonomy", { boardId, preset }),
 	boardsSetReviewer: (boardId: string, agent: string, repo: string) => __TAURI_INVOKE<BoardSettings>("boards_set_reviewer", { boardId, agent, repo }),
@@ -339,6 +341,12 @@ export type BoardSettings = {
 	reviewers: BoardReviewer[],
 	/**  This person's live agents, to dedicate one as a reviewer. */
 	agents: ReviewerChoice[],
+	/**
+	 *  Who the board's open cards go to (card #174): "author" (each
+	 *  card's author's own free agents, the default) or "any" (any
+	 *  member's). One value for the whole board; owners change it.
+	 */
+	openCards: string,
 };
 
 /**  One shared board in the list (Go `core.BoardSummary`). */
