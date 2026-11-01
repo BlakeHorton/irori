@@ -686,7 +686,10 @@ fn stop(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
     }
     let summary = cwd.join("SUMMARY.md");
     let r = play(o, h, &mut a, |h, a| {
-        let to_me = h.core.inbox().for_agent(&h.core.user_sender().key, true, 500);
+        let to_me = h
+            .core
+            .inbox()
+            .for_agent(&h.core.user_sender().key, true, 500);
         let answered = to_me.len() > since
             && to_me
                 .iter()
