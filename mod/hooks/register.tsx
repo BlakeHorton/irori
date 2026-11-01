@@ -55,7 +55,7 @@ let backoffMs = BACKOFF_MIN_MS
 let restartTimer: { cancel: () => void } | null = null
 let ended = false
 // Appends wait here while a main-loop response streams (card #197).
-const appendGate = new AppendGate<AttachEvent>()
+const appendGate = new AppendGate()
 /** From the newest hello: where control and tool calls go, and who they act as. */
 let api: { url: string; token: string } | null = null
 let attachSecret = ''
@@ -274,7 +274,7 @@ async function appendInstead($: EngineInterface, token: string, prompt: string, 
   let failure: unknown = undefined
   let failed = false
   try {
-    const stored = await $.session.append(appendArgs(prompt))
+    const stored = await appendRow($, prompt)
     if (typeof stored?.deny === 'string') {
       failed = true
       failure = new Error(`append refused: ${stored.deny}`)
@@ -320,11 +320,19 @@ async function onAppend($: EngineInterface, e: AttachEvent) {
   }
   const tracked: TrackedAppend = { token, deliveryIds: e.deliveryIds ?? [], appended: false, delivered: false, engaged: false }
   await update($, appendsAtom, list => [...list.filter(a => a.token !== token), tracked].slice(-MAX_WAKES))
+  // Held behind a streaming response (card #197): reported delivered now, so
+  // the Core does not reclaim and re-send it while a long step (an advisor
+  // call can take minutes) runs past REATTACH_GRACE.
+  let delivered = false
+  if (appendGate.streaming && (await report($, '/v1/deliveries/delivered', { token }))) {
+    delivered = true
+    await patchAppend($, token, { delivered: true })
+  }
   let failure: unknown = undefined
   let failed = false
   try {
     // `{ deny }`: a plugin above refused it and nothing was stored.
-    const stored = await $.session.append(appendArgs(prompt))
+    const stored = await appendRow($, prompt)
     if (typeof stored?.deny === 'string') {
       failed = true
       failure = new Error(`append refused: ${stored.deny}`)
@@ -340,7 +348,13 @@ async function onAppend($: EngineInterface, e: AttachEvent) {
     return
   }
   await patchAppend($, token, { appended: true })
-  if (await report($, '/v1/deliveries/delivered', { token })) await patchAppend($, token, { delivered: true })
+  if (!delivered && (await report($, '/v1/deliveries/delivered', { token }))) await patchAppend($, token, { delivered: true })
+}
+
+/** The mod's one way into `$.session.append`: never while a main response streams (card #197). */
+async function appendRow($: EngineInterface, prompt: string) {
+  await appendGate.idle()
+  return $.session.append(appendArgs(prompt))
 }
 
 /** A main-loop turn started: it reads every delivered append, so engage them all. */
@@ -390,8 +404,6 @@ async function handleEvent($: EngineInterface, e: AttachEvent): Promise<'superse
       })
       return
     case 'append':
-      // Never mid-response (card #197): held until the main step ends.
-      if (appendGate.hold(e)) return
       void onAppend($, e).catch(() => {})
       return
     case 'held':
@@ -656,20 +668,15 @@ export const register: Register = (on, options) => {
     return started
   })
 
-  // A main-loop model request is streaming: appends wait for its end
-  // (card #197), then go in order, after the whole response is kept.
+  // A main-loop model request is streaming: the mod's appends wait for its
+  // end (card #197), then go in order, after the whole response is kept.
   on('turn.step', async function* ($, e, next) {
     if (e.agentId !== undefined) return yield* next(e)
     appendGate.enter()
     try {
       return yield* next(e)
     } finally {
-      const held = appendGate.leave()
-      if (held.length) {
-        void (async () => {
-          for (const a of held) await onAppend($, a).catch(() => {})
-        })()
-      }
+      appendGate.leave()
     }
   })
 

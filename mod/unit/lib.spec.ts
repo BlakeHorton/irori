@@ -198,26 +198,27 @@ describe('heldReminder', () => {
 })
 
 describe('AppendGate (card #197)', () => {
-  test('passes appends when no step streams', () => {
-    const g = new AppendGate<string>()
-    expect(g.hold('a')).toBe(false)
-    expect(g.leave()).toEqual([])
+  test('idle resolves at once when no step streams', async () => {
+    const g = new AppendGate()
+    expect(g.streaming).toBe(false)
+    await g.idle()
   })
-  test('holds appends during a step and releases them in order at its end', () => {
-    const g = new AppendGate<string>()
-    g.enter()
-    expect(g.hold('a')).toBe(true)
-    expect(g.hold('b')).toBe(true)
-    expect(g.leave()).toEqual(['a', 'b'])
-    expect(g.hold('c')).toBe(false)
-  })
-  test('overlapping steps release only when the last ends', () => {
-    const g = new AppendGate<string>()
+  test('waiters go on in order when the last step ends', async () => {
+    const g = new AppendGate()
+    const order: string[] = []
     g.enter()
     g.enter()
-    g.hold('a')
-    expect(g.leave()).toEqual([])
-    expect(g.leave()).toEqual(['a'])
-    expect(g.leave()).toEqual([])
+    expect(g.streaming).toBe(true)
+    const a = g.idle().then(() => order.push('a'))
+    const b = g.idle().then(() => order.push('b'))
+    g.leave()
+    await Promise.resolve()
+    expect(order).toEqual([])
+    g.leave()
+    await Promise.all([a, b])
+    expect(order).toEqual(['a', 'b'])
+    expect(g.streaming).toBe(false)
+    g.leave()
+    expect(g.streaming).toBe(false)
   })
 })

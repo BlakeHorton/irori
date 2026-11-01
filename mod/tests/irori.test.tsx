@@ -1,5 +1,6 @@
 // Run with: claude plugin test mod
 import { describe, expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import type { On, PromptOrigin } from 'claude-code'
 
 import { SUBMIT_ACCEPT_MS } from '../hooks/lib'
@@ -173,7 +174,7 @@ describe('attach', () => {
       await band.unmount()
     }
     const ran = await $.command.run(irori(''))
-    expect(ran.text).toContain('irori mod 0.4.3')
+    expect(ran.text).toContain('irori mod 0.4.4')
     expect(ran.text).toContain('set iroriPath')
   })
 
@@ -181,7 +182,7 @@ describe('attach', () => {
     const w = world(on)
     await $.session.start({ cwd: 'C:/work/api', surface: 'terminal', isInteractive: true })
     await until(() => w.children.length === 1, 'spawn')
-    expect(w.spawned[0]).toEqual([IRORI, 'attach', '--session', SESSION, '--cwd', 'C:/work/api', '--mod-version', '0.4.3'])
+    expect(w.spawned[0]).toEqual([IRORI, 'attach', '--session', SESSION, '--cwd', 'C:/work/api', '--mod-version', '0.4.4'])
 
     // hello split across two pieces, a blank keepalive, and a stray log line.
     const h = line(hello)
@@ -433,42 +434,69 @@ describe('next-turn appends', () => {
     expect(posts(w.calls, '/v1/deliveries/turn-ended')).toEqual([])
   })
 
-  test('an append that comes while a main response streams waits for it to end (card #197)', OPTIONS, async ($, on) => {
-    const w = world(on)
+  // Card #197: a row appended mid-response split the advisor's server_tool_use
+  // from its result, and every later request failed with a 400.
+  function streamingStep(on: Parameters<typeof world>[0]) {
     let release: () => void = () => {}
     const gate = new Promise<void>(r => (release = r))
     on('turn.step', async function* (_$, e) {
       await gate
       return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null } as never
     })
+    return () => release()
+  }
+  function runStep($: Engine, input: Record<string, unknown>) {
+    const state = { done: false }
+    void (async () => {
+      for await (const _ of $.turn.step({ index: 0, model: 'm', messageCount: 1, ...input } as never)) void _
+      state.done = true
+    })()
+    return state
+  }
+
+  test('an append that comes while a main response streams waits for it to end, reported delivered at once (card #197)', OPTIONS, async ($, on) => {
+    const w = world(on)
+    const release = streamingStep(on)
     await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
     await until(() => w.children.length === 1, 'spawn')
     w.children[0]!.write(line(hello))
     await pause(20)
-
-    // A subagent's step holds nothing.
-    let subDone = false
-    void (async () => {
-      for await (const _ of $.turn.step({ turnId: 'turn-s', index: 0, model: 'm', messageCount: 1, agentId: 'agent-1' } as never)) void _
-      subDone = true
-    })()
-    // The main step streams (an advisor call in flight) when the append comes.
-    let done = false
-    void (async () => {
-      for await (const _ of $.turn.step({ turnId: 'turn-a', index: 0, model: 'm', messageCount: 1 } as never)) void _
-      done = true
-    })()
+    // A subagent's step holds nothing back; the main one (an advisor call in flight) does.
+    const sub = runStep($, { turnId: 'turn-s', agentId: 'agent-1' })
+    const main = runStep($, { turnId: 'turn-a' })
     await pause(20)
     w.children[0]!.write(line(appendEvent))
+    // Delivered now, so the Core does not reclaim it during a long step; not yet in the conversation.
+    await until(() => posts(w.calls, '/v1/deliveries/delivered').length === 1, 'delivered while held')
     await pause(100)
     expect(w.appended).toEqual([])
-    expect(posts(w.calls, '/v1/deliveries/delivered')).toEqual([])
 
     release()
-    await until(() => done && subDone, 'steps ended')
+    await until(() => main.done && sub.done, 'steps ended')
     await until(() => w.appended.length === 1, 'appended after the step')
     expect(w.appended).toEqual([{ type: 'user', text: appendPrompt, agentId: undefined }])
-    await until(() => posts(w.calls, '/v1/deliveries/delivered').length === 1, 'delivered')
+    await pause(50)
+    expect(posts(w.calls, '/v1/deliveries/delivered').length).toBe(1)
+  })
+
+  test('a dropped submit appended instead also waits for a streaming main response (card #197)', OPTIONS, async ($, on) => {
+    const w = world(on, { dropSubmit: true })
+    const release = streamingStep(on)
+    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
+    await until(() => w.children.length === 1, 'spawn')
+    w.children[0]!.write(line(hello))
+    await pause(20)
+    const main = runStep($, { turnId: 'turn-a' })
+    await pause(20)
+    const prompt = '[irori-wake:wake_D1] hi'
+    w.children[0]!.write(line({ type: 'deliver', token: '[irori-wake:wake_D1]', deliveryIds: ['del_9'], prompt }))
+    await until(() => w.submitted.length === 1, 'submitted')
+    await pause(100)
+    expect(w.appended).toEqual([])
+    release()
+    await until(() => main.done, 'step ended')
+    await until(() => w.appended.length === 1, 'appended after the step')
+    expect(w.appended).toEqual([{ type: 'user', text: prompt, agentId: undefined }])
   })
 
   test('an append the host refuses is forgotten, and appended again when re-sent', OPTIONS, async ($, on) => {
@@ -602,7 +630,7 @@ describe('/irori', () => {
     }
     expect(w.calls.filter(c => c.url.endsWith('/v1/policy'))).toEqual([])
     const status = await $.command.run(irori(''))
-    expect(status.text).toContain('irori mod 0.4.3')
+    expect(status.text).toContain('irori mod 0.4.4')
     expect(status.text).toContain('Attached as api work')
   })
 

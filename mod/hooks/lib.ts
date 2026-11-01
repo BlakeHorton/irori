@@ -58,32 +58,35 @@ export function appendArgs(prompt: string) {
 }
 
 /**
- * Holds next-turn appends while a main-loop model request streams (card
+ * Holds the mod's appends while a main-loop model request streams (card
  * #197). A row appended mid-response lands between a server tool's
  * `server_tool_use` (the advisor's) and its result, and the rebuilt history
- * then splits that message: every later request fails with a 400. Appends
- * that arrive during a step wait for it to end, in the order they came.
+ * then splits that message: every later request fails with a 400. Every
+ * `$.session.append` waits on `idle()`; waiters go on in the order they came.
  */
-export class AppendGate<T> {
+export class AppendGate {
   private steps = 0
-  private held: T[] = []
+  private waiting: Array<() => void> = []
   /** A main-loop step started streaming. */
   enter() {
     this.steps++
   }
-  /** A step ended: what was held, to append now, once no step streams. */
-  leave(): T[] {
+  /** A step ended; once none streams, the waiting appends go on. */
+  leave() {
     this.steps = Math.max(0, this.steps - 1)
-    if (this.steps > 0) return []
-    const out = this.held
-    this.held = []
-    return out
+    if (this.steps > 0) return
+    const go = this.waiting
+    this.waiting = []
+    for (const resume of go) resume()
   }
-  /** Holds the item while a step streams (true); false when it may go now. */
-  hold(item: T): boolean {
-    if (this.steps === 0) return false
-    this.held.push(item)
-    return true
+  /** Whether a main-loop step is streaming now. */
+  get streaming(): boolean {
+    return this.steps > 0
+  }
+  /** Resolves at once when no step streams, else when the last one ends. */
+  idle(): Promise<void> {
+    if (this.steps === 0) return Promise.resolve()
+    return new Promise(resume => this.waiting.push(resume))
   }
 }
 
