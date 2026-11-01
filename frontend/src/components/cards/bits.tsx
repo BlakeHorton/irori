@@ -93,11 +93,7 @@ export function StatePill({ card }: { card: CardSummary }) {
       </Badge>
     )
   if (card.state === TaskState.InputRequired)
-    return (
-      <Badge variant="destructive">
-        Needs your input
-      </Badge>
-    )
+    return <Badge variant="destructive">Needs your input</Badge>
   // An agent says it's done and only that waits on you (card #112).
   if (card.ready && card.openBlockers === 1)
     return (
@@ -134,16 +130,25 @@ export function StatePill({ card }: { card: CardSummary }) {
     )
   // It waits on another card, a lease, an agent or something outside
   // (card #158): that ends by itself, so it's calm, not red.
-  if (card.waitingOn)
+  // The reason can be long ("external ww/dolphin-slot-1..4 leases
+  // (reed until ...)"): the pill truncates to its card's width and the
+  // tooltip has it all (card #222); the card's body says it in full.
+  if (card.waitingOn) {
+    const label = waitLabel(card)
     return (
       <Badge
         variant="slate"
-        className="rounded-full"
-        title={card.waitQuestion ? plainLine(card.waitQuestion) : undefined}
+        className="max-w-full min-w-0 shrink justify-start rounded-full"
+        title={
+          card.waitQuestion
+            ? `${label}: ${plainLine(card.waitQuestion)}`
+            : label
+        }
       >
-        {waitLabel(card)}
+        <span className="truncate">{label}</span>
       </Badge>
     )
+  }
   // Every open blocker is answered: it waits on the agents, not on you.
   if (card.waiting > 0)
     return (
@@ -165,12 +170,7 @@ export function StatePill({ card }: { card: CardSummary }) {
         {overLabel(card)}
       </Badge>
     )
-  if (card.working.length === 0)
-    return (
-      <Badge variant="slate">
-        Open
-      </Badge>
-    )
+  if (card.working.length === 0) return <Badge variant="slate">Open</Badge>
   if (card.holder.state === Holding.HoldWaiting)
     return (
       <Badge variant="warning" className="rounded-full">
@@ -183,11 +183,7 @@ export function StatePill({ card }: { card: CardSummary }) {
         Offered
       </Badge>
     )
-  return (
-    <Badge variant="info">
-      In progress
-    </Badge>
-  )
+  return <Badge variant="info">In progress</Badge>
 }
 
 // holderText is the holder line's words: who holds the card and what that
@@ -306,10 +302,7 @@ export function AskLine({
 // board's name (v0.5 §8).
 export function ScopeBadge({ card }: { card: CardSummary }) {
   return (
-    <Badge
-      variant="outline"
-      className="font-normal text-muted-foreground"
-    >
+    <Badge variant="outline" className="font-normal text-muted-foreground">
       {plainLine(card.scopeLabel) || "My devices"}
     </Badge>
   )
@@ -334,7 +327,11 @@ export function ShortRef({ card }: { card: CardSummary }) {
       }
     >
       {tag}#{short}
-      {was && <span className="ml-1 font-sans">(was {tag}#{was})</span>}
+      {was && (
+        <span className="ml-1 font-sans">
+          (was {tag}#{was})
+        </span>
+      )}
     </span>
   )
 }
@@ -371,7 +368,10 @@ export function Spinner({
 }
 
 // waitLabel: what a card waits on that isn't you (card #158).
-export function waitLabel(card: { waitingOn?: number; waitOn?: string }): string {
+export function waitLabel(card: {
+  waitingOn?: number
+  waitOn?: string
+}): string {
   const n = card.waitingOn ?? 0
   const on = card.waitOn ? `Waiting on ${plainLine(card.waitOn)}` : "Waiting"
   return n > 1 ? `${on} +${n - 1}` : on

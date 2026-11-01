@@ -36,7 +36,7 @@ import {
 } from "./bits"
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { ClearDone } from "./clear-done"
-import { Faces, TalkBubble } from "./faces"
+import { FACES_MAX, Faces, TalkBubble } from "./faces"
 
 // Filter is a chip: All, Needs a decision, In review (card #191), My
 // devices, Closed (done,
@@ -448,7 +448,7 @@ function CardTile({
           : undefined
       }
     >
-      <span className="flex flex-wrap items-center gap-1.5">
+      <span className="flex min-w-0 flex-wrap items-center gap-1.5">
         <ShortRef card={card} />
         {card.pinned && (
           <PinIcon className="size-3 text-primary" aria-label="Pinned" />
@@ -564,7 +564,7 @@ function CardTile({
         )}
         {card.working.length > 0 ? (
           <>
-            <Faces who={card.working} />
+            <Faces who={card.working} max={FACES_MAX} />
             {label && <span>{label}</span>}
           </>
         ) : closed ? null : openAsk(card) ? (
@@ -577,7 +577,7 @@ function CardTile({
         {!closed && card.watching.length > 0 && (
           <>
             <span aria-hidden>·</span>
-            <Faces who={card.watching} watching />
+            <Faces who={card.watching} watching max={FACES_MAX} />
             <span>watching</span>
           </>
         )}
@@ -926,7 +926,9 @@ function SubtaskDetailRow({
           <span className="min-w-0 flex-1 truncate text-ink">
             {plainLine(card.title)}
           </span>
-          <StatePill card={card} />
+          <span className="flex max-w-[50%] min-w-0">
+            <StatePill card={card} />
+          </span>
         </span>
         <span className="flex items-center gap-3 pl-4 text-[11px] text-muted-foreground">
           {whoLine}

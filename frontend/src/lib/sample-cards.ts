@@ -176,7 +176,46 @@ export function sampleCards(now: Date): CardDetail[] {
     })
   }
 
+  // Card #222: a long "waiting on" reason and a dozen watchers, which
+  // must stay inside the card's edge in the list, the canvas and a
+  // parent's subtask rows.
+  const crowd = [
+    "sample-alder",
+    "sample-birch",
+    "sample-cedar",
+    "sample-dace",
+    "sample-eider",
+    "sample-fern",
+    "sample-gull",
+    "sample-hazel",
+    "sample-ibis",
+    "sample-jay",
+    "sample-kite",
+    "sample-larch",
+  ].map((n, i) => agent(`sample${30 + i}-synthetic-session`, n, "idle"))
+  const longWait = card({
+    id: "sample-card-long",
+    short: "51",
+    title: "App sea chart: real Great Sea map with players placed to scale",
+    goal: "Each player at their place on the real chart.",
+    state: TaskState.Blocked,
+    working: [otter],
+    watching: crowd,
+    waitingOn: 1,
+    waitOn:
+      "external ww/dolphin-slot-1..4 leases (reed until about 21:30Z, walnut and oak until about 22:20Z); queued after pine",
+    waitQuestion:
+      "Waiting for one free ww/dolphin-slot lease for the live check (all four are held)",
+    updatedAt: at(2),
+    steps: steps([
+      ["Extractor", true],
+      ["Frontend", true],
+      ["Live check", false, true],
+    ]),
+  })
+
   return [
+    longWait,
     // Asks (board.md "Asks"): the person's prompts to the room. One the
     // agents heard and nobody took yet, one sample-heron took and is
     // talking through.

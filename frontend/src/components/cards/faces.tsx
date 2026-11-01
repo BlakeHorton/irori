@@ -180,19 +180,39 @@ function Pixels({
   )
 }
 
-// Faces is a row of faces.
+// FACES_MAX is how many faces a tile's working or watching row shows
+// before "+N" (card #222).
+export const FACES_MAX = 5
+
+// Faces is a row of faces. With max, at most max of them show, the rest
+// as "+N" whose tooltip names them (card #222: a card's twelve watchers
+// ran past its edge).
 export function Faces({
   who,
   watching,
+  max,
 }: {
   who: AgentRef[]
   watching?: boolean
+  max?: number
 }) {
+  const over = max !== undefined && who.length > max
+  const shown = over ? who.slice(0, Math.max(max - 1, 1)) : who
+  const rest = who.slice(shown.length)
   return (
-    <span className="flex items-center gap-1">
-      {who.map((w) => (
+    <span className="flex min-w-0 items-center gap-1">
+      {shown.map((w) => (
         <Face key={w.key} who={w} watching={watching} />
       ))}
+      {rest.length > 0 && (
+        <span
+          className="shrink-0 text-[11px] text-muted-foreground tabular-nums"
+          title={rest.map(displayName).join(", ")}
+          aria-label={`and ${rest.length} more: ${rest.map(displayName).join(", ")}`}
+        >
+          +{rest.length}
+        </span>
+      )}
     </span>
   )
 }

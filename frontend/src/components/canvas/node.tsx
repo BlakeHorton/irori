@@ -3,7 +3,7 @@
 // can't put React inside a node, so they write their own text from the
 // same fields (stepsText) in matching colours.
 
-import { Faces } from "@/components/cards/faces"
+import { FACES_MAX, Faces } from "@/components/cards/faces"
 import {
   ProgressBar,
   StatePill,
@@ -36,23 +36,25 @@ export function CardBody({ n, selected }: { n: CardNode; selected?: boolean }) {
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col gap-2 border-l-2 p-3 text-left glass-panel",
+        "flex h-full w-full min-w-0 flex-col gap-2 overflow-hidden border-l-2 p-3 text-left glass-panel",
         selected && "ring-1 ring-primary"
       )}
       style={{ borderLeftColor: toneVar[n.tone] }}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <StatePill card={n.card} />
-        <span className="ml-auto">
+        <span className="ml-auto shrink-0">
           <ShortRef card={n.card} />
         </span>
       </div>
       <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">
         {n.label}
       </p>
-      <div className="mt-auto flex items-center gap-2">
-        {working.length > 0 && <Faces who={working} />}
-        {watching.length > 0 && <Faces who={watching} watching />}
+      <div className="mt-auto flex min-w-0 items-center gap-2">
+        {working.length > 0 && <Faces who={working} max={FACES_MAX} />}
+        {watching.length > 0 && (
+          <Faces who={watching} watching max={FACES_MAX} />
+        )}
         {n.subtasks > 0 && (
           <span className="text-xs text-muted-foreground">
             {n.subtasks} subtask{n.subtasks === 1 ? "" : "s"}
