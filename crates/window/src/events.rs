@@ -148,6 +148,7 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
                 let c = w.refresh_inbox().counts;
                 w.emit(EVENT_INBOX_CHANGED, &c);
                 w.counts_changed(c);
+                w.wind_down_tick();
             });
         }));
     }

@@ -61,6 +61,7 @@ pub mod stop;
 pub mod threads;
 pub mod ts;
 pub mod update;
+pub mod wind_down;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -156,6 +157,8 @@ pub struct Window {
     emitter: OnceLock<EmitFn>,
     open_file: OnceLock<OpenFn>,
     on_reset: OnceLock<Box<dyn Fn() + Send + Sync>>,
+    /// The current Wind down all run (card #220).
+    wind_down: wind_down::RunSlot,
 }
 
 impl Window {
@@ -173,6 +176,7 @@ impl Window {
             emitter: OnceLock::new(),
             open_file: OnceLock::new(),
             on_reset: OnceLock::new(),
+            wind_down: Mutex::default(),
         }
     }
 

@@ -99,6 +99,8 @@ export type Trust = B.Trust
 export type UpdateStatus = B.UpdateStatus
 export type UploadFile = B.UploadFile
 export type Value = B.Value
+export type WindDownRow = B.WindDownRow
+export type WindDownStatus = B.WindDownStatus
 
 /** Address with Go's zero values for every field left out. */
 export function Address(p: Partial<B.Address> = {}): B.Address {
@@ -508,4 +510,14 @@ export function UpdateStatus(p: Partial<B.UpdateStatus> = {}): B.UpdateStatus {
 /** UploadFile with Go's zero values for every field left out. */
 export function UploadFile(p: Partial<B.UploadFile> = {}): B.UploadFile {
   return { "name": "", "data": "", ...p } as B.UploadFile
+}
+
+/** WindDownRow with Go's zero values for every field left out. */
+export function WindDownRow(p: Partial<B.WindDownRow> = {}): B.WindDownRow {
+  return { "key": "", "name": "", "deviceId": "", "device": "", "deliveryId": "", "state": "", "reply": "", "error": "", ...p } as B.WindDownRow
+}
+
+/** WindDownStatus with Go's zero values for every field left out. */
+export function WindDownStatus(p: Partial<B.WindDownStatus> = {}): B.WindDownStatus {
+  return { "id": "", "scope": "", "pauseAfter": false, "paused": false, "finished": false, "rows": [], ...p } as B.WindDownStatus
 }

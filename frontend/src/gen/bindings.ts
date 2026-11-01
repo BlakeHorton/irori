@@ -74,6 +74,16 @@ export const commands = {
 	 */
 	agentStop: (key: string, text: string) => __TAURI_INVOKE<null>("agent_stop", { key, text }),
 	/**
+	 *  Wind down all (card #220): asks every agent (`scope` "this" device or
+	 *  "all" devices) to save its place, hand back its cards and stop; with
+	 *  `pause_after`, Pause all turns on once every agent has answered.
+	 */
+	windDownAll: (scope: string, pauseAfter: boolean) => __TAURI_INVOKE<WindDownStatus>("wind_down_all", { scope, pauseAfter }),
+	/**  The current Wind down all run, read fresh (empty id: none). */
+	windDownStatus: () => __TAURI_INVOKE<WindDownStatus>("wind_down_status"),
+	/**  Stop on a Wind down row: cuts that agent's turn with the wind-down's steps. */
+	windDownStop: (key: string) => __TAURI_INVOKE<null>("wind_down_stop", { key }),
+	/**
 	 *  Stop and read on a message's Reply (card #207): the sender's running
 	 *  turn is cut and the reply is its next prompt.
 	 */
@@ -1381,4 +1391,31 @@ export type UploadFile = {
 };
 
 export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
+
+/**  One agent in a run. */
+export type WindDownRow = {
+	key: string,
+	name: string,
+	deviceId: string,
+	device: string,
+	deliveryId: string,
+	/**  [`row`]'s states. */
+	state: string,
+	/**  Its answer (the cards it left), once it answered. */
+	reply: string,
+	/**  Why it couldn't be sent, when it couldn't. */
+	error: string,
+};
+
+/**  A run's status (empty `id`: none yet). */
+export type WindDownStatus = {
+	id: string,
+	scope: string,
+	pauseAfter: boolean,
+	/**  Pause all was turned on by this run. */
+	paused: boolean,
+	/**  No agent is still waiting or winding down. */
+	finished: boolean,
+	rows: WindDownRow[],
+};
 
