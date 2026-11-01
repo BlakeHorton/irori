@@ -9,10 +9,9 @@ import { useState, type FormEvent } from "react"
 import { ArrowLeftIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
-import { ThreadsPanel } from "@/components/cards/threads-panel"
-import { CardGrid, DoneGrid, shownCards } from "@/components/cards/card-grid"
-import { SearchBox } from "@/components/cards/search-box"
-import { BoardCanvas, ViewSwitch, type BoardView } from "@/components/canvas/switch"
+import { BoardView } from "@/components/cards/board-view"
+import type { Filter } from "@/components/cards/card-grid"
+import type { BoardView as View } from "@/components/canvas/switch"
 import { ConfirmButton } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,14 +30,12 @@ import { cn } from "@/lib/utils"
 
 import { BoardSettingsPanel, InviteHow, InvitePanel, useInviteReach } from "./parts"
 
-type Tab = "all" | "decide" | "done"
-
 export function BoardPage({
   boardId,
   cards,
   done,
-  tab,
-  onTab,
+  filter,
+  onFilter,
   view,
   onView,
   query,
@@ -50,10 +47,10 @@ export function BoardPage({
   boardId: string
   cards: CardSummary[]
   done: DoneState
-  tab: Tab
-  onTab: (t: Tab) => void
-  view: BoardView
-  onView: (v: BoardView) => void
+  filter: Filter
+  onFilter: (f: Filter) => void
+  view: View
+  onView: (v: View) => void
   query: string
   onQuery: (q: string) => void
   selected: string
@@ -75,98 +72,50 @@ export function BoardPage({
         </p>
       </div>
     )
-  const own = cards.filter((c) => c.board === boardId)
-  const decide = own.filter((c) => c.openBlockers > 0).length
-  const { shown, context } = shownCards(
-    own,
-    tab === "decide" ? "decide" : tab === "done" ? "done" : "all",
-    query
-  )
-  const closed = { ...done, cards: done.cards.filter((c) => c.board === boardId) }
-  const openThreads = threads.filter((t) => t.state !== "resolved").length
+  // The same board view as Home (card #161), over this board's cards,
+  // with who is on it beside them.
   return (
-    <div className="grid gap-3.5">
+    <>
       <BoardHead board={b} onChanged={reload} />
-      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="grid min-w-0 gap-3.5">
-          <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1">
-              <AskBox
-                board={boardId}
-                onThread={(id) => {
-                  setThread(id)
-                  setThreadsHidden(false)
-                }}
-              />
-            </div>
-            {threadsHidden && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="mt-1.5"
-                onClick={() => setThreadsHidden(false)}
-              >
-                Threads
-                {openThreads > 0 && <span className="tabular-nums">{openThreads}</span>}
-              </Button>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter cards">
-            {(
-              [
-                ["all", "All"],
-                ["decide", "Needs a decision"],
-                ["done", "Closed"],
-              ] as const
-            ).map(([id, label]) => (
-              <Button
-                key={id}
-                size="sm"
-                aria-pressed={tab === id}
-                variant={tab === id ? "default" : "ghost"}
-                onClick={() => onTab(id)}
-              >
-                {label}
-                {id === "decide" && decide > 0 && (
-                  <span className="text-destructive tabular-nums">{decide}</span>
-                )}
-              </Button>
-            ))}
-            <span className="ml-auto flex items-center gap-2">
-              <SearchBox query={query} onQuery={onQuery} />
-              <ViewSwitch view={view} onView={onView} />
-            </span>
-          </div>
-          {tab === "done" ? (
-            <DoneGrid done={closed} query={query} selected={selected} onSelect={onOpen} now={now} />
-          ) : view === "canvas" ? (
-            <BoardCanvas cards={shown} onOpen={onOpen} />
-          ) : shown.length ? (
-            <CardGrid cards={shown} context={context} selected={selected} onSelect={onOpen} />
-          ) : (
-            <p className="px-1 text-[12.5px] text-muted-foreground">
-              {query.trim()
-                ? "No cards match."
-                : tab === "decide"
-                ? "Nothing on this board waits on you."
-                : "No cards on this board yet. Make one with New card, or share a card to it from its page."}
-            </p>
-          )}
-        </div>
-        <div className="grid min-w-0 content-start gap-3.5">
-          {!threadsHidden && (threads.length > 0 || !!thread) && (
-            <ThreadsPanel
-              threads={threads}
-              open={thread}
-              onOpen={setThread}
-              onHide={() => setThreadsHidden(true)}
-              now={now}
-            />
-          )}
-          <PeoplePanel board={b} onChanged={reload} />
-        </div>
-      </div>
-    </div>
+      <BoardView
+        scope={boardId}
+        cards={cards}
+        done={done}
+        filter={filter}
+        onFilter={onFilter}
+        view={view}
+        onView={onView}
+        query={query}
+        onQuery={onQuery}
+        selected={selected}
+        onOpen={onOpen}
+        now={now}
+        header={
+          <AskBox
+            board={boardId}
+            onThread={(id) => {
+              setThread(id)
+              setThreadsHidden(false)
+            }}
+          />
+        }
+        empty={
+          <p className="px-1 text-[12.5px] text-muted-foreground">
+            No cards on this board yet. Make one with New card, or share a card
+            to it from its page.
+          </p>
+        }
+        nothingDecide="Nothing on this board waits on you."
+        threads={{
+          list: threads,
+          open: thread,
+          onOpen: setThread,
+          hidden: threadsHidden,
+          onHide: setThreadsHidden,
+        }}
+        aside={<PeoplePanel board={b} onChanged={reload} />}
+      />
+    </>
   )
 }
 

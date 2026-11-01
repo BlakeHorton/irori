@@ -94,11 +94,11 @@ export function App() {
     previewFlag("boards") !== null ? { kind: "boards" } : sectionFromHash(window.location.hash)
   )
   // A board page's own tab (All, Needs a decision, Closed).
-  const [boardTab, setBoardTab] = useState<"all" | "decide" | "done">("all")
+  const [boardFilter, setBoardFilter] = useState<Filter>("all")
   // Closed pages each page's own cards (card #161): Home's, or the board's.
   const doneScope = section.kind === "board" ? section.id : ScopeOwn
   const done = useDoneCards(
-    section.kind === "board" ? boardTab === "done" : filter === "done",
+    section.kind === "board" ? boardFilter === "done" : filter === "done",
     doneScope
   )
   // List or Canvas (card #93): the grid, or the board as a flow chart.
@@ -223,7 +223,7 @@ export function App() {
       // A card's page keeps the section behind it; anything else names one.
       else {
         setSection(sectionFromHash(window.location.hash))
-        setBoardTab("all")
+        setBoardFilter("all")
       }
     }
     window.addEventListener("popstate", onPop)
@@ -398,14 +398,13 @@ export function App() {
             />
           </Scroll>
         ) : section.kind === "board" ? (
-          <Scroll>
           <BoardPage
             key={section.id}
             boardId={section.id}
             cards={cards}
             done={done}
-            tab={boardTab}
-            onTab={setBoardTab}
+            filter={boardFilter}
+            onFilter={setBoardFilter}
             view={view}
             onView={setView}
             query={query}
@@ -414,7 +413,6 @@ export function App() {
             onOpen={openCard}
             now={now}
           />
-          </Scroll>
         ) : loading && cards.length === 0 ? (
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
         ) : (

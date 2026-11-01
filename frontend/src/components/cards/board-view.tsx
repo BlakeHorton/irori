@@ -83,6 +83,7 @@ export function BoardView({
   empty,
   nothingDecide,
   threads,
+  aside,
 }: {
   scope: string
   cards: CardSummary[]
@@ -106,6 +107,8 @@ export function BoardView({
   // nothingDecide is Needs a decision with nothing in it.
   nothingDecide?: string
   threads?: ThreadsProps
+  // aside is a right column under the Threads panel (a board's People).
+  aside?: ReactNode
 }) {
   const mine = cards.filter((c) => inScope(c, scope))
   const chips = deviceChips(mine)
@@ -127,8 +130,26 @@ export function BoardView({
     !!threads && !threads.hidden && (threads.list.length > 0 || !!threads.open)
   // The app is exactly the window's height (card #170): beside the Board
   // the Threads column scrolls on its own; without it the Board does.
+  const panel = showThreads && threads && (
+    <ThreadsPanel
+      threads={threads.list}
+      open={threads.open}
+      onOpen={threads.onOpen}
+      onHide={() => threads.onHide(true)}
+      now={now}
+      why={threads.why}
+    />
+  )
   const withThreads = (main: ReactNode) =>
-    showThreads && threads ? (
+    aside ? (
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        <div className={boardColumn}>{main}</div>
+        <div className="-mr-1 grid min-h-0 shrink-0 content-start gap-3.5 overflow-y-auto pr-1 pb-4 lg:w-[360px]">
+          {panel}
+          {aside}
+        </div>
+      </div>
+    ) : showThreads && threads ? (
       <div className="flex min-h-0 flex-1 gap-4">
         <div className={boardColumn}>{main}</div>
         <div className="-mr-1 min-h-0 w-[380px] shrink-0 overflow-y-auto pr-1 pb-4">
@@ -241,8 +262,8 @@ export function BoardView({
               {query.trim()
                 ? "No cards match."
                 : active === "decide" && nothingDecide
-                ? nothingDecide
-                : "Nothing here with this filter."}
+                  ? nothingDecide
+                  : "Nothing here with this filter."}
             </p>
           )}
         </>
