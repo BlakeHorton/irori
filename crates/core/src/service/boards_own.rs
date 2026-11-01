@@ -455,9 +455,7 @@ impl Services {
                         {
                             last = a.at;
                         }
-                    } else if t.state == coord::COMPLETED
-                        && t.updated_at.unix_nano() >= week
-                    {
+                    } else if t.state == coord::COMPLETED && t.updated_at.unix_nano() >= week {
                         s.done_week += 1;
                     }
                     if last.unix_nano() > s.last_at.unix_nano() {
