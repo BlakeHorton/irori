@@ -567,7 +567,10 @@ fn an_open_card_reaches_the_other_persons_free_agent_per_the_setting() {
     t.sync();
     settle_bridged(t.b(), &t.rb.key_a, 0);
     let o = co.get_task(&first.id).unwrap().live_offer().cloned();
-    assert!(o.as_ref().is_none_or(|o| o.to.is_empty()), "it waits: {o:?}");
+    assert!(
+        o.as_ref().is_none_or(|o| o.to.is_empty()),
+        "it waits: {o:?}"
+    );
 
     // Any member's agents: the next sweep hands it to Bob's alpha.
     t.a().set_open_cards(&t.board, "any").unwrap();

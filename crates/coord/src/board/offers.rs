@@ -262,6 +262,15 @@ impl Fold {
         let Some(p) = row::<TaskOfferedRow>(&ev.payload) else {
             return;
         };
+        // On a board only the device that made the card hands it out (card
+        // #174), whoever the row names as its writer; anyone it went to may
+        // still give it back.
+        if self.on_board
+            && p.reason != OFFER_PASSED
+            && self.origin.get(&p.task_id) != Some(&ev.device_id)
+        {
+            return;
+        }
         let Some(t) = self.tasks.get_mut(&p.task_id) else {
             return;
         };

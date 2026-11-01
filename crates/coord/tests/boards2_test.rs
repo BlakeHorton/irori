@@ -941,15 +941,20 @@ fn a_hand_out_from_another_device_counts_nowhere() {
     let (a, b) = two_people_any(&any);
     let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
     sync(&a, &b);
-    b.st.append(
-        "irori",
-        kinds::TASK_OFFERED,
-        &raw(&format!(
-            r#"{{"taskId":"{}","to":"{CARD3}","reason":"handed","heard":["{CARD3}"]}}"#,
-            t.id
-        )),
-    )
-    .unwrap();
+    // From Irori and from one of p2's agents, on p2's device.
+    for actor in ["irori", CARD3] {
+        let ev =
+            b.st.append(
+                actor,
+                kinds::TASK_OFFERED,
+                &raw(&format!(
+                    r#"{{"taskId":"{}","to":"{CARD3}","reason":"handed","heard":["{CARD3}"]}}"#,
+                    t.id
+                )),
+            )
+            .unwrap();
+        b.c.fold_live(&[ev]);
+    }
     sync(&a, &b);
     for s in [&a, &b] {
         assert!(s.c.get_task(&t.id).unwrap().live_offer().is_none());
