@@ -566,3 +566,64 @@ fn closed_pages_per_scope() {
     assert_eq!(own.cards.len(), 3);
     assert!(own.cards.iter().all(|c| c.scope == SCOPE_MINE));
 }
+
+/// Card #146: a card another member's agent holds shows that agent on it,
+/// named and live from the board's agent card, never "gone" ("Nobody on
+/// it") just because this device's roster doesn't know the session.
+#[test]
+fn another_members_agent_shows_on_its_card() {
+    let r = Rig::new();
+    let w = &r.w;
+    let mlg = w.boards_create("Horton", "horton").unwrap();
+    let card_id = "abcdef0123456789abcdef0123456789";
+    let agent = format!("{AGENT_ACTOR_PREFIX}{card_id}");
+    // No board.cardof: the agent is the friend's, on their device.
+    w.core
+        .board_store(&mlg.board_id)
+        .unwrap()
+        .append(
+            &agent,
+            kinds::AGENT_CARD,
+            &serde_json::json!({"cardId": card_id, "name": "otter", "kind": "claude",
+                "personId": "friend-person", "status": "busy"}),
+        )
+        .unwrap();
+    wait("the friend's agent card folds", || {
+        w.core.board_agents().iter().any(|a| a.key == agent)
+    });
+    let co = w.core.board_coord(&mlg.board_id).unwrap();
+    let me = w
+        .core
+        .board_key(&mlg.board_id, &w.core.user_sender().key)
+        .unwrap();
+    let card = co
+        .create_task(
+            &me,
+            coord::NewTask {
+                title: "their work".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    co.claim_task(&agent, &card.id).unwrap();
+    let s = w
+        .cards()
+        .into_iter()
+        .find(|s| s.id == card.id)
+        .expect("the board card is in the grid");
+    let who = &s.holder.who;
+    assert!(
+        who.key == agent && who.name == "otter" && who.live && who.status == "busy",
+        "the friend's agent on the card: {who:?}"
+    );
+    assert!(
+        s.holder.state != irori_window::cards::Holding::Gone && s.returned.is_none(),
+        "the card reads as nobody on it: {:?}",
+        s.holder.state
+    );
+    let d = w.card(&card.id).unwrap();
+    assert_eq!(
+        d.summary.holder.who.name, "otter",
+        "the card's page names it"
+    );
+}

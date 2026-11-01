@@ -147,6 +147,20 @@ pub fn valid_board_id(id: &str) -> bool {
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
 }
 
+/// One agent card on a shared board ([`super::Core::board_agents`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BoardAgent {
+    /// The board's key for it: agent:<cardId>.
+    pub key: String,
+    pub name: String,
+    /// busy, idle or gone (§2.4); live for the person's own agents.
+    pub status: String,
+    pub board_id: String,
+    pub person_id: String,
+    /// The member's name on the board, "" when unknown.
+    pub person: String,
+}
+
 /// A folded `agent.card` row.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -1929,6 +1943,41 @@ impl super::Core {
 }
 
 impl super::Core {
+    /// Every agent card on the boards this device holds, keyed as the
+    /// boards write them (agent:<cardId>), with the person it belongs to
+    /// (card #146): the window names another member's agents from it, so a
+    /// card they hold shows them on it, not "Nobody on it". The person's
+    /// own cards come back too, with their live status.
+    pub fn board_agents(&self) -> Vec<BoardAgent> {
+        let mut out = Vec::new();
+        for b in self.s.boards.list() {
+            let people: HashMap<String, String> = b
+                .verifier
+                .membership()
+                .members
+                .into_iter()
+                .map(|p| (p.person_id, p.name))
+                .collect();
+            let person_of: HashMap<String, String> = lock(&b.maps)
+                .cards
+                .iter()
+                .map(|(id, c)| (format!("{AGENT_ACTOR_PREFIX}{id}"), c.person_id.clone()))
+                .collect();
+            for a in roster_of(&self.s, &b) {
+                let person_id = person_of.get(&a.key).cloned().unwrap_or_default();
+                out.push(BoardAgent {
+                    person: people.get(&person_id).cloned().unwrap_or_default(),
+                    key: a.key,
+                    name: a.name,
+                    status: a.status,
+                    board_id: b.id.clone(),
+                    person_id,
+                });
+            }
+        }
+        out
+    }
+
     /// The roster board `board_id`'s coord reads liveness from (tests).
     #[doc(hidden)]
     pub fn board_roster(&self, board_id: &str) -> Vec<AgentCard> {
