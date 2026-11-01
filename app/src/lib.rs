@@ -2,7 +2,6 @@
 //! The irori app as a library: the desktop binary (main.rs) and the phone
 //! build (card #226) share it.
 
-
 mod attach;
 mod cli;
 mod commands;

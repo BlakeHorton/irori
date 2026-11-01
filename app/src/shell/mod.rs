@@ -289,9 +289,7 @@ fn hand_off() -> Result<(), String> {
     let app = tauri::Builder::default();
     #[cfg(desktop)]
     let app = app.plugin(tauri_plugin_single_instance::init(|_, _, _| {}));
-    let app = app
-        .build(context())
-        .map_err(|e| e.to_string())?;
+    let app = app.build(context()).map_err(|e| e.to_string())?;
     drop(app);
     irori_core::log("irori: another Irori holds this data dir; nothing to hand the launch to");
     Ok(())
