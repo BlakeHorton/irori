@@ -175,7 +175,13 @@ pub struct Sources {
     pub name: Option<NameFn>,
     /// When set, an ask nobody took gets a card with Wake them and Close.
     pub room: Option<Arc<dyn RoomSource>>,
+    /// An attachment's local path by sha256, when this device holds it
+    /// (never a mesh fetch): a card's thumbnail comes from it.
+    pub file: Option<FileFn>,
 }
+
+/// Resolves an attachment's sha256 to its file on this device.
+pub type FileFn = Arc<dyn Fn(&str) -> Option<std::path::PathBuf> + Send + Sync>;
 
 /// A running Watch. [`WatchHandle::stop`] ends it and waits.
 pub struct WatchHandle {
