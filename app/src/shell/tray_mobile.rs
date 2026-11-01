@@ -24,6 +24,7 @@ impl Tray {
     pub fn set_decide(&self, _n: usize) {}
     pub fn set_pause(&self, _device: &str, _set: SetPause) {}
     pub fn set_held_opener(&self, _open: Action) {}
+    pub fn set_wind_down_opener(&self, _open: Action) {}
     pub fn set_update(&self, _ready: Option<(String, Restart)>) {}
     pub fn rebuild(&self) {}
 }
