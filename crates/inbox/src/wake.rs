@@ -28,11 +28,33 @@ fn ids_of(ds: &[&Drec]) -> Vec<String> {
 impl Inner {
     fn next_wake(&mut self, agent: &str, p: &str) -> Result<Option<Wake>> {
         // Wakes reach only sessions this device hosts (v0.4 §6.3).
-        if self.pol.paused || !self.local(agent) {
+        if !self.local(agent) {
             return Ok(None);
         }
         self.drop_stale(agent)?;
-        if self.outstanding(agent).is_some() {
+        // The person's stops (card #207) go first and alone: past Pause all
+        // (the person paused) and past an outstanding wake's gate (the mod
+        // cuts the running turn, then submits this).
+        let mut stops: Vec<&Drec> = self
+            .open_recs()
+            .filter(|d| {
+                d.d.to == agent
+                    && d.d.state == st::QUEUED
+                    && d.d.wake_id.is_empty()
+                    && d.stop()
+                    && !d.untaken()
+            })
+            .collect();
+        if !stops.is_empty() {
+            sort_ready(&mut stops);
+            let ready = ids_of(&stops);
+            let id = format!("wake_{}", self.ids.next(&self.now()));
+            let token = format!("{WAKE_TOKEN_PREFIX}{id}]");
+            return self
+                .issue(agent, p, &id, &token, false, mode::STOP, &ready)
+                .map(Some);
+        }
+        if self.pol.paused || self.outstanding(agent).is_some() {
             return Ok(None);
         }
         let (mut wake_items, mut ride): (Vec<&Drec>, Vec<&Drec>) = (vec![], vec![]);
@@ -99,6 +121,7 @@ impl Inner {
                 && d.d.state == st::QUEUED
                 && d.d.wake_id.is_empty()
                 && (behind || d.for_append())
+                && (!d.stop() || d.untaken())
             {
                 ready.push(d);
                 if d.untaken() {
@@ -179,7 +202,10 @@ impl Inner {
         ready: &[String],
     ) -> Result<Wake> {
         let msgs: Vec<Delivery> = ready.iter().map(|id| self.copy_id(id)).collect();
-        let (full, overflow, prompt) = batch(token, reminder, &msgs);
+        let (full, overflow, mut prompt) = batch(token, reminder, &msgs);
+        if md == mode::STOP {
+            prompt = format!("{}\n\n{prompt}", stop_header(&msgs));
+        }
         let mut ids: Vec<String> = full.iter().map(|d| d.id.clone()).collect();
         ids.extend(overflow.iter().cloned());
         let row = WakeRow {
@@ -189,8 +215,8 @@ impl Inner {
             reminder,
             delivery_ids: ids.clone(),
             path: p.into(),
-            mode: if md == mode::NEXT_TURN {
-                mode::NEXT_TURN.into()
+            mode: if md == mode::NEXT_TURN || md == mode::STOP {
+                md.into()
             } else {
                 String::new()
             },
@@ -452,4 +478,17 @@ impl Inbox {
                 .unwrap_or_default()
         })
     }
+}
+
+/// The first line of a stop's prompt (card #207): the agent must not read it
+/// as an ordinary message.
+pub(crate) fn stop_header(msgs: &[Delivery]) -> String {
+    let who = msgs
+        .first()
+        .map(|d| d.message.from.name.trim())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("The person");
+    format!(
+        "STOP from {who}: your running turn was cut. Answer {who} first and do nothing else until they say so."
+    )
 }

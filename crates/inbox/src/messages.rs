@@ -139,6 +139,7 @@ impl Inner {
             sent_at: now,
             ref_: clip(&o.ref_, MAX_REF),
             notice: o.notice,
+            stop: o.mode == mode::STOP,
             attachments: o.attachments.clone(),
             mentions: o.mentions.clone(),
             ..Message::default()
@@ -335,9 +336,16 @@ impl Inbox {
                     };
                 }
                 mode::WAKE | mode::NEXT_TURN => {}
+                mode::STOP => {
+                    if !b.is_person(from) {
+                        return Err(Error::other(
+                            "inbox: only the person may stop an agent (mode stop)",
+                        ));
+                    }
+                }
                 other => {
                     return Err(Error::other(format!(
-                        "inbox: unknown delivery mode {} (wake or next_turn)",
+                        "inbox: unknown delivery mode {} (wake, next_turn or stop)",
                         quote(other)
                     )));
                 }

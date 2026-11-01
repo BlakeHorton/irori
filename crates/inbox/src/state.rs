@@ -214,6 +214,7 @@ fn message_schema() -> Schema {
     f.push(("sentAt", Schema::Time));
     f.push(("ref", Schema::String));
     f.push(("notice", Schema::Bool));
+    f.push(("stop", Schema::Bool));
     f.push(("board", crate::bridge::board_from_schema()));
     f.push((
         "attachments",
@@ -289,6 +290,7 @@ pub(crate) fn decode_message(payload: &[u8]) -> std::result::Result<Message, jso
         sent_at: t(&o, "sentAt"),
         ref_: s(&o, "ref"),
         notice: b(&o, "notice"),
+        stop: b(&o, "stop"),
         board: o
             .get("board")
             .map(crate::bridge::decode_board_from)
@@ -493,6 +495,11 @@ pub(crate) struct Drec {
 impl Drec {
     pub fn next_turn(&self) -> bool {
         self.d.mode == mode::NEXT_TURN
+    }
+
+    /// The person's stop (card #207).
+    pub fn stop(&self) -> bool {
+        self.d.mode == mode::STOP
     }
 
     /// A wake item its host's mod was handed MaxWakeTries times without

@@ -107,7 +107,9 @@ impl Inner {
                 return hold::HOP_LIMIT;
             }
         }
-        if self.pol.paused {
+        // The person's stop (card #207) gets through Pause all: they are
+        // the one who paused.
+        if self.pol.paused && !(m.stop && self.is_person(&m.from)) {
             return hold::PAUSED;
         }
         ""

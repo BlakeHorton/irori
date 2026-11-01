@@ -263,6 +263,10 @@ pub mod hold {
 pub mod mode {
     pub const WAKE: &str = "wake";
     pub const NEXT_TURN: &str = "next_turn";
+    /// The person's stop (card #207): cuts the agent's running turn and
+    /// becomes its next prompt. Never held by Pause all, never gated
+    /// behind an outstanding wake; only the person sends it.
+    pub const STOP: &str = "stop";
 }
 
 /// Address kinds.
@@ -392,6 +396,9 @@ pub struct Message {
     pub ref_: String,
     #[serde(skip_serializing_if = "is_false")]
     pub notice: bool,
+    /// The person's stop (card #207): sent with mode `stop`.
+    #[serde(skip_serializing_if = "is_false")]
+    pub stop: bool,
     /// Where a bridged board row came from (v0.5 §7.1); empty otherwise.
     #[serde(skip_serializing_if = "BoardFrom::is_empty")]
     pub board: BoardFrom,
