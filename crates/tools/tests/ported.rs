@@ -573,12 +573,14 @@ fn test_specs() {
         &desc("board_comment"),
         &[
             "With blocker_id it replies on that blocker",
-            "goes back to the person",
+            // Card #204: after the answer a reply waits on the agent.
+            "waits on you, not them",
+            "To ask them back, give missing",
         ],
     );
     has(
         &desc("board_unblock"),
-        &["note is required", "board_comment with blocker_id"],
+        &["note is required", "board_comment blocker_id"],
     );
     has(
         &desc("board_block"),

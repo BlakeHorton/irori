@@ -931,6 +931,20 @@ pub(crate) fn board_comment(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if !bid.is_empty() {
         // A reply on a blocker tells nobody: the person is the audience.
         let b = one_line(&bid, 20);
+        // After the person's answer, a reply without missing acts on it
+        // (card #204): the blocker waits on the agent, which resolves it.
+        let acted = s.task(&id).is_some_and(|t| {
+            t.blockers
+                .iter()
+                .any(|x| x.id == bid && x.open() && x.status == coord::BLOCKER_ANSWERED)
+        });
+        if acted {
+            return format!(
+                "Replied on blocker {b} of {}{}; the person answered it, so it now waits on you, not them. Resolve it now with board_unblock blocker_id={b} note=… (what you'll do), in this turn. If your reply answered their question and the choices are not what they were, revise it now with board_block blocker_id={b} (the question and options that fit, or none); don't leave the same options up. To ask them something back, reply with missing.{mline}",
+                s.short_of(&id),
+                attached_line(&files)
+            );
+        }
         return format!(
             "Replied on blocker {b} of {}{}; it stays open and goes back to the person. Resolve it with board_unblock blocker_id={b} note=… once you have what you need. If your reply answered their question and the choices are not what they were, revise it now with board_block blocker_id={b} (the question and options that fit, or none); don't leave the same options up.{mline}",
             s.short_of(&id),

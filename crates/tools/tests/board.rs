@@ -808,6 +808,22 @@ fn test_board_comment_on_blocker() {
             "answered (waiting on alpha: resolve or reply)",
         ],
     );
+    // Card #204: a plain reply after the answer acts on it; still the agent's.
+    has(
+        &h.okj(
+            &a,
+            "board_comment",
+            json!({"task_id": id, "blocker_id": "b1", "text": "Wintun; wiring it now."}),
+        ),
+        &[
+            "waits on you, not them",
+            "board_unblock blocker_id=b1 note=",
+        ],
+    );
+    has(
+        &h.ok(&a, "board", "{}"),
+        &["answered (waiting on alpha: resolve or reply)"],
+    );
 
     h.failsj(
         &a,
