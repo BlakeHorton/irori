@@ -890,3 +890,33 @@ fn files_with_a_thread_a_reply_and_a_new_card() {
         .collect();
     assert_eq!(got, vec![vec!["second.txt".to_string()]]);
 }
+
+/// Card #144: a #ref in text names a done card or a resolved thread too,
+/// by its short ref, so the window links it without the done list.
+#[test]
+fn card_ref_finds_done_cards_and_threads() {
+    let r = Rig::new();
+    let t = held_task(&r);
+    r.w.close_card(&t.id, "completed", "").unwrap();
+    let got = r.w.card_ref(&format!("#{}", t.short)).expect("a done card");
+    assert_eq!(
+        (got.id.as_str(), got.thread, got.done),
+        (t.id.as_str(), false, true)
+    );
+    assert_eq!(got.title, "ship it");
+
+    let th =
+        r.w.start_thread("Where do the builds go?", &[], &[])
+            .unwrap()
+            .task;
+    let got = r.w.card_ref(&format!("#{}", th.short)).expect("a thread");
+    assert_eq!(
+        (got.id.as_str(), got.thread, got.done),
+        (th.id.as_str(), true, false)
+    );
+    r.w.resolve_thread(&th.id).unwrap();
+    assert!(r.w.card_ref(&th.short).unwrap().done, "resolved");
+
+    assert!(r.w.card_ref("#9999").is_none(), "nothing has it");
+    assert!(r.w.card_ref("not a ref").is_none());
+}

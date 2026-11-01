@@ -231,11 +231,11 @@ The owner builds the ask's notices when it posts. They go out through `SendWith(
 **`AskUnclaimed = GoneGrace` (3 minutes).** One constant, the same "a few minutes" the sweep already uses.
 
 - If an ask has had no taker for `AskUnclaimed` since `posted` or `reopened`, the owner's sweep writes `take.state unclaimed` once. With `told = 0` it writes it at once: "no free agent".
-- `notify.Watch` posts a card from that row on every desktop device, with the stable id `unclaimed:<taskId>`: "Nobody took "<title>" (#14)". It has two actions:
-  - **Wake them:** a `take.requested op=reopen` from the person. The owner re-announces with `wake` and writes `reopened`.
-  - **Close:** a person's `task.status canceled`.
+- `notify.Watch` posts a card from that row on every desktop device, with the stable id `unclaimed:<taskId>`: "Nobody took "<title>" (#14)". No button on it ends the ask: the person has only just posted it (#164). It has two buttons, and a click on the card opens it on the Board:
+  - **Open** (when `told = 0`): opens the card. **Wake them** in its place when `told > 0` ("N agents were told; none took it"): a `take.requested op=reopen` from the person, which clears `heard`. The owner re-announces with `wake` and writes `reopened`.
+  - **Later:** dismisses the toast only.
 
-  The card clears when a `taken` or a terminal state folds. Wake them with nobody free brings it back: "You woke them, but nobody is free to hear it."
+  With `told = 0` there is no Wake them: waking would only reopen it and post the same card again, and a waiting ask goes out by itself when an agent goes idle. The body says so: "Nobody was free. It goes to the first agent that is." (after a wake: "You woke them, but nobody is free. …"). The card clears when a `taken` or a terminal state folds.
 - The tile shows "Nobody took this yet". A claim after `unclaimed` is still granted.
 
 ### Outcomes

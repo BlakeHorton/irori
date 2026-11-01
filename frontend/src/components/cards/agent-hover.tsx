@@ -10,12 +10,15 @@ import {
 } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 
-// AgentCards is what an agent's hover card (card #104) reads: the live
-// cards, and how to open one. App provides it; outside it (the preview of
-// a single component, a test) a face has no hover card.
+// AgentCards is what an agent's hover card (card #104) and a #ref in text
+// read: the live cards and the threads, and how to open each (card #144).
+// App provides it; outside it (the preview of a single component, a test)
+// a face has no hover card and a #ref stays text.
 export const AgentCards = createContext<{
   cards: CardSummary[]
   onOpen: (id: string) => void
+  threads?: readonly { id: string; short: string; title: string }[]
+  onOpenThread?: (id: string) => void
 } | null>(null)
 
 // MaxRows is how many cards each list shows before "and N more".

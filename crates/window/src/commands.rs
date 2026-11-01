@@ -220,6 +220,26 @@ pub async fn board_done_cards(w: W<'_>, limit: i64, before: String) -> R<DonePag
     w.done_cards(limit, &before)
 }
 
+/// One scope's live cards (card #161): "" every card, "own" the private
+/// ones, or a board id.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_cards_in(w: W<'_>, scope: String) -> R<Vec<CardSummary>> {
+    Ok(w.cards_in(&scope))
+}
+
+/// One page of one scope's closed cards (card #161).
+#[tauri::command]
+#[specta::specta]
+pub async fn board_done_cards_in(
+    w: W<'_>,
+    limit: i64,
+    before: String,
+    scope: String,
+) -> R<DonePage> {
+    w.done_cards_in(limit, &before, &scope)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_message(w: W<'_>, task_id: String, msg_id: String) -> R<CardMessage> {
@@ -422,6 +442,13 @@ pub async fn board_start_thread_with_files(
     files: Vec<UploadFile>,
 ) -> R<TaskResult> {
     blocking(&w, move |w| w.start_thread(&text, &mentions, &files)).await
+}
+
+/// What a #ref in text names (card #144), or null.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_card_ref(w: W<'_>, r: String) -> R<Option<crate::threads::RefTarget>> {
+    Ok(w.card_ref(&r))
 }
 
 /// The Threads panel: open threads, then the newest resolved.
@@ -827,6 +854,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_cards,
             board_card,
             board_done_cards,
+            board_cards_in,
+            board_done_cards_in,
             board_message,
             board_comment,
             board_comment_with_files,
@@ -846,6 +875,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_start_thread,
             board_start_thread_with_files,
             board_threads,
+            board_card_ref,
             board_resolve_thread,
             board_comment_modify,
             board_comment_modify_cancel,

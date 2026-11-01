@@ -23,6 +23,7 @@ import {
   Told,
   TaskResult,
   ThreadSummary,
+  type RefTarget,
   UploadFile,
   type AgentRef,
   type CardActivity,
@@ -264,7 +265,7 @@ function sampleThreadSeed(now: Date): CardDetail[] {
           kind: "comment",
           at: ago(60),
           who: sampleAgents.heron,
-          text: "#3 is waiting on you: it needs your call on the lobby list (Steam or our relay). #8 is half done; I'll finish it after the build.",
+          text: "#3 is waiting on you: it needs your call on the lobby list (Steam or our relay). #8 is half done; I'll finish it after the build. Where the builds go was settled in #26, and the notes export (#5) is done.",
         }),
       ],
       "answered"
@@ -380,6 +381,62 @@ export const threads = {
     sampleThreadState.set(id, "resolved")
     sampleChanged()
   },
+}
+
+// cardRef is what a #ref names across every board on this device, done
+// cards and old threads too (card #144), or null.
+export async function cardRef(r: string): Promise<RefTarget | null> {
+  if (inWails()) return (await BoardService.CardRef(r)) ?? null
+  return sampleCardRef(r)
+}
+
+// sampleCardRef is BoardService.CardRef on the sample.
+export function sampleCardRef(r: string): RefTarget | null {
+  const m = /^([a-z0-9_-]*)#(\d+[a-z]*)$/i.exec(r.trim())
+  if (!m) return null
+  const tag = m[1].toLowerCase()
+  const hit = sampleState().filter(
+    (c) => c.short === m[2] && (c.tag ?? "") === tag
+  )
+  if (hit.length !== 1) return null
+  const c = hit[0]
+  const thread = sampleThreadIds.has(c.id)
+  return {
+    id: c.id,
+    short: c.short,
+    title: c.title,
+    thread,
+    done: thread
+      ? sampleThreadState.get(c.id) === "resolved"
+      : c.state === TaskState.Completed ||
+        c.state === TaskState.Failed ||
+        c.state === TaskState.Canceled,
+  }
+}
+
+// refCache keeps each looked-up ref for a while, so a long thread full of
+// "#12" asks once; a card made or deleted since shows within a minute.
+const refCache = new Map<string, { at: number; v: Promise<RefTarget | null> }>()
+const RefTTL = 60_000
+
+// useCardRef is cardRef(r) for a component: undefined while it loads, then
+// the target or null. Off (r "") it asks nothing.
+export function useCardRef(r: string): RefTarget | null | undefined {
+  const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(null)
+  useEffect(() => {
+    if (!r) return
+    let live = true
+    let e = refCache.get(r)
+    if (!e || Date.now() - e.at > RefTTL) {
+      e = { at: Date.now(), v: cardRef(r).catch(() => null) }
+      refCache.set(r, e)
+    }
+    void e.v.then((v) => live && setGot({ r, v }))
+    return () => {
+      live = false
+    }
+  }, [r])
+  return got && got.r === r ? got.v : undefined
 }
 
 // useThreads is the Threads panel's rows, fresh on every card change.

@@ -29,6 +29,13 @@ export const commands = {
 	boardCards: () => __TAURI_INVOKE<CardSummary[]>("board_cards"),
 	boardCard: (id: string) => __TAURI_INVOKE<CardDetail>("board_card", { id }),
 	boardDoneCards: (limit: number, before: string) => __TAURI_INVOKE<DonePage>("board_done_cards", { limit, before }),
+	/**
+	 *  One scope's live cards (card #161): "" every card, "own" the private
+	 *  ones, or a board id.
+	 */
+	boardCardsIn: (scope: string) => __TAURI_INVOKE<CardSummary[]>("board_cards_in", { scope }),
+	/**  One page of one scope's closed cards (card #161). */
+	boardDoneCardsIn: (limit: number, before: string, scope: string) => __TAURI_INVOKE<DonePage>("board_done_cards_in", { limit, before, scope }),
 	boardMessage: (taskId: string, msgId: string) => __TAURI_INVOKE<CardMessage>("board_message", { taskId, msgId }),
 	boardComment: (id: string, text: string, tell: string, mentions: Mention[]) => __TAURI_INVOKE<CommentResult>("board_comment", { id, text, tell, mentions }),
 	/**
@@ -59,6 +66,8 @@ export const commands = {
 	boardStartThreadWithFiles: (text: string, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<TaskResult>("board_start_thread_with_files", { text, mentions, files }),
 	/**  The Threads panel: open threads, then the newest resolved. */
 	boardThreads: () => __TAURI_INVOKE<ThreadSummary[]>("board_threads"),
+	/**  What a #ref in text names (card #144), or null. */
+	boardCardRef: (r: string) => __TAURI_INVOKE<RefTarget | null>("board_card_ref", { r }),
 	/**  Resolve on a thread: the person is done with it. */
 	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
@@ -965,6 +974,20 @@ export type PolicyInput = {
 	block?: string[],
 	allow?: string[],
 	paused?: boolean,
+};
+
+/**
+ *  What a #ref in text names (card #144): a card or a thread, live or
+ *  done, so the window can link it without loading every done card.
+ */
+export type RefTarget = {
+	id: string,
+	short: string,
+	title: string,
+	/**  A thread opens in the Threads panel, not on a card's page. */
+	thread: boolean,
+	/**  Done, failed or canceled (a thread: resolved). */
+	done: boolean,
 };
 
 /**  The advanced relay line (D4: no iroh meaning, always "none"). */

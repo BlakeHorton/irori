@@ -561,6 +561,16 @@ impl Coord {
     pub fn move_pin(&self, by: &str, id: &str, before: &str) -> Result<Task> {
         self.lock().pin(by, id, true, before, true)
     }
+    /// Pins (or unpins, or moves with `before`) a shared board's card `id`
+    /// in the person's own log (card #161); `mv` moves a pinned one.
+    pub fn pin_ref(&self, by: &str, id: &str, pinned: bool, before: &str, mv: bool) -> Result<()> {
+        self.lock().pin_ref(by, id, pinned, before, mv)
+    }
+    /// Every pinned card id in this log with its rank, including board
+    /// cards pinned with [`Self::pin_ref`].
+    pub fn pinned_ranks(&self) -> std::collections::HashMap<String, f64> {
+        self.lock().pinned_ranks()
+    }
 
     // ---- comments ----
 

@@ -153,6 +153,7 @@ export const BoardService = {
   StartThreadWithFiles: (text: string, mentions: B.Mention[], files: B.UploadFile[]) =>
     call(commands.boardStartThreadWithFiles(text, mentions, files)),
   Threads: () => call(commands.boardThreads()),
+  CardRef: (r: string) => call(commands.boardCardRef(r)),
   ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),

@@ -782,39 +782,41 @@ impl Ctx<'_> {
         }
         let a = t.ask.clone().unwrap_or_default();
         let woken = a.reason == coord::TAKE_REOPENED;
-        let body = if woken && a.told == 0 {
-            "You woke them, but nobody is free to hear it.".to_string()
-        } else if a.told > 0 {
+        // Nobody free: waking again would only reopen it and post this card
+        // again. A waiting ask goes out by itself when an agent goes idle.
+        let body = if a.told > 0 {
             format!("{} agents were told; none took it.", a.told)
+        } else if woken {
+            "You woke them, but nobody is free. It goes to the first agent that is.".to_string()
         } else {
-            "Nobody was free to hear it.".to_string()
+            "Nobody was free. It goes to the first agent that is.".to_string()
         };
+        // No button ends the ask: the person just posted it (#164).
         let (room, user, id) = (self.room.clone(), self.user.to_string(), t.id.clone());
-        let (room2, user2, id2) = (room.clone(), user.clone(), id.clone());
+        let open = self.opener(t);
+        let open2 = open.clone();
+        // Two buttons at most: told > 0 trades Open for Wake them, and a
+        // click on the card still opens it.
+        let first = if a.told > 0 {
+            Action::new("Wake them", move || {
+                if let Some(r) = &room
+                    && let Err(e) = r.ask_again(&user, &id)
+                {
+                    eprintln!("notify: ask again {id}: {e}");
+                }
+            })
+        } else {
+            Action::new("Open", move || open2())
+        };
+        let actions = vec![first, Action::close("Later")];
         Note {
             id: unclaimed_id(&t.id),
             title,
             body,
             level: Level::Warn,
             sticky: true,
-            actions: vec![
-                Action::new("Wake them", move || {
-                    if let Some(r) = &room
-                        && let Err(e) = r.ask_again(&user, &id)
-                    {
-                        eprintln!("notify: ask again {id}: {e}");
-                    }
-                }),
-                Action::new("Close", move || {
-                    if let Some(r) = &room2
-                        && let Err(e) =
-                            r.set_task_state(&user2, &id2, coord::CANCELED, "closed by the person")
-                    {
-                        eprintln!("notify: close ask {id2}: {e}");
-                    }
-                }),
-            ],
-            on_click: Some(self.opener(t)),
+            actions,
+            on_click: Some(open),
             ..Note::default()
         }
     }
