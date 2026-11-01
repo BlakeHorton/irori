@@ -6,14 +6,20 @@
 // own Threads panel above who is on it.
 
 import { useState, type FormEvent } from "react"
-import { ArrowLeftIcon, PinIcon, PinOffIcon } from "lucide-react"
+import { ArrowLeftIcon, EllipsisIcon, PinIcon, PinOffIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
 import { BoardView } from "@/components/cards/board-view"
 import type { Filter } from "@/components/cards/card-grid"
 import type { BoardView as View } from "@/components/canvas/switch"
-import { ConfirmButton } from "@/components/common/confirm-button"
+import { ConfirmDialog, type ConfirmAsk } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   boards as actions,
@@ -130,7 +136,8 @@ function BackToBoards() {
 
 // BoardHeaderBar is a board's page header (card #135): its state dot,
 // name and tag, its cards and people, and the actions on the board itself:
-// Pin to the sidebar, Rename (owners), Leave, Forget here.
+// Pin to the sidebar and Rename (owners) in the open; Leave (or Forget now
+// while leaving) and Forget here in its ⋯ menu (card #211).
 export function BoardHeaderBar({ boardId }: { boardId: string }) {
   const { boards, reload } = useBoards()
   const b = boards.find((x) => x.boardId === boardId)
@@ -217,63 +224,109 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
             Rename
           </Button>
         )}
-        {b.leaving ? (
-          <ConfirmButton
-            label="Forget now"
-            variant="destructive"
-            confirmLabel="Forget it now"
-            question={
-              <>
-                Forget <b>{plainLine(b.name)}</b> on every one of your devices now? The others may not hear
-                that you left until one of their devices next reaches yours, which may be never.
-              </>
-            }
-            onConfirm={async () => {
-              await actions.forgetNow(b.boardId)
-              go({ kind: "boards" })
-            }}
-          />
-        ) : (
-          <ConfirmButton
-            label="Leave"
-            variant="destructive"
-            confirmLabel="Leave the board"
-            question={
-              b.people.length > 1 ? (
-                <>
-                  Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices once another
-                  member's Irori has your leave, and nothing you write there counts after it. Coming back
-                  needs a new invite.
-                </>
-              ) : (
-                <>
-                  Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices, with its cards.
-                  Coming back needs a new board.
-                </>
-              )
-            }
-            onConfirm={async () => {
-              await actions.leave(b.boardId)
-              await reload()
-            }}
-          />
-        )}
-        <ConfirmButton
-          label="Forget here"
-          confirmLabel="Forget on this device"
-          question={
-            <>
-              Forget <b>{plainLine(b.name)}</b> on this device only? Its file goes from here; your other
-              devices keep it.
-            </>
-          }
-          onConfirm={async () => {
-            await actions.forget(b.boardId)
-            go({ kind: "boards" })
-          }}
-        />
+        <BoardActionsMenu board={b} reload={reload} onError={setError} />
       </span>
     </div>
+  )
+}
+
+// BoardActionsMenu is the header's ⋯ menu: the actions that take the board
+// away (Leave, or Forget now while leaving, and Forget here), each behind
+// its confirm step. Each item opens its dialog once the menu has closed.
+function BoardActionsMenu({
+  board: b,
+  reload,
+  onError,
+}: {
+  board: BoardSummary
+  reload: () => Promise<unknown>
+  onError: (error: string) => void
+}) {
+  const [asking, setAsking] = useState<"leave" | "forgetNow" | "forgetHere" | null>(null)
+  const asks: Record<"leave" | "forgetNow" | "forgetHere", ConfirmAsk> = {
+    forgetNow: {
+      variant: "destructive",
+      confirmLabel: "Forget it now",
+      question: (
+        <>
+          Forget <b>{plainLine(b.name)}</b> on every one of your devices now? The others may not hear
+          that you left until one of their devices next reaches yours, which may be never.
+        </>
+      ),
+      onConfirm: async () => {
+        await actions.forgetNow(b.boardId)
+        go({ kind: "boards" })
+      },
+    },
+    leave: {
+      variant: "destructive",
+      confirmLabel: "Leave the board",
+      question:
+        b.people.length > 1 ? (
+          <>
+            Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices once another
+            member's Irori has your leave, and nothing you write there counts after it. Coming back
+            needs a new invite.
+          </>
+        ) : (
+          <>
+            Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices, with its cards.
+            Coming back needs a new board.
+          </>
+        ),
+      onConfirm: async () => {
+        await actions.leave(b.boardId)
+        await reload()
+      },
+    },
+    forgetHere: {
+      confirmLabel: "Forget on this device",
+      question: (
+        <>
+          Forget <b>{plainLine(b.name)}</b> on this device only? Its file goes from here; your other
+          devices keep it.
+        </>
+      ),
+      onConfirm: async () => {
+        await actions.forget(b.boardId)
+        go({ kind: "boards" })
+      },
+    },
+  }
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" aria-label="Board actions" title="Board actions" />}
+        >
+          <EllipsisIcon aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-auto">
+          {b.leaving ? (
+            <DropdownMenuItem variant="destructive" onClick={() => setAsking("forgetNow")}>
+              Forget now
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem variant="destructive" onClick={() => setAsking("leave")}>
+              Leave
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem variant="destructive" onClick={() => setAsking("forgetHere")}>
+            Forget here
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {asking && (
+        <ConfirmDialog
+          {...asks[asking]}
+          open
+          onOpenChange={(open) => {
+            if (!open) setAsking(null)
+          }}
+          onError={onError}
+        />
+      )}
+    </>
   )
 }
 

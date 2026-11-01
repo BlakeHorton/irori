@@ -20,24 +20,78 @@ import { errorText } from "@/lib/talk"
 // and shows its error, if any, under the button until the next try.
 export function ConfirmButton({
   label,
-  question,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
-  variant = "outline",
   disabled,
-  onConfirm,
+  variant = "outline",
+  ...ask
 }: {
   label: ReactNode
+  disabled?: boolean
+} & ConfirmAsk) {
+  const [asking, setAsking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <ConfirmDialog
+        {...ask}
+        variant={variant}
+        open={asking}
+        onOpenChange={(open) => {
+          if (open) setError(null)
+          setAsking(open)
+        }}
+        onError={setError}
+        trigger={
+          <AlertDialogTrigger
+            render={
+              <Button
+                size="xs"
+                variant={variant === "destructive" ? "outline" : variant}
+                disabled={disabled}
+              />
+            }
+          >
+            {label}
+          </AlertDialogTrigger>
+        }
+      />
+      {error && (
+        <span className="max-w-xs text-right text-xs text-destructive">
+          {error}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// ConfirmAsk is what a confirm step asks and does.
+export type ConfirmAsk = {
   question: ReactNode
   confirmLabel?: string
   cancelLabel?: string
   variant?: "outline" | "destructive" | "default"
-  disabled?: boolean
   onConfirm: () => Promise<unknown>
+}
+
+// ConfirmDialog is ConfirmButton's dialog on its own, opened by its owner
+// (a menu item, say) through open. onError gets onConfirm's error, if any;
+// the dialog closes either way, as ConfirmButton's does.
+export function ConfirmDialog({
+  question,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  variant = "outline",
+  onConfirm,
+  open,
+  onOpenChange,
+  onError,
+  trigger,
+}: ConfirmAsk & {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onError: (error: string) => void
+  trigger?: ReactNode
 }) {
-  const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
 
   const confirm = async () => {
@@ -45,71 +99,53 @@ export function ConfirmButton({
     try {
       await onConfirm()
     } catch (err) {
-      setError(errorText(err))
+      onError(errorText(err))
     } finally {
       setBusy(false)
-      setAsking(false)
+      onOpenChange(false)
     }
   }
 
   return (
-    <span className="flex flex-col items-end gap-1">
-      <AlertDialog
-        open={asking}
-        onOpenChange={(open) => {
-          if (busy) return
-          if (open) setError(null)
-          setAsking(open)
-        }}
-      >
-        <AlertDialogTrigger
-          render={
-            <Button
-              size="xs"
-              variant={variant === "destructive" ? "outline" : variant}
-              disabled={disabled}
-            />
-          }
-        >
-          {label}
-        </AlertDialogTrigger>
-        <AlertDialogContent initialFocus={confirmRef}>
-          <AlertDialogHeader>
-            {typeof question === "string" ? (
-              <AlertDialogTitle>{question}</AlertDialogTitle>
-            ) : (
-              <>
-                <AlertDialogTitle>{confirmLabel}</AlertDialogTitle>
-                <AlertDialogDescription render={<div />}>
-                  {question}
-                </AlertDialogDescription>
-              </>
-            )}
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose
-              disabled={busy}
-              render={<Button size="sm" variant="ghost" />}
-            >
-              {cancelLabel}
-            </AlertDialogClose>
-            <Button
-              ref={confirmRef}
-              size="sm"
-              variant={variant === "outline" ? "default" : variant}
-              disabled={busy}
-              onClick={() => void confirm()}
-            >
-              {busy ? "Working…" : confirmLabel}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      {error && (
-        <span className="max-w-xs text-right text-xs text-destructive">
-          {error}
-        </span>
-      )}
-    </span>
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy) return
+        onOpenChange(next)
+      }}
+    >
+      {trigger}
+      <AlertDialogContent initialFocus={confirmRef}>
+        <AlertDialogHeader>
+          {typeof question === "string" ? (
+            <AlertDialogTitle>{question}</AlertDialogTitle>
+          ) : (
+            <>
+              <AlertDialogTitle>{confirmLabel}</AlertDialogTitle>
+              <AlertDialogDescription render={<div />}>
+                {question}
+              </AlertDialogDescription>
+            </>
+          )}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogClose
+            disabled={busy}
+            render={<Button size="sm" variant="ghost" />}
+          >
+            {cancelLabel}
+          </AlertDialogClose>
+          <Button
+            ref={confirmRef}
+            size="sm"
+            variant={variant === "outline" ? "default" : variant}
+            disabled={busy}
+            onClick={() => void confirm()}
+          >
+            {busy ? "Working…" : confirmLabel}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
