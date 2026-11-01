@@ -4,6 +4,8 @@ import { AgentRef } from "../gen/models"
 import {
   addMention,
   cardRefs,
+  localRef,
+  refText,
   cardTokenAt,
   filterCards,
   insertCardRef,
@@ -378,5 +380,38 @@ describe("card mentions (card #114)", () => {
       text: "see #12 ",
       caret: 8,
     })
+  })
+})
+
+describe("localRef (card #144)", () => {
+  const cards = [
+    { id: "c12", short: "12", title: "Live card" },
+    { id: "m1", short: "1", title: "MLG card", tag: "mlg" },
+    { id: "x7", short: "7", title: "One" },
+    { id: "y7", short: "7", title: "Two", tag: "web" },
+  ]
+  const threads = [
+    { id: "t136", short: "136", title: "A thread" },
+    { id: "t12", short: "12", title: "Same number" },
+  ]
+  const ref = (s: string) => cardRefs(s)[0]
+
+  test("a live card first", () => {
+    expect(localRef(ref("see #12"), cards, threads)).toEqual({ kind: "card", id: "c12", title: "Live card" })
+  })
+  test("a thread when no live card has it", () => {
+    expect(localRef(ref("mentioned this in #136"), cards, threads)).toEqual({ kind: "thread", id: "t136", title: "A thread" })
+  })
+  test("a tagged ref never names a thread", () => {
+    expect(localRef(ref("mlg#136"), cards, threads)).toBeNull()
+    expect(localRef(ref("mlg#1"), cards, threads)?.id).toBe("m1")
+  })
+  test("two live cards, or none: left to the lookup", () => {
+    expect(localRef(ref("#7"), cards, threads)).toBeNull()
+    expect(localRef(ref("#99"), cards, threads)).toBeNull()
+  })
+  test("refText is what the backend reads", () => {
+    expect(refText(ref("in #136"))).toBe("#136")
+    expect(refText(ref("mlg#12"))).toBe("mlg#12")
   })
 })

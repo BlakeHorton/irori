@@ -220,6 +220,26 @@ pub async fn board_done_cards(w: W<'_>, limit: i64, before: String) -> R<DonePag
     w.done_cards(limit, &before)
 }
 
+/// One scope's live cards (card #161): "" every card, "own" the private
+/// ones, or a board id.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_cards_in(w: W<'_>, scope: String) -> R<Vec<CardSummary>> {
+    Ok(w.cards_in(&scope))
+}
+
+/// One page of one scope's closed cards (card #161).
+#[tauri::command]
+#[specta::specta]
+pub async fn board_done_cards_in(
+    w: W<'_>,
+    limit: i64,
+    before: String,
+    scope: String,
+) -> R<DonePage> {
+    w.done_cards_in(limit, &before, &scope)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_message(w: W<'_>, task_id: String, msg_id: String) -> R<CardMessage> {
@@ -235,7 +255,22 @@ pub async fn board_comment(
     tell: String,
     mentions: Vec<ts::Mention>,
 ) -> R<CommentResult> {
-    w.comment(&id, &text, &tell, &mentions)
+    w.comment(&id, &text, &tell, &mentions, &[])
+}
+
+/// Comment with files (card #124): pasted, dropped or picked in the
+/// comment or thread Reply box.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_comment_with_files(
+    w: W<'_>,
+    id: String,
+    text: String,
+    tell: String,
+    mentions: Vec<ts::Mention>,
+    files: Vec<UploadFile>,
+) -> R<CommentResult> {
+    blocking(&w, move |w| w.comment(&id, &text, &tell, &mentions, &files)).await
 }
 
 #[tauri::command]
@@ -382,7 +417,8 @@ pub async fn board_comment_modify_save(
 #[tauri::command]
 #[specta::specta]
 pub async fn board_create(w: W<'_>, input: crate::new_card::NewCardInput) -> R<TaskResult> {
-    w.create_card(input)
+    // Its files (card #124) are stored off the bridge thread, as an ask's.
+    blocking(&w, move |w| w.create_card(input)).await
 }
 
 /// The header box's message as a thread (card #116).
@@ -393,7 +429,26 @@ pub async fn board_start_thread(
     text: String,
     mentions: Vec<crate::ts::Mention>,
 ) -> R<TaskResult> {
-    w.start_thread(&text, &mentions)
+    w.start_thread(&text, &mentions, &[])
+}
+
+/// A thread with files (card #124), as an ask takes them.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_start_thread_with_files(
+    w: W<'_>,
+    text: String,
+    mentions: Vec<crate::ts::Mention>,
+    files: Vec<UploadFile>,
+) -> R<TaskResult> {
+    blocking(&w, move |w| w.start_thread(&text, &mentions, &files)).await
+}
+
+/// What a #ref in text names (card #144), or null.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_card_ref(w: W<'_>, r: String) -> R<Option<crate::threads::RefTarget>> {
+    Ok(w.card_ref(&r))
 }
 
 /// The Threads panel: open threads, then the newest resolved.
@@ -799,8 +854,11 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_cards,
             board_card,
             board_done_cards,
+            board_cards_in,
+            board_done_cards_in,
             board_message,
             board_comment,
+            board_comment_with_files,
             board_answer,
             board_resolve_blocker,
             board_ask,
@@ -815,7 +873,9 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_place,
             board_create,
             board_start_thread,
+            board_start_thread_with_files,
             board_threads,
+            board_card_ref,
             board_resolve_thread,
             board_comment_modify,
             board_comment_modify_cancel,

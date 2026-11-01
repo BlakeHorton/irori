@@ -146,3 +146,39 @@ fn a_thread_naming_nothing_goes_to_an_idle_agent_at_once() {
     );
     assert_eq!(ask_of(&e.c, &tk.id).taker, BOB);
 }
+
+/// Card #124: a thread handed out after the quiet spell still brings the
+/// files the person posted with it.
+#[test]
+fn a_thread_handed_later_brings_its_files() {
+    let e = Env::new();
+    let card = alices_card(&e);
+    let file = FileRef {
+        sha256: "a".repeat(64),
+        name: "shot.png".into(),
+        size: 9,
+        ..FileRef::default()
+    };
+    let (_, n) =
+        e.c.post_ask(
+            USER,
+            NewAsk {
+                text: format!("What is this on #{}?", card.short),
+                files: vec![file.clone()],
+                thread: true,
+                ..NewAsk::default()
+            },
+            &agents(&e),
+        )
+        .unwrap();
+    assert_eq!(
+        n.attachments,
+        vec![file.clone()],
+        "alice hears it with the file"
+    );
+    e.ros.set(CAROL, "busy");
+    e.clk.add(secs(46));
+    let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [BOB], "{ns:?}");
+    assert_eq!(ns[0].attachments, vec![file]);
+}

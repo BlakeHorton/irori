@@ -11,7 +11,7 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::Window;
-use crate::board::{TaskResult, Told};
+use crate::board::{TaskResult, Told, UploadFile};
 use crate::cards::AgentRef;
 use crate::ts;
 
@@ -59,10 +59,47 @@ pub struct ThreadSummary {
     pub updated_at: GoTime,
 }
 
+/// What a #ref in text names (card #144): a card or a thread, live or
+/// done, so the window can link it without loading every done card.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RefTarget {
+    pub id: String,
+    pub short: String,
+    pub title: String,
+    /// A thread opens in the Threads panel, not on a card's page.
+    pub thread: bool,
+    /// Done, failed or canceled (a thread: resolved).
+    pub done: bool,
+}
+
 impl Window {
+    /// BoardService.CardRef: what `#12`, `12b` or `mlg#12` names across every
+    /// board on this device, or None when nothing (or more than one card,
+    /// or a deleted one) does.
+    pub fn card_ref(&self, r: &str) -> Option<RefTarget> {
+        let id = self.core.task_ref(crate::trim(r)).ok()?;
+        let t = self.read(&id).get_task(&id)?;
+        Some(RefTarget {
+            id: t.id.clone(),
+            short: t.short.clone(),
+            title: t.title.clone(),
+            thread: is_thread(&t),
+            done: coord::is_terminal(&t.state)
+                || (is_thread(&t) && t.ask.as_ref().is_some_and(|a| a.outcome.is_some())),
+        })
+    }
+
     /// BoardService.StartThread: the header box's message, as a thread.
-    pub fn start_thread(&self, text: &str, mentions: &[ts::Mention]) -> Result<TaskResult, String> {
+    /// Its files go on the thread like an ask's (card #124).
+    pub fn start_thread(
+        &self,
+        text: &str,
+        mentions: &[ts::Mention],
+        files: &[UploadFile],
+    ) -> Result<TaskResult, String> {
         let plan = self.plan_mentions("", mentions);
+        let refs = self.store_uploads(files)?;
         let co = self.core.coord();
         let (t, n) = co
             .post_ask(
@@ -70,6 +107,7 @@ impl Window {
                 NewAsk {
                     text: text.into(),
                     mentions: plan.log.clone(),
+                    files: refs.iter().map(crate::coord_ref).collect(),
                     thread: true,
                     ..Default::default()
                 },

@@ -72,6 +72,7 @@ export type PairJoiner = B.PairJoiner
 export type PairStatus = B.PairStatus
 export type Policy = B.Policy
 export type PolicyInput = B.PolicyInput
+export type RefTarget = B.RefTarget
 export type RelayView = B.RelayView
 export type Resolution = B.Resolution
 export type Returned = B.Returned
@@ -388,6 +389,11 @@ export function Policy(p: Partial<B.Policy> = {}): B.Policy {
 /** PolicyInput with Go's zero values for every field left out. */
 export function PolicyInput(p: Partial<B.PolicyInput> = {}): B.PolicyInput {
   return { "mode": "", ...p } as B.PolicyInput
+}
+
+/** RefTarget with Go's zero values for every field left out. */
+export function RefTarget(p: Partial<B.RefTarget> = {}): B.RefTarget {
+  return { "id": "", "short": "", "title": "", "thread": false, "done": false, ...p } as B.RefTarget
 }
 
 /** RelayView with Go's zero values for every field left out. */

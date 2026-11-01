@@ -20,11 +20,7 @@ import {
   CardWait,
   Holding,
 } from "./models"
-import {
-  LinkKind,
-  Step,
-  TaskState,
-} from "./models"
+import { LinkKind, Step, TaskState } from "./models"
 
 const dev = "sample-device"
 
@@ -77,9 +73,17 @@ export const sampleYou = AgentRef({
 // the card up, else the first assigned one.
 // sampleAccent mirrors cards_service.go: the holders' devices, and their
 // colour when they are all on one device (card #22).
-function sampleAccent(working: AgentRef[]): { devices: string[]; accent: string } {
-  const devices = [...new Set(working.map((w) => w.deviceId).filter(Boolean))] as string[]
-  const one = devices.length === 1 ? working.find((w) => w.deviceId === devices[0]) : undefined
+function sampleAccent(working: AgentRef[]): {
+  devices: string[]
+  accent: string
+} {
+  const devices = [
+    ...new Set(working.map((w) => w.deviceId).filter(Boolean)),
+  ] as string[]
+  const one =
+    devices.length === 1
+      ? working.find((w) => w.deviceId === devices[0])
+      : undefined
   return { devices, accent: one?.color ?? "" }
 }
 
@@ -106,30 +110,28 @@ export function sampleHolder(working: AgentRef[]): CardHolder {
 type StepSeed = [text: string, done: boolean, doing?: boolean, owner?: string]
 
 function steps(seeds: StepSeed[]): Step[] {
-  return seeds.map(
-    ([text, done, doing, owner], i) =>
-      Step({
-        id: `s${i + 1}`,
-        text,
-        done,
-        doing: doing || undefined,
-        owner: owner || undefined,
-      })
+  return seeds.map(([text, done, doing, owner], i) =>
+    Step({
+      id: `s${i + 1}`,
+      text,
+      done,
+      doing: doing || undefined,
+      owner: owner || undefined,
+    })
   )
 }
 
 // eventsOf is a thread made of a card's Recent lines (newest first), for
 // the sample cards that seed no thread of their own.
 function eventsOf(recent: CardActivity[]): CardThreadItem[] {
-  return [...recent].reverse().map(
-    (a, i) =>
-      CardThreadItem({
-        id: `sample-event-${i}`,
-        kind: "event",
-        at: a.at,
-        who: a.who,
-        text: a.text,
-      })
+  return [...recent].reverse().map((a, i) =>
+    CardThreadItem({
+      id: `sample-event-${i}`,
+      kind: "event",
+      at: a.at,
+      who: a.who,
+      text: a.text,
+    })
   )
 }
 
@@ -185,9 +187,22 @@ export function sampleCards(now: Date): CardDetail[] {
       working: [],
       updatedAt: at(1),
       thread: [
-        CardThreadItem({ id: "sample-ask-1-post", kind: "event", at: at(1), who: sampleYou, text: "You asked the room" }),
+        CardThreadItem({
+          id: "sample-ask-1-post",
+          kind: "event",
+          at: at(1),
+          who: sampleYou,
+          text: "You asked the room",
+        }),
       ],
-      ask: CardAsk({ state: "open", told: 3, owner: "This PC", wake: false, taker: null, outcome: null }),
+      ask: CardAsk({
+        state: "open",
+        told: 3,
+        owner: "This PC",
+        wake: false,
+        taker: null,
+        outcome: null,
+      }),
     }),
     card({
       id: "sample-ask-2",
@@ -198,8 +213,20 @@ export function sampleCards(now: Date): CardDetail[] {
       working: [heron],
       updatedAt: at(4),
       thread: [
-        CardThreadItem({ id: "sample-ask-2-post", kind: "event", at: at(6), who: sampleYou, text: "You asked the room" }),
-        CardThreadItem({ id: "sample-ask-2-took", kind: "event", at: at(5), who: heron, text: "sample-heron took it" }),
+        CardThreadItem({
+          id: "sample-ask-2-post",
+          kind: "event",
+          at: at(6),
+          who: sampleYou,
+          text: "You asked the room",
+        }),
+        CardThreadItem({
+          id: "sample-ask-2-took",
+          kind: "event",
+          at: at(5),
+          who: heron,
+          text: "sample-heron took it",
+        }),
         CardThreadItem({
           id: "sample-ask-2-c1",
           kind: "comment",
@@ -208,7 +235,14 @@ export function sampleCards(now: Date): CardDetail[] {
           text: "On it. Do you want the Helmaroc fight in the notes too, or only what changed since 0.5?",
         }),
       ],
-      ask: CardAsk({ state: "taken", told: 3, owner: "This PC", wake: false, taker: heron, outcome: null }),
+      ask: CardAsk({
+        state: "taken",
+        told: 3,
+        owner: "This PC",
+        wake: false,
+        taker: heron,
+        outcome: null,
+      }),
     }),
     card({
       id: "sample-card-1",
@@ -220,8 +254,17 @@ export function sampleCards(now: Date): CardDetail[] {
       // Waits (card #87): wren is woken when this card is done; otter, on
       // it, waits for main to move.
       waits: [
-        CardWait({ id: "sample-wait-1", who: wren, text: "until done", onThis: true }),
-        CardWait({ id: "sample-wait-2", who: otter, text: "branch main moves" }),
+        CardWait({
+          id: "sample-wait-1",
+          who: wren,
+          text: "until done",
+          onThis: true,
+        }),
+        CardWait({
+          id: "sample-wait-2",
+          who: otter,
+          text: "branch main moves",
+        }),
       ],
       updatedAt: at(18),
       steps: steps([
@@ -292,7 +335,11 @@ export function sampleCards(now: Date): CardDetail[] {
               ref: "https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m",
               label: "huggingface.co",
             },
-            { kind: LinkKind.LinkPath, ref: "docs/models.md", label: "docs/models.md" },
+            {
+              kind: LinkKind.LinkPath,
+              ref: "docs/models.md",
+              label: "docs/models.md",
+            },
           ],
           attachments: [
             {
@@ -678,7 +725,8 @@ export function sampleCards(now: Date): CardDetail[] {
           ...heron,
           assigned: true,
           waiting: true,
-          handoff: "out/ is about 40 GB: copy it to the external drive, then start the re-run.",
+          handoff:
+            "out/ is about 40 GB: copy it to the external drive, then start the re-run.",
         }),
       ],
       updatedAt: at(2),
@@ -708,8 +756,19 @@ export function sampleCards(now: Date): CardDetail[] {
         CardBlocker({
           id: "b1",
           question: "Is this done?",
+          // Its proof (card #140): what changed, how it was checked, the
+          // commit, caveats, and a screenshot.
           context:
-            "Widened the dock collider by 0.4 m and re-ran the two-PC check: no clipping in 20 dockings (#207).",
+            "Widened the dock collider by 0.4 m, so boats stop at the edge.\nChecked: cargo test, then 20 dockings in the two-PC check with no clipping (screenshot after the fix).\nCommit 4f2c9e1 on main (#207).\nCaveat: the far dock on the island wasn't tested.",
+          attachments: [
+            {
+              sha256: "2".repeat(64),
+              name: "dock-after.png",
+              size: 51877,
+              mime: "image/png",
+              device: dev,
+            },
+          ],
           raisedBy: otter,
           at: at(1),
           doneCheck: true,
@@ -830,10 +889,24 @@ export function sampleCards(now: Date): CardDetail[] {
       progress: { done: 0, total: 2 },
       subtaskBlocked: "#9: Announce on Discord as well, or only the site?",
       subtaskList: [
-        CardSubtask({ id: "sample-card-8", short: "8", title: "Release notes", state: TaskState.Working,
-          holder: sampleHolder([heron]), progress: { done: 1, total: 2 }, blocked: false }),
-        CardSubtask({ id: "sample-card-9", short: "9", title: "Announcement", state: TaskState.Blocked,
-          holder: sampleHolder([wren]), progress: { done: 0, total: 1 }, blocked: true }),
+        CardSubtask({
+          id: "sample-card-8",
+          short: "8",
+          title: "Release notes",
+          state: TaskState.Working,
+          holder: sampleHolder([heron]),
+          progress: { done: 1, total: 2 },
+          blocked: false,
+        }),
+        CardSubtask({
+          id: "sample-card-9",
+          short: "9",
+          title: "Announcement",
+          state: TaskState.Blocked,
+          holder: sampleHolder([wren]),
+          progress: { done: 0, total: 1 },
+          blocked: true,
+        }),
       ],
     }),
     card({
@@ -842,8 +915,15 @@ export function sampleCards(now: Date): CardDetail[] {
       repoKey: "remote:github.com/sample-org/example-app",
       working: [heron],
       updatedAt: at(7),
-      parent: CardRef({ id: "sample-card-7", short: "7", title: "Ship the release" }),
-      steps: steps([["Draft", true], ["Boat fixes first", false, true]]),
+      parent: CardRef({
+        id: "sample-card-7",
+        short: "7",
+        title: "Ship the release",
+      }),
+      steps: steps([
+        ["Draft", true],
+        ["Boat fixes first", false, true],
+      ]),
     }),
     card({
       id: "sample-card-9",
@@ -851,12 +931,25 @@ export function sampleCards(now: Date): CardDetail[] {
       repoKey: "remote:github.com/sample-org/example-app",
       working: [wren],
       updatedAt: at(8),
-      parent: CardRef({ id: "sample-card-7", short: "7", title: "Ship the release" }),
+      parent: CardRef({
+        id: "sample-card-7",
+        short: "7",
+        title: "Ship the release",
+      }),
       steps: steps([["Post it", false]]),
       blockers: [
         CardBlocker({
-          id: "b1", question: "Announce on Discord as well, or only the site?", context: "", raisedBy: wren, at: at(8),
-          options: [], state: "open", missing: [], thread: [], links: [], attachments: [],
+          id: "b1",
+          question: "Announce on Discord as well, or only the site?",
+          context: "",
+          raisedBy: wren,
+          at: at(8),
+          options: [],
+          state: "open",
+          missing: [],
+          thread: [],
+          links: [],
+          attachments: [],
         }),
       ],
     }),
@@ -879,8 +972,16 @@ export function sampleCards(now: Date): CardDetail[] {
       repoKey: "remote:github.com/sample-org/example-app",
       working: [otter],
       updatedAt: at(3),
-      parent: CardRef({ id: "sample-card-20", short: "20", title: "Boat physics pass" }),
-      steps: steps([["Sample points", true], ["Water height", true], ["Torque", false, true]]),
+      parent: CardRef({
+        id: "sample-card-20",
+        short: "20",
+        title: "Boat physics pass",
+      }),
+      steps: steps([
+        ["Sample points", true],
+        ["Water height", true],
+        ["Torque", false, true],
+      ]),
     }),
     card({
       id: "sample-card-24",
@@ -888,12 +989,28 @@ export function sampleCards(now: Date): CardDetail[] {
       repoKey: "remote:github.com/sample-org/example-app",
       working: [lark],
       updatedAt: at(9),
-      parent: CardRef({ id: "sample-card-20", short: "20", title: "Boat physics pass" }),
-      steps: steps([["Wave test scene", true], ["Pick a limit", false]]),
+      parent: CardRef({
+        id: "sample-card-20",
+        short: "20",
+        title: "Boat physics pass",
+      }),
+      steps: steps([
+        ["Wave test scene", true],
+        ["Pick a limit", false],
+      ]),
       blockers: [
         CardBlocker({
-          id: "b1", question: "Clamp the roll at 30°, or let big waves flip it?", context: "", raisedBy: lark, at: at(9),
-          options: [], state: "open", missing: [], thread: [], links: [], attachments: [],
+          id: "b1",
+          question: "Clamp the roll at 30°, or let big waves flip it?",
+          context: "",
+          raisedBy: lark,
+          at: at(9),
+          options: [],
+          state: "open",
+          missing: [],
+          thread: [],
+          links: [],
+          attachments: [],
         }),
       ],
     }),
@@ -904,7 +1021,11 @@ export function sampleCards(now: Date): CardDetail[] {
       working: [],
       updatedAt: at(20),
       state: TaskState.Submitted,
-      parent: CardRef({ id: "sample-card-20", short: "20", title: "Boat physics pass" }),
+      parent: CardRef({
+        id: "sample-card-20",
+        short: "20",
+        title: "Boat physics pass",
+      }),
     }),
     card({
       id: "sample-card-5",
@@ -951,14 +1072,26 @@ export function sampleCards(now: Date): CardDetail[] {
       scopeLabel: "MLG",
       board: "sample-board-mlg",
       tag: "mlg",
-      onBoard: CardBoard({ id: "sample-board-mlg", name: "MLG", tag: "mlg", visibleTo: ["Stephen"], canWithdraw: true }),
+      onBoard: CardBoard({
+        id: "sample-board-mlg",
+        name: "MLG",
+        tag: "mlg",
+        visibleTo: ["Stephen"],
+        canWithdraw: true,
+      }),
       working: [otter],
       updatedAt: at(7),
       steps: steps([
         ["Mirror the boat actors", true],
         ["Settle the start timer", false],
       ]),
-      recent: [CardActivity({ at: at(7), who: otter, text: "sample-otter ticked “Mirror the boat actors”" })],
+      recent: [
+        CardActivity({
+          at: at(7),
+          who: otter,
+          text: "sample-otter ticked “Mirror the boat actors”",
+        }),
+      ],
     }),
     card({
       id: "sample-board-2",
@@ -969,7 +1102,13 @@ export function sampleCards(now: Date): CardDetail[] {
       scopeLabel: "MLG",
       board: "sample-board-mlg",
       tag: "mlg",
-      onBoard: CardBoard({ id: "sample-board-mlg", name: "MLG", tag: "mlg", visibleTo: ["Stephen"], canWithdraw: true }),
+      onBoard: CardBoard({
+        id: "sample-board-mlg",
+        name: "MLG",
+        tag: "mlg",
+        visibleTo: ["Stephen"],
+        canWithdraw: true,
+      }),
       state: TaskState.Submitted,
       working: [],
       updatedAt: at(40),
@@ -997,8 +1136,20 @@ export function sampleCards(now: Date): CardDetail[] {
       working: [],
       updatedAt: at(55),
       thread: [
-        CardThreadItem({ id: "sample-ask-3-post", kind: "event", at: at(70), who: sampleYou, text: "You asked the room" }),
-        CardThreadItem({ id: "sample-ask-3-took", kind: "event", at: at(66), who: otter, text: "sample-otter took it" }),
+        CardThreadItem({
+          id: "sample-ask-3-post",
+          kind: "event",
+          at: at(70),
+          who: sampleYou,
+          text: "You asked the room",
+        }),
+        CardThreadItem({
+          id: "sample-ask-3-took",
+          kind: "event",
+          at: at(66),
+          who: otter,
+          text: "sample-otter took it",
+        }),
       ],
       ask: CardAsk({
         state: "closed",
@@ -1006,7 +1157,11 @@ export function sampleCards(now: Date): CardDetail[] {
         owner: "This PC",
         wake: false,
         taker: otter,
-        outcome: { kind: "edit", task: "sample-card-4", note: "added a step for a five-minute code" },
+        outcome: {
+          kind: "edit",
+          task: "sample-card-4",
+          note: "added a step for a five-minute code",
+        },
         outcomeRef: "#4",
       }),
     }),
@@ -1019,7 +1174,11 @@ export function sampleCards(now: Date): CardDetail[] {
       working: [],
       updatedAt: at(300),
       recent: [
-        CardActivity({ at: at(300), who: sampleYou, text: "You set it to canceled" }),
+        CardActivity({
+          at: at(300),
+          who: sampleYou,
+          text: "You set it to canceled",
+        }),
       ],
     }),
     card({
@@ -1035,7 +1194,11 @@ export function sampleCards(now: Date): CardDetail[] {
         ["Schedule the build", false],
       ]),
       recent: [
-        CardActivity({ at: at(60 * 26), who: badger, text: "sample-badger set it to failed" }),
+        CardActivity({
+          at: at(60 * 26),
+          who: badger,
+          text: "sample-badger set it to failed",
+        }),
       ],
     }),
   ].map(

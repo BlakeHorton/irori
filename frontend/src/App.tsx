@@ -362,9 +362,25 @@ export function App() {
 
   // What an agent's hover card lists (card #104): the live cards. The
   // provider sits unindented around the page to keep its diff small.
+  // openThread is a #ref to a thread (card #144): the grid with the
+  // Threads panel showing and that thread unfolded. One past the panel's
+  // list (an old resolved thread) opens as a card's page instead.
+  const openThread = useCallback(
+    (id: string) => {
+      if (!threadList.some((t) => t.id === id)) {
+        openCard(id)
+        return
+      }
+      setThread(id)
+      hideThreads(false)
+      if (open) back()
+      if (section.kind !== "home") go(Home)
+    },
+    [threadList, openCard, open, back, section]
+  )
   const agentCards = useMemo(
-    () => ({ cards, onOpen: openCard }),
-    [cards, openCard]
+    () => ({ cards, onOpen: openCard, threads: threadList, onOpenThread: openThread }),
+    [cards, openCard, threadList, openThread]
   )
 
   return (

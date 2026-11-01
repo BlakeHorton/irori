@@ -509,7 +509,7 @@ fn purpose(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
         }
     }
     let before: Vec<String> = S3_STEPS.iter().map(|s| s.to_string()).collect();
-    if let Err(e) = h.window.comment(&t.id, S3_COMMENT, "wake", &[]) {
+    if let Err(e) = h.window.comment(&t.id, S3_COMMENT, "wake", &[], &[]) {
         return (Err(format!("the person's comment: {e}")), log);
     }
     let id = t.id.clone();

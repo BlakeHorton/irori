@@ -84,11 +84,13 @@ fn board_cards_and_answers() {
     assert_eq!(a.card.blockers[0].state, "answered");
     assert_eq!(r.w.cards()[0].waiting, 1);
 
-    let c = r.w.comment(&t.id, "looks right", "next_turn", &[]).unwrap();
+    let c =
+        r.w.comment(&t.id, "looks right", "next_turn", &[], &[])
+            .unwrap();
     assert_eq!(c.comment.text, "looks right");
     assert_eq!(c.answers.len(), 1);
     assert_eq!(c.told.mode, "next_turn");
-    assert!(r.w.comment(&t.id, "x", "loud", &[]).is_err());
+    assert!(r.w.comment(&t.id, "x", "loud", &[], &[]).is_err());
 
     r.w.pin(&t.id, true).unwrap();
     assert!(r.w.cards()[0].pinned);
@@ -461,7 +463,7 @@ fn ts_shapes_match_the_json() {
         },
     )
     .unwrap();
-    let _ = r.w.comment(&t.id, "a comment", "none", &[]).unwrap();
+    let _ = r.w.comment(&t.id, "a comment", "none", &[], &[]).unwrap();
     let task = co.get_task(&t.id).unwrap();
 
     let j = |v: &dyn erased::Ser| v.json();
