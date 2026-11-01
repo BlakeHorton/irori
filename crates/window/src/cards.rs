@@ -612,7 +612,8 @@ pub(crate) struct People {
     colors: BTreeMap<String, String>,
     conflicts: HashMap<String, String>,
     unsent: std::collections::HashSet<String>,
-    heard: HashMap<String, Vec<Delivery>>,
+    /// A comment's notices, each with whether its recipient read it.
+    heard: HashMap<String, Vec<(Delivery, bool)>>,
     /// The shared boards' agent cards by board key (agent:<cardId>), so
     /// another member's agents are named and live on a card they hold
     /// rather than "gone" (card #146).
@@ -641,12 +642,16 @@ impl Window {
             {
                 p.unsent.insert(unsent_key(&d.to, &m.ref_));
             }
-            if let Some(cid) = m.ref_.strip_prefix("comment:")
-                && m.notice
-                && m.reason == coord::NOTICE_COMMENT
-                && (d.state == st::QUEUED || d.state == st::HELD || d.state == st::DELIVERED)
-            {
-                p.heard.entry(cid.to_string()).or_default().push(d.clone());
+        }
+        // A mention is how the person usually reaches an agent on a card
+        // (card #159): its notice counts, read ones too, so the thread says
+        // when it was read.
+        for (d, read) in c.inbox().comment_notices(
+            &[coord::NOTICE_COMMENT, coord::NOTICE_MENTIONED],
+            HEARD_NOTICES,
+        ) {
+            if let Some(cid) = d.message.ref_.strip_prefix("comment:") {
+                p.heard.entry(cid.to_string()).or_default().push((d, read));
             }
         }
         // The Chain's rule, never coord's lock: `around` in person_comment runs
@@ -1747,7 +1752,15 @@ fn build_thread(
         if !cm.msg_id.is_empty() {
             it.kind = THREAD_MESSAGE.into();
         } else if it.who.status == "person" {
-            it.pending = pending_lines(p.heard.get(&cm.id).map(Vec::as_slice).unwrap_or(&[]), t, p);
+            // An agent that wrote on the card after it has answered: "read
+            // it" says nothing more.
+            let wrote_after = |k: &str| comments.iter().any(|c| c.by == k && c.hlc > cm.hlc);
+            it.pending = pending_lines(
+                p.heard.get(&cm.id).map(Vec::as_slice).unwrap_or(&[]),
+                t,
+                p,
+                wrote_after,
+            );
         }
         if !cm.to.is_empty() {
             it.to = Some(p.ref_(&cm.to));
@@ -1856,26 +1869,64 @@ fn edit_on_thread(
     }
 }
 
-/// A person's comment's Pending lines from its notices still open.
-fn pending_lines(ds: &[Delivery], t: &Task, p: &People) -> Vec<String> {
+/// Whether an agent's status says it is in a turn: busy, running a shell
+/// command, waiting on a prompt (Claude Code's own words). It hears a
+/// comment only when that turn ends.
+fn in_turn(status: &str) -> bool {
+    !matches!(
+        status,
+        "" | "idle" | "gone" | "person" | "irori" | coord::roster::NOT_ANSWERING
+    )
+}
+
+/// How many of the newest comment notices the thread looks at.
+const HEARD_NOTICES: usize = 2000;
+
+/// A person's comment's Pending lines from its notices: who still has to
+/// hear it, and why it waits (a busy agent hears it when its turn ends,
+/// card #159), then who read it. A watcher's line shows only when the
+/// comment mentions it. `wrote_after` drops "read it" for an agent that
+/// has written on the card since.
+fn pending_lines(
+    ds: &[(Delivery, bool)],
+    t: &Task,
+    p: &People,
+    wrote_after: impl Fn(&str) -> bool,
+) -> Vec<String> {
     let mut out = Vec::new();
-    for d in ds {
-        if d.to.is_empty() || (t.watchers.contains(&d.to) && !t.holders.contains(&d.to)) {
+    let mut seen = std::collections::HashSet::new();
+    for (d, read) in ds {
+        let mentioned = d.message.reason == coord::NOTICE_MENTIONED;
+        if d.to.is_empty()
+            || (!mentioned && t.watchers.contains(&d.to) && !t.holders.contains(&d.to))
+            || !seen.insert(d.to.clone())
+        {
             continue;
         }
         let who = p.ref_(&d.to);
-        match d.state.as_str() {
-            st::QUEUED if who.status == "busy" => {
-                out.push(format!("queued for {} (busy)", who.name))
+        let waiting = d.state == st::QUEUED || d.state == st::DELIVERED;
+        let line = if *read {
+            if wrote_after(&d.to) {
+                continue;
             }
-            st::QUEUED => out.push(format!("queued for {}", who.name)),
-            st::HELD if inbox::editing(d) => {
-                out.push(format!("held for {} while you edit", who.name))
+            format!("{} read it", who.name)
+        } else if waiting && who.status == coord::roster::NOT_ANSWERING {
+            format!("{} isn't answering: it hasn't heard this yet", who.name)
+        } else if waiting && in_turn(&who.status) {
+            format!(
+                "{} is busy: it hears this when its current turn ends",
+                who.name
+            )
+        } else {
+            match d.state.as_str() {
+                st::QUEUED => format!("queued for {}", who.name),
+                st::HELD if inbox::editing(d) => format!("held for {} while you edit", who.name),
+                st::HELD => format!("held for {}", who.name),
+                st::DELIVERED => format!("sent to {}, not read yet", who.name),
+                _ => continue,
             }
-            st::HELD => out.push(format!("held for {}", who.name)),
-            st::DELIVERED => out.push(format!("sent to {}, not read yet", who.name)),
-            _ => {}
-        }
+        };
+        out.push(line);
     }
     out
 }
@@ -1941,5 +1992,84 @@ mod tests {
         assert_eq!(p.chip("mac"), "");
         p.paired = true;
         assert_eq!(p.chip("mac"), "Mac");
+    }
+
+    fn notice(to: &str, reason: &str, state: &str) -> Delivery {
+        let mut d = Delivery {
+            to: to.into(),
+            state: state.into(),
+            ..Delivery::default()
+        };
+        d.message.reason = reason.into();
+        d.message.notice = true;
+        d
+    }
+
+    fn agent(p: &mut People, key: &str, name: &str, status: &str) {
+        p.by_key.insert(
+            key.into(),
+            coord::roster::AgentCard {
+                key: key.into(),
+                name: name.into(),
+                status: status.into(),
+                ..Default::default()
+            },
+        );
+    }
+
+    /// Card #159: the person @mentions a busy agent that only watches the
+    /// card; the thread says it hears it when its turn ends, then that it
+    /// read it, until it writes on the card.
+    #[test]
+    fn pending_lines_for_a_mentioned_busy_watcher() {
+        let mut p = People::default();
+        agent(&mut p, "d/g", "garnet", "busy");
+        agent(&mut p, "d/o", "otter", "unresponsive");
+        agent(&mut p, "d/w", "wren", "idle");
+        agent(&mut p, "d/s", "shale", "shell");
+        let t = Task {
+            watchers: vec!["d/g".into(), "d/w".into()],
+            ..Task::default()
+        };
+        let never = |_: &str| false;
+        let queued = [(notice("d/g", coord::NOTICE_MENTIONED, st::QUEUED), false)];
+        assert_eq!(
+            pending_lines(&queued, &t, &p, never),
+            ["garnet is busy: it hears this when its current turn ends"]
+        );
+        let sent = [(notice("d/g", coord::NOTICE_MENTIONED, st::DELIVERED), false)];
+        assert_eq!(
+            pending_lines(&sent, &t, &p, never),
+            ["garnet is busy: it hears this when its current turn ends"]
+        );
+        let read = [(notice("d/g", coord::NOTICE_MENTIONED, st::SKIPPED), true)];
+        assert_eq!(pending_lines(&read, &t, &p, never), ["garnet read it"]);
+        assert!(pending_lines(&read, &t, &p, |k| k == "d/g").is_empty());
+        // A plain comment notice to a watcher stays off the thread, as before.
+        let plain = [(notice("d/w", coord::NOTICE_COMMENT, st::QUEUED), false)];
+        assert!(pending_lines(&plain, &t, &p, never).is_empty());
+        // Closed by Irori unread (gone, stale): no line.
+        let stale = [(notice("d/g", coord::NOTICE_MENTIONED, st::SKIPPED), false)];
+        assert!(pending_lines(&stale, &t, &p, never).is_empty());
+        let stuck = [(notice("d/o", coord::NOTICE_MENTIONED, st::DELIVERED), false)];
+        assert_eq!(
+            pending_lines(&stuck, &t, &p, never),
+            ["otter isn't answering: it hasn't heard this yet"]
+        );
+        // Running a long shell command is still mid-turn.
+        let shell = [(notice("d/s", coord::NOTICE_MENTIONED, st::QUEUED), false)];
+        assert_eq!(
+            pending_lines(&shell, &t, &p, never),
+            ["shale is busy: it hears this when its current turn ends"]
+        );
+        // Idle: plain queued line.
+        let idle = [(notice("d/w", coord::NOTICE_MENTIONED, st::QUEUED), false)];
+        assert_eq!(pending_lines(&idle, &t, &p, never), ["queued for wren"]);
+        // The newest notice per agent decides.
+        let both = [
+            (notice("d/g", coord::NOTICE_MENTIONED, st::SKIPPED), true),
+            (notice("d/g", coord::NOTICE_COMMENT, st::QUEUED), false),
+        ];
+        assert_eq!(pending_lines(&both, &t, &p, never), ["garnet read it"]);
     }
 }

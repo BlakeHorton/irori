@@ -629,6 +629,7 @@ export function sampleCards(now: Date): CardDetail[] {
           at: at(50),
           who: sampleYou,
           text: "Test the join with the MacBook as the second machine.",
+          pending: ["sample-badger read it"],
         }),
         CardThreadItem({
           id: "msg_sample1",
@@ -663,6 +664,18 @@ export function sampleCards(now: Date): CardDetail[] {
           who: wren,
           device: "MacBook",
           text: "The lag goes away with a 20 Hz sync tick. Pushed to the PR.",
+        }),
+        // The person asks a busy agent (card #159): it hears it when its
+        // current turn ends, and the thread says so under the comment.
+        CardThreadItem({
+          id: "sample-3-c3",
+          kind: "comment",
+          at: at(12),
+          who: sampleYou,
+          text: "@sample-heron does the 20 Hz tick hold on the Windows build too?",
+          pending: [
+            "sample-heron is busy: it hears this when its current turn ends",
+          ],
         }),
         CardThreadItem({
           id: "msg_sample3",

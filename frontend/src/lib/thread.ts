@@ -32,6 +32,10 @@ export type ThreadLabel = {
   arrow?: string
   device: string
   badges: ThreadBadge[]
+  // Under the person's comment: who still has to hear it and why it waits
+  // ("garnet is busy: it hears this when its current turn ends"), then who
+  // read it (card #159).
+  waiting: string[]
 }
 
 // threadLabel is the header line for one entry: "A -> B" for a message,
@@ -39,9 +43,8 @@ export type ThreadLabel = {
 // recipient, "nobody has heard this yet" on the person's comment that no
 // agent was around to hear (until an agent writes on the card), "held" until the wake policy lets it through (its text isn't
 // on the card), "held · dismissed" once the person dismissed it, the
-// person's comment's pending lines ("queued for Otter (busy)", "sent to
-// Otter, not read yet") until that agent's turn with it starts, and the
-// count of files that stayed on the message. An
+// count of files that stayed on the message. The person's comment's
+// pending lines go in waiting, shown under it, not as badges. An
 // answer or reply on a blocker in the card's own thread (its item is no
 // longer kept) says which item; inBlocker leaves that off, as the entry
 // already sits under its item.
@@ -60,8 +63,6 @@ export function threadLabel(
       label: item.dismissed ? "held · dismissed" : "held",
       tone: "slate",
     })
-  for (const line of item.pending ?? [])
-    badges.push({ label: line, tone: "slate" })
   if (item.edited) badges.push({ label: "edited", tone: "slate" })
   if (item.files)
     badges.push({
@@ -74,6 +75,7 @@ export function threadLabel(
     arrow: to ? displayName(to) : undefined,
     device: item.device ?? "",
     badges,
+    waiting: item.pending ?? [],
   }
 }
 
