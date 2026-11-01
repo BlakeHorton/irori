@@ -334,6 +334,10 @@ export type BoardSummary = {
 	owner: boolean,
 	devices: number,
 	cards: number,
+	/**  Cards completed in the last seven days (card #126). */
+	doneWeek: number,
+	/**  When anything last happened on the board; left out with no cards. */
+	lastAt?: string,
 	ready: boolean,
 	tagClash?: boolean,
 	/**
@@ -891,6 +895,11 @@ export type NewCardInput = {
 	repoKey?: string,
 	/**  An agent's key: hand it to that agent instead of the free one. */
 	assignTo?: string,
+	/**
+	 *  A shared board's id (card #126): the card goes on that board, made
+	 *  from its page. "": the person's own board.
+	 */
+	board?: string,
 };
 
 /**  The notification settings (Go `notify.Options`). */
