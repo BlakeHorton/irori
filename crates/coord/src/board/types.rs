@@ -842,6 +842,9 @@ pub struct BlockerAnswer {
     pub wake: bool,
     pub resolve: bool,
     pub mentions: Vec<Mention>,
+    /// Files with an answer that isn't a resolve (card #195): they go on
+    /// its comment in the blocker's thread and with its notice.
+    pub files: Vec<FileRef>,
 }
 
 /// CommentOn's input.

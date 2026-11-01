@@ -134,10 +134,27 @@ impl Window {
         text: &str,
         mentions: &[ts::Mention],
     ) -> Result<Vec<MentionOutcome>, String> {
+        self.inbox_reply_files(id, text, mentions, &[])
+    }
+
+    /// [`Window::inbox_reply`] with files (card #195), stored here first
+    /// as a message's are.
+    pub fn inbox_reply_files(
+        &self,
+        id: &str,
+        text: &str,
+        mentions: &[ts::Mention],
+        files: &[crate::board::UploadFile],
+    ) -> Result<Vec<MentionOutcome>, String> {
         let ib = self.core.inbox();
         let plan = self.plan_mentions("", mentions);
         let me = self.core.user_sender();
-        let r = ib.reply_with(&me, trim(id), text, &plan.inbox());
+        let refs: Vec<::inbox::FileRef> = self
+            .store_uploads(files)?
+            .iter()
+            .map(crate::inbox_ref)
+            .collect();
+        let r = ib.reply_files(&me, trim(id), text, &plan.inbox(), &refs);
         let mut out = Vec::new();
         if let Ok((m, nd)) = &r
             && !m.mentions.is_empty()

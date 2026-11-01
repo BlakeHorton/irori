@@ -101,6 +101,12 @@ export const InboxService = {
     call(commands.inboxSend(to, repo, text, mentions)),
   Reply: (deliveryId: string, text: string, mentions: B.Mention[]) =>
     call(commands.inboxReply(deliveryId, text, mentions)),
+  ReplyWithFiles: (
+    deliveryId: string,
+    text: string,
+    mentions: B.Mention[],
+    files: B.UploadFile[]
+  ) => call(commands.inboxReplyWithFiles(deliveryId, text, mentions, files)),
   MarkRead: (deliveryId: string) => done(commands.inboxMarkRead(deliveryId)),
   Release: (deliveryId: string) => done(commands.inboxRelease(deliveryId)),
   Dismiss: (deliveryId: string) => done(commands.inboxDismiss(deliveryId)),
@@ -132,6 +138,18 @@ export const BoardService = {
   ) => call(commands.boardCommentWithFiles(id, text, tell, mentions, files)),
   Answer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: B.Mention[]) =>
     call(commands.boardAnswer(taskId, blockerId, option, text, wake, mentions)),
+  AnswerWithFiles: (
+    taskId: string,
+    blockerId: string,
+    option: number,
+    text: string,
+    wake: boolean,
+    mentions: B.Mention[],
+    files: B.UploadFile[]
+  ) =>
+    call(
+      commands.boardAnswerWithFiles(taskId, blockerId, option, text, wake, mentions, files)
+    ),
   ResolveBlocker: (taskId: string, blockerId: string, note: string, mentions: B.Mention[]) =>
     call(commands.boardResolveBlocker(taskId, blockerId, note, mentions)),
   MentionCandidates: () => call(commands.boardMentionCandidates()),

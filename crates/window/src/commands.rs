@@ -159,6 +159,22 @@ pub async fn inbox_reply(
     w.inbox_reply(&delivery_id, &text, &mentions)
 }
 
+/// A message Reply with files (card #195).
+#[tauri::command]
+#[specta::specta]
+pub async fn inbox_reply_with_files(
+    w: W<'_>,
+    delivery_id: String,
+    text: String,
+    mentions: Vec<ts::Mention>,
+    files: Vec<UploadFile>,
+) -> R<Vec<MentionOutcome>> {
+    blocking(&w, move |w| {
+        w.inbox_reply_files(&delivery_id, &text, &mentions, &files)
+    })
+    .await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn inbox_mark_read(w: W<'_>, delivery_id: String) -> R<()> {
@@ -308,6 +324,35 @@ pub async fn board_answer(
     mentions: Vec<ts::Mention>,
 ) -> R<AnswerResult> {
     w.answer(&task_id, &blocker_id, option, &text, wake, &mentions)
+}
+
+/// An answer with files (card #195), stored off the bridge thread as a
+/// comment's are.
+#[tauri::command]
+#[specta::specta]
+#[allow(clippy::too_many_arguments)]
+pub async fn board_answer_with_files(
+    w: W<'_>,
+    task_id: String,
+    blocker_id: String,
+    option: i64,
+    text: String,
+    wake: bool,
+    mentions: Vec<ts::Mention>,
+    files: Vec<UploadFile>,
+) -> R<AnswerResult> {
+    blocking(&w, move |w| {
+        w.answer_files(
+            &task_id,
+            &blocker_id,
+            option,
+            &text,
+            wake,
+            &mentions,
+            &files,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -938,6 +983,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_message,
             board_comment,
             board_comment_with_files,
+            board_answer_with_files,
+            inbox_reply_with_files,
             board_answer,
             board_resolve_blocker,
             board_ask,

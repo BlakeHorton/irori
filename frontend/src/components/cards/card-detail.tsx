@@ -8,6 +8,7 @@ import {
 
 import {
   AttachButton,
+  FilesOff,
   PendingFiles,
   useFileAttach,
 } from "@/components/attachments"
@@ -245,6 +246,7 @@ export function CardPage({
                   cardId={detail.id}
                   blocker={ready}
                   now={now}
+                  noFiles={!!detail.onBoard}
                   onNoteAnswered={() => {}}
                 />
               </Section>
@@ -314,6 +316,7 @@ export function CardPage({
                     cardId={detail.id}
                     blocker={b}
                     now={now}
+                    noFiles={!!detail.onBoard}
                     onNoteAnswered={(answer, told) =>
                       setAnswered({
                         question: b.question,
@@ -1110,7 +1113,7 @@ export function CommentBox({
   const [heard, setHeard] = useState<{ line: string; error?: string } | null>(
     null
   )
-  const attach = useFileAttach(busy || noFiles)
+  const attach = useFileAttach(busy || noFiles, noFiles ? SharedNoFiles : "")
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -1201,7 +1204,9 @@ export function CommentBox({
           </label>
         )}
         <span className="flex items-center gap-1">
-          {!noFiles && (
+          {noFiles ? (
+            <FilesOff why={SharedNoFiles} />
+          ) : (
             <>
               {attach.input}
               <AttachButton attach={attach} disabled={busy} />
@@ -1226,6 +1231,14 @@ export function CommentBox({
   )
 }
 
+// SharedNoFiles is why a shared board's card takes no files from the
+// window: a board row may name only files offered on that board.
+const SharedNoFiles =
+  "Files don't go on a shared board's cards from the app yet; an agent can attach them for you."
+// NoteNoFiles is why the card's question takes none: its answer is a
+// line on the card, not a comment.
+const NoteNoFiles = "Files go with a comment: add them in the comment box below."
+
 // BlockerItem is one blocker: the question, context for a newcomer, who
 // raised it, its own thread (the person's answers, the agents' replies)
 // and, while the person can answer, the recommended answers as buttons
@@ -1238,11 +1251,14 @@ function BlockerItem({
   cardId,
   blocker: b,
   now,
+  noFiles = false,
   onNoteAnswered,
 }: {
   cardId: string
   blocker: CardBlocker
   now: Date
+  // A shared board's card: the answer box takes no files (card #195).
+  noFiles?: boolean
   // The note item (an input_required card's question) leaves the card once
   // answered; this hands its answer to the panel to show.
   onNoteAnswered: (answer: string, told: Told) => void
@@ -1257,6 +1273,9 @@ function BlockerItem({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [told, setTold] = useState<Sent | null>(null)
+  // Files go with an answer (card #195), not with the card's question.
+  const filesOff = noFiles ? SharedNoFiles : b.id === NoteItem ? NoteNoFiles : ""
+  const attach = useFileAttach(busy || !!filesOff, filesOff)
   // A kept draft opens the form it was typed in.
   const [adding, setAdding] = useState(() => !!text)
   const [resolving, setResolving] = useState(() => !!note)
@@ -1298,6 +1317,7 @@ function BlockerItem({
       setMissed(res.mentioned)
       setText("")
       setMentions([])
+      attach.clear()
       setNote("")
       setNoteMentions([])
       setAdding(false)
@@ -1316,7 +1336,11 @@ function BlockerItem({
     }
     // A picked option carries no text, so no mentions.
     const ms = option < 0 ? mentions : []
-    void run(() => cards.answer(cardId, b.id, option, own, true, ms), own)
+    const files = attach.files
+    void run(
+      () => cards.answer(cardId, b.id, option, own, true, ms, files),
+      own
+    )
   }
 
   const submit = (e: FormEvent) => {
@@ -1374,7 +1398,11 @@ function BlockerItem({
           ))}
         </div>
       )}
-      <form className="flex items-start gap-1.5" onSubmit={submit}>
+      <form
+        className="flex items-start gap-1.5"
+        onSubmit={submit}
+        {...attach.drop}
+      >
         <MentionTextarea
           autoSize
           rows={1}
@@ -1385,6 +1413,7 @@ function BlockerItem({
             setText(v)
             setMentions(ms)
           }}
+          onPaste={(e) => void attach.onPaste(e)}
           onKeyDown={(e) => {
             // Enter sends, as the one-line field did; Shift+Enter is a
             // new line.
@@ -1406,6 +1435,14 @@ function BlockerItem({
           className="max-h-40 min-h-9 min-w-0 flex-1 bg-card py-1.5"
           disabled={busy}
         />
+        {filesOff ? (
+          <FilesOff why={filesOff} />
+        ) : (
+          <>
+            {attach.input}
+            <AttachButton attach={attach} disabled={busy} />
+          </>
+        )}
         <Button type="submit" disabled={busy}>
           {busy
             ? "Sending…"
@@ -1416,6 +1453,12 @@ function BlockerItem({
                 : "Answer"}
         </Button>
       </form>
+      <PendingFiles
+        attach={attach}
+        disabled={busy}
+        label="Files with the answer"
+        className="flex flex-wrap gap-2"
+      />
     </div>
   ) : null
 

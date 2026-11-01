@@ -1047,3 +1047,78 @@ fn clearing_done_cards() {
     );
     let _ = c;
 }
+
+/// Card #195: files go with a blocker answer and with a message Reply; the
+/// agent that hears each gets them, and the card's question takes none.
+#[test]
+fn files_with_a_blocker_answer_and_a_message_reply() {
+    use base64::Engine as _;
+    let r = Rig::new();
+    let t = held_task(&r);
+    let ib = r.w.core.inbox();
+    let up = |name: &str, body: &[u8]| irori_window::board::UploadFile {
+        name: name.into(),
+        data: base64::engine::general_purpose::STANDARD.encode(body),
+    };
+    let newest_files = |r: &Rig| -> Vec<String> {
+        ib.for_agent(&r.key_a, true, 1)
+            .first()
+            .map(|d| {
+                d.message
+                    .attachments
+                    .iter()
+                    .map(|a| a.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let b = raise(&r, &r.key_a, &t.id, "Which build?", &["debug", "release"]);
+    r.w.answer_files(
+        &t.id,
+        &b.id,
+        -1,
+        "this one, see the log",
+        true,
+        &[],
+        &[up("build.log", b"error: boom")],
+    )
+    .unwrap();
+    let d = r.w.card(&t.id).unwrap();
+    assert_eq!(blocker(&d, &b.id).state, "answered");
+    let on: Vec<String> = d
+        .comments
+        .iter()
+        .flat_map(|c| c.attachments.iter().map(|a| a.name.clone()))
+        .collect();
+    assert_eq!(on, vec!["build.log"]);
+    assert_eq!(newest_files(&r), vec!["build.log"]);
+
+    // A pick carries files too.
+    let b2 = raise(&r, &r.key_a, &t.id, "Ship it?", &["yes", "no"]);
+    r.w.answer_files(
+        &t.id,
+        &b2.id,
+        0,
+        "",
+        true,
+        &[],
+        &[up("shot.png", b"\x89PNG")],
+    )
+    .unwrap();
+    assert_eq!(newest_files(&r), vec!["shot.png"]);
+
+    // A message Reply carries them to its sender.
+    r.w.inbox_send(&r.key_a, "", "hello alpha", &[]).unwrap();
+    let sent =
+        r.w.inbox_list(0)
+            .into_iter()
+            .find(|d| d.to == r.key_a)
+            .unwrap();
+    let alpha = inbox::Sender::new(&r.key_a, "alpha", "agent");
+    let (_, d) = ib.reply(&alpha, &sent.id, "a question back").unwrap();
+    r.w.inbox_reply_files(&d.id, "here it is", &[], &[up("notes.md", b"# notes")])
+        .unwrap();
+    assert_eq!(r.w.inbox_get(&d.id).unwrap().state, "answered");
+    assert_eq!(newest_files(&r), vec!["notes.md"]);
+}

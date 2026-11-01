@@ -106,6 +106,16 @@ pub(crate) fn coord_ref(r: &blob::FileRef) -> coord::FileRef {
     }
 }
 
+pub(crate) fn inbox_ref(r: &blob::FileRef) -> ::inbox::FileRef {
+    ::inbox::FileRef {
+        sha256: r.sha256.clone(),
+        name: r.name.clone(),
+        size: r.size,
+        mime: r.mime.clone(),
+        device: r.device.clone(),
+    }
+}
+
 pub(crate) fn inbox_blob_ref(r: &::inbox::FileRef) -> blob::FileRef {
     blob::FileRef {
         sha256: r.sha256.clone(),

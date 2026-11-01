@@ -365,6 +365,19 @@ impl Inbox {
         text: &str,
         mentions: &[Mention],
     ) -> Result<(Message, Delivery)> {
+        self.reply_files(from, did, text, mentions, &[])
+    }
+
+    /// [`Inbox::reply_with`] with files on the reply (card #195: the
+    /// person's Reply in a message takes pasted, dropped or picked files).
+    pub fn reply_files(
+        &self,
+        from: &Sender,
+        did: &str,
+        text: &str,
+        mentions: &[Mention],
+        files: &[crate::FileRef],
+    ) -> Result<(Message, Delivery)> {
         self.mutate(|b| {
             let d = b.mine(&from.key, did)?;
             match d.d.state.as_str() {
@@ -381,6 +394,7 @@ impl Inbox {
                 mode: mode::WAKE.into(),
                 ref_: orig.ref_.clone(),
                 mentions: mentions.to_vec(),
+                attachments: files.to_vec(),
                 ..SendOptions::default()
             };
             let (m, nd) = b.send_locked(

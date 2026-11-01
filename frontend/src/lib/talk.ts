@@ -18,6 +18,7 @@ import {
   type Policy,
 } from "./models"
 import { inWails, parseTime, sessionShort } from "./irori"
+import { checkUploads, uploadOf } from "./uploads"
 import { sampleTalk, type SampleTalk } from "./sample-talk"
 
 export type { Delivery, GoneSession, Policy }
@@ -204,9 +205,22 @@ export const talk = {
   async reply(
     id: string,
     text: string,
-    mentions: Mention[] = []
+    mentions: Mention[] = [],
+    files: File[] = []
   ): Promise<MentionOutcome[]> {
-    if (inWails()) return (await InboxService.Reply(id, text, mentions)) ?? []
+    checkUploads(files)
+    if (inWails()) {
+      if (!files.length)
+        return (await InboxService.Reply(id, text, mentions)) ?? []
+      return (
+        (await InboxService.ReplyWithFiles(
+          id,
+          text,
+          mentions,
+          await Promise.all(files.map(uploadOf))
+        )) ?? []
+      )
+    }
     sampleDelivery(id)
     if (!text.trim()) throw new Error("inbox: invalid input: write a reply")
     sampleSetState(id, State.Answered)

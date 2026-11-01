@@ -1340,6 +1340,14 @@ impl Fold {
             ));
         }
         let mut text = trim_space(&a.text).to_string();
+        if a.files.len() > MAX_ATTACHMENTS {
+            return Err(invalid(format!("at most {MAX_ATTACHMENTS} attachments")));
+        }
+        if a.resolve && !a.files.is_empty() {
+            return Err(invalid(
+                "files go with an answer, not a resolve; answer with them first",
+            ));
+        }
         let t = self.open_task(id)?.clone();
         let Some(i) = blocker_index(&t, trim_space(bid)) else {
             return Err(not_found(format!(
@@ -1433,9 +1441,11 @@ impl Fold {
                     pick: opt + 1,
                     at,
                     mentions: ms.clone(),
+                    attachments: a.files.clone(),
                     ..TaskCommentRow::default()
                 },
             )?;
+            n.attachments = a.files.clone();
             let mut s = format!(
                 "{} answered the blocker on {} ({}, blocker {}).\nQuestion: {}\nAnswer: {}",
                 self.named(&by),

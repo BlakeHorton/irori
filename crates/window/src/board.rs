@@ -490,15 +490,42 @@ impl Window {
         wake: bool,
         mentions: &[ts::Mention],
     ) -> Result<AnswerResult, String> {
+        self.answer_files(task_id, blocker_id, option, text, wake, mentions, &[])
+    }
+
+    /// [`Window::answer`] with files (card #195): pasted, dropped or picked
+    /// in the answer box, they go on the answer's comment in the blocker's
+    /// thread, and with it to whoever hears the answer.
+    #[allow(clippy::too_many_arguments)]
+    pub fn answer_files(
+        &self,
+        task_id: &str,
+        blocker_id: &str,
+        option: i64,
+        text: &str,
+        wake: bool,
+        mentions: &[ts::Mention],
+        files: &[UploadFile],
+    ) -> Result<AnswerResult, String> {
         if option < -1 {
             return Err(invalid("option is an index or -1"));
         }
         let (task_id, blocker_id) = (trim(task_id), trim(blocker_id));
         let plan = self.plan_mentions(task_id, mentions);
         if blocker_id == NOTE_ITEM {
+            if !files.is_empty() {
+                return Err(invalid(
+                    "files go with an answer to a blocker or a comment; comment with them",
+                ));
+            }
             return self.answer_input(task_id, option, text, wake, &plan);
         }
         let (co, keys) = self.on(task_id, &[])?;
+        if !files.is_empty() && !std::sync::Arc::ptr_eq(&co, self.core.coord()) {
+            return Err(invalid(
+                "files go with an answer on your own board only; answer without them",
+            ));
+        }
         let me = keys[0].clone();
         let t = co
             .get_task(task_id)
@@ -545,35 +572,46 @@ impl Window {
                 mentioned,
             });
         }
+        let files: Vec<coord::FileRef> = self
+            .store_uploads(files)?
+            .iter()
+            .map(crate::coord_ref)
+            .collect();
         let mut a = BlockerAnswer {
             pick: option + 1,
             text: text.into(),
             wake,
             resolve: self.nobody_can_act(&t, &bl.raised_by),
             mentions: plan.log.clone(),
+            files: Vec::new(),
         };
         let status = if bl.status.is_empty() {
             coord::BLOCKER_OPEN
         } else {
             bl.status.as_str()
         };
-        if a.resolve && a.pick == 0 && status != coord::BLOCKER_OPEN {
-            // The answer goes on the thread first, with its mentions; its
-            // notices are dropped, as the resolve below tells everyone
-            // (the mentioned once, woken).
+        if a.resolve && ((a.pick == 0 && status != coord::BLOCKER_OPEN) || !files.is_empty()) {
+            // The answer goes on the thread first, with its mentions and
+            // files; its notices are dropped, as the resolve below tells
+            // everyone (the mentioned once, woken).
             co.answer(
                 &me,
                 task_id,
                 blocker_id,
                 BlockerAnswer {
+                    pick: a.pick,
                     text: text.into(),
                     wake,
                     mentions: a.mentions.clone(),
+                    files: files.clone(),
                     ..BlockerAnswer::default()
                 },
             )
             .map_err(|e| e.to_string())?;
             a.text = String::new();
+            a.pick = 0;
+        } else if !a.resolve {
+            a.files = files;
         }
         let (t, ns) = co
             .answer(&me, task_id, blocker_id, a)

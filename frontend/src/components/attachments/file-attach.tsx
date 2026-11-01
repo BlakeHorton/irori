@@ -12,31 +12,54 @@ import { MaxUploadFiles } from "@/lib/cards"
 
 import { FileKindIcon } from "./file-kind-icon"
 
-// useFileAttach is a box's files waiting to go (cards #25, #73, #124): pick
-// them with the clip, drop them on the box, or paste a screenshot. The
-// ask box, the comment and thread Reply boxes and New card share it.
-// off (a shared board's box, or while sending) takes no new files.
-export function useFileAttach(off = false) {
+// useFileAttach is a box's files waiting to go (cards #25, #73, #124,
+// #195): pick them with the clip, drop them on the box, or paste a
+// screenshot or a file copied in Finder. Every box the person talks to
+// agents in shares it: the ask box, comments and thread Replies, blocker
+// answers, a message's Reply and New card.
+// off (while sending, or a box that takes no files) takes no new files;
+// with why, a paste or drop it refuses says so under the box instead of
+// vanishing.
+export function useFileAttach(off = false, why = "") {
   const [files, setFiles] = useState<File[]>([])
+  const [refused, setRefused] = useState<string | null>(null)
   const picker = useRef<HTMLInputElement>(null)
   const add = (list: FileList | File[] | null | undefined) => {
-    const more = Array.from(list ?? [])
+    const more = pastedFiles(list)
     if (!more.length || off) return false
     setFiles((fs) => [...fs, ...more].slice(0, MaxUploadFiles))
+    setRefused(null)
     return true
+  }
+  // took: whether a paste or drop of these files goes in; a refusal with
+  // a reason is shown.
+  const took = (more: File[]) => {
+    if (!more.length) return false
+    if (off) {
+      if (why) setRefused(why)
+      return !!why
+    }
+    return add(more)
   }
   return {
     files,
     full: files.length >= MaxUploadFiles,
     add,
-    clear: () => setFiles([]),
+    refused,
+    clear: () => {
+      setFiles([])
+      setRefused(null)
+    },
     remove: (i: number) => setFiles((fs) => fs.filter((_, j) => j !== i)),
     pick: () => picker.current?.click(),
-    // A pasted screenshot is a file; pasted text stays text.
+    // A pasted screenshot or Finder file is a file; pasted text stays
+    // text. True when the paste was files (taken, or refused with why).
     onPaste: (e: ClipboardEvent) => {
-      if (off || !e.clipboardData.files.length) return false
-      e.preventDefault()
-      return add(e.clipboardData.files)
+      const more = clipboardFiles(e.clipboardData)
+      if (!more.length) return false
+      const done = took(more)
+      if (done || !off) e.preventDefault()
+      return done && !off
     },
     // Spread on the element files are dropped on.
     drop: {
@@ -44,9 +67,10 @@ export function useFileAttach(off = false) {
         if (e.dataTransfer.types.includes("Files")) e.preventDefault()
       },
       onDrop: (e: DragEvent) => {
-        if (!e.dataTransfer.files.length) return
+        const more = clipboardFiles(e.dataTransfer)
+        if (!more.length) return
         e.preventDefault()
-        add(e.dataTransfer.files)
+        took(more)
       },
     },
     // The hidden file input the clip opens; render it once in the box.
@@ -67,6 +91,42 @@ export function useFileAttach(off = false) {
 
 export type FileAttach = ReturnType<typeof useFileAttach>
 
+// clipboardFiles is the files a paste or drop carries: its file list, or
+// its file items when the list is empty (some webviews fill only one).
+export function clipboardFiles(
+  d: Pick<DataTransfer, "files" | "items"> | null | undefined
+): File[] {
+  if (!d) return []
+  const listed = pastedFiles(d.files)
+  if (listed.length) return listed
+  return Array.from(d.items ?? [])
+    .filter((i) => i.kind === "file")
+    .map((i) => i.getAsFile())
+    .filter((f): f is File => !!f)
+}
+
+function pastedFiles(list: FileList | File[] | null | undefined): File[] {
+  return Array.from(list ?? [])
+}
+
+// FilesOff is why a box took no files: its clip, shown disabled with the
+// reason as its title.
+export function FilesOff({ why }: { why: string }) {
+  return (
+    <Button
+      type="button"
+      size="icon-sm"
+      variant="ghost"
+      className="shrink-0"
+      title={why}
+      aria-label={`No files here: ${why}`}
+      disabled
+    >
+      <PaperclipIcon />
+    </Button>
+  )
+}
+
 // AttachButton is the clip: it opens the file picker.
 export function AttachButton({
   attach,
@@ -81,7 +141,7 @@ export function AttachButton({
       size="icon-sm"
       variant="ghost"
       className="shrink-0"
-      title="Add files (or drop them here, or paste a screenshot)"
+      title="Add files (or drop them here, or paste a screenshot or file)"
       aria-label="Add files"
       disabled={disabled || attach.full}
       onClick={attach.pick}
@@ -104,7 +164,12 @@ export function PendingFiles({
   label?: string
   className?: string
 }) {
-  if (!attach.files.length) return null
+  if (!attach.files.length)
+    return attach.refused ? (
+      <p role="status" className="px-1 text-xs text-muted-foreground">
+        {attach.refused}
+      </p>
+    ) : null
   return (
     <ul className={className} aria-label={label}>
       {attach.files.map((f, i) => (

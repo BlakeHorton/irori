@@ -10,6 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AttachButton,
+  PendingFiles,
+  useFileAttach,
+} from "@/components/attachments"
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { parseTime, plainBlock, plainLine, relativeTime } from "@/lib/irori"
 import { notDelivered, type Mention } from "@/lib/mentions"
@@ -44,6 +49,8 @@ export function MessageDialog({
   const [mentions, setMentions] = useState<Mention[]>([])
   const [missed, setMissed] = useState("")
   const [busy, setBusy] = useState(false)
+  // Files go with the Reply (card #195): the clip, a drop or a paste.
+  const attach = useFileAttach(busy)
 
   useEffect(() => {
     let live = true
@@ -68,6 +75,7 @@ export function MessageDialog({
       if (line) {
         setReply("")
         setMentions([])
+        attach.clear()
         setMissed(`Replied. ${line}`)
         return
       }
@@ -85,7 +93,8 @@ export function MessageDialog({
       setError("Write a reply first.")
       return
     }
-    void act(() => talk.reply(id, reply, mentions))
+    const files = attach.files
+    void act(() => talk.reply(id, reply, mentions, files))
   }
 
   const from = d
@@ -151,20 +160,36 @@ export function MessageDialog({
           </div>
         )}
         {forYou && !missed && (
-          <form id="message-reply" onSubmit={submit}>
-            <MentionTextarea
-              value={reply}
-              mentions={mentions}
-              maxLength={MaxText}
-              onChange={(v, ms) => {
-                setReply(v)
-                setMentions(ms)
-              }}
-              placeholder={`Reply to ${from}`}
-              aria-label={`Your reply to ${from}`}
-              autoSize
-              className="max-h-48"
+          <form
+            id="message-reply"
+            className="grid gap-2"
+            onSubmit={submit}
+            {...attach.drop}
+          >
+            <div className="flex items-start gap-1.5">
+              <MentionTextarea
+                value={reply}
+                mentions={mentions}
+                maxLength={MaxText}
+                onChange={(v, ms) => {
+                  setReply(v)
+                  setMentions(ms)
+                }}
+                onPaste={(e) => void attach.onPaste(e)}
+                placeholder={`Reply to ${from}`}
+                aria-label={`Your reply to ${from}`}
+                autoSize
+                className="max-h-48 min-w-0 flex-1"
+                disabled={busy}
+              />
+              {attach.input}
+              <AttachButton attach={attach} disabled={busy} />
+            </div>
+            <PendingFiles
+              attach={attach}
               disabled={busy}
+              label="Files with the reply"
+              className="flex flex-wrap gap-2"
             />
           </form>
         )}

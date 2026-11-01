@@ -45,6 +45,13 @@ export const commands = {
 	 *  comment or thread Reply box.
 	 */
 	boardCommentWithFiles: (id: string, text: string, tell: string, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<CommentResult>("board_comment_with_files", { id, text, tell, mentions, files }),
+	/**
+	 *  An answer with files (card #195), stored off the bridge thread as a
+	 *  comment's are.
+	 */
+	boardAnswerWithFiles: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<AnswerResult>("board_answer_with_files", { taskId, blockerId, option, text, wake, mentions, files }),
+	/**  A message Reply with files (card #195). */
+	inboxReplyWithFiles: (deliveryId: string, text: string, mentions: Mention[], files: UploadFile[]) => __TAURI_INVOKE<MentionOutcome[]>("inbox_reply_with_files", { deliveryId, text, mentions, files }),
 	boardAnswer: (taskId: string, blockerId: string, option: number, text: string, wake: boolean, mentions: Mention[]) => __TAURI_INVOKE<AnswerResult>("board_answer", { taskId, blockerId, option, text, wake, mentions }),
 	boardResolveBlocker: (taskId: string, blockerId: string, note: string, mentions: Mention[]) => __TAURI_INVOKE<AnswerResult>("board_resolve_blocker", { taskId, blockerId, note, mentions }),
 	boardAsk: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_ask", { text, repoKey, wake, boardId, mentions }),
