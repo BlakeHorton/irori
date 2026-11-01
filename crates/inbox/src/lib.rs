@@ -485,6 +485,12 @@ pub struct SendOptions {
     pub parent: String,
 }
 
+/// The reason on the stop a card's Pause sends each holder (card #207); its
+/// ref is the card.
+pub const REASON_PAUSED: &str = "paused";
+/// The reason on the wake a card's Resume sends each holder (card #207).
+pub const REASON_RESUMED: &str = "resumed";
+
 /// The reason on a mentioned agent's copy of a message (card #77).
 pub const REASON_MENTIONED: &str = "mentioned";
 

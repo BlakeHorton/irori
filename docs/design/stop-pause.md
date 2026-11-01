@@ -18,7 +18,7 @@ Today a delivery has two modes, `wake` and `next_turn` (`inbox/src/lib.rs:263`).
 - **Planning a wake** (`inbox/src/wake.rs` `next_wake`). A stop item **jumps the gate**: one outstanding wake normally holds the next back until its turn ends (`WakeRec::gates`). A stop goes out even then, alone in its own wake (other waiting items ride the next one). Its prompt starts with a fixed header, so the agent can't mistake it for an ordinary message:
   > `STOP from <person>: your running turn was cut. Answer <person> first and do nothing else until they say so.`
   The text follows, and then the usual reply instructions.
-- **The attach event.** `deliver` gains a field `stop: true` (omitted when false, like every attach field). Only a mod of 0.5.0 or newer gets it (`STOP_SINCE`, the same check as `APPEND_SINCE`). An older mod gets the same wake as a normal `deliver`: it then reads it after its turn, as today, which is the old behaviour, not a failure.
+- **The attach event.** `deliver` gains `stop: true`, and `pause` / `resume`: the card refs of the person's Pause and Resume messages in the wake (reason `paused` / `resumed`). All are omitted when empty, like every attach field. No version gate: a mod that doesn't know them ignores unknown fields and reads the stop as an ordinary wake after its turn, which is the old behaviour, not a failure.
 - **The mod** (`register.tsx`). It remembers the running main-loop turn's id (set at `turn.start` with no `agentId`, cleared at `turn.complete`). On a `deliver` with `stop`:
   1. If a main turn runs, `$.turn.abort({ turnId })`: the turn and its running tools are cancelled, with no interruption marker.
   2. `$.prompt.submit({ text })`: the session is idle now, so the stop's prompt starts the next turn at once.

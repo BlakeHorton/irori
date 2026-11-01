@@ -584,3 +584,74 @@ async fn held_and_counts() {
         "{seen:?}"
     );
 }
+
+/// The person's stop (card #207): a `deliver` with `stop`, and the cards a
+/// Pause or Resume names.
+#[tokio::test(flavor = "multi_thread")]
+async fn stop_pause_resume_on_the_wire() {
+    let r = Rig::new().await;
+    let ib = r.core.inbox();
+    let (mut b, _) = r.attach_mod(SESS_B, attach::APPEND_SINCE).await;
+    let (_, d) = ib
+        .send_with(
+            &r.core.user_sender(),
+            &to("beta"),
+            "stop: why is the lexer test red?",
+            SendOptions {
+                mode: mode::STOP.into(),
+                ..SendOptions::default()
+            },
+        )
+        .unwrap();
+    let ev = b.next("deliver").await;
+    assert!(
+        ev["stop"] == true
+            && strs(&ev, "deliveryIds") == vec![d.id.clone()]
+            && str_of(&ev, "prompt").starts_with("STOP from ")
+            && ev.get("pause").is_none(),
+        "stop {ev}"
+    );
+    let tok = str_of(&ev, "token").to_string();
+    ib.mark_delivered(&r.key_b, &tok).unwrap();
+    ib.mark_engaged(&r.key_b, &tok, "t1").unwrap();
+    ib.turn_ended(&r.key_b, &tok, "t1").unwrap();
+
+    // Pause: a stop with the paused reason names the card.
+    ib.send_with(
+        &r.core.user_sender(),
+        &to("beta"),
+        "paused #9",
+        SendOptions {
+            mode: mode::STOP.into(),
+            reason: inbox::REASON_PAUSED.into(),
+            ref_: "#9".into(),
+            ..SendOptions::default()
+        },
+    )
+    .unwrap();
+    let ev = b.next("deliver").await;
+    assert!(ev["stop"] == true && strs(&ev, "pause") == vec!["#9".to_string()], "pause {ev}");
+    let tok = str_of(&ev, "token").to_string();
+    ib.mark_delivered(&r.key_b, &tok).unwrap();
+    ib.mark_engaged(&r.key_b, &tok, "t2").unwrap();
+    ib.turn_ended(&r.key_b, &tok, "t2").unwrap();
+
+    // Resume: an ordinary wake that names the card.
+    ib.send_with(
+        &r.core.user_sender(),
+        &to("beta"),
+        "resumed #9",
+        SendOptions {
+            mode: mode::WAKE.into(),
+            reason: inbox::REASON_RESUMED.into(),
+            ref_: "#9".into(),
+            ..SendOptions::default()
+        },
+    )
+    .unwrap();
+    let ev = b.next("deliver").await;
+    assert!(
+        ev.get("stop").is_none() && strs(&ev, "resume") == vec!["#9".to_string()],
+        "resume {ev}"
+    );
+}

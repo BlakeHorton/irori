@@ -84,6 +84,17 @@ pub struct Event {
     pub mode: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overflow: Vec<String>,
+    /// The person's stop (card #207): the mod cuts the running turn, then
+    /// submits the prompt. A mod that doesn't know it reads it as a wake.
+    #[serde(skip_serializing_if = "is_false")]
+    pub stop: bool,
+    /// Cards the person paused (card #207): the mod refuses every tool but
+    /// Irori's own until a `resume` for the same card.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pause: Vec<String>,
+    /// Cards the person resumed (card #207).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resume: Vec<String>,
 
     // held / moved
     #[serde(rename = "deliveryId", skip_serializing_if = "String::is_empty")]

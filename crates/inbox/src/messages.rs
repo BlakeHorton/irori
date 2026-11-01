@@ -704,6 +704,11 @@ impl Inbox {
         self.read(|b| b.dels.get(did).map(|d| b.copy_out(d)))
     }
 
+    /// Whether s is the person at a GUI (an owner's user key).
+    pub fn is_person(&self, s: &Sender) -> bool {
+        self.read(|b| b.is_person(s))
+    }
+
     /// One message.
     pub fn message(&self, id: &str) -> Option<Message> {
         self.read(|b| b.msgs.get(id).cloned())

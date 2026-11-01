@@ -326,10 +326,25 @@ fn deliver_event(ib: &Inbox, w: &Wake) -> Event {
     if w.mode == inbox::mode::NEXT_TURN {
         ev.mode = inbox::mode::NEXT_TURN.into();
     }
+    ev.stop = w.mode == inbox::mode::STOP;
     for id in &w.delivery_ids {
         if let Some(d) = ib.get(id) {
             if ev.from.is_empty() {
                 ev.from = d.message.from.name.clone();
+            }
+            // Pause and Resume (card #207): only the person's, about a card.
+            let m = &d.message;
+            if !m.ref_.is_empty() && ib.is_person(&m.from) {
+                let list = match m.reason.as_str() {
+                    inbox::REASON_PAUSED => Some(&mut ev.pause),
+                    inbox::REASON_RESUMED => Some(&mut ev.resume),
+                    _ => None,
+                };
+                if let Some(list) = list
+                    && !list.contains(&m.ref_)
+                {
+                    list.push(m.ref_.clone());
+                }
             }
             ev.message_ids.push(d.message_id);
         }
