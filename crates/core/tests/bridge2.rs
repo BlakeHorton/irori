@@ -539,3 +539,76 @@ fn a_mention_of_their_agent_follows_their_receive_setting() {
     assert_eq!(d.mode, mode::NEXT_TURN, "{d:?}");
     assert_eq!(d.hold, "", "{d:?}");
 }
+
+/// Card #174: an open card Alice makes on the board goes, under "any
+/// member's agents", to one of Bob's idle agents through the bridge,
+/// woken; when it gives it back, the next. Under the default (the
+/// author's agents) Bob's agents never hear it.
+#[test]
+fn an_open_card_reaches_the_other_persons_free_agent_per_the_setting() {
+    let t = two_people();
+    let (b1, b2) = (
+        t.b().board_key(&t.board, &t.rb.key_a).unwrap(),
+        t.b().board_key(&t.board, &t.rb.key_b).unwrap(),
+    );
+    t.sync();
+    let co = t.a().board_coord(&t.board).unwrap();
+    // The author's agents (the default): Bob's idle agents don't get it.
+    let first = co
+        .create_task(
+            &Two::person(t.a()),
+            coord::NewTask {
+                title: "Alice's own".into(),
+                ..coord::NewTask::default()
+            },
+        )
+        .unwrap();
+    co.sweep_asks(&[idle(&b1), idle(&b2)]).unwrap();
+    t.sync();
+    settle_bridged(t.b(), &t.rb.key_a, 0);
+    let o = co.get_task(&first.id).unwrap().live_offer().cloned();
+    assert!(o.as_ref().is_none_or(|o| o.to.is_empty()), "it waits: {o:?}");
+
+    // Any member's agents: the next sweep hands it to Bob's alpha.
+    t.a().set_open_cards(&t.board, "any").unwrap();
+    t.sync();
+    assert_eq!(t.b().board_info(&t.board).unwrap().open_cards, "any");
+    co.sweep_asks(&[idle(&b1), idle(&b2)]).unwrap();
+    t.sync();
+    let ds = wait_bridged(t.b(), &t.rb.key_a, 1);
+    let m = &ds[0].message;
+    assert_eq!(ds[0].mode, mode::WAKE, "{:?}", ds[0]);
+    assert_eq!(m.ref_, format!("task:{}", first.id));
+    assert!(
+        m.text.contains("Irori handed it to you")
+            && m.text.contains("Alice's own")
+            && m.text.contains("board_join mlg#"),
+        "{}",
+        m.text
+    );
+    assert!(bridged(t.b(), &t.rb.key_b).is_empty(), "beta wasn't told");
+    // Alpha gives it back on Bob's device; Alice's device hands it to beta.
+    let cb = t.b().board_coord(&t.board).unwrap();
+    cb.leave(&b1, &first.id, &b1).unwrap();
+    t.sync();
+    co.sweep_asks(&[idle(&b1), idle(&b2)]).unwrap();
+    t.sync();
+    wait_bridged(t.b(), &t.rb.key_b, 1);
+    settle_bridged(t.b(), &t.rb.key_a, 1);
+    // Bob's device never hands out Alice's card itself.
+    let offers = t
+        .sb()
+        .list(&Filter {
+            kinds: vec![kinds::TASK_OFFERED.into()],
+            limit: 1000,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(
+        offers
+            .iter()
+            .filter(|e| e.actor == "irori")
+            .all(|e| e.device_id == t.a().device_id()),
+        "{offers:?}"
+    );
+}
