@@ -379,6 +379,28 @@ impl Fold {
         Ok(())
     }
 
+    /// Refuses an agent's completed on a card in review whose newest review
+    /// isn't approved yet (card #191): the person shouldn't be asked "is
+    /// this done?" while the work still waits on its reviewer. A card put in
+    /// review with no review asked (a PR waiting on a merge desk) completes
+    /// as usual once the agent says it is merged.
+    pub(crate) fn unreviewed_refusal(&self, t: &Task) -> Result<()> {
+        let open: Vec<String> = self
+            .reviews_of(&t.id)
+            .into_iter()
+            .filter(|r| r.state != VERDICT_APPROVED)
+            .map(|r| self.named(&r.reviewer))
+            .collect();
+        if open.is_empty() {
+            return Ok(());
+        }
+        Err(invalid(format!(
+            "{} is in review and {} hasn't approved it yet: wait for the approval (or the merge) before completed",
+            t.short_ref(),
+            open.join(", ")
+        )))
+    }
+
     /// Puts t in review after `by` asked for one (card #191): only a holder's
     /// request on a working card moves it; a watcher's leaves it as it is.
     fn enter_review(&mut self, by: &str, id: &str) -> Result<()> {

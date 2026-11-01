@@ -141,7 +141,15 @@ fn completing_from_in_review_works_and_an_in_review_holder_is_free() {
         .unwrap();
     e.c.claim_task(ALICE, &other.id).unwrap();
 
-    // Completing it is allowed from in review.
+    // Not while the review it waits on isn't approved (Stephen: agents asked
+    // him to mark cards done with their PRs still open).
+    want_err(
+        e.c.set_task_state(ALICE, &t.id, COMPLETED, "merged"),
+        ErrorKind::Invalid,
+    );
+    e.clk.add(secs(5));
+    verdict(&e.c, BOB, &t.id, VERDICT_APPROVED, "good").unwrap();
+    // Approved: completing it is allowed from in review.
     let done =
         e.c.set_task_state(ALICE, &t.id, COMPLETED, "merged")
             .unwrap();

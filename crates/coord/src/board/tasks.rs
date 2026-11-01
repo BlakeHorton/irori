@@ -379,6 +379,11 @@ impl Fold {
         if s == IN_REVIEW {
             self.review_refusal(&t)?;
         }
+        // Card #191 (Stephen: agents asked him to mark cards done with their
+        // PRs still open): an agent's completed waits for the review it is in.
+        if s == COMPLETED && t.state == IN_REVIEW && self.is_agent_key(&by) {
+            self.unreviewed_refusal(&t)?;
+        }
         let cascade = self.parent_state_refusal(&t, s)?;
         // The person has the final say on done (card #112): an agent's
         // completed raises a done check instead, and only the person's Done
