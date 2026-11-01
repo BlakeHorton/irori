@@ -81,6 +81,8 @@ pub fn options(
         headless,
         runtime: Some(rt.handle().clone()),
         notifier,
+        // Card #208: ask GitHub (the person's own gh) about linked PRs.
+        pr_checker: Some(Arc::new(irori_core::prwatch::GhChecker)),
         ..Options::default()
     };
     if offline() {
@@ -89,6 +91,7 @@ pub fn options(
         // Honoured in every build, since it can only take the network away.
         opts.pair_net = Some(irori_core::offline::offline_net());
         opts.no_home = true;
+        opts.pr_checker = None;
     }
     Ok(opts)
 }

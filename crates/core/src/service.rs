@@ -121,6 +121,10 @@ pub struct Options {
     pub pair_window: Duration,
     /// Remove device (Go `Mesh().Revoke`); `None` is the mesh Node's.
     pub revoke: Option<crate::devices::RevokeFn>,
+    /// Asks GitHub how the PRs this device's agents' cards link stand
+    /// (card #208): the app passes [`crate::prwatch::GhChecker`]; `None`
+    /// asks nobody (tests pass a fake when they want it).
+    pub pr_checker: Option<Arc<dyn crate::prwatch::PrChecker>>,
 }
 
 /// Go `core.ErrNoHomeServer`'s text.
@@ -213,6 +217,9 @@ struct Services {
     names: Arc<Namer>,
     /// The last name every agent went by, kept past its going (card #98).
     agent_names: Arc<crate::agentnames::AgentNames>,
+    /// Card #208: who asks GitHub about PRs, and when each was last asked.
+    pr_checker: Option<Arc<dyn crate::prwatch::PrChecker>>,
+    pr_watch: crate::prwatch::PrWatch,
     members: Arc<Members>,
     names_kick: Arc<Kick>,
     /// This device's agents that stopped answering their wakes (#110).
@@ -1044,6 +1051,8 @@ impl Core {
             asks,
             names,
             agent_names,
+            pr_checker: opts.pr_checker.clone(),
+            pr_watch: Default::default(),
             members,
             names_kick: Kick::new(),
             answering,
@@ -1447,6 +1456,20 @@ impl Core {
                 let mut seen = s.asks_kick.generation().wrapping_sub(1);
                 while s.asks_kick.wait(&mut seen) {
                     s.hand_out_asks();
+                }
+            });
+        }
+
+        // Linked PRs on GitHub (card #208).
+        if s.pr_checker.is_some() {
+            let s = s.clone();
+            let stop = self.stop.clone();
+            self.spawn("prs", move || {
+                loop {
+                    if stop.sleep(crate::prwatch::TICK) {
+                        return;
+                    }
+                    s.check_prs();
                 }
             });
         }
@@ -1922,6 +1945,12 @@ impl Core {
     /// the asks' timed part, routed from Irori (or the person).
     pub fn sweep_coord(&self) -> Result<(), String> {
         self.s.sweep_coord()
+    }
+
+    /// Asks GitHub about the linked PRs that are due now (card #208); the
+    /// Core's own loop does every [`crate::prwatch::TICK`].
+    pub fn check_prs(&self) {
+        self.s.check_prs()
     }
 
     /// The inbox sweep (every [`inbox::SWEEP_INTERVAL`]).
@@ -2462,6 +2491,43 @@ impl Services {
         }
         if changed {
             self.presence.rescan();
+        }
+    }
+
+    /// Asks GitHub about the PRs that are due (card #208) and routes what
+    /// coord says changed.
+    fn check_prs(self: &Arc<Self>) {
+        let Some(checker) = self.pr_checker.clone() else {
+            return;
+        };
+        let local: std::collections::HashSet<String> = self
+            .presence
+            .snapshot()
+            .into_iter()
+            .map(|c| c.key)
+            .collect();
+        let mut coords = vec![self.coord.clone()];
+        coords.extend(self.boards.list().iter().map(|b| b.coord().clone()));
+        let due = self.pr_watch.due(
+            &coords,
+            &local,
+            &|k| self.private_key(k),
+            std::time::Instant::now(),
+        );
+        for d in due {
+            let c = checker.check(&d.url);
+            match d.co.record_pr_state(&d.task_id, c) {
+                Ok((_, ns)) => {
+                    for n in ns {
+                        if let Some(e) =
+                            notice::notice_err(&self.route_notice(&inbox::system_sender(), &n))
+                        {
+                            logf(format_args!("pr notice {}: {e}", n.reference));
+                        }
+                    }
+                }
+                Err(e) => logf(format_args!("pr {} on {}: {e}", d.url, d.task_id)),
+            }
         }
     }
 

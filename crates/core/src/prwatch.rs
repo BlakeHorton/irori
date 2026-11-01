@@ -1,0 +1,181 @@
+//! Asks GitHub how the PRs this device's agents' cards link stand (card
+//! #208) and hands the answers to coord, which records them and says what
+//! changed (coord's `prstate`).
+//!
+//! Only the device whose agent holds a card asks about its PRs, with the
+//! person's own `gh`; the rows it writes reach the other devices like any
+//! other. An open PR is asked about again every [`OPEN_EVERY`]; one that
+//! couldn't be asked about every [`ERROR_EVERY`]; a merged or closed one
+//! never again.
+
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use coord::{Coord, PR_CLOSED, PR_MERGED, PrCheck};
+
+/// How often the poller looks for PRs that are due.
+pub const TICK: Duration = Duration::from_secs(30);
+/// How often an open PR is asked about.
+pub const OPEN_EVERY: Duration = Duration::from_secs(180);
+/// How often a PR GitHub couldn't be asked about is tried again.
+pub const ERROR_EVERY: Duration = Duration::from_secs(1800);
+/// How long one `gh` call may take.
+const GH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Asks GitHub about one PR. The answer carries an error instead of a
+/// state when it couldn't be asked.
+pub trait PrChecker: Send + Sync {
+    fn check(&self, url: &str) -> PrCheck;
+}
+
+/// The person's own `gh`: `gh pr view <url> --json state,mergedAt,reviewDecision`.
+pub struct GhChecker;
+
+impl PrChecker for GhChecker {
+    fn check(&self, url: &str) -> PrCheck {
+        let mut c = PrCheck {
+            pr: url.into(),
+            ..PrCheck::default()
+        };
+        let Some(gh) = gh_path() else {
+            c.error = "gh (the GitHub CLI) isn't installed here, so Irori can't see whether this PR is merged: https://cli.github.com".into();
+            return c;
+        };
+        match run_gh(&gh, url) {
+            Ok(v) => {
+                c.state = v["state"].as_str().unwrap_or_default().to_string();
+                c.review = v["reviewDecision"].as_str().unwrap_or_default().to_string();
+                if let Some(m) = v["mergedAt"].as_str().filter(|m| !m.is_empty()) {
+                    c.merged_at = gocompat::time::GoTime::parse_rfc3339(m).unwrap_or_default();
+                }
+                if c.state.is_empty() {
+                    c.error = "gh answered without the PR's state".into();
+                }
+            }
+            Err(e) => c.error = e,
+        }
+        c
+    }
+}
+
+fn gh_path() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    let name = if cfg!(windows) { "gh.exe" } else { "gh" };
+    std::env::split_paths(&path)
+        .filter(|d| d.is_absolute())
+        .map(|d| d.join(name))
+        .find(|p| p.is_file())
+}
+
+fn run_gh(gh: &PathBuf, url: &str) -> Result<serde_json::Value, String> {
+    let mut child = Command::new(gh)
+        .args(["pr", "view", url, "--json", "state,mergedAt,reviewDecision"])
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't run gh: {e}"))?;
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if start.elapsed() > GH_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("gh took too long to answer".into());
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+            Err(e) => return Err(format!("gh: {e}")),
+        }
+    }
+    let out = child.wait_with_output().map_err(|e| format!("gh: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let line = err
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("gh failed");
+        return Err(format!("gh couldn't read this PR: {}", line.trim()));
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| format!("gh's answer isn't JSON: {e}"))
+}
+
+/// When each PR was last asked about, by `taskId\x00url`.
+#[derive(Default)]
+pub(crate) struct PrWatch {
+    asked: Mutex<HashMap<String, Instant>>,
+}
+
+/// One card's PR that is due, and the log it lives in.
+pub(crate) struct Due {
+    pub co: Arc<Coord>,
+    pub task_id: String,
+    pub url: String,
+}
+
+impl PrWatch {
+    /// The PRs to ask about now: on a card in `coords` that isn't done and
+    /// that an agent in `local` holds, not yet merged or closed, and not
+    /// asked about too recently. Marks them asked.
+    pub(crate) fn due(
+        &self,
+        coords: &[Arc<Coord>],
+        local: &HashSet<String>,
+        private_key: &dyn Fn(&str) -> String,
+        now: Instant,
+    ) -> Vec<Due> {
+        let mut asked = self.asked.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = Vec::new();
+        for co in coords {
+            let tasks = co.list_tasks(&coord::TaskFilter {
+                open: true,
+                ..coord::TaskFilter::default()
+            });
+            for t in tasks {
+                let ours = t
+                    .holders
+                    .iter()
+                    .chain(&t.co_holders)
+                    .any(|h| local.contains(&private_key(h)));
+                if !ours {
+                    continue;
+                }
+                let known: HashMap<String, coord::PrState> = co
+                    .pr_states(&t.id)
+                    .into_iter()
+                    .map(|p| (p.pr.clone(), p))
+                    .collect();
+                for l in t.links.iter().filter(|l| coord::pr_link(l).is_some()) {
+                    let k = known.get(&l.reference);
+                    if k.is_some_and(|p| p.state == PR_MERGED || p.state == PR_CLOSED) {
+                        continue;
+                    }
+                    let every = if k.is_some_and(|p| !p.error.is_empty()) {
+                        ERROR_EVERY
+                    } else {
+                        OPEN_EVERY
+                    };
+                    let key = format!("{}\x00{}", t.id, l.reference);
+                    if asked
+                        .get(&key)
+                        .is_some_and(|at| now.duration_since(*at) < every)
+                    {
+                        continue;
+                    }
+                    asked.insert(key, now);
+                    out.push(Due {
+                        co: co.clone(),
+                        task_id: t.id.clone(),
+                        url: l.reference.clone(),
+                    });
+                }
+            }
+        }
+        out
+    }
+}
