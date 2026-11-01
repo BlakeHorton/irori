@@ -999,7 +999,18 @@ impl Fold {
         } else if !is_terminal(&p.state) {
             t.withdrawn = false;
         }
-        if t.open_ask().is_some() {
+        // The person reopens their resolved thread (card #169): its ask is
+        // live again, and rows after this one fold as an open ask's.
+        if p.reopen_ask
+            && !is_terminal(&p.state)
+            && self.is_owner(&p.by)
+            && t.ask.as_ref().is_some_and(|a| a.thread && !a.is_open())
+        {
+            if let Some(a) = t.ask.as_mut() {
+                a.outcome = None;
+            }
+            self.asks.closed_at.remove(&t.id);
+        } else if t.open_ask().is_some() {
             let o = p.outcome.clone().unwrap_or_else(|| Outcome {
                 kind: super::asks::OUTCOME_NONE.into(),
                 note: cmp_str(&p.note, "closed by the person"),

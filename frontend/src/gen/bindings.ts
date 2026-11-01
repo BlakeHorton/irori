@@ -70,6 +70,8 @@ export const commands = {
 	boardCardRef: (r: string) => __TAURI_INVOKE<RefTarget | null>("board_card_ref", { r }),
 	/**  Resolve on a thread: the person is done with it. */
 	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
+	/**  A resolved thread is live again (card #169). */
+	boardReopenThread: (id: string) => __TAURI_INVOKE<null>("board_reopen_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
 	boardCommentModify: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify", { id, commentId }),
 	/**  Cancel on a comment held for editing: it goes out as it was. */

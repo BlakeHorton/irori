@@ -891,6 +891,40 @@ fn files_with_a_thread_a_reply_and_a_new_card() {
     assert_eq!(got, vec![vec!["second.txt".to_string()]]);
 }
 
+/// Card #169: Reopen brings a resolved thread back as a live one, from the
+/// Threads panel or the card page's Reopen, and a reply goes to who
+/// answered it.
+#[test]
+fn a_resolved_thread_reopens_from_the_window() {
+    let r = Rig::new();
+    let t = held_task(&r);
+    let id =
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[])
+            .unwrap()
+            .task
+            .id;
+    r.w.core
+        .coord()
+        .add_comment(&r.key_a, &id, "Yes, half done.", false)
+        .unwrap();
+    r.w.resolve_thread(&id).unwrap();
+    r.w.reopen_thread(&id).unwrap();
+    assert_eq!(r.w.threads()[0].state, "answered", "live again");
+    assert!(
+        r.w.cards().iter().all(|c| c.id != id),
+        "still not in the grid"
+    );
+    let c =
+        r.w.comment(&id, "One more thing", "wake", &[], &[])
+            .unwrap();
+    assert_eq!(c.told.to, vec![r.key_a.clone()]);
+
+    // The card page's Reopen does the same for a resolved thread.
+    r.w.resolve_thread(&id).unwrap();
+    r.w.reopen(&id).unwrap();
+    assert_eq!(r.w.threads()[0].state, "answered");
+}
+
 /// Card #144: a #ref in text names a done card or a resolved thread too,
 /// by its short ref, so the window links it without the done list.
 #[test]

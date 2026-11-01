@@ -93,6 +93,9 @@ crate::go_struct! {
         pub blocker: Option<BlockerRow> = "blocker" "omit",
         pub outcome: Option<Outcome> = "outcome" "omit",
         pub withdrawn: bool = "withdrawn" "omit",
+        /// The person reopens their resolved thread (card #169): its ask
+        /// is open again. Older folds see a plain reopened card.
+        pub reopen_ask: bool = "reopenAsk" "omit",
         pub by: String = "by",
         pub at: GoTime = "at",
     }

@@ -820,6 +820,11 @@ impl Coord {
     pub fn resolve_thread(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().resolve_thread(by, id)
     }
+    /// The person reopens their resolved thread (card #169): live again,
+    /// their next reply going to the agents that answered it.
+    pub fn reopen_thread(&self, by: &str, id: &str) -> Result<Task> {
+        self.lock().reopen_thread(by, id)
+    }
     pub fn ask_again(&self, by: &str, id: &str) -> Result<()> {
         self.lock().ask_again(by, id)
     }
