@@ -1280,7 +1280,9 @@ export type TaskResult = {
 };
 
 /**  coord.TaskState. */
-export type TaskState = "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" | "blocked";
+export type TaskState = "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" | "blocked" | 
+/**  Card #191: the work waits on its review. */
+"in_review";
 
 /**  A card made or changed from a thread, as its chip shows it. */
 export type ThreadCard = {

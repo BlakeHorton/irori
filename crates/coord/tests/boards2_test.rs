@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use common::*;
+use coord::roster::{AgentCard, Agents};
 use coord::rows::TaskStateRow;
 use coord::*;
 use gocompat::json::RawJson;
@@ -1082,4 +1083,62 @@ fn a_board_thread_among_two_people() {
         assert!(t.open_ask().is_some_and(|a| a.thread), "{t:?}");
         assert_eq!(s.c.thread_to(&tk.id), [CARD3]);
     }
+}
+
+// ---- an open agent of another person reviews (card #191) -------------------
+
+struct FixedRoster(Vec<AgentCard>);
+
+impl Agents for FixedRoster {
+    fn agents(&self) -> Vec<AgentCard> {
+        self.0.clone()
+    }
+}
+
+/// Side s reopened with a roster of the board's agents.
+fn side_with_roster(s: Side, person: &str, owners: &Owners, agents: Vec<AgentCard>) -> Side {
+    let me = person.to_string();
+    let o2 = owners.clone();
+    let o = Options {
+        now: Some(s.clk.func()),
+        board: true,
+        person: person.into(),
+        is_owner: Some(Arc::new(move |k: &str| k == me)),
+        key_person: Some(Arc::new(key_person)),
+        device_person: Some(Arc::new(device_person)),
+        tag: Some(Arc::new(|| "mlg".to_string())),
+        board_owner: Some(Arc::new(move |p: &str, at: Option<&RowPos>| {
+            o2.lock().unwrap().iter().any(|(who, from, until)| {
+                who == p && at.map_or(*until == u64::MAX, |at| *from < at.hlc && at.hlc < *until)
+            })
+        })),
+        ..Options::default()
+    };
+    let r: Arc<dyn Agents> = Arc::new(FixedRoster(agents));
+    let c = Coord::new(s.st.clone(), Some(r), o).unwrap();
+    Side { c, ..s }
+}
+
+#[test]
+fn with_nobody_dedicated_a_free_agent_of_another_person_reviews() {
+    let (a, b, owners) = two_people();
+    let t = shared_card(&a, &b);
+    a.c.add_link(CARD1, &t.id, PR).unwrap();
+    sync(&a, &b);
+    // c1 is p1's own (idle, never chosen); c2 is p2's and busy; c3 is p2's
+    // and idle: the request goes to c3.
+    let a = side_with_roster(a, P1, &owners, roster(&[CARD1, CARD3]));
+    let (r, n) = a.c.request_review(CARD1, &t.id, PR, "").unwrap();
+    assert_eq!(r.len(), 1);
+    assert_eq!((r[0].from.as_str(), r[0].to.as_str()), (CARD1, CARD3));
+    assert_eq!(n.to, vec![CARD3.to_string()]);
+    // The holder's request put the card in review.
+    assert_eq!(a.c.get_task(&t.id).unwrap().state, IN_REVIEW);
+
+    // Nobody of p2's free: refused, as before.
+    let t2 = shared_card(&a, &b);
+    a.c.add_link(CARD1, &t2.id, PR).unwrap();
+    let a = side_with_roster(a, P1, &owners, roster(&[CARD1]));
+    let e = a.c.request_review(CARD1, &t2.id, PR, "").unwrap_err();
+    assert!(e.is(ErrorKind::NotFound), "{e}");
 }

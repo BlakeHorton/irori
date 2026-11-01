@@ -284,6 +284,10 @@ pub struct Fold {
     pub(crate) reviewers: super::review::Reviewers,
     /// Cards the person deleted (card #57): never folded again.
     pub(crate) deleted: HashSet<String>,
+    /// Cards that were in_review when they were blocked (card #191): an
+    /// unblock restores in_review, not working. Not part of the Task's
+    /// Go shape.
+    pub(crate) review_before_block: HashSet<String>,
 }
 
 /// `stolenKey`: resource, holder and acquiredAt (RFC3339Nano, UTC).
@@ -389,6 +393,7 @@ impl Fold {
             reviews: BTreeMap::new(),
             reviewers: BTreeMap::new(),
             deleted: HashSet::new(),
+            review_before_block: HashSet::new(),
         }
     }
 
@@ -1050,6 +1055,13 @@ impl Fold {
         }
         let mut t = self.tasks.remove(&p.task_id).expect("checked");
         let was = t.state.clone();
+        if p.state == BLOCKED {
+            if was == IN_REVIEW {
+                self.review_before_block.insert(t.id.clone());
+            }
+        } else {
+            self.review_before_block.remove(&t.id);
+        }
         let when = at(p.at);
         if p.state == CANCELED && p.withdrawn && self.on_board {
             t.withdrawn = true;
@@ -1953,6 +1965,23 @@ pub(crate) fn engaged(t: &Task, key: &str) -> bool {
 }
 
 /// Where unblocking leaves a task.
+impl Fold {
+    /// The state an unblock writes back (card #191): in_review when the
+    /// card was in review before it was blocked and a holder is still on
+    /// it, unless the blocker closing is the done check (the person's
+    /// "not done" sends the work back); else [`restore_state`].
+    pub(crate) fn restore_for(&self, t: &Task) -> &'static str {
+        let s = restore_state(t);
+        if s == WORKING
+            && self.review_before_block.contains(&t.id)
+            && !t.blockers.iter().any(|b| b.open() && b.done_check)
+        {
+            return IN_REVIEW;
+        }
+        s
+    }
+}
+
 pub(crate) fn restore_state(t: &Task) -> &'static str {
     if t.holders.iter().any(|h| !contains(&t.assigned, h)) {
         WORKING

@@ -20,6 +20,7 @@ import {
   type DoneState,
 } from "@/lib/cards"
 import { plainLine, relativeTime } from "@/lib/irori"
+import { TaskState } from "@/lib/models"
 import { cardMatches, matching } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import {
@@ -37,7 +38,8 @@ import { ConfirmButton } from "@/components/common/confirm-button"
 import { ClearDone } from "./clear-done"
 import { Faces, TalkBubble } from "./faces"
 
-// Filter is a chip: All, Needs a decision, My devices, Closed (done,
+// Filter is a chip: All, Needs a decision, In review (card #191), My
+// devices, Closed (done,
 // canceled and failed cards, which load on their own: useDoneCards; its
 // id stays "done" for old ?filter= links), one device
 // ("device:<id>", card #22), or one shared board ("board:<id>", v0.5 §8).
@@ -45,6 +47,7 @@ import { Faces, TalkBubble } from "./faces"
 export type Filter =
   | "all"
   | "decide"
+  | "review"
   | "mine"
   | "done"
   | "private"
@@ -54,6 +57,7 @@ export type Filter =
 export const filters: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "decide", label: "Needs a decision" },
+  { id: "review", label: "In review" },
   { id: "mine", label: "My devices" },
   { id: "done", label: "Closed" },
 ]
@@ -92,6 +96,7 @@ export function matches(c: CardSummary, f: Filter): boolean {
   if (f === "done") return over(c)
   if (over(c)) return false
   if (f === "decide") return c.openBlockers > 0
+  if (f === "review") return c.state === TaskState.InReview
   if (f === "mine") return c.scope === "mine"
   if (f === "private") return c.scope !== "board"
   if (f.startsWith("device:")) return c.devices.includes(f.slice(7))
@@ -105,11 +110,15 @@ export function FilterBar({
   filter,
   onFilter,
   decide,
+  review = 0,
   only,
 }: {
   filter: Filter
   onFilter: (f: Filter) => void
   decide: number
+  // review: the open cards in review (card #191); its chip shows only
+  // while there are some, or while it is the filter.
+  review?: number
   // only, when set, are the tabs to show (an empty board: All and Done).
   only?: Filter[]
 }) {
@@ -119,27 +128,33 @@ export function FilterBar({
       role="group"
       aria-label="Filter cards"
     >
-      {filters.filter((f) => !only || only.includes(f.id)).map((f) => (
-        <Button
-          key={f.id}
-          size="sm"
-          aria-pressed={filter === f.id}
-          variant={filter === f.id ? "default" : "ghost"}
-          onClick={() => onFilter(f.id)}
-        >
-          {f.label}
-          {f.id === "decide" && decide > 0 && (
-            <span
-              className={cn(
-                "text-xs tabular-nums",
-                filter === f.id ? "opacity-80" : "text-destructive"
-              )}
-            >
-              {decide}
-            </span>
-          )}
-        </Button>
-      ))}
+      {filters
+        .filter((f) => !only || only.includes(f.id))
+        .filter((f) => f.id !== "review" || review > 0 || filter === "review")
+        .map((f) => (
+          <Button
+            key={f.id}
+            size="sm"
+            aria-pressed={filter === f.id}
+            variant={filter === f.id ? "default" : "ghost"}
+            onClick={() => onFilter(f.id)}
+          >
+            {f.label}
+            {f.id === "decide" && decide > 0 && (
+              <span
+                className={cn(
+                  "text-xs tabular-nums",
+                  filter === f.id ? "opacity-80" : "text-destructive"
+                )}
+              >
+                {decide}
+              </span>
+            )}
+            {f.id === "review" && review > 0 && (
+              <span className="text-xs tabular-nums opacity-80">{review}</span>
+            )}
+          </Button>
+        ))}
     </div>
   )
 }
@@ -354,7 +369,9 @@ export function CardGrid({
                 ))}
                 {f.head.progress.done > 0 && (
                   <span className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
-                    <span aria-hidden className="text-success">✓</span>
+                    <span aria-hidden className="text-success">
+                      ✓
+                    </span>
                     {f.head.progress.done} done
                   </span>
                 )}
@@ -411,7 +428,7 @@ function CardTile({
       onClick={onSelect}
       aria-current={selected ? "true" : undefined}
       className={cn(
-        "glass-panel flex min-w-0 flex-col gap-2.5 p-3.5 text-left text-sm outline-none",
+        "flex min-w-0 flex-col gap-2.5 p-3.5 text-left text-sm glass-panel outline-none",
         "transition-[border-color,box-shadow,transform] duration-150",
         "hover:-translate-y-0.5 hover:border-primary/70 hover:shadow-[0_0_0_1px_var(--color-ring),0_12px_28px_oklch(0_0_0/0.45)] focus-visible:ring-1 focus-visible:ring-ring",
         selected &&
@@ -434,10 +451,7 @@ function CardTile({
       <span className="flex flex-wrap items-center gap-1.5">
         <ShortRef card={card} />
         {card.pinned && (
-          <PinIcon
-            className="size-3 text-primary"
-            aria-label="Pinned"
-          />
+          <PinIcon className="size-3 text-primary" aria-label="Pinned" />
         )}
         {card.parent && <PartOf parent={card.parent} />}
         <StatePill card={card} />
@@ -514,9 +528,7 @@ function CardTile({
       {!blocked && card.subtaskBlocked && (
         <span className="flex gap-1.5 text-xs text-warning">
           <span aria-hidden>●</span>
-          <span className="line-clamp-2">
-            {plainLine(card.subtaskBlocked)}
-          </span>
+          <span className="line-clamp-2">{plainLine(card.subtaskBlocked)}</span>
         </span>
       )}
       {card.ask && (openAsk(card) || closed) ? (
@@ -764,8 +776,10 @@ function PickBar({
   const shared = picked.some((c) => c.scope === "board")
   const what = `${n} ${n === 1 ? "card" : "cards"}`
   return (
-    <div className="flex flex-wrap items-center gap-2 glass-panel px-3 py-2 text-[12.5px]">
-      <span className="text-ink tabular-nums">{n ? `${what} selected` : "Click cards to select them"}</span>
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-[12.5px] glass-panel">
+      <span className="text-ink tabular-nums">
+        {n ? `${what} selected` : "Click cards to select them"}
+      </span>
       <Button size="xs" variant="ghost" onClick={onAll}>
         Select all shown
       </Button>
@@ -786,7 +800,10 @@ function PickBar({
             </>
           }
           onConfirm={async () => {
-            await cardsApi.clearDone(0, picked.map((c) => c.id))
+            await cardsApi.clearDone(
+              0,
+              picked.map((c) => c.id)
+            )
             onDone()
           }}
         />
@@ -860,7 +877,11 @@ function SubtaskDetailRow({
   const blocked = card.openBlockers > 0
   const p = percent(card.progress)
   const who = card.working
-  const tone = blocked ? "text-destructive" : who.length ? "text-primary" : "text-warning"
+  const tone = blocked
+    ? "text-destructive"
+    : who.length
+      ? "text-primary"
+      : "text-warning"
   const whoLine = who.length ? (
     <span className="flex min-w-0 items-center gap-1.5">
       <Faces who={who} />
@@ -874,7 +895,10 @@ function SubtaskDetailRow({
       <span className="flex items-center gap-1.5">
         <span className="h-1 w-14 overflow-hidden rounded-full bg-border">
           <span
-            className={cn("block h-full", blocked ? "bg-destructive" : "bg-primary")}
+            className={cn(
+              "block h-full",
+              blocked ? "bg-destructive" : "bg-primary"
+            )}
             style={{ width: `${p}%` }}
           />
         </span>
@@ -894,16 +918,20 @@ function SubtaskDetailRow({
       )}
     >
       <>
-          <span className="flex min-w-0 items-center gap-2">
-            <span aria-hidden className={cn("text-[10px]", tone)}>●</span>
-            <ShortRef card={card} />
-            <span className="min-w-0 flex-1 truncate text-ink">{plainLine(card.title)}</span>
-            <StatePill card={card} />
+        <span className="flex min-w-0 items-center gap-2">
+          <span aria-hidden className={cn("text-[10px]", tone)}>
+            ●
           </span>
-          <span className="flex items-center gap-3 pl-4 text-[11px] text-muted-foreground">
-            {whoLine}
-            {bar}
+          <ShortRef card={card} />
+          <span className="min-w-0 flex-1 truncate text-ink">
+            {plainLine(card.title)}
           </span>
+          <StatePill card={card} />
+        </span>
+        <span className="flex items-center gap-3 pl-4 text-[11px] text-muted-foreground">
+          {whoLine}
+          {bar}
+        </span>
       </>
       {blocked && card.blockerQuestion && (
         <span className={"line-clamp-2 pl-4 text-[11px] text-destructive"}>
@@ -922,7 +950,13 @@ function SubtaskDetailRow({
 
 // MasonryGrid lays items into as many 260px+ columns as fit; each item
 // goes, in order, to the shortest column so far (card #113).
-function MasonryGrid({ label, items }: { label: string; items: { key: string; node: ReactNode }[] }) {
+function MasonryGrid({
+  label,
+  items,
+}: {
+  label: string
+  items: { key: string; node: ReactNode }[]
+}) {
   const box = useRef<HTMLElement>(null)
   const refs = useRef(new Map<string, HTMLDivElement>())
   const [width, setWidth] = useState(0)
@@ -946,7 +980,10 @@ function MasonryGrid({ label, items }: { label: string; items: { key: string; no
     return () => ro.disconnect()
   }, [keys])
   const n = Math.max(1, Math.floor((width + gap) / (260 + gap)))
-  const cols: { key: string; node: ReactNode }[][] = Array.from({ length: n }, () => [])
+  const cols: { key: string; node: ReactNode }[][] = Array.from(
+    { length: n },
+    () => []
+  )
   const tall = new Array(n).fill(0)
   for (const it of items) {
     let c = 0
@@ -955,7 +992,12 @@ function MasonryGrid({ label, items }: { label: string; items: { key: string; no
     tall[c] += (heights[it.key] ?? 200) + gap
   }
   return (
-    <section ref={box} aria-label={label} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+    <section
+      ref={box}
+      aria-label={label}
+      className="grid gap-3"
+      style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
+    >
       {cols.map((col, i) => (
         <div key={i} className="grid content-start gap-3">
           {col.map((it) => (

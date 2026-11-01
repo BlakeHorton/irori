@@ -28,6 +28,7 @@ import {
   type BoardView as View,
 } from "@/components/canvas/switch"
 import { Badge } from "@/components/ui/badge"
+import { TaskState } from "@/lib/models"
 import { Button } from "@/components/ui/button"
 import {
   cards as cardsApi,
@@ -172,6 +173,7 @@ export function BoardView({
   )
   const inPinned = new Set(pinnedGroup.map((c) => c.id))
   const decide = mine.filter((c) => c.openBlockers > 0).length
+  const review = mine.filter((c) => c.state === TaskState.InReview).length
 
   const openThreads =
     threads?.list.filter((t) => t.state !== "resolved").length ?? 0
@@ -245,7 +247,8 @@ export function BoardView({
               filter={active}
               onFilter={onFilter}
               decide={decide}
-              only={["all", "decide", "done"]}
+              review={review}
+              only={["all", "decide", "review", "done"]}
             />
             <DeviceBar filter={active} onFilter={onFilter} devices={chips} />
             {rowBoards && (

@@ -328,6 +328,8 @@ pub enum TaskState {
     Failed,
     Canceled,
     Blocked,
+    /// Card #191: the work waits on its review.
+    InReview,
 }
 
 /// coord.LinkKind.

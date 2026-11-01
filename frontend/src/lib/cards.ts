@@ -1773,11 +1773,14 @@ export function busy(c: {
   openBlockers: number
   working: readonly AgentRef[]
 }): boolean {
+  // In review (card #191): the work waits on its review, so its holder is
+  // free and nothing spins.
   switch (c.state) {
     case TaskState.Completed:
     case TaskState.Canceled:
     case TaskState.Failed:
     case TaskState.InputRequired:
+    case TaskState.InReview:
       return false
   }
   if (c.openBlockers > 0) return false

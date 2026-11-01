@@ -20,8 +20,9 @@ use store::{Event, kinds};
 use super::comments::check_comment;
 use super::error::{Result, invalid, not_allowed, not_found};
 use super::fold::Fold;
+use super::fold::is_holder;
 use super::links::pr_link;
-use super::rows::{ReviewRequestedRow, ReviewReviewerRow, TaskCommentRow, row};
+use super::rows::{ReviewRequestedRow, ReviewReviewerRow, TaskCommentRow, TaskStateRow, row};
 use super::types::*;
 use super::util::{caller, deeper, new_id};
 use crate::names::trim_space;
@@ -179,6 +180,27 @@ impl Fold {
         out
     }
 
+    /// With nobody named and no dedicated reviewer, a shared board's
+    /// review goes to one free agent of another person (card #191,
+    /// Stephen): live, idle, in the card's repo when both have one, holding
+    /// no working card; the one idle longest. Never one of the asker's own
+    /// person's agents, so never across one person's own devices.
+    pub(crate) fn open_reviewer(&self, t: &Task, from: &str) -> Option<String> {
+        let roster = self.roster.as_ref()?.agents();
+        let mine = self.person_of(from);
+        if mine.is_empty() {
+            return None;
+        }
+        let others: Vec<_> = roster
+            .into_iter()
+            .filter(|a| {
+                let p = self.person_of(&a.key);
+                !p.is_empty() && p != mine
+            })
+            .collect();
+        self.free_for(t, &others, &[]).into_iter().next()
+    }
+
     /// An agent asking another person's agents to review a PR its card
     /// links: `to`, or each other person's dedicated reviewer for the
     /// card's repo, one request each.
@@ -219,10 +241,13 @@ impl Fold {
                 "{to} is one of your own person's agents: they can comment, but a review comes from another person's agent"
             )));
         }
-        let rcpt = self.review_recipients(&by, &to, &t.repo_key);
+        let mut rcpt = self.review_recipients(&by, &to, &t.repo_key);
+        if rcpt.is_empty() {
+            rcpt = self.open_reviewer(&t, &by).into_iter().collect();
+        }
         if rcpt.is_empty() {
             return Err(not_found(
-                "nobody to review it: name another person's agent in to, or ask them to dedicate a reviewer",
+                "nobody to review it: no other person's agent is free now, and none is dedicated; name one in to, or ask them to dedicate a reviewer",
             ));
         }
         // One row per recipient, each naming its agent: the bridge
@@ -250,6 +275,7 @@ impl Fold {
                 at,
             });
         }
+        self.enter_review(&by, id)?;
         let n = Notice {
             kind: NOTICE_REVIEW.into(),
             task_id: id.into(),
@@ -299,6 +325,7 @@ impl Fold {
             at,
         };
         self.write(by, kinds::REVIEW_REQUESTED, &row)?;
+        self.enter_review(by, &t.id)?;
         let short = t.short_ref();
         let what = if pr.is_empty() {
             "its work".to_string()
@@ -329,6 +356,74 @@ impl Fold {
             at,
         };
         Ok((vec![r], n))
+    }
+
+    /// Refuses putting t in review (card #191) unless there is something to
+    /// review: a PR it links, or a review already asked. A parent's state
+    /// follows its subtasks, so it is never put in review by hand.
+    pub(crate) fn review_refusal(&self, t: &Task) -> Result<()> {
+        if !t.subtasks.is_empty() {
+            return Err(invalid(format!(
+                "{} is a parent: it shows in_review when its open subtasks are",
+                t.short_ref()
+            )));
+        }
+        let has_pr = t.links.iter().any(|l| pr_link(l).is_some());
+        let asked = self.reviews.get(&t.id).is_some_and(|rs| !rs.is_empty());
+        if !has_pr && !asked {
+            return Err(invalid(format!(
+                "{} has nothing to review yet: board_link its pull request, or ask for a review with board_review",
+                t.short_ref()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Refuses an agent's completed on a card in review whose newest review
+    /// isn't approved yet (card #191): the person shouldn't be asked "is
+    /// this done?" while the work still waits on its reviewer. A card put in
+    /// review with no review asked (a PR waiting on a merge desk) completes
+    /// as usual once the agent says it is merged.
+    pub(crate) fn unreviewed_refusal(&self, t: &Task) -> Result<()> {
+        let open: Vec<String> = self
+            .reviews_of(&t.id)
+            .into_iter()
+            .filter(|r| r.state != VERDICT_APPROVED)
+            .map(|r| self.named(&r.reviewer))
+            .collect();
+        if open.is_empty() {
+            return Ok(());
+        }
+        Err(invalid(format!(
+            "{} is in review and {} hasn't approved it yet: wait for the approval (or the merge) before completed",
+            t.short_ref(),
+            open.join(", ")
+        )))
+    }
+
+    /// Puts t in review after `by` asked for one (card #191): only a holder's
+    /// request on a working card moves it; a watcher's leaves it as it is.
+    fn enter_review(&mut self, by: &str, id: &str) -> Result<()> {
+        let Some(t) = self.tasks.get(id) else {
+            return Ok(());
+        };
+        if t.state != WORKING || !is_holder(t, by) || !t.subtasks.is_empty() {
+            return Ok(());
+        }
+        let at = self.stamp();
+        self.write(
+            by,
+            kinds::TASK_STATUS,
+            &TaskStateRow {
+                task_id: id.into(),
+                state: IN_REVIEW.into(),
+                note: "waiting on its review".into(),
+                by: by.into(),
+                at,
+                ..TaskStateRow::default()
+            },
+        )?;
+        Ok(())
     }
 
     /// An agent's key: `agent:<cardId>` on a shared board; on the private
@@ -415,6 +510,23 @@ impl Fold {
                 ..TaskCommentRow::default()
             },
         )?;
+        if changes && self.tasks[id].state == IN_REVIEW {
+            let at = self.stamp();
+            let note = format!("{} asked for changes", self.named(&by));
+            let actor = self.actor_for(&by);
+            self.write(
+                &actor,
+                kinds::TASK_STATUS,
+                &TaskStateRow {
+                    task_id: id.into(),
+                    state: WORKING.into(),
+                    note,
+                    by: by.clone(),
+                    at,
+                    ..TaskStateRow::default()
+                },
+            )?;
+        }
         let nt = self.tasks[id].clone();
         let mut to = self.recipients(&nt, &by);
         for a in askers {

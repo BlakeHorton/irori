@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::gojson::omit;
 
-/// Task states (an A2A subset plus `blocked`).
+/// Task states (an A2A subset plus `blocked` and `in_review`).
 pub type TaskState = String;
 pub const SUBMITTED: &str = "submitted";
 pub const WORKING: &str = "working";
@@ -18,17 +18,21 @@ pub const COMPLETED: &str = "completed";
 pub const FAILED: &str = "failed";
 pub const CANCELED: &str = "canceled";
 pub const BLOCKED: &str = "blocked";
+/// The holder's work is done and waits on a review of its PR or work
+/// (card #191): set by the holder's board_review, or board_status; a
+/// reviewer's changes put it back to working; the holder then completes.
+pub const IN_REVIEW: &str = "in_review";
 
 /// Whether `s` closes a task.
 pub fn is_terminal(s: &str) -> bool {
     s == COMPLETED || s == FAILED || s == CANCELED
 }
 
-/// Whether `s` is one of the seven states.
+/// Whether `s` is one of the eight states.
 pub fn valid_state(s: &str) -> bool {
     matches!(
         s,
-        SUBMITTED | WORKING | INPUT_REQUIRED | COMPLETED | FAILED | CANCELED | BLOCKED
+        SUBMITTED | WORKING | INPUT_REQUIRED | COMPLETED | FAILED | CANCELED | BLOCKED | IN_REVIEW
     )
 }
 

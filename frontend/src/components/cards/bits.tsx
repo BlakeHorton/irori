@@ -114,6 +114,16 @@ export function StatePill({ card }: { card: CardSummary }) {
         {card.openBlockers} {card.openBlockers === 1 ? "blocker" : "blockers"}
       </Badge>
     )
+  // The work is done and waits on its review (card #191).
+  if (card.state === TaskState.InReview)
+    return (
+      <Badge
+        variant="info"
+        title="The work is done and waits on its pull request's review; its agent is free for other work"
+      >
+        In review
+      </Badge>
+    )
   // A parent whose subtask waits on a decision: the subtask has the blocker.
   if (card.subtaskBlocked && !over(card))
     return (

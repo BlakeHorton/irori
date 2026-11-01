@@ -1475,7 +1475,7 @@ impl Fold {
             return Ok((self.tasks[id].clone(), ns));
         }
         let restored = if count_open(&t) == 1 {
-            restore_state(&t).to_string()
+            self.restore_for(&t).to_string()
         } else {
             String::new()
         };

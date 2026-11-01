@@ -180,6 +180,16 @@ export function sampleCards(now: Date): CardDetail[] {
     // Asks (board.md "Asks"): the person's prompts to the room. One the
     // agents heard and nobody took yet, one sample-heron took and is
     // talking through.
+    // In review (card #191): the work is done and waits on its PR's review.
+    card({
+      id: "sample-card-review",
+      short: "16",
+      title: "Mac: convert-in-Dolphin steps for RVZ discs",
+      goal: "Give Mac players the convert steps, since Dolphin for macOS ships no DolphinTool.",
+      state: TaskState.InReview,
+      working: [otter],
+      updatedAt: at(3),
+    }),
     card({
       id: "sample-ask-1",
       short: "14",

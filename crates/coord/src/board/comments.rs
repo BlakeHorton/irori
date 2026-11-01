@@ -10,9 +10,7 @@ use store::kinds;
 
 use super::cards::count_open;
 use super::error::{Result, bad_state, invalid, not_allowed, not_found};
-use super::fold::{
-    Fold, LEFT_GONE, LEFT_REMOVED, RefusalRec, engaged, is_holder, may_record, restore_state,
-};
+use super::fold::{Fold, LEFT_GONE, LEFT_REMOVED, RefusalRec, engaged, is_holder, may_record};
 use super::links::parse_link;
 use super::resource::{RESOURCE_PATH, Resource, conflicts, normalize_resource, parse_resource};
 use super::rows::*;
@@ -427,7 +425,7 @@ impl Fold {
         now: GoTime,
     ) -> Result<Notice> {
         let t = self.tasks[id].clone();
-        let restored = restore_state(&t);
+        let restored = self.restore_for(&t);
         self.write(
             by,
             kinds::BLOCKER_CLOSED,
