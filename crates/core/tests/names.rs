@@ -129,7 +129,7 @@ fn test_settle_moves_the_later_of_two_irori_names_on_both_devices() {
 }
 
 #[test]
-fn test_names_of_long_idle_sessions_are_free_for_new_ones() {
+fn test_names_of_idle_sessions_wait_while_other_words_are_free() {
     let cards: Cards = Arc::default();
     let (_d, n) = test_namer("pc", &cards);
     let now = t0();
@@ -140,10 +140,12 @@ fn test_names_of_long_idle_sessions_are_free_for_new_ones() {
         &want,
         minus(now, NAMES_BUSY + Duration::from_secs(60)),
     );
-    assert_eq!(
+    // Card #224: no longer held, but used a few hours ago, so a new
+    // session gets another word while the list has one.
+    assert_ne!(
         n.assign("new"),
         want,
-        "a session idle that long holds nothing"
+        "a name from a few hours ago came straight back"
     );
     n.set_entry("busy", &pick("new2", None), now);
     assert_ne!(
@@ -243,4 +245,116 @@ fn test_names_file_shape_and_bad_file() {
     );
     std::fs::write(dir.path().join("names.json"), b"[not a map").unwrap();
     assert_eq!(Namer::new(dir.path(), "pc").assigned("s1"), "");
+}
+
+/// Card #224: days of new sessions on one device, each live a few hours
+/// and then gone (its name still remembered in agent-names.json); returns
+/// every (time, name) given, in order.
+fn simulate(days: u64, per_day: u64) -> Vec<(i64, String)> {
+    use std::collections::BTreeMap;
+    let now = Arc::new(Mutex::new(t0()));
+    let cards: Cards = Arc::default();
+    let seen: Arc<Mutex<BTreeMap<String, (String, GoTime)>>> = Arc::default();
+    let (_d, n) = test_namer("pc", &cards);
+    {
+        let now = now.clone();
+        n.set_now(move || *now.lock().unwrap());
+        let seen = seen.clone();
+        n.set_seen(move || {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .map(|(k, (name, at))| (k.clone(), name.clone(), *at))
+                .collect()
+        });
+    }
+    let live = Duration::from_secs(3 * 3600);
+    let step = Duration::from_secs(24 * 3600 / per_day);
+    let mut given = Vec::new();
+    for d in 0..days {
+        for i in 0..per_day {
+            let t = plus(t0(), Duration::from_secs(d * 24 * 3600) + step * i as u32);
+            *now.lock().unwrap() = t;
+            // Sessions past their few hours are gone (still on the roster
+            // for a while, and remembered).
+            for c in cards.lock().unwrap().iter_mut() {
+                if plus(c.started_at, live).unix_nano() <= t.unix_nano() {
+                    c.status = "gone".into();
+                }
+            }
+            cards.lock().unwrap().retain(|c| {
+                plus(c.started_at, Duration::from_secs(24 * 3600)).unix_nano() > t.unix_nano()
+            });
+            let sid = format!("sess-{d}-{i}");
+            let name = n.assign(&sid);
+            cards
+                .lock()
+                .unwrap()
+                .push(card("pc", &sid, &name, presence::SOURCE_IRORI, t));
+            seen.lock()
+                .unwrap()
+                .insert(format!("pc/{sid}"), (name.clone(), plus(t, live)));
+            given.push((t.secs, name));
+        }
+    }
+    given
+}
+
+fn shortest_reuse(given: &[(i64, String)]) -> Option<(String, i64)> {
+    use std::collections::HashMap;
+    let mut last: HashMap<&str, i64> = HashMap::new();
+    let mut worst: Option<(String, i64)> = None;
+    for (t, name) in given {
+        if let Some(prev) = last.insert(name, *t) {
+            let gap = t - prev;
+            if worst.as_ref().is_none_or(|w| gap < w.1) {
+                worst = Some((name.clone(), gap));
+            }
+        }
+    }
+    worst
+}
+
+#[test]
+fn test_no_name_comes_back_within_a_week() {
+    // 30 days of 20 sessions a day: 600 names, all different.
+    let given = simulate(30, 20);
+    assert_eq!(given.len(), 600);
+    assert_eq!(shortest_reuse(&given), None, "a name came back");
+    // A busier device runs past the list; still nothing within 7 days.
+    let given = simulate(30, 60);
+    let (name, gap) = shortest_reuse(&given).expect("1800 names from about 1000 words");
+    assert!(
+        gap >= 7 * 24 * 3600,
+        "{name} came back after {:.1} days",
+        gap as f64 / 86400.0
+    );
+}
+
+#[test]
+fn test_a_gone_agents_name_is_not_given_again() {
+    let want = pick("new", None);
+    let cards: Cards = Arc::new(Mutex::new(vec![{
+        let mut c = card("mac", "old", &want, presence::SOURCE_IRORI, t0());
+        c.status = "gone".into();
+        c
+    }]));
+    let (_d, n) = test_namer("pc", &cards);
+    assert_ne!(n.assign("new"), want, "a gone agent still on its cards");
+}
+
+#[test]
+fn test_a_running_session_keeps_a_name_the_list_no_longer_gives() {
+    // names.json from before the list grew: a running session keeps its
+    // name on restart, even one the new list would never land on.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("names.json"),
+        br#"{"s1": {"name": "oldword", "at": "2026-10-28T12:00:00Z"}}"#,
+    )
+    .unwrap();
+    let n = Namer::new(dir.path(), "pc");
+    n.set_mesh(Vec::new);
+    assert_eq!(n.assigned("s1"), "oldword");
+    assert_eq!(n.assign("s1"), "oldword", "renamed on restart");
 }

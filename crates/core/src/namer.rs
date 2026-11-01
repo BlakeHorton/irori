@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::Duration;
 
-use coord::names::{fold, pick};
+use coord::names::{fold, pick, pick_free};
 use coord::roster::AgentCard;
 use gocompat::json::lenient::{self, Out, Schema};
 use gocompat::time::GoTime;
@@ -23,6 +23,11 @@ pub const NAMES_FILE: &str = "names.json";
 pub const NAMES_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 /// A session whose name was in use this recently holds it against new picks.
 pub const NAMES_BUSY: Duration = Duration::from_secs(2 * 3600);
+/// A new session never gets a name any agent went by this recently (card
+/// #224), while the list has a word left that isn't: the same name the
+/// next day reads as the same agent, and a gone agent's name still sits
+/// on its cards as holder or commenter.
+pub const NAMES_RECENT: Duration = Duration::from_secs(7 * 24 * 3600);
 
 /// One `names.json` entry (Go field order).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -36,6 +41,8 @@ pub struct NameEntry {
 }
 
 type CardsFn = Arc<dyn Fn() -> Vec<AgentCard> + Send + Sync>;
+/// Every agent name remembered lately, any device: (key, name, last seen).
+type SeenFn = Arc<dyn Fn() -> Vec<(String, String, GoTime)> + Send + Sync>;
 type NowFn = Arc<dyn Fn() -> GoTime + Send + Sync>;
 
 /// Gives sessions a name ([`presence::Namer`]) and settles clashes with
@@ -46,6 +53,8 @@ pub struct Namer {
     now: RwLock<NowFn>,
     /// Every agent on every device (Core's mesh roster), set once it exists.
     mesh: RwLock<Option<CardsFn>>,
+    /// The agent names remembered on this device (agent-names.json).
+    seen: RwLock<Option<SeenFn>>,
     m: Mutex<BTreeMap<String, NameEntry>>,
 }
 
@@ -72,6 +81,7 @@ impl Namer {
             self_id: self_id.to_string(),
             now: RwLock::new(Arc::new(presence::now_local)),
             mesh: RwLock::new(None),
+            seen: RwLock::new(None),
             m: Mutex::new(m),
         }
     }
@@ -79,6 +89,12 @@ impl Namer {
     /// Sets the mesh roster the names are checked against.
     pub fn set_mesh(&self, f: impl Fn() -> Vec<AgentCard> + Send + Sync + 'static) {
         *self.mesh.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(f));
+    }
+
+    /// Sets where the names agents went by lately come from: (agent key,
+    /// name, when last seen with it), e.g. agent-names.json.
+    pub fn set_seen(&self, f: impl Fn() -> Vec<(String, String, GoTime)> + Send + Sync + 'static) {
+        *self.seen.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(f));
     }
 
     /// Replaces the clock (tests).
@@ -105,6 +121,11 @@ impl Namer {
 
     fn now(&self) -> GoTime {
         (self.now.read().unwrap_or_else(|e| e.into_inner()))()
+    }
+
+    fn seen(&self) -> Vec<(String, String, GoTime)> {
+        let f = self.seen.read().unwrap_or_else(|e| e.into_inner()).clone();
+        f.map(|f| f()).unwrap_or_default()
     }
 
     fn cards(&self) -> Vec<AgentCard> {
@@ -151,7 +172,10 @@ impl Namer {
     }
 
     /// A name for `id` that no live agent but `id` has and no other session
-    /// here used lately.
+    /// here used lately. Among those, it prefers a word nobody went by in
+    /// the remembered past (30 days: names.json, agent-names.json, gone
+    /// agents still on the roster), then one nobody went by in
+    /// [`NAMES_RECENT`], and only then any free word or a numbered name.
     fn pick_locked(
         &self,
         m: &BTreeMap<String, NameEntry>,
@@ -161,15 +185,49 @@ impl Namer {
     ) -> String {
         let key = format!("{}/{id}", self.self_id);
         let mut taken = HashSet::new();
+        let mut recent = HashSet::new();
+        let mut known = HashSet::new();
         for c in cards {
-            if c.key != key && c.status != "gone" {
+            if c.key == key {
+                continue;
+            }
+            if c.status != "gone" {
                 taken.insert(fold(&c.name));
+            } else {
+                known.insert(fold(&c.name));
             }
         }
         for (sid, e) in m {
-            if sid != id && since(now, &e.at) < nanos(NAMES_BUSY) {
-                taken.insert(fold(&e.name));
+            if sid == id {
+                continue;
             }
+            let age = since(now, &e.at);
+            if age < nanos(NAMES_BUSY) {
+                taken.insert(fold(&e.name));
+            } else if age < nanos(NAMES_RECENT) {
+                recent.insert(fold(&e.name));
+            } else {
+                known.insert(fold(&e.name));
+            }
+        }
+        for (k, name, at) in self.seen() {
+            if k == key {
+                continue;
+            }
+            // agent-names.json moves `at` at most daily: a day's slack.
+            if since(now, &at) < nanos(NAMES_RECENT + Duration::from_secs(24 * 3600)) {
+                recent.insert(fold(&name));
+            } else {
+                known.insert(fold(&name));
+            }
+        }
+        let fresh = |s: &str| taken.contains(s) || recent.contains(s) || known.contains(s);
+        if let Some(n) = pick_free(id, &fresh) {
+            return n;
+        }
+        let not_recent = |s: &str| taken.contains(s) || recent.contains(s);
+        if let Some(n) = pick_free(id, &not_recent) {
+            return n;
         }
         pick(id, Some(&|s: &str| taken.contains(s)))
     }

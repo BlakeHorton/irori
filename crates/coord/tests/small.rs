@@ -16,7 +16,8 @@ use store::{Event, Store, kinds};
 #[test]
 fn test_words_are_distinct_and_plain() {
     let mut seen = std::collections::HashSet::new();
-    assert_eq!(WORDS.len(), 127);
+    // Card #224 grew the list from Go's 127.
+    assert_eq!(WORDS.len(), 1021);
     for w in WORDS {
         assert!(seen.insert(*w), "{w:?} twice");
         assert!(
@@ -30,9 +31,10 @@ fn test_words_are_distinct_and_plain() {
 fn test_pick_is_deterministic() {
     let a = names::pick("0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0", None);
     assert_eq!(a, names::pick("0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0", None));
-    // coord.md §3.13 vectors.
-    assert_eq!(a, "lemur");
-    assert_eq!(names::pick("s1", None), "mesa");
+    // coord.md §3.13's vectors were "lemur" and "mesa" over Go's 127
+    // words; card #224's longer list moves a new session's first choice.
+    assert_eq!(a, "mira");
+    assert_eq!(names::pick("s1", None), "antares");
 }
 
 #[test]

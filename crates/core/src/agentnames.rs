@@ -92,6 +92,14 @@ impl AgentNames {
         m.get(key).map(|e| e.name.clone()).unwrap_or_default()
     }
 
+    /// Every remembered agent: (key, name, Unix time last seen with it).
+    pub fn seen(&self) -> Vec<(String, String, i64)> {
+        let m = self.m.lock().unwrap_or_else(|e| e.into_inner());
+        m.iter()
+            .map(|(k, e)| (k.clone(), e.name.clone(), e.at))
+            .collect()
+    }
+
     /// Every remembered key → name.
     pub fn all(&self) -> BTreeMap<String, String> {
         let m = self.m.lock().unwrap_or_else(|e| e.into_inner());

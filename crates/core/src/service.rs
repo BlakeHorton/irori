@@ -791,6 +791,14 @@ impl Core {
         {
             let r = roster.clone();
             names.set_mesh(move || r.agents());
+            // Names agents went by lately, gone ones too (card #224).
+            let an = agent_names.clone();
+            names.set_seen(move || {
+                an.seen()
+                    .into_iter()
+                    .map(|(k, n, at)| (k, n, gocompat::time::GoTime::unix(at, 0)))
+                    .collect()
+            });
         }
 
         // The inbox's hooks reach coord and capture, which open after it.
