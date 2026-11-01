@@ -325,6 +325,11 @@ fn roster_and_devices() {
     assert!(ds[0].this);
     assert_eq!(ds[0].state, "this");
     assert_eq!(ds[0].device_id, r.w.core.device_id());
+    // A rename (card #184) is what the Devices list calls it.
+    let me = r.w.core.device_id().to_string();
+    assert_eq!(r.w.rename_device(&me, "MacBook").unwrap(), "MacBook");
+    assert_eq!(r.w.devices()[0].name, "MacBook");
+    assert!(r.w.rename_device("not-mine", "PC").is_err());
     // No home server in this Core (Options::no_home): the Core's answer.
     let hs = r.w.home_server();
     assert!(!hs.can && !hs.on && !hs.running && !hs.suggest);

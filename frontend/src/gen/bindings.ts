@@ -103,6 +103,7 @@ export const commands = {
 	devicesDevices: () => __TAURI_INVOKE<DeviceView[]>("devices_devices"),
 	devicesColors: () => __TAURI_INVOKE<string[]>("devices_colors"),
 	devicesSetDeviceColor: (deviceId: string, color: string) => __TAURI_INVOKE<null>("devices_set_device_color", { deviceId, color }),
+	devicesRenameDevice: (deviceId: string, name: string) => __TAURI_INVOKE<string>("devices_rename_device", { deviceId, name }),
 	devicesAddDevice: (role: string) => __TAURI_INVOKE<PairStatus>("devices_add_device", { role }),
 	devicesJoinWithCode: (code: string, server: string) => __TAURI_INVOKE<PairStatus>("devices_join_with_code", { code, server }),
 	devicesConfirmWords: (words: string) => __TAURI_INVOKE<null>("devices_confirm_words", { words }),

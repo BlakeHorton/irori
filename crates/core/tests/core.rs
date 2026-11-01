@@ -843,6 +843,42 @@ fn test_device_colors() {
     });
 }
 
+/// Device names (card #184): this device starts as its computer's name;
+/// a rename is a `device.name` row that wins at once, is cleaned to one
+/// short line, tells the window (devices:changed), and "" goes back.
+#[test]
+fn test_device_names() {
+    let r = Rig::new();
+    let me = r.core.device_id().to_string();
+    let host = r.core.device().name.clone();
+    assert_eq!(r.core.device_label(&me), host);
+    assert!(r.core.set_device_name("not-mine", "PC").is_err());
+
+    let feed = r.core.feed(&[irori_core::Topic::Devices]);
+    assert_eq!(
+        r.core.set_device_name(&me, "  Mac\nBook  ").unwrap(),
+        "Mac Book"
+    );
+    assert_eq!(r.core.device_label(&me), "Mac Book", "folded at once");
+    assert_eq!(r.core.device_labels()[&me], "Mac Book");
+    wait_for(5, "devices:changed", || {
+        matches!(feed.try_recv(), Some(CoreEvent::Devices))
+    });
+    let rows = r
+        .core
+        .store()
+        .list(&store::Filter {
+            kinds: vec![coord::devname::KIND.into()],
+            ..store::Filter::default()
+        })
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].actor, "user");
+
+    r.core.set_device_name(&me, "").unwrap();
+    assert_eq!(r.core.device_label(&me), host, "empty goes back");
+}
+
 /// The inbox's sweep and Follow run on their own: a send is folded, and a
 /// sweep call through the Core works between the timed ones.
 #[test]

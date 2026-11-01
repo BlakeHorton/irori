@@ -159,16 +159,42 @@ fn write_agent(
         mode = "unknown".into();
     }
     let _ = writeln!(b, "  permissionMode: {mode}");
+    let _ = writeln!(b, "  last activity: {}", last_activity(c, now));
+    let txt = one_line(&c.last_text, MAX_FIELD_RUNES);
+    if !txt.is_empty() {
+        let _ = writeln!(b, "  last text (untrusted): {}", q(&txt));
+    }
+}
+
+/// An agent's last activity. Mid-turn (busy, a shell command, a prompt)
+/// it says so, with how long it has been in that state: a long command
+/// writes no transcript row, and a session with no transcript here (card
+/// #159) has none at all, which read as "never" or hours ago.
+pub(crate) fn last_activity(c: &presence::AgentCard, now: &GoTime) -> String {
+    let in_turn = !matches!(
+        c.status.as_str(),
+        "" | "idle" | "gone" | coord::roster::NOT_ANSWERING
+    );
+    if in_turn {
+        let mut s = "in a turn now".to_string();
+        if !c.updated_at.is_zero() {
+            s += &format!(
+                " ({} since {})",
+                one_line(&c.status, 40),
+                ago(now, &c.updated_at)
+            );
+        }
+        if !c.last_activity.is_zero() {
+            s += &format!("; last transcript row {}", ago(now, &c.last_activity));
+        }
+        return s;
+    }
     let last = if c.last_activity.is_zero() {
         c.updated_at
     } else {
         c.last_activity
     };
-    let _ = writeln!(b, "  last activity: {}", ago(now, &last));
-    let txt = one_line(&c.last_text, MAX_FIELD_RUNES);
-    if !txt.is_empty() {
-        let _ = writeln!(b, "  last text (untrusted): {}", q(&txt));
-    }
+    ago(now, &last)
 }
 
 const EVENTS_ARGS: &[(&str, Ty)] = &[("kinds", Ty::Strs), ("limit", Ty::Int)];
@@ -287,4 +313,42 @@ pub fn redact(kind: &str, raw: &[u8]) -> Vec<u8> {
         }
     }
     gocompat::json::marshal(&v).unwrap_or_else(|_| LEFT_OUT.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card(status: &str, updated: i64, last: i64) -> presence::AgentCard {
+        let t = |s: i64| {
+            if s == 0 {
+                GoTime::ZERO
+            } else {
+                GoTime::unix(s, 0)
+            }
+        };
+        presence::AgentCard {
+            status: status.into(),
+            updated_at: t(updated),
+            last_activity: t(last),
+            ..presence::AgentCard::default()
+        }
+    }
+
+    /// Card #159: a busy agent's last activity is its turn, never "never".
+    #[test]
+    fn last_activity_shows_the_turn_in_progress() {
+        let now = GoTime::unix(10_000, 0);
+        assert_eq!(last_activity(&card("busy", 0, 0), &now), "in a turn now");
+        assert_eq!(
+            last_activity(&card("shell", 10_000 - 600, 10_000 - 540), &now),
+            "in a turn now (shell since 10m ago); last transcript row 9m ago"
+        );
+        assert_eq!(
+            last_activity(&card("busy", 10_000 - 3600, 0), &now),
+            "in a turn now (busy since 1h ago)"
+        );
+        assert_eq!(last_activity(&card("idle", 0, 0), &now), "never");
+        assert_eq!(last_activity(&card("idle", 9_000, 9_940), &now), "1m ago");
+    }
 }

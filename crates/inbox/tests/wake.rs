@@ -805,3 +805,37 @@ fn overflow_notice_stays_open() {
     assert!(open.len() == 1 && open[0].id == ids[2]);
     h.ib.skip(KEY_B, &ids[2], "").unwrap();
 }
+
+/// Card #159: a comment's notices, each with whether its recipient read it,
+/// so the thread can say who still waits to hear it and who read it.
+#[test]
+fn comment_notices_say_who_read_them() {
+    let h = Harness::new();
+    h.abc();
+    let on = |reason: &str| SendOptions {
+        notice: true,
+        reason: reason.into(),
+        ref_: "comment:c1".into(),
+        ..Default::default()
+    };
+    let read_of = |id: &str| {
+        h.ib.comment_notices(&["mentioned", "comment"], 100)
+            .into_iter()
+            .find(|(d, _)| d.id == id)
+            .map(|(_, r)| r)
+    };
+    let m = h.send_with(&person(), &to("beta"), "@beta look", on("mentioned"));
+    let c = h.send_with(&person(), &to("alpha"), "a comment", on("comment"));
+    let other = h.send_with(&person(), &to("alpha"), "x", on("answered"));
+    assert_eq!(read_of(&m.id), Some(false), "queued: not read");
+    assert_eq!(read_of(&other.id), None, "other reasons are left out");
+    // Appended to beta's next turn: still not read until it engages.
+    let w = h.append_for(KEY_B);
+    h.ib.mark_delivered(KEY_B, &w.token).unwrap();
+    assert_eq!(read_of(&m.id), Some(false));
+    h.ib.mark_engaged(KEY_B, &w.token, "t").unwrap();
+    assert_eq!(read_of(&m.id), Some(true));
+    // alpha skips it itself: it saw it.
+    h.ib.skip(KEY_A, &c.id, "").unwrap();
+    assert_eq!(read_of(&c.id), Some(true));
+}

@@ -167,11 +167,22 @@ impl Window {
     /// DevicesService.Devices: the person's devices, this one first.
     pub fn devices(&self) -> Vec<DeviceView> {
         let colors = self.core.device_colors();
+        let names = self.core.device_labels();
         let mut out = self.seams.mesh.devices();
         for d in &mut out {
             d.color = colors.get(&d.device_id).cloned().unwrap_or_default();
+            // The person's name for it, when they gave one (card #184).
+            if let Some(n) = names.get(&d.device_id).filter(|n| !n.is_empty()) {
+                d.name = n.clone();
+            }
         }
         out
+    }
+
+    /// DevicesService.RenameDevice: the person's name for one of their
+    /// devices (`""` goes back to the computer's name); the name as kept.
+    pub fn rename_device(&self, device_id: &str, name: &str) -> Result<String, String> {
+        self.core.set_device_name(device_id, name)
     }
 
     /// DevicesService.SetDeviceColor ("" goes back to the default).

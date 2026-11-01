@@ -484,6 +484,9 @@ pub(crate) struct Drec {
     /// went queued or delivered from any other state, or to someone new.
     /// A wake re-sent or delivered doesn't move it (card #110).
     pub waiting_since: GoTime,
+    /// Folded, never written: its recipient itself closed it (skipped
+    /// it), so it saw it (card #159).
+    pub self_closed: bool,
 }
 
 impl Drec {
@@ -1125,6 +1128,7 @@ impl Inner {
         d.d.reminded = r.reminded;
         d.moved_from = r.moved_from.clone();
         d.engaged_once = r.engaged_once;
+        d.self_closed = r.state == st::SKIPPED && !r.by.is_empty() && r.by == r.to;
         d.appended = r.appended && r.state == st::DELIVERED;
         let waits = |x: &str| x == st::QUEUED || x == st::DELIVERED;
         if waits(&r.state) && (!waits(&prev_state) || r.to != prev_to) {

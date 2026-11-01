@@ -144,10 +144,11 @@ impl Core {
         remote_servers(&self.hubs(), Instant::now())
     }
 
-    /// Go `deviceNames`: each device's label, else its id, joined with
+    /// Go `deviceNames`: what each device is called (the person's name
+    /// for it, else its label, card #184), else its id, joined with
     /// " or "; [`NO_CONNECTED_DEVICE`] for none.
     pub fn device_names(&self, ids: &[String]) -> String {
-        device_names(self.chain(), ids)
+        device_names(self.chain(), &self.device_renames(), ids)
     }
 
     /// Go `fetchRef` within [`FETCH_TIMEOUT`]: makes sure `r`'s file is on
@@ -160,19 +161,25 @@ impl Core {
             self.pairing_runtime(),
             self.device_id(),
             self.chain(),
+            &self.device_renames(),
             r,
         )
     }
 }
 
 /// [`Core::device_names`] over the Chain.
-pub(crate) fn device_names(chain: &Chain, ids: &[String]) -> String {
+pub(crate) fn device_names(
+    chain: &Chain,
+    renames: &std::collections::HashMap<String, String>,
+    ids: &[String],
+) -> String {
     if ids.is_empty() {
         return NO_CONNECTED_DEVICE.into();
     }
     ids.iter()
-        .map(|id| match chain.cert(id) {
-            Some(c) if !c.label.is_empty() => c.label,
+        .map(|id| match (renames.get(id), chain.cert(id)) {
+            (Some(n), Some(_)) => n.clone(),
+            (_, Some(c)) if !c.label.is_empty() => c.label,
             _ => id.clone(),
         })
         .collect::<Vec<_>>()
@@ -186,6 +193,7 @@ pub(crate) fn fetch_file_blocking(
     rt: &tokio::runtime::Handle,
     device_id: &str,
     chain: &Chain,
+    renames: &std::collections::HashMap<String, String>,
     r: &FileRef,
 ) -> Result<String, FileFetchError> {
     let mesh = mesh.clone();
@@ -200,7 +208,7 @@ pub(crate) fn fetch_file_blocking(
             } else {
                 holders
             };
-            Err(FileFetchError::Offline(device_names(chain, &ids)))
+            Err(FileFetchError::Offline(device_names(chain, renames, &ids)))
         }
         Ok(Err(e)) => Err(FileFetchError::Other(e.to_string())),
     }

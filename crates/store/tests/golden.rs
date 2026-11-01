@@ -85,6 +85,10 @@ const SINCE_GO: [&str; 8] = [
     kinds::TASK_OFFERED,
 ];
 
+/// Kinds added after the Go port that board logs refuse: the person's own
+/// rows (device names, card #184).
+const SINCE_GO_REFUSED: [&str; 1] = [kinds::DEVICE_NAME];
+
 #[test]
 fn kinds_registry_matches_go() {
     let g = golden("store/kinds.json");
@@ -92,16 +96,21 @@ fn kinds_registry_matches_go() {
         assert_eq!(store::kind_side(k), Side::Replicated, "{k}");
         assert!(store::board_accepted(k), "{k}");
     }
+    for k in SINCE_GO_REFUSED {
+        assert_eq!(store::kind_side(k), Side::Replicated, "{k}");
+        assert!(!store::board_accepted(k), "{k}");
+    }
+    let since_go = |k: &str| SINCE_GO.contains(&k) || SINCE_GO_REFUSED.contains(&k);
     let sides: BTreeMap<String, String> = REGISTRY
         .iter()
-        .filter(|e| !SINCE_GO.contains(&e.kind))
+        .filter(|e| !since_go(e.kind))
         .map(|e| (e.kind.to_string(), side_name(e.side).to_string()))
         .collect();
     let want_sides: BTreeMap<String, String> = serde_json::from_value(g["sides"].clone()).unwrap();
     assert_eq!(sides, want_sides, "Side column");
     let boards: BTreeMap<String, String> = REGISTRY
         .iter()
-        .filter(|e| e.board != Board::Unclassified && !SINCE_GO.contains(&e.kind))
+        .filter(|e| e.board != Board::Unclassified && !since_go(e.kind))
         .map(|e| (e.kind.to_string(), board_name(e.board).to_string()))
         .collect();
     let want_boards: BTreeMap<String, String> =
