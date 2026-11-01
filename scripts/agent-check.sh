@@ -3,8 +3,8 @@
 # before each release (docs/releasing.md step 1); not part of check.sh
 # because every scenario is a real Claude session and spends API tokens.
 #
-#   sh scripts/agent-check.sh            all four scenarios
-#   sh scripts/agent-check.sh --only 2   just one (1 to 4; comma list)
+#   sh scripts/agent-check.sh            every scenario
+#   sh scripts/agent-check.sh --only 2   just one (1 to 6; comma list)
 #
 # `irori-dev agent-check` (crates/dev/src/agent_check.rs) hosts a real
 # Core on a throwaway IRORI_HOME, acts as the person through the window's
@@ -17,7 +17,12 @@
 #   3 the person's comment changes a card's purpose: the agent renames it
 #     and redoes its steps;
 #   4 the person answers the agent's blocker: the agent resolves it in the
-#     turn it acts on the answer (card #204).
+#     turn it acts on the answer (card #204);
+#   5 the person stops a busy agent: its turn is cut and it answers first
+#     (card #207);
+#   6 the person presses Wind down all while a busy agent holds a card and
+#     a lease: it hands the card back with a hand-off, releases the lease
+#     and answers (card #220).
 # It prints PASS or FAIL per scenario and exits non-zero on any failure.
 #
 # Needs `claude` signed in (or CLAUDE_BIN). AGENT_CHECK_MODEL picks the

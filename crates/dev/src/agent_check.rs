@@ -29,6 +29,10 @@
 //!   5 stop (card #207): the person stops an agent in the middle of a long
 //!     task; its turn is cut, it answers the person first and leaves the
 //!     task unfinished.
+//!   6 wind down (card #220): the person presses Wind down all while an
+//!     agent, holding a card and a lease, is busy on a long task; it is not
+//!     cut, and at its safe point it posts a hand-off and leaves the card,
+//!     releases the lease and answers "wound down".
 //!
 //! The Core's claude dir is --claude, a scratch dir holding only the
 //! sessions this run starts, so it never sees the real sessions; claude
@@ -74,6 +78,10 @@ const S4_OPTIONS: [&str; 2] = ["MIT", "Apache-2.0"];
 /// 5 (card #207): a long task, then the person's stop with a question.
 const S5_FILES: usize = 40;
 const S5_TASK: &str = "Read every file in this folder (note-01.txt to note-40.txt) one at a time with the Read tool, in order, one call each. When all 40 are read, write SUMMARY.md listing each file's first line. Don't stop early.";
+const S6_TITLE: &str = "Summarize the notes folder";
+const S6_LEASE: &str = "notes/summary";
+const S6_FILES: usize = 12;
+const S6_TASK: &str = "Read every file in this folder (note-01.txt to note-12.txt) one at a time with the Read tool, in order, one call each, then write SUMMARY.md listing each file's first line. This is the work on your card; don't stop early.";
 const S5_STOP: &str = "Which note file were you reading when I stopped you? Answer me with the irori send tool (to: \"user\"), then wait: don't go back to the notes.";
 const S3_COMMENT: &str = "Change of plan: forget dark mode. What we actually need here is a high-contrast mode for people with low vision, toggled from the same settings page. Dark mode can wait.";
 
@@ -120,9 +128,9 @@ impl Opts {
                 }
                 "--only" => {
                     for p in val()?.split(',').filter(|p| !p.is_empty()) {
-                        let n: u32 = p.parse().map_err(|_| format!("--only {p}: 1 to 5"))?;
-                        if !(1..=5).contains(&n) {
-                            return Err(format!("--only {p}: 1 to 5"));
+                        let n: u32 = p.parse().map_err(|_| format!("--only {p}: 1 to 6"))?;
+                        if !(1..=6).contains(&n) {
+                            return Err(format!("--only {p}: 1 to 6"));
                         }
                         o.only.push(n);
                     }
@@ -705,6 +713,138 @@ fn stop(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
     (r, log)
 }
 
+/// 6 (card #220): Wind down all while an agent holding a card and a lease
+/// is busy; at its safe point it hands the card back with a hand-off,
+/// releases the lease and answers.
+fn wind_down(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
+    let mut a = match Agent::start(o, h, "s6-wind-down") {
+        Ok(a) => a,
+        Err(e) => return (Err(e), None),
+    };
+    let log = Some(a.log.clone());
+    let cwd = o.work.join("s6-wind-down");
+    for i in 1..=S6_FILES {
+        let body = format!("note {i:02}: {}\n", "lorem ipsum ".repeat(40));
+        if let Err(e) = std::fs::write(cwd.join(format!("note-{i:02}.txt")), body) {
+            return (Err(format!("the notes: {e}")), log);
+        }
+    }
+    let caller = tools::Caller {
+        sender: inbox::Sender::new(&a.key, "s6-wind-down", "claude"),
+        path: String::new(),
+    };
+    let call = |tool: &str, args: serde_json::Value| {
+        let raw = serde_json::to_vec(&args).unwrap_or_default();
+        h.core
+            .tools()
+            .call(&caller, tool, &raw)
+            .map_err(|e| format!("the agent's {tool}: {e}"))
+    };
+    // The agent's card and lease, made as the agent.
+    let args = serde_json::json!({
+        "title": S6_TITLE,
+        "objective": "Read the notes in the working folder and write SUMMARY.md.",
+        "steps": [{"text": "Read the notes", "doing": true}, {"text": "Write SUMMARY.md"}],
+    });
+    if let Err(e) = call("board_create", args) {
+        return (Err(e), log);
+    }
+    let Some(t) = tasks(h).into_iter().find(|t| t.title == S6_TITLE) else {
+        return (Err("the agent's card was not made".into()), log);
+    };
+    let task = format!("task:{}", t.id);
+    if !t.holders.contains(&a.key)
+        && let Err(e) = call("board_join", serde_json::json!({ "task_id": task }))
+    {
+        return (Err(e), log);
+    }
+    if let Err(e) = call("lease", serde_json::json!({ "resource": S6_LEASE })) {
+        return (Err(e), log);
+    }
+    let person = h.core.user_sender();
+    let sent = h.core.inbox().send_with(
+        &person,
+        &inbox::Address::new(inbox::addr::AGENT, &a.key),
+        S6_TASK,
+        inbox::SendOptions {
+            mode: inbox::mode::WAKE.into(),
+            ref_: task.clone(),
+            ..inbox::SendOptions::default()
+        },
+    );
+    if let Err(e) = sent {
+        return (Err(format!("the person's task: {e}")), log);
+    }
+    // Wind down once the long turn is under way: its third tool call.
+    if let Err(e) = a.wait_tool_uses(3, o.turn_wait) {
+        return (Err(format!("the long turn never got going: {e}")), log);
+    }
+    let run = match h
+        .window
+        .wind_down_all(irori_window::wind_down::SCOPE_THIS, true)
+    {
+        Ok(r) => r,
+        Err(e) => return (Err(format!("the person's wind down: {e}")), log),
+    };
+    if !run.rows.iter().any(|r| r.key == a.key) {
+        return (
+            Err(format!("the run missed the agent: {:?}", run.rows)),
+            log,
+        );
+    }
+    let id = t.id.clone();
+    let r = play(o, h, &mut a, |h, a| {
+        let t = h.core.coord().get_task(&id).ok_or("the card is gone")?;
+        let handoff = h
+            .core
+            .coord()
+            .comments(&id)
+            .unwrap_or_default()
+            .iter()
+            .any(|c| c.by == a.key);
+        let leased = h
+            .core
+            .coord()
+            .leases()
+            .iter()
+            .any(|l| l.resource == S6_LEASE);
+        let st = h.window.wind_down_status();
+        let row = st
+            .rows
+            .iter()
+            .find(|r| r.key == a.key)
+            .map(|r| r.state.clone())
+            .unwrap_or_default();
+        let mut missing = Vec::new();
+        if t.holders.contains(&a.key) {
+            missing.push("still holds the card");
+        }
+        if !handoff {
+            missing.push("no hand-off comment");
+        }
+        if leased {
+            missing.push("the lease is still held");
+        }
+        if row != irori_window::wind_down::row::DONE {
+            missing.push("no answer to the wind-down");
+        }
+        if missing.is_empty() {
+            Ok(format!(
+                "card unheld with a hand-off, lease released, answered; left_off {:?}; Pause all {}",
+                t.left_off
+                    .as_ref()
+                    .map(|l| l.text.clone())
+                    .unwrap_or_default(),
+                if st.paused { "on" } else { "off" }
+            ))
+        } else {
+            Err(missing.join(", "))
+        }
+    });
+    a.stop();
+    (r, log)
+}
+
 pub fn run(o: &Opts) -> ExitCode {
     for d in [&o.home, &o.claude, &o.work] {
         if let Err(e) = empty_dir(d) {
@@ -721,7 +861,7 @@ pub fn run(o: &Opts) -> ExitCode {
     };
     let mut tally = Tally { failed: 0 };
     type Scenario = fn(&Opts, &Host) -> (Result<String, String>, Option<PathBuf>);
-    let all: [(u32, &str, Scenario); 5] = [
+    let all: [(u32, &str, Scenario); 6] = [
         (1, "1 ask: taken and closed with an outcome", ask),
         (
             2,
@@ -742,6 +882,11 @@ pub fn run(o: &Opts) -> ExitCode {
             5,
             "5 stop: a busy agent's turn is cut and it answers the person first",
             stop,
+        ),
+        (
+            6,
+            "6 wind down: a busy agent hands its card back, releases its lease and answers",
+            wind_down,
         ),
     ];
     for (n, name, f) in all {
@@ -801,7 +946,7 @@ mod tests {
         assert!(
             Opts::parse(&args(&[
                 "--home", "h", "--claude", "c", "--work", "w", "--irori", "i", "--mod", "m",
-                "--only", "6"
+                "--only", "7"
             ]))
             .is_err()
         );
