@@ -423,6 +423,7 @@ fn offer_notice(t: &Task, to: &str, poster: &str, why: &str) -> Notice {
             cut(&t.done_criteria, MAX_OFFER_NOTICE)
         ));
     }
+    b.push_str(&t.handover_lines());
     b.push_str(&format!(
         "\nIt is yours to take: board_join {} and start. If you can't take it on now, board_leave {} and it goes to the next free agent; ending your turn without taking it does the same.",
         t.short_ref(),

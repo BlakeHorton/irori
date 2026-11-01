@@ -17,6 +17,8 @@ import {
   CardResolution,
   CardSubtask,
   CardThreadItem,
+  CardWhere,
+  CardLeftOff,
   CardWait,
   Holding,
 } from "./models"
@@ -796,6 +798,20 @@ export function sampleCards(now: Date): CardDetail[] {
     }),
     card({
       id: "sample-card-4",
+      // Where its work is and where it left off (card #137).
+      where: CardWhere({
+        who: otter,
+        worktree: "/Users/sample/projects/example-app-pair",
+        branch: "feat/pair-devices",
+        head: "4f1c2ab9e07d6c5b3a29f8e1d0c7b6a594837261",
+        pushed: true,
+        at: at(3),
+      }),
+      leftOff: CardLeftOff({
+        text: "Pairing code and words work on both sides; next: the PC's firewall prompt",
+        by: otter,
+        at: at(6),
+      }),
       title: "Pair my devices",
       // Pinned (board.md "Pinned cards"): in the Pinned group, first.
       pinned: true,

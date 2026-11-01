@@ -466,6 +466,13 @@ export type CardHolder = {
 	others: number,
 };
 
+/**  A holder's one line on what's done and what's next (card #137). */
+export type CardLeftOff = {
+	text: string,
+	by: AgentRef,
+	at: string,
+};
+
 /**
  *  A mention on a thread item or an ask, with the agent as the window
  *  knows it now (card #77).
@@ -591,6 +598,13 @@ export type CardSummary = {
 	pinRank?: number,
 	/**  Where the card sits on the Board's canvas (card #93), once placed. */
 	pos?: CanvasPos | null,
+	/**
+	 *  Where the holder's work is (card #137): its worktree, branch, last
+	 *  commit and whether it's pushed.
+	 */
+	where?: CardWhere | null,
+	/**  The holder's last line on what's done and what's next (card #137). */
+	leftOff?: CardLeftOff | null,
 };
 
 /**  One entry of a card's thread. */
@@ -637,6 +651,18 @@ export type CardWait = {
 	who: AgentRef,
 	text: string,
 	onThis: boolean,
+};
+
+/**  Where a card's work is (card #137), as its holder's device last saw it. */
+export type CardWhere = {
+	/**  The holder it describes, with its device. */
+	who: AgentRef,
+	worktree: string,
+	branch: string,
+	/**  The last commit's sha. */
+	head: string,
+	pushed: boolean,
+	at: string,
 };
 
 /**  presence.Change. */

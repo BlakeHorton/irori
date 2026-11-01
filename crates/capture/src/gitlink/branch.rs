@@ -83,6 +83,49 @@ pub fn branch_tips(root: &str, branch: &str) -> Option<Vec<String>> {
     )
 }
 
+/// Where a session's work is in git (card #137), read from the ref files
+/// like the rest of this module: no git process.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GitPlace {
+    /// The worktree root.
+    pub worktree: String,
+    /// The checked-out branch; empty when HEAD is detached.
+    pub branch: String,
+    /// HEAD's sha; empty on a branch with no commit yet.
+    pub head: String,
+    /// origin's copy of the branch is at HEAD.
+    pub pushed: bool,
+}
+
+/// The git place of directory `dir`; `None` outside a repo.
+pub fn place(dir: &str) -> Option<GitPlace> {
+    let root = worktree_root(dir)?;
+    let gd = PathBuf::from(git_dir(&root).ok()?);
+    let common = common_dir(&root)?;
+    let head = std::fs::read_to_string(gd.join("HEAD")).ok()?;
+    let head = head.trim();
+    let mut p = GitPlace {
+        worktree: root,
+        ..GitPlace::default()
+    };
+    if let Some(r) = head.strip_prefix("ref: ") {
+        let r = r.trim();
+        p.branch = r.strip_prefix("refs/heads/").unwrap_or(r).to_string();
+        // A worktree's own refs (none for heads) sit in its git dir; heads
+        // are in the common dir.
+        p.head = read_ref(&common, r)
+            .or_else(|| read_ref(&gd, r))
+            .unwrap_or_default();
+    } else if is_sha(head) {
+        p.head = head.to_lowercase();
+    }
+    if !p.branch.is_empty() && !p.head.is_empty() {
+        p.pushed = read_ref(&common, &format!("refs/remotes/origin/{}", p.branch))
+            .is_some_and(|o| o == p.head);
+    }
+    Some(p)
+}
+
 /// The first ref whose sha differs between two "<ref>=<sha>" lists, as
 /// (ref, old, new).
 pub fn moved_ref(before: &[String], now: &[String]) -> Option<(String, String, String)> {
@@ -157,5 +200,40 @@ mod tests {
             Some(("refs/heads/main".into(), A.into(), B.into()))
         );
         assert_eq!(moved_ref(&now, &now), None);
+    }
+
+    #[test]
+    fn place_reads_branch_head_and_pushed() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("app");
+        let git = root.join(".git");
+        std::fs::create_dir_all(git.join("refs/heads/feat")).unwrap();
+        std::fs::create_dir_all(git.join("refs/remotes/origin/feat")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(git.join("HEAD"), "ref: refs/heads/feat/x\n").unwrap();
+        std::fs::write(git.join("refs/heads/feat/x"), format!("{A}\n")).unwrap();
+        let sub = root.join("src").to_string_lossy().into_owned();
+        let p = place(&sub).unwrap();
+        assert_eq!(
+            (p.branch.as_str(), p.head.as_str(), p.pushed),
+            ("feat/x", A, false)
+        );
+        assert_eq!(p.worktree, root.to_string_lossy());
+        // origin has an older commit: still not pushed.
+        std::fs::write(git.join("refs/remotes/origin/feat/x"), format!("{B}\n")).unwrap();
+        assert!(!place(&sub).unwrap().pushed);
+        // Pushed: origin's copy is at HEAD.
+        std::fs::write(git.join("refs/remotes/origin/feat/x"), format!("{A}\n")).unwrap();
+        assert!(place(&sub).unwrap().pushed);
+        // Detached HEAD: a sha, no branch.
+        std::fs::write(git.join("HEAD"), format!("{B}\n")).unwrap();
+        let p = place(&sub).unwrap();
+        assert_eq!(
+            (p.branch.as_str(), p.head.as_str(), p.pushed),
+            ("", B, false)
+        );
+        // Outside any repo.
+        let other = tempfile::tempdir().unwrap();
+        assert!(place(&other.path().to_string_lossy()).is_none());
     }
 }

@@ -486,6 +486,8 @@ function summary(c: CardDetail): CardSummary {
     openBlockers: c.openBlockers,
     blockerQuestion: c.blockerQuestion,
     ready: c.ready,
+    where: c.where,
+    leftOff: c.leftOff,
     waiting: c.waiting,
     working: c.working,
     watching: c.watching,

@@ -2114,3 +2114,73 @@ fn test_board_status_completed_without_done_check_needs_no_proof() {
     );
     has(&out, &["is completed now"]);
 }
+
+/// Card #137: a card says where its work is and where its holder left
+/// off, and whoever picks it up hears both.
+#[test]
+fn test_board_join_hands_over_where_and_left_off() {
+    // alpha works in a git worktree on feat/x, one commit, not pushed.
+    let repo = tempfile::tempdir().unwrap();
+    let git = repo.path().join(".git");
+    std::fs::create_dir_all(git.join("refs/heads/feat")).unwrap();
+    std::fs::write(git.join("HEAD"), "ref: refs/heads/feat/x\n").unwrap();
+    let sha = "abcdef0123456789abcdef0123456789abcdef01";
+    std::fs::write(git.join("refs/heads/feat/x"), format!("{sha}\n")).unwrap();
+    let root = repo.path().to_string_lossy().into_owned();
+
+    let h = new_harness();
+    let mut ca = card(
+        KEY_A,
+        "alpha",
+        "remote:github.com/acme/app",
+        inbox::BYPASS_MODE,
+    );
+    ca.cwd = root.clone();
+    h.b.roster.put(ca);
+    let (a, b) = (call_a(), call_b());
+    let id = h.new_card(
+        &a,
+        json!({"title": "lexer", "steps": [{"text": "tokens"}, {"text": "errors"}]}),
+    );
+    h.okj(&a, "board_join", json!({"task_id": id}));
+
+    // A tick without left_off asks for one.
+    let out = h.okj(
+        &a,
+        "board_step",
+        json!({"task_id": id, "step_id": "s1", "done": true}),
+    );
+    has(
+        &out,
+        &["Say where you left off", "left_off=", "push your branch"],
+    );
+    has(
+        &out,
+        &[&format!(
+            "where: branch feat/x @ abcdef0 (not pushed) in {root}"
+        )],
+    );
+    // With it, the card says it.
+    let out = h.okj(
+        &a,
+        "board_step",
+        json!({"task_id": id, "step_id": "s2", "doing": true, "left_off": "tokens done; next: error recovery"}),
+    );
+    has_not(&out, &["Say where you left off"]);
+    has(&out, &["left off: \"tokens done; next: error recovery\""]);
+
+    // alpha stops; beta picks it up and hears where it is.
+    h.okj(&a, "board_leave", json!({"task_id": id}));
+    let out = h.okj(&b, "board_join", json!({"task_id": id}));
+    has(
+        &out,
+        &[
+            "Picking up where it was:",
+            &format!(
+                "Where: branch feat/x @ abcdef0 (not pushed) in {root}; not pushed, so the last commits may be only on that machine"
+            ),
+            "Left off: tokens done; next: error recovery",
+            "Work from that branch",
+        ],
+    );
+}
