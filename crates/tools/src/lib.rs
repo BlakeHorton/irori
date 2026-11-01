@@ -164,6 +164,13 @@ pub trait TaskRouter: Send + Sync {
             format_args!("no shared board holds a lease on {resource}"),
         ))
     }
+    /// The shared board's coord holding comment `id`, or `None` when no
+    /// shared board has it (card #189: show reads a shared card's comments
+    /// from its board's log, which capture doesn't index).
+    fn comment_coord(&self, id: &str) -> Option<Arc<coord::Coord>> {
+        let _ = id;
+        None
+    }
 }
 
 /// Shared boards to show (Go `BoardViewer`).

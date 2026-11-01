@@ -429,6 +429,19 @@ fn short2(now: &GoTime, t: &GoTime) -> String {
 
 const SHOW_ARGS: &[(&str, Ty)] = &[("ref", Ty::Str), ("offset", Ty::Int)];
 
+/// The shared board's coord a card or comment ref lives in, or `None` when
+/// it is the private board's (or not a card or comment).
+fn shared_coord(s: &Inner, r: &str) -> Option<std::sync::Arc<coord::Coord>> {
+    let rt = s.b.router()?;
+    let (kind, id) = search::parse_ref(r).ok()?;
+    let co = match kind {
+        Kind::Task => rt.task_coord(&id, &[]).ok()?.0,
+        Kind::Comment if s.b.coord().get_comment(&id).is_none() => rt.comment_coord(&id)?,
+        _ => return None,
+    };
+    (!std::sync::Arc::ptr_eq(&co, s.b.coord())).then_some(co)
+}
+
 pub(crate) fn show(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let a = match decode(raw, SHOW_ARGS) {
         Ok(a) => a,
@@ -459,14 +472,18 @@ pub(crate) fn show(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if offset < 0 {
         return err_text("offset is where to continue: 0 or more.");
     }
-    let sh = match cp.show(
-        &r,
-        &ShowOptions {
-            offset,
-            viewer: c.sender.key.clone(),
-            ..ShowOptions::default()
-        },
-    ) {
+    let opts = ShowOptions {
+        offset,
+        viewer: c.sender.key.clone(),
+        ..ShowOptions::default()
+    };
+    // A shared board's cards and comments live in that board's log, which
+    // capture doesn't index: read them there (card #189).
+    let shown = match shared_coord(s, &r) {
+        Some(co) => search::Source::search_show(&*co, &r, &opts),
+        None => cp.show(&r, &opts),
+    };
+    let sh = match shown {
         Ok(sh) => sh,
         Err(e) if e.is_not_found() => {
             return err_text(&format!(

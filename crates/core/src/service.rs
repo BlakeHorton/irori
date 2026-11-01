@@ -383,6 +383,14 @@ impl tools::TaskRouter for ToolsView {
     ) -> Result<(String, coord::Comment, Notice), coord::Error> {
         self.0.request_release(by, resource, why)
     }
+    fn comment_coord(&self, id: &str) -> Option<Arc<Coord>> {
+        self.0
+            .boards
+            .list()
+            .into_iter()
+            .map(|b| b.coord().clone())
+            .find(|co| co.get_comment(id).is_some())
+    }
 }
 
 impl tools::BoardViewer for ToolsView {

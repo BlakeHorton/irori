@@ -166,6 +166,9 @@ impl TaskRouter for Fake {
         }
         self.private.task_ref(r).or_else(|_| self.co.task_ref(r))
     }
+    fn comment_coord(&self, id: &str) -> Option<Arc<Coord>> {
+        self.co.get_comment(id).map(|_| self.co.clone())
+    }
 }
 
 impl SharedBoards for Fake {
@@ -693,4 +696,56 @@ fn mentions_on_a_shared_card_name_other_people_and_their_agents() {
         json!({"task_id": pid, "text": "@Blake?"}),
     );
     has_not(&out, &["Blake (on the board)"]);
+}
+
+/// Card #189: show opens a shared board's card and its comments, which live
+/// in the board's log (capture indexes only the private one).
+#[test]
+fn show_opens_a_shared_card_and_its_comments() {
+    let r = rig();
+    let (claude_dir, data_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut opts = capture::Options::new(
+        &canon(claude_dir.path()),
+        &canon(data_dir.path()),
+        "dev1",
+        Arc::new(capture::NoScrub),
+        Arc::new(capture::MemBlobs::default()),
+    );
+    let clk = r.h.clk.clone();
+    opts.now = Arc::new(move || clk.now());
+    let cp = capture::Capture::new(r.h.b.st.clone(), None, opts).unwrap();
+    cp.add_source(r.h.b.co.clone());
+    assert!(r.h.b.cp.set(cp).is_ok());
+
+    let id = created_id(&r.h.okj(
+        &call_a(),
+        "board_create",
+        json!({"title": "Dolphin rig", "objective": "boot the disc", "board": "mlg"}),
+    ));
+    r.h.okj(
+        &call_a(),
+        "board_comment",
+        json!({"task_id": id, "text": "fixtures are in the handoff notes"}),
+    );
+    for rf in ["mlg#1".to_string(), format!("task:{id}")] {
+        let out = r.h.okj(&call_b(), "show", json!({"ref": rf}));
+        has(
+            &out,
+            &[
+                "Dolphin rig",
+                "boot the disc",
+                "fixtures are in the handoff notes",
+            ],
+        );
+    }
+    let cm = r.fake.co.comments(&id).unwrap()[0].id.clone();
+    let out =
+        r.h.okj(&call_b(), "show", json!({"ref": format!("comment:{cm}")}));
+    has(&out, &["fixtures are in the handoff notes", "Dolphin rig"]);
+    // A private card still opens from the private log.
+    let p = r.h.new_card(&call_a(), json!({"title": "mine only"}));
+    has(
+        &r.h.okj(&call_a(), "show", json!({"ref": format!("task:{p}")})),
+        &["mine only"],
+    );
 }
