@@ -245,6 +245,10 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub parent: Option<CardRef>,
+    /// The person's thread this card was made from (card #155).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub from_thread: Option<CardRef>,
     #[serde(skip_serializing_if = "is_zero")]
     #[specta(optional)]
     pub subtasks: i64,
@@ -507,6 +511,11 @@ pub struct CardThreadItem {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
     pub edited: bool,
+    /// An event saying a card was made or changed from this thread (card
+    /// #155): the Threads panel keeps it among the answers.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub made: bool,
 }
 
 /// What Modify can do with the person's comment (card #105).
@@ -1856,6 +1865,7 @@ fn build_thread(
                 text: format!("{} {}", who.name, p.named(&a.what)),
                 blocker_id: a.blocker_id.clone(),
                 revised: a.revised,
+                made: a.kind == coord::MADE_KIND,
                 who,
                 ..CardThreadItem::default()
             },
@@ -1997,6 +2007,15 @@ fn family_of(co: &coord::Coord, t: &Task, s: &mut CardSummary) {
             id: pt.id.clone(),
             short: pt.short.clone(),
             title: pt.title.clone(),
+        });
+    }
+    if !t.from.is_empty()
+        && let Some(th) = co.get_task(&t.from)
+    {
+        s.from_thread = Some(CardRef {
+            id: th.id.clone(),
+            short: th.short.clone(),
+            title: th.title.clone(),
         });
     }
     if let Some(r) = &t.rollup

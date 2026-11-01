@@ -433,6 +433,11 @@ impl Fold {
                 } else {
                     self.short_of(&p.from)
                 };
+                // From the person's thread (card #155), not an ask it closed.
+                let from_thread = self
+                    .tasks
+                    .get(&p.from)
+                    .is_some_and(|f| f.ask.as_ref().is_some_and(|a| a.thread));
                 let Some(t) = self.tasks.get_mut(&p.task_id) else {
                     return;
                 };
@@ -470,7 +475,9 @@ impl Fold {
                 } else {
                     changed.join("; ")
                 };
-                if !p.from.is_empty() {
+                if from_thread {
+                    what = format!("{what} (from the thread {from_ref})");
+                } else if !p.from.is_empty() {
                     let mut w = format!("changed it from the ask {from_ref}");
                     if !p.note.is_empty() {
                         w.push_str(&format!(": {}", p.note));
@@ -483,6 +490,9 @@ impl Fold {
                 let ti = Touch::of(t);
                 let holder = t.holder.clone();
                 self.touch(ev, &ti, when, &p.by, &what, true, Vec::new());
+                if from_thread {
+                    self.fold_made(ev, &p.from, &p.task_id, when, &p.by, "changed");
+                }
                 self.note(Change {
                     kind: TASK_CHANGED.into(),
                     task_id: p.task_id,

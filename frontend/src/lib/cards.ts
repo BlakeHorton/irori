@@ -42,6 +42,7 @@ import {
   type Mention,
   type NewCardInput,
   type Step,
+  type ThreadCard,
 } from "./models"
 import {
   EventDevicesChanged,
@@ -79,6 +80,7 @@ export type {
   MentionCandidate,
   NewCardInput,
   Step,
+  ThreadCard,
   ThreadSummary,
   Told,
 }
@@ -325,6 +327,7 @@ function sampleThreads(): ThreadSummary[] {
       replies: replies.length,
       lastBy: last?.who,
       lastText: last?.text ?? "",
+      cards: [],
       at: c.updatedAt,
       updatedAt: last?.at ?? c.updatedAt,
     })

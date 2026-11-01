@@ -613,6 +613,8 @@ export type CardSummary = {
 	talking: AgentRef[],
 	ask?: CardAsk | null,
 	parent?: CardRef | null,
+	/**  The person's thread this card was made from (card #155). */
+	fromThread?: CardRef | null,
 	subtasks?: number,
 	subtaskBlocked?: string,
 	pinned?: boolean,
@@ -666,6 +668,11 @@ export type CardThreadItem = {
 	edit?: string,
 	/**  The person edited it before any agent read it. */
 	edited?: boolean,
+	/**
+	 *  An event saying a card was made or changed from this thread (card
+	 *  #155): the Threads panel keeps it among the answers.
+	 */
+	made?: boolean,
 };
 
 /**
@@ -1214,6 +1221,8 @@ export type Task = {
 	returned?: Returned,
 	parent?: string,
 	subtasks?: string[],
+	from?: string,
+	made?: string[],
 	rollup?: Rollup,
 	pinned?: boolean,
 	pinRank?: number,
@@ -1229,6 +1238,14 @@ export type TaskResult = {
 
 /**  coord.TaskState. */
 export type TaskState = "submitted" | "working" | "input_required" | "completed" | "failed" | "canceled" | "blocked";
+
+/**  A card made or changed from a thread, as its chip shows it. */
+export type ThreadCard = {
+	id: string,
+	short: string,
+	title: string,
+	state: string,
+};
 
 /**  One thread in the panel. */
 export type ThreadSummary = {
@@ -1250,6 +1267,8 @@ export type ThreadSummary = {
 	/**  The newest reply, by anyone. */
 	lastBy?: AgentRef | null,
 	lastText?: string,
+	/**  The cards made or changed from it (card #155), first first. */
+	cards: ThreadCard[],
 	at: string,
 	updatedAt: string,
 };

@@ -13,9 +13,10 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use gocompat::time::GoTime;
+use store::Event;
 
 use super::asks::TAKE_POSTED;
-use super::fold::{Fold, card_refs};
+use super::fold::{Fold, MADE_KIND, Touch, card_refs, line_of};
 use super::rows::*;
 use super::types::*;
 use super::util::{SWEEPER, cut, deeper};
@@ -30,7 +31,7 @@ pub const TAKE_ANSWERED: &str = "answered";
 
 const MAX_THREAD_NOTICE: usize = 1200;
 
-const NOT_YOURS_TO_CLOSE: &str = "Don't ask_close it: the person resolves it when they're done. If it leads to work, make or change cards (board_create, board_edit, board_comment) and say so in the thread.";
+const NOT_YOURS_TO_CLOSE: &str = "Don't ask_close it: the person resolves it when they're done. If your answer says you'll do work, make the card with board_create from=<this thread's #ref> (or board_edit the card it changes): the thread then shows the card. If you do it with no card, say so plainly in the thread.";
 
 impl Fold {
     /// The agents a new thread goes to first: those holding the open cards
@@ -254,6 +255,80 @@ impl Fold {
             },
         )?;
         Ok(self.tasks[id].clone())
+    }
+
+    /// Whether `id` is a thread the person hasn't resolved.
+    pub(crate) fn open_thread(&self, id: &str) -> bool {
+        self.tasks.get(id).is_some_and(|t| {
+            t.ask
+                .as_ref()
+                .is_some_and(|a| a.thread && a.outcome.is_none())
+                && !is_terminal(&t.state)
+        })
+    }
+
+    /// The thread a card `by` makes or changes comes from (card #155):
+    /// `from` (a thread's ref) when given, else the one open thread `by`
+    /// answered or was handed. None, or more than one: no thread.
+    pub(crate) fn thread_from(&self, by: &str, from: &str) -> super::error::Result<String> {
+        if !from.trim().is_empty() {
+            let id = self.task_ref_locked(from)?;
+            let t = self.any_task(&id)?;
+            if !t.ask.as_ref().is_some_and(|a| a.thread) {
+                return Err(super::error::invalid(format!(
+                    "from: {} isn't a thread; give the #ref of the person's thread the work came from",
+                    t.short_ref()
+                )));
+            }
+            return Ok(id);
+        }
+        if by.is_empty() || by == SWEEPER || self.is_owner(by) {
+            return Ok(String::new());
+        }
+        let mut hits = self.tasks.values().filter(|t| {
+            self.open_thread(&t.id)
+                && (t.ask.as_ref().is_some_and(|a| a.taker == by)
+                    || self.thread_repliers(&t.id).iter().any(|k| k == by))
+        });
+        Ok(match (hits.next(), hits.next()) {
+            (Some(t), None) => t.id.clone(),
+            _ => String::new(),
+        })
+    }
+
+    /// Card `card` was made or changed from thread `thread` (card #155):
+    /// the thread lists it and gets a line, "made #155 from this thread".
+    /// Derived from the card's row, like a mention: no row of its own.
+    pub(crate) fn fold_made(
+        &mut self,
+        ev: &Event,
+        thread: &str,
+        card: &str,
+        at: GoTime,
+        by: &str,
+        verb: &str,
+    ) {
+        let Some(cref) = self.tasks.get(card).map(|t| t.short_ref()) else {
+            return;
+        };
+        let Some(th) = self.tasks.get_mut(thread) else {
+            return;
+        };
+        if !th.ask.as_ref().is_some_and(|a| a.thread) {
+            return;
+        }
+        if !th.made.iter().any(|c| c == card) {
+            th.made.push(card.into());
+        }
+        let ti = Touch::of(th);
+        let mut line = line_of(ev, at, by, &format!("{verb} {cref} from this thread"));
+        line.kind = MADE_KIND.into();
+        self.touch_line(&ti, line, true, Vec::new());
+        self.note(Change {
+            kind: TASK_CHANGED.into(),
+            task_id: thread.into(),
+            ..Change::default()
+        });
     }
 
     /// The person resolves thread `id`: closed as answered. Agents don't.

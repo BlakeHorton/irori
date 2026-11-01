@@ -290,6 +290,12 @@ impl Fold {
             line(&mut b, "blocked", &bl);
         }
         line(&mut b, "watching", &t.watchers.join(", "));
+        // Card #155: the thread it came from, and a thread's cards.
+        if !t.from.is_empty() {
+            line(&mut b, "from the thread", &self.short_of(&t.from));
+        }
+        let made: Vec<String> = t.made.iter().map(|id| self.short_of(id)).collect();
+        line(&mut b, "cards from this thread", &made.join(", "));
         // Waits (card #87): who waits on this card, and what its holders
         // wait on.
         let on_it: Vec<String> = self

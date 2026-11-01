@@ -690,6 +690,7 @@ const CREATE_ARGS: &[(&str, Ty)] = &[
     ("assign_to", Ty::Str),
     ("steps", Ty::Steps),
     ("parent", Ty::Str),
+    ("from", Ty::Str),
 ];
 
 /// Step arguments as coord's steps.
@@ -756,6 +757,7 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             links: a.strs("links"),
             steps: steps_of(&a.steps("steps")),
             parent,
+            from: trim(a.str("from")).into(),
             ..NewTask::default()
         },
     ) {
@@ -773,6 +775,14 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     } else {
         format!("Created {} (task:{}).", t.short_ref(), t.id)
     };
+    if !t.from.is_empty() {
+        out += &format!(
+            " Made from the thread {}: the thread shows it.",
+            co.get_task(&t.from)
+                .map(|th| th.short_ref())
+                .unwrap_or_else(|| format!("task:{}", t.from))
+        );
+    }
     if t.steps.is_empty() {
         out += " Give it steps with board_steps once you know them, so the person sees how far along it is.";
     } else {
@@ -1912,6 +1922,7 @@ const EDIT_ARGS: &[(&str, Ty)] = &[
     ("title", Ty::OptStr),
     ("objective", Ty::OptStr),
     ("done_when", Ty::OptStr),
+    ("from", Ty::Str),
 ];
 
 pub(crate) fn board_edit(s: &Inner, c: &Caller, raw: &[u8]) -> String {
@@ -1927,6 +1938,7 @@ pub(crate) fn board_edit(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         title: a.opt_str("title"),
         objective: a.opt_str("objective"),
         done_when: a.opt_str("done_when"),
+        from: trim(a.str("from")).into(),
     };
     if e.title.is_none() && e.objective.is_none() && e.done_when.is_none() {
         return err_text("give title, objective or done_when: what the card is for now.");

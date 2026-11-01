@@ -53,6 +53,8 @@ pub struct ThreadSummary {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub last_text: String,
+    /// The cards made or changed from it (card #155), first first.
+    pub cards: Vec<ThreadCard>,
     #[specta(type = ts::Time)]
     pub at: GoTime,
     #[specta(type = ts::Time)]
@@ -71,6 +73,16 @@ pub struct RefTarget {
     pub thread: bool,
     /// Done, failed or canceled (a thread: resolved).
     pub done: bool,
+}
+
+/// A card made or changed from a thread, as its chip shows it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadCard {
+    pub id: String,
+    pub short: String,
+    pub title: String,
+    pub state: String,
 }
 
 impl Window {
@@ -183,6 +195,17 @@ impl Window {
                 replies: cs.iter().filter(|c| c.msg_id.is_empty()).count() as i64,
                 last_by: last.map(|c| p.ref_(&c.by)),
                 last_text: last.map(|c| c.text.clone()).unwrap_or_default(),
+                cards: t
+                    .made
+                    .iter()
+                    .filter_map(|id| co.get_task(id))
+                    .map(|c| ThreadCard {
+                        id: c.id.clone(),
+                        short: c.short.clone(),
+                        title: c.title.clone(),
+                        state: c.state.to_string(),
+                    })
+                    .collect(),
                 at: t.created_at,
                 updated_at: t.updated_at,
             };
