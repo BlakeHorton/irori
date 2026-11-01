@@ -48,7 +48,7 @@ export function ThreadsPanel({
   const resolved = threads.filter((t) => t.state === "resolved")
   return (
     <aside
-      className="grid min-w-0 content-start gap-3 overflow-hidden p-3 glass-panel"
+      className="grid min-w-0 content-start gap-3 overflow-clip p-3 glass-panel"
       aria-label="Threads"
     >
       <div className="flex items-center justify-between">
@@ -272,6 +272,10 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
             : "No answer yet."
         }
         composer={resolved ? undefined : <CommentBox cardId={t.id} reply />}
+        // Its messages scroll and the reply box stays in view (card #170):
+        // the cap leaves room in the column for the panel's header, the
+        // thread's title and question, the box and Resolve.
+        scroll={OpenThreadMax}
       />
       {!resolved && (
         <div className="flex items-center gap-2">
@@ -290,3 +294,7 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
     </div>
   )
 }
+
+// How tall an open thread's messages grow before they scroll (card #170):
+// the window less the header, the ask box and the thread's own lines.
+const OpenThreadMax = "max-h-[max(6rem,calc(100svh-30rem))]"
