@@ -53,7 +53,7 @@ pub use board_search::{DEFAULT_DOC_PAGE, SHOW_COMMENT_CUT, SHOW_COMMENTS};
 pub use cards::{merge_watch, watch_text};
 pub use error::{Error, ErrorKind, Result};
 pub use fold::{
-    FOLLOW_KINDS, Fold, LEFT_GONE, LEFT_REMOVED, REASON_CONFLICT, REASON_EXPIRED,
+    FOLLOW_KINDS, Fold, LEFT_GONE, LEFT_REMOVED, MADE_KIND, REASON_CONFLICT, REASON_EXPIRED,
     REASON_HOLDER_GONE, REASON_RELEASED, REASON_STOLEN, SUB_BUFFER, followed,
 };
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};

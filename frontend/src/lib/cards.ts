@@ -42,6 +42,7 @@ import {
   type Mention,
   type NewCardInput,
   type Step,
+  type ThreadCard,
 } from "./models"
 import {
   EventDevicesChanged,
@@ -79,6 +80,7 @@ export type {
   MentionCandidate,
   NewCardInput,
   Step,
+  ThreadCard,
   ThreadSummary,
   Told,
 }
@@ -331,6 +333,7 @@ function sampleThreads(boardId = ""): ThreadSummary[] {
       replies: replies.length,
       lastBy: last?.who,
       lastText: last?.text ?? "",
+      cards: [],
       at: c.updatedAt,
       updatedAt: last?.at ?? c.updatedAt,
     })
@@ -534,6 +537,11 @@ function summary(c: CardDetail): CardSummary {
     pinned: c.pinned,
     pinRank: c.pinRank,
     pos: c.pos,
+    // As crates/window's search_text (card #171), less the creator.
+    searchText: [c.goal, c.doneWhen, ...c.steps.map((s) => s.text)]
+      .map((w) => w.trim())
+      .filter(Boolean)
+      .join("\n"),
   })
 }
 

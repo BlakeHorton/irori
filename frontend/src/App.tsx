@@ -103,6 +103,9 @@ export function App() {
   )
   // List or Canvas (card #93): the grid, or the board as a flow chart.
   const [view, setView] = useBoardView()
+  // query is the search box's words (card #171): it narrows Home's and a
+  // board page's cards, List, Canvas and Closed alike.
+  const [query, setQuery] = useState("")
   const [open, setOpen] = useState(() => cardFromHash(window.location.hash))
   // The comment a notification opened its card at (card #177).
   const [focus, setFocus] = useState<{ card: string; comment: string } | null>(
@@ -405,6 +408,8 @@ export function App() {
             onTab={setBoardTab}
             view={view}
             onView={setView}
+            query={query}
+            onQuery={setQuery}
             selected={last}
             onOpen={openCard}
             now={now}
@@ -421,6 +426,8 @@ export function App() {
             onFilter={setFilter}
             view={view}
             onView={setView}
+            query={query}
+            onQuery={setQuery}
             selected={last}
             onOpen={openCard}
             now={now}

@@ -720,6 +720,20 @@ function PageHeader({
           </button>
         </p>
       )}
+      {card.fromThread && (
+        <p className="text-sm text-muted-foreground">
+          From the thread{" "}
+          <button
+            type="button"
+            className="text-ink underline-offset-2 hover:underline disabled:no-underline"
+            disabled={!onOpen}
+            onClick={() => card.fromThread && onOpen?.(card.fromThread.id)}
+          >
+            <span className="font-mono">#{plainLine(card.fromThread.short)}</span>{" "}
+            {plainLine(card.fromThread.title)}
+          </button>
+        </p>
+      )}
     </header>
   )
 }
