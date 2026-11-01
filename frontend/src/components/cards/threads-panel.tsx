@@ -18,6 +18,41 @@ import {
 import { parseTime, plainLine, relativeTime } from "@/lib/irori"
 import { errorText } from "@/lib/talk"
 
+// resolvedShown is whether the "Resolved" list is unfolded: the person's
+// pick, or a resolved thread open (a #ref to one unfolds it, card #144).
+export function resolvedShown(
+  pick: boolean,
+  open: string,
+  threads: Pick<ThreadSummary, "id" | "state">[]
+): boolean {
+  return pick || threads.some((t) => t.id === open && t.state === "resolved")
+}
+
+// resolvedToggle is a click on the "Resolved" chevron (card #194): the
+// pick it sets, and whether to close the open thread. Folding while a
+// resolved thread is open closes that thread too, or it would keep the
+// list unfolded; an open live thread stays open.
+export function resolvedToggle(
+  pick: boolean,
+  open: string,
+  threads: Pick<ThreadSummary, "id" | "state">[]
+): { pick: boolean; closeOpen: boolean } {
+  if (!resolvedShown(pick, open, threads))
+    return { pick: true, closeOpen: false }
+  const openResolved = threads.some(
+    (t) => t.id === open && t.state === "resolved"
+  )
+  return { pick: false, closeOpen: openResolved }
+}
+
+// openAfterResolve is the thread to keep open once the person resolves id
+// (card #194, #200): resolving the open thread closes it, so it moves into
+// the folded "Resolved" list instead of unfolding it; another open thread
+// stays open.
+export function openAfterResolve(open: string, id: string): string {
+  return open === id ? "" : open
+}
+
 // ThreadsPanel is the Threads panel beside the Board (card #116, layout A):
 // the person's conversations with the room, open ones on top (the one
 // they're in unfolded), resolved ones folded under "Resolved". A thread
@@ -43,9 +78,7 @@ export function ThreadsPanel({
 }) {
   const [showResolvedPick, setShowResolved] = useState(false)
   // A resolved thread opened from a #ref (card #144) unfolds its list.
-  const showResolved =
-    showResolvedPick ||
-    threads.some((t) => t.id === open && t.state === "resolved")
+  const showResolved = resolvedShown(showResolvedPick, open, threads)
   const live = threads.filter((t) => t.state !== "resolved")
   const resolved = threads.filter((t) => t.state === "resolved")
   return (
@@ -79,6 +112,7 @@ export function ThreadsPanel({
           t={t}
           open={open === t.id}
           onToggle={() => onOpen(open === t.id ? "" : t.id)}
+          onResolved={() => onOpen(openAfterResolve(open, t.id))}
           now={now}
           why={why}
         />
@@ -88,7 +122,11 @@ export function ThreadsPanel({
           <button
             type="button"
             className="flex items-center gap-1 justify-self-start text-xs text-muted-foreground hover:text-ink"
-            onClick={() => setShowResolved(!showResolved)}
+            onClick={() => {
+              const t = resolvedToggle(showResolvedPick, open, threads)
+              setShowResolved(t.pick)
+              if (t.closeOpen) onOpen("")
+            }}
             aria-expanded={showResolved}
           >
             {showResolved ? (
@@ -105,6 +143,7 @@ export function ThreadsPanel({
                 t={t}
                 open={open === t.id}
                 onToggle={() => onOpen(open === t.id ? "" : t.id)}
+                onResolved={() => onOpen(openAfterResolve(open, t.id))}
                 now={now}
                 why={why}
               />
@@ -150,12 +189,14 @@ function ThreadRow({
   t,
   open,
   onToggle,
+  onResolved,
   now,
   why,
 }: {
   t: ThreadSummary
   open: boolean
   onToggle: () => void
+  onResolved: () => void
   now: Date
   why: string
 }) {
@@ -228,7 +269,7 @@ function ThreadRow({
         )}
       </button>
       {t.cards.length > 0 && <ThreadCards cards={t.cards} />}
-      {open && <ThreadView t={t} now={now} />}
+      {open && <ThreadView t={t} now={now} onResolved={onResolved} />}
     </section>
   )
 }
@@ -252,7 +293,7 @@ function ThreadCards({ cards }: { cards: ThreadCard[] }) {
         <button
           key={c.id}
           type="button"
-          className="min-w-0 max-w-full"
+          className="max-w-full min-w-0"
           title={`${plainLine(c.title)} (${c.state.replace("_", " ")})`}
           disabled={!ctx}
           onClick={() => ctx?.onOpen(c.id)}
@@ -272,7 +313,15 @@ function ThreadCards({ cards }: { cards: ThreadCard[] }) {
 
 // ThreadView is an unfolded thread: what the person asked, the answers
 // (the card's own thread, events left out), the reply box and Resolve.
-function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
+function ThreadView({
+  t,
+  now,
+  onResolved,
+}: {
+  t: ThreadSummary
+  now: Date
+  onResolved: () => void
+}) {
   const { detail } = useCard(t.id)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -293,7 +342,10 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
       setBusy(false)
     }
   }
-  const resolve = act(threadsApi.resolve)
+  const resolve = act(async (id) => {
+    await threadsApi.resolve(id)
+    onResolved()
+  })
   const reopen = act(threadsApi.reopen)
   return (
     <div className="grid min-w-0 gap-2">

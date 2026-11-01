@@ -1,0 +1,53 @@
+import { describe, expect, test } from "bun:test"
+
+import {
+  openAfterResolve,
+  resolvedShown,
+  resolvedToggle,
+} from "./threads-panel"
+
+const threads = [
+  { id: "live", state: "open" },
+  { id: "done", state: "resolved" },
+] as const
+
+describe("the Resolved fold (cards #144, #194)", () => {
+  test("a #ref to a resolved thread unfolds the list", () => {
+    expect(resolvedShown(false, "done", [...threads])).toBe(true)
+    expect(resolvedShown(false, "live", [...threads])).toBe(false)
+    expect(resolvedShown(false, "", [...threads])).toBe(false)
+  })
+  test("folding with a resolved thread open closes it, so the list folds", () => {
+    const t = resolvedToggle(false, "done", [...threads])
+    expect(t).toEqual({ pick: false, closeOpen: true })
+    expect(resolvedShown(t.pick, "", [...threads])).toBe(false)
+  })
+  test("folding the person's own unfold keeps an open live thread", () => {
+    expect(resolvedToggle(true, "live", [...threads])).toEqual({
+      pick: false,
+      closeOpen: false,
+    })
+  })
+  test("unfolding sets the pick", () => {
+    expect(resolvedToggle(false, "", [...threads])).toEqual({
+      pick: true,
+      closeOpen: false,
+    })
+    expect(resolvedToggle(false, "live", [...threads])).toEqual({
+      pick: true,
+      closeOpen: false,
+    })
+  })
+})
+
+describe("resolving a thread (card #194, Stephen #200)", () => {
+  test("resolving the open thread closes it, so Resolved stays folded", () => {
+    const open = openAfterResolve("done", "done")
+    expect(open).toBe("")
+    // the thread is resolved now; nothing unfolds the list
+    expect(resolvedShown(false, open, [...threads])).toBe(false)
+  })
+  test("resolving another thread keeps the open one", () => {
+    expect(openAfterResolve("live", "done")).toBe("live")
+  })
+})
