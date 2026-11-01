@@ -1806,6 +1806,16 @@ impl Fold {
             // made the card (card #174).
             kinds::TASK_OFFERED => self.origin.get(&p.task_id) == Some(&ev.device_id),
             kinds::TASK_LEFT => self.may_write(&p.who, &ev.device_id),
+            // What GitHub said about a card's PR counts from a device of a
+            // person whose agent holds the card: the PR poller runs there
+            // (card #208). Without it the row never folded on a board and
+            // every poll heard "newly merged" again (#210).
+            kinds::PR_STATE => self.tasks.get(&p.task_id).is_some_and(|t| {
+                t.holders
+                    .iter()
+                    .chain(&t.co_holders)
+                    .any(|h| self.may_write(h, &ev.device_id))
+            }),
             kinds::TASK_STATUS | kinds::BLOCKER_RESOLVED => match self.tasks.get(&p.task_id) {
                 None => true,
                 Some(t) => self.may_cancel(t, &ev.device_id, Some(&RowPos::of(ev))),

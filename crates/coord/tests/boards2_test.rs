@@ -1142,3 +1142,49 @@ fn with_nobody_dedicated_a_free_agent_of_another_person_reviews() {
     let e = a.c.request_review(CARD1, &t2.id, PR, "").unwrap_err();
     assert!(e.is(ErrorKind::NotFound), "{e}");
 }
+
+// ---- a card's PR state on a board (#208, #210) ------------------------------
+
+/// Card #210: the PR poller's pr.state row (actor irori) folds on a board
+/// when a device of the holder's person writes it, so a merge wakes the
+/// holder once, not at every poll. Any other device's row counts nowhere.
+#[test]
+fn a_merged_pr_on_a_board_card_tells_the_holder_once() {
+    const PR: &str = "https://github.com/a/b/pull/7";
+    let (a, b, _) = two_people();
+    let t = a.c.create_task(P1, nt("ship it", "")).unwrap();
+    sync(&a, &b);
+    b.c.claim_task(CARD2, &t.id).unwrap();
+    b.c.add_link(CARD2, &t.id, PR).unwrap();
+    sync(&a, &b);
+    let merged = || PrCheck {
+        pr: PR.into(),
+        state: PR_MERGED.into(),
+        ..PrCheck::default()
+    };
+
+    // p1's device doesn't hold the card: its row counts nowhere, and
+    // nobody is told.
+    let before = a.c.ignored_rows();
+    let err = a.c.record_pr_state(&t.id, merged()).unwrap_err();
+    assert!(err.to_string().contains("wasn't taken"), "{err}");
+    assert_eq!(a.c.ignored_rows(), before + 1);
+    sync(&a, &b);
+    assert!(b.c.pr_states(&t.id).is_empty());
+
+    // The holder's device: told once, and both sides know it merged.
+    b.clk.add(Duration::from_secs(60));
+    let (_, ns) = b.c.record_pr_state(&t.id, merged()).unwrap();
+    assert_eq!(ns.len(), 1);
+    assert!(ns[0].text.contains("was merged"), "{}", ns[0].text);
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let st = s.c.pr_states(&t.id);
+        assert_eq!((st.len(), st[0].state.as_str()), (1, PR_MERGED));
+    }
+
+    // Heard again (the card still open): nothing new.
+    b.clk.add(Duration::from_secs(180));
+    let (_, ns) = b.c.record_pr_state(&t.id, merged()).unwrap();
+    assert!(ns.is_empty(), "a merged PR is told once");
+}

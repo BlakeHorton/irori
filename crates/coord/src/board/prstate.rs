@@ -192,6 +192,20 @@ impl Fold {
                 at,
             },
         )?;
+        // A row this log didn't take (a board's writer rules) changes
+        // nothing here: telling the holders would repeat at every poll.
+        let took = self
+            .pr_states
+            .get(id)
+            .and_then(|m| m.get(&c.pr))
+            .is_some_and(|p| p.at == at);
+        if !took {
+            return Err(invalid(format!(
+                "{}: the pr.state row for {} wasn't taken here",
+                t.short_ref(),
+                quote(&c.pr)
+            )));
+        }
         if !c.error.is_empty() || is_terminal(&t.state) {
             return Ok((self.tasks[id].clone(), Vec::new()));
         }
