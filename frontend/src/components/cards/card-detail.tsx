@@ -1991,6 +1991,7 @@ function PRRow({ pr }: { pr: CardPR }) {
         >
           {plainLine(pr.repo)}
         </span>
+        <PRStateChip pr={pr} />
         <Button
           size="xs"
           variant="ghost"
@@ -2013,6 +2014,29 @@ function PRRow({ pr }: { pr: CardPR }) {
           <span>No agent here has worked on it yet.</span>
         )}
       </div>
+      {pr.error && (
+        <p className="text-xs text-muted-foreground">{plainLine(pr.error)}</p>
+      )}
     </div>
   )
+}
+
+// PRStateChip is how GitHub last said the PR stands (card #208): Irori
+// asks with your own gh while an agent here holds the card.
+function PRStateChip({ pr }: { pr: CardPR }) {
+  const chip = (
+    variant: "success" | "slate" | "warning" | "info",
+    text: string
+  ) => (
+    <Badge variant={variant} className="h-4 shrink-0 px-1.5 text-[10.5px]">
+      {text}
+    </Badge>
+  )
+  if (pr.state === "MERGED") return chip("success", "Merged")
+  if (pr.state === "CLOSED") return chip("slate", "Closed")
+  if (pr.state !== "OPEN") return null
+  if (pr.review === "CHANGES_REQUESTED")
+    return chip("warning", "Changes requested")
+  if (pr.review === "APPROVED") return chip("info", "Open · approved")
+  return chip("info", "Open")
 }

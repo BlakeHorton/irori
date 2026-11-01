@@ -232,7 +232,7 @@ export function CardOption(p: Partial<B.CardOption> = {}): B.CardOption {
 
 /** CardPR with Go's zero values for every field left out. */
 export function CardPR(p: Partial<B.CardPR> = {}): B.CardPR {
-  return { "repo": "", "number": 0, "url": "", "label": "", "openedBy": [], "reviewedBy": [], "touchedBy": [], ...p } as B.CardPR
+  return { "repo": "", "number": 0, "url": "", "label": "", "openedBy": [], "reviewedBy": [], "touchedBy": [], "state": "", "review": "", "error": "", "checkedAt": "", ...p } as B.CardPR
 }
 
 /** CardProgress with Go's zero values for every field left out. */

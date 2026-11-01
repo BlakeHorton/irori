@@ -438,8 +438,22 @@ impl Fold {
         }
         if !t.links.is_empty() {
             b.push_str("\nlinks:\n");
+            let heard = self.pr_states.get(&t.id);
             for l in &t.links {
-                let _ = writeln!(b, "- {}: {}", l.label, l.reference);
+                let _ = write!(b, "- {}: {}", l.label, l.reference);
+                // Card #208: how GitHub last said a linked PR stands.
+                if let Some(s) = heard.and_then(|m| m.get(&l.reference)) {
+                    if !s.error.is_empty() {
+                        let _ = write!(b, " (GitHub not asked: {})", s.error);
+                    } else {
+                        let _ = write!(b, " (GitHub: {}", s.state.to_lowercase());
+                        if !s.review.is_empty() {
+                            let _ = write!(b, ", {}", s.review.to_lowercase().replace('_', " "));
+                        }
+                        b.push(')');
+                    }
+                }
+                b.push('\n');
             }
         }
         let mut related = vec![];

@@ -437,6 +437,16 @@ pub struct CardPR {
     pub opened_by: Vec<AgentRef>,
     pub reviewed_by: Vec<AgentRef>,
     pub touched_by: Vec<AgentRef>,
+    /// How GitHub last said it stands (card #208): OPEN, MERGED or CLOSED;
+    /// empty when nobody has asked yet or GitHub couldn't be asked.
+    pub state: String,
+    /// GitHub's review decision (APPROVED, CHANGES_REQUESTED, ...).
+    pub review: String,
+    /// Why GitHub couldn't be asked, said once.
+    pub error: String,
+    /// When it was last heard; zero when never.
+    #[specta(type = ts::Time)]
+    pub checked_at: GoTime,
 }
 
 /// One line of Recent.
@@ -1717,8 +1727,19 @@ impl Window {
                 });
             }
         }
+        let heard: HashMap<String, coord::PrState> = co
+            .pr_states(&t.id)
+            .into_iter()
+            .map(|s| (s.pr.clone(), s))
+            .collect();
         for l in &t.links {
-            if let Some(pr) = self.card_pr(l, &p) {
+            if let Some(mut pr) = self.card_pr(l, &p) {
+                if let Some(s) = heard.get(&l.reference) {
+                    pr.state = s.state.clone();
+                    pr.review = s.review.clone();
+                    pr.error = s.error.clone();
+                    pr.checked_at = s.at;
+                }
                 d.prs.push(pr);
             }
         }

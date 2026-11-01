@@ -558,6 +558,17 @@ export type CardPR = {
 	openedBy: AgentRef[],
 	reviewedBy: AgentRef[],
 	touchedBy: AgentRef[],
+	/**
+	 *  How GitHub last said it stands (card #208): OPEN, MERGED or CLOSED;
+	 *  empty when nobody has asked yet or GitHub couldn't be asked.
+	 */
+	state: string,
+	/**  GitHub's review decision (APPROVED, CHANGES_REQUESTED, ...). */
+	review: string,
+	/**  Why GitHub couldn't be asked, said once. */
+	error: string,
+	/**  When it was last heard; zero when never. */
+	checkedAt: string,
 };
 
 /**  Done steps over all steps; total 0 means no bar. */
