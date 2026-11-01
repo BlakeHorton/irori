@@ -180,6 +180,27 @@ impl Fold {
         out
     }
 
+    /// With nobody named and no dedicated reviewer, a shared board's
+    /// review goes to one free agent of another person (card #191,
+    /// Stephen): live, idle, in the card's repo when both have one, holding
+    /// no working card; the one idle longest. Never one of the asker's own
+    /// person's agents, so never across one person's own devices.
+    pub(crate) fn open_reviewer(&self, t: &Task, from: &str) -> Option<String> {
+        let roster = self.roster.as_ref()?.agents();
+        let mine = self.person_of(from);
+        if mine.is_empty() {
+            return None;
+        }
+        let others: Vec<_> = roster
+            .into_iter()
+            .filter(|a| {
+                let p = self.person_of(&a.key);
+                !p.is_empty() && p != mine
+            })
+            .collect();
+        self.free_for(t, &others, &[]).into_iter().next()
+    }
+
     /// An agent asking another person's agents to review a PR its card
     /// links: `to`, or each other person's dedicated reviewer for the
     /// card's repo, one request each.
@@ -220,10 +241,13 @@ impl Fold {
                 "{to} is one of your own person's agents: they can comment, but a review comes from another person's agent"
             )));
         }
-        let rcpt = self.review_recipients(&by, &to, &t.repo_key);
+        let mut rcpt = self.review_recipients(&by, &to, &t.repo_key);
+        if rcpt.is_empty() {
+            rcpt = self.open_reviewer(&t, &by).into_iter().collect();
+        }
         if rcpt.is_empty() {
             return Err(not_found(
-                "nobody to review it: name another person's agent in to, or ask them to dedicate a reviewer",
+                "nobody to review it: no other person's agent is free now, and none is dedicated; name one in to, or ask them to dedicate a reviewer",
             ));
         }
         // One row per recipient, each naming its agent: the bridge
