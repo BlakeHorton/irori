@@ -57,7 +57,7 @@ pub use fold::{
     REASON_HOLDER_GONE, REASON_RELEASED, REASON_STOLEN, SUB_BUFFER, followed,
 };
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
-pub use mention::{mention_into, without_mentioned};
+pub use mention::{board_form, mention_into, without_mentioned};
 pub use mirror::RELEASE_REQUEST;
 pub use placed::MAX_PLACE;
 pub use resource::{

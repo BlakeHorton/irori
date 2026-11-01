@@ -33,6 +33,7 @@
 //!   [`Notifier::post_test`].
 
 mod settings;
+pub mod thumb;
 pub mod watch;
 
 use std::collections::HashMap;
@@ -46,9 +47,10 @@ pub use inbox::watch::{
     parse_level, returned_id, unclaimed_id,
 };
 pub use settings::{SETTINGS_FILE, load, save};
+pub use thumb::{attachment_thumbnail, thumbnail};
 pub use watch::{
-    AskSource, BoardSource, InboxFeed, RoomSource, Sources, WatchHandle, hold_reason, preview,
-    upper, watch,
+    AskSource, BoardSource, FileFn, InboxFeed, RoomSource, Sources, WatchHandle, hold_reason,
+    preview, upper, watch,
 };
 
 /// The most buttons a card shows (the toast engine's limit).
@@ -95,6 +97,8 @@ pub struct Note {
     pub title: String,
     /// Up to two lines on the card.
     pub body: String,
+    /// A thumbnail under the body ([`thumbnail`] makes one from a PNG).
+    pub image: Option<toast::Image>,
     pub level: Level,
     pub silent: bool,
     /// Stays until answered, dismissed or cleared.
@@ -119,6 +123,7 @@ impl fmt::Debug for Note {
             .field("id", &self.id)
             .field("title", &self.title)
             .field("body", &self.body)
+            .field("image", &self.image)
             .field("level", &self.level)
             .field("sticky", &self.sticky)
             .field("expire", &self.expire)
@@ -476,6 +481,7 @@ impl Notifier {
             id: note.id.clone(),
             title: note.title.clone(),
             body: note.body.clone(),
+            image: note.image.clone(),
             kind: kind_of(note.level),
             silent: note.silent,
             sticky: note.sticky,

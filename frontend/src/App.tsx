@@ -12,41 +12,27 @@ import { AppHeader } from "@/components/app-header"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
-import { ThreadsPanel } from "@/components/cards/threads-panel"
-import { whyWaiting } from "@/lib/agent-counts"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
-import {
-  asFilter,
-  CardGrid,
-  DoneGrid,
-  EmptyCards,
-  DeviceBar,
-  FilterBar,
-  matches,
-  shownCards,
-  type Filter,
-} from "@/components/cards/card-grid"
+import { whyWaiting } from "@/lib/agent-counts"
+import { asFilter, EmptyCards, matches, type Filter } from "@/components/cards/card-grid"
+import { BoardView, ScopeOwn } from "@/components/cards/board-view"
 import {
   cardFromHash,
   cardHash,
-  cards as cards_,
-  deviceChips,
   useCard,
   useCards,
   useDoneCards,
   useThreads,
 } from "@/lib/cards"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
 import { useNow, useRoster } from "@/lib/irori"
 import { previewFlag } from "@/lib/preview"
 import { onOpen } from "@/lib/settings"
 import { nameLookup, useGone, useHeld } from "@/lib/talk"
 import { UpdateBanner } from "@/updater"
-import { BoardCanvas, useBoardView, ViewSwitch } from "@/components/canvas/switch"
+import { useBoardView } from "@/components/canvas/switch"
 import { BoardPage } from "@/components/boards/board-page"
 import { BoardsPage } from "@/components/boards/boards-page"
 import { go, Home, sectionFromHash, type Section } from "@/lib/nav"
@@ -107,7 +93,12 @@ export function App() {
   )
   // A board page's own tab (All, Needs a decision, Closed).
   const [boardTab, setBoardTab] = useState<"all" | "decide" | "done">("all")
-  const done = useDoneCards(filter === "done" || boardTab === "done")
+  // Closed pages each page's own cards (card #161): Home's, or the board's.
+  const doneScope = section.kind === "board" ? section.id : ScopeOwn
+  const done = useDoneCards(
+    section.kind === "board" ? boardTab === "done" : filter === "done",
+    doneScope
+  )
   // List or Canvas (card #93): the grid, or the board as a flow chart.
   const [view, setView] = useBoardView()
   const [open, setOpen] = useState(() => cardFromHash(window.location.hash))
@@ -156,33 +147,10 @@ export function App() {
       // A private window keeps it for this run only.
     }
   }
-  const openThreads = threadList.filter((t) => t.state !== "resolved").length
-  const showThreads = !threadsHidden && (threadList.length > 0 || !!thread)
   const startedThread = (id: string) => {
     setThread(id)
     hideThreads(false)
   }
-  // The app is exactly the window's height (card #170): the header stays
-  // put and each column scrolls itself, never the page. Beside the Board
-  // the Threads column scrolls on its own; without it the Board does.
-  const withThreads = (main: ReactNode) =>
-    showThreads ? (
-      <div className="flex min-h-0 flex-1 gap-4">
-        <div className={boardColumn}>{main}</div>
-        <div className="-mr-1 min-h-0 w-[380px] shrink-0 overflow-y-auto pr-1 pb-4">
-          <ThreadsPanel
-            threads={threadList}
-            open={thread}
-            onOpen={setThread}
-            onHide={() => hideThreads(true)}
-            now={now}
-            why={whyWaiting(roster.agents)}
-          />
-        </div>
-      </div>
-    ) : (
-      <div className={boardColumn}>{main}</div>
-    )
   const held = useHeld(heldOpen && heldTab === "history")
   const name = nameLookup(
     roster.agents.map((a): [string, string] => [a.key, a.name]),
@@ -335,27 +303,9 @@ export function App() {
     [openCard, openHeld]
   )
 
-  // Home is your own cards; a board's live on its page (card #96).
-  const homeCards = cards.filter((c) => c.scope !== "board")
+  // Home is your own cards; a board's live on its page (card #96), and
+  // its decisions show on Home as one line per board.
   const boardDecide = cards.filter((c) => c.scope === "board" && c.openBlockers > 0)
-  const homeDone = { ...done, cards: done.cards.filter((c) => c.scope !== "board") }
-  const chips = deviceChips(homeCards)
-  // A device filter whose device has no cards left, or a board filter whose
-  // board is gone, falls back to All.
-  const active: Filter =
-    (filter.startsWith("device:") && !chips.some((d) => filter === `device:${d.id}`)) ||
-    filter.startsWith("board:") ||
-    filter === "mine"
-      ? "all"
-      : filter
-  const { shown, context } = shownCards(homeCards, active)
-  // The Pinned group: pinned cards in their order, each pinned parent with
-  // its subtasks (as BoardService.Cards lists them).
-  const pinnedGroup = shown.filter(
-    (c) => c.pinned || (c.parent && shown.some((p) => p.id === c.parent?.id && p.pinned))
-  )
-  const inPinned = new Set(pinnedGroup.map((c) => c.id))
-  const decide = homeCards.filter((c) => c.openBlockers > 0).length
   // cardLabel names the card a held message is about: "#28", else "a card"
   // (one not on this board, or not loaded).
   const cardLabel = (ref: string) => {
@@ -450,99 +400,32 @@ export function App() {
           </Scroll>
         ) : loading && cards.length === 0 ? (
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
-        ) : homeCards.length === 0 && filter !== "done" ? (
-          <>
-            <AskBox onThread={startedThread} />
-            {withThreads(
-              <>
-                <FilterBar
-                  filter={filter}
-                  onFilter={setFilter}
-                  decide={0}
-                  only={["all", "done"]}
-                />
-                <BoardsNeedYou cards={boardDecide} boards={boards} />
-                <EmptyCards />
-              </>
-            )}
-          </>
         ) : (
-          <>
-            <AskBox onThread={startedThread} />
-            {withThreads(
-            <>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <FilterBar
-                filter={active}
-                onFilter={setFilter}
-                decide={decide}
-                only={["all", "decide", "done"]}
-              />
-              <DeviceBar filter={active} onFilter={setFilter} devices={chips} />
-              <span className="ml-auto flex items-center gap-2">
-                {!showThreads && threadList.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => hideThreads(false)}
-                    title="Show the Threads panel"
-                  >
-                    Threads
-                    {openThreads > 0 && (
-                      <Badge variant="slate" className="tabular-nums">
-                        {openThreads}
-                      </Badge>
-                    )}
-                  </Button>
-                )}
-                <ViewSwitch view={view} onView={setView} />
-              </span>
-            </div>
-            <BoardsNeedYou cards={boardDecide} boards={boards} />
-            {filter === "done" ? (
-              <DoneGrid
-                done={homeDone}
-                selected={last}
-                onSelect={openCard}
-                now={now}
-              />
-            ) : view === "canvas" ? (
-              <BoardCanvas cards={shown} onOpen={openCard} />
-            ) : shown.length ? (
-              <>
-                {pinnedGroup.length > 0 && (
-                  <>
-                    <h2 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      Pinned
-                    </h2>
-                    <CardGrid
-                      label="Pinned cards"
-                      cards={pinnedGroup}
-                      context={context}
-                      selected={last}
-                      onSelect={openCard}
-                      onMove={(id, before) => void cards_.movePin(id, before)}
-                    />
-                    <h2 className="px-1 pt-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      Everything else
-                    </h2>
-                  </>
-                )}
-                <CardGrid
-                  cards={shown.filter((c) => !inPinned.has(c.id))}
-                  context={context}
-                  selected={last}
-                  onSelect={openCard}
-                />
-              </>
-            ) : (
-              <p className="px-1 text-[12.5px] text-muted-foreground">
-                Nothing here with this filter.
-              </p>
-            )}
-            </>
-            )}
-          </>
+          <BoardView
+            scope={ScopeOwn}
+            cards={cards}
+            done={done}
+            filter={filter}
+            onFilter={setFilter}
+            view={view}
+            onView={setView}
+            selected={last}
+            onOpen={openCard}
+            now={now}
+            header={
+              <AskBox onThread={startedThread} />
+            }
+            notice={<BoardsNeedYou cards={boardDecide} boards={boards} />}
+            empty={<EmptyCards />}
+            threads={{
+              list: threadList,
+              open: thread,
+              onOpen: setThread,
+              hidden: threadsHidden,
+              onHide: hideThreads,
+              why: whyWaiting(roster.agents),
+            }}
+          />
         )}
       </main>
       <NewCardDialog
@@ -616,11 +499,6 @@ function BoardsNeedYou({
 }
 
 export default App
-
-// The Board's column (card #170): it scrolls by itself under the ask box.
-// The 4px gutter keeps a selected card's ring clear of the clip.
-const boardColumn =
-  "-mx-1 grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-1 pb-10"
 
 // Scroll is a page that isn't the Board (a card, Boards, a shared board):
 // it scrolls by itself under the header (card #170).

@@ -43,7 +43,13 @@ import {
   type NewCardInput,
   type Step,
 } from "./models"
-import { EventRosterChanged, inHost, inWails, plainLine } from "./irori"
+import {
+  EventDevicesChanged,
+  EventRosterChanged,
+  inHost,
+  inWails,
+  plainLine,
+} from "./irori"
 import { safeHref } from "./rich"
 import { EventInboxChanged, useLatest } from "./talk"
 import { NoteItem, sampleAgents, sampleCards, sampleYou } from "./sample-cards"
@@ -381,7 +387,14 @@ export const threads = {
     const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
     const id = `sample-thread-${Date.now()}`
     sample = [
-      sampleThread(id, String(top + 1), t, new Date().toISOString(), [], "waiting"),
+      sampleThread(
+        id,
+        String(top + 1),
+        t,
+        new Date().toISOString(),
+        [],
+        "waiting"
+      ),
       ...cs,
     ]
     if (boardId) sampleThreadBoard.set(id, boardId)
@@ -446,7 +459,9 @@ const RefTTL = 60_000
 // useCardRef is cardRef(r) for a component: undefined while it loads, then
 // the target or null. Off (r "") it asks nothing.
 export function useCardRef(r: string): RefTarget | null | undefined {
-  const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(null)
+  const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(
+    null
+  )
   useEffect(() => {
     if (!r) return
     let live = true
@@ -607,7 +622,13 @@ function sampleCreate(input: NewCardInput): TaskResult {
     blockerQuestion: "",
     recent: [],
     thread: [
-      CardThreadItem({ id: "sample-new-post", kind: "event", at: now, who: sampleYou, text: "made the card" }),
+      CardThreadItem({
+        id: "sample-new-post",
+        kind: "event",
+        at: now,
+        who: sampleYou,
+        text: "made the card",
+      }),
     ],
     threadEarlier: 0,
     historyTrimmed: false,
@@ -631,7 +652,13 @@ function sampleMentions(mentions: readonly Mention[]): CardMention[] {
     const who = agents.find((a) => a.key === m.key)
     return CardMention({
       name: m.name,
-      who: who ?? { key: m.key, name: m.name, status: "gone", live: false, where: "" },
+      who: who ?? {
+        key: m.key,
+        name: m.name,
+        status: "gone",
+        live: false,
+        where: "",
+      },
       gone: !who || who.status === "gone",
     })
   })
@@ -640,7 +667,11 @@ function sampleMentions(mentions: readonly Mention[]): CardMention[] {
 // sampleOutcomes is each mention's outcome on the sample: a gone agent
 // isn't delivered; the others are woken.
 function sampleOutcomes(named: readonly CardMention[]) {
-  return named.map((m) => ({ key: m.who.key, name: m.name, state: m.gone ? "gone" : "woke" }))
+  return named.map((m) => ({
+    key: m.who.key,
+    name: m.name,
+    state: m.gone ? "gone" : "woke",
+  }))
 }
 
 // sampleCandidates are BoardService.MentionCandidates on the sample.
@@ -648,7 +679,9 @@ function sampleCandidates(): MentionCandidate[] {
   return Object.values(sampleAgents).map((who) =>
     MentionCandidate({
       who,
-      cwd: who.device ? "~/projects/irori" : "C:\\Users\\sample\\projects\\example-app",
+      cwd: who.device
+        ? "~/projects/irori"
+        : "C:\\Users\\sample\\projects\\example-app",
       repo: who.device ? "irori" : "example-app",
     })
   )
@@ -1124,7 +1157,12 @@ export const EditState = {
 } as const
 
 // sampleEdit is Modify, Cancel and Save on the sample's comment.
-function sampleEdit(id: string, commentId: string, edit: string, text?: string) {
+function sampleEdit(
+  id: string,
+  commentId: string,
+  edit: string,
+  text?: string
+) {
   const c = sampleCard(id)
   c.thread = c.thread.map((it) =>
     it.id === commentId
@@ -1137,7 +1175,12 @@ function sampleEdit(id: string, commentId: string, edit: string, text?: string) 
 // sampleComment is BoardService.Comment on the sample: the person's
 // comment at the end of the thread, heard by the live agents on the card
 // (watchers answer only if asked); with none, it is unheard.
-function sampleComment(id: string, text: string, wake: boolean, mentions: Mention[]): CommentResult {
+function sampleComment(
+  id: string,
+  text: string,
+  wake: boolean,
+  mentions: Mention[]
+): CommentResult {
   const c = sampleCard(id)
   const t = text.trim()
   if (!t) throw new Error("coord: invalid input: an empty comment")
@@ -1145,10 +1188,14 @@ function sampleComment(id: string, text: string, wake: boolean, mentions: Mentio
   const answers = c.working.filter((w) => w.live)
   const watching = c.watching.filter((w) => w.live)
   const named = sampleMentions(mentions)
-  const unheard = !answers.length && !watching.length && !named.some((m) => !m.gone)
+  const unheard =
+    !answers.length && !watching.length && !named.some((m) => !m.gone)
   // A mentioned agent watches the card (never holds it).
   for (const m of named)
-    if (!m.gone && ![...c.working, ...c.watching].some((w) => w.key === m.who.key))
+    if (
+      !m.gone &&
+      ![...c.working, ...c.watching].some((w) => w.key === m.who.key)
+    )
       c.watching = [...c.watching, m.who]
   c.thread = [
     ...c.thread,
@@ -1192,7 +1239,8 @@ export const cards = {
     wake = true,
     mentions: Mention[] = []
   ): Promise<AnswerResult> {
-    if (inWails()) return BoardService.Answer(id, blockerId, option, text, wake, mentions)
+    if (inWails())
+      return BoardService.Answer(id, blockerId, option, text, wake, mentions)
     return sampleAnswer(id, blockerId, option, text, wake, mentions)
   },
 
@@ -1205,7 +1253,8 @@ export const cards = {
     note: string,
     mentions: Mention[] = []
   ): Promise<AnswerResult> {
-    if (inWails()) return BoardService.ResolveBlocker(id, blockerId, note, mentions)
+    if (inWails())
+      return BoardService.ResolveBlocker(id, blockerId, note, mentions)
     return sampleResolveBlocker(id, blockerId, note, mentions)
   },
 
@@ -1278,7 +1327,11 @@ export const cards = {
 
   // saveComment sends the held comment's new text to the agents it was
   // held from.
-  async saveComment(id: string, commentId: string, text: string): Promise<void> {
+  async saveComment(
+    id: string,
+    commentId: string,
+    text: string
+  ): Promise<void> {
     if (inWails()) {
       await BoardService.CommentModifySave(id, commentId, text)
       return
@@ -1410,13 +1463,19 @@ export const cards = {
 // poll, so a failure has no next event to recover it.
 const RetryMs = 4000
 
-// subscribe re-runs fn on every board:changed (or sample change).
+// subscribe re-runs fn on every board:changed (or sample change), and on
+// devices:changed: a renamed device changes the cards' "on <device>" lines.
 function subscribe(fn: () => void): () => void {
   if (!inWails()) {
     sampleListeners.add(fn)
     return () => sampleListeners.delete(fn)
   }
-  return Events.On(EventBoardChanged, fn)
+  const offBoard = Events.On(EventBoardChanged, fn)
+  const offDevices = Events.On(EventDevicesChanged, fn)
+  return () => {
+    offBoard()
+    offDevices()
+  }
 }
 
 // useFresh re-reads on every card change, when the window regains focus,
@@ -1529,10 +1588,19 @@ export const DonePageSize = 30
 
 // loadDone is BoardService.DoneCards: limit closed cards, the latest
 // change first, after cursor before ("" for the top).
-async function loadDone(limit: number, before: string): Promise<DonePage> {
-  if (inWails()) return BoardService.DoneCards(limit, before)
+async function loadDone(
+  limit: number,
+  before: string,
+  scope = ""
+): Promise<DonePage> {
+  if (inWails())
+    return scope
+      ? BoardService.DoneCardsIn(limit, before, scope)
+      : BoardService.DoneCards(limit, before)
+  const inScope = (c: { board?: string | null }) =>
+    !scope || (scope === "own" ? !c.board : c.board === scope)
   const done = sampleState()
-    .filter((c) => over(c) && !sampleThreadIds.has(c.id))
+    .filter((c) => over(c) && !sampleThreadIds.has(c.id) && inScope(c))
     .sort((a, b) => updated(b) - updated(a) || (a.id < b.id ? 1 : -1))
   const from = before ? done.findIndex((c) => c.id === before) + 1 : 0
   const page = done.slice(from, from + limit)
@@ -1553,7 +1621,9 @@ export type DoneState = {
 // useDoneCards is the Done tab: closed cards, the latest first, read only
 // while active. Show more appends the next page; a card change re-reads
 // as many from the top as are showing, so a card that closes moves in.
-export function useDoneCards(active: boolean): DoneState {
+// scope pages one page's cards on their own (card #161): "own" for Home,
+// a board id for its page, "" for every card.
+export function useDoneCards(active: boolean, scope = ""): DoneState {
   const [st, setSt] = useState<{
     cards: CardSummary[]
     next: string
@@ -1566,14 +1636,14 @@ export function useDoneCards(active: boolean): DoneState {
   const reload = useCallback(async () => {
     const n = ++req.current
     try {
-      const p = await loadDone(shown.current, "")
+      const p = await loadDone(shown.current, "", scope)
       if (n !== req.current) return
       setSt({ cards: p.cards ?? [], next: p.next, loading: false, error: null })
     } catch (err) {
       if (n !== req.current) return
       setSt((s) => ({ ...s, loading: false, error: errText(err) }))
     }
-  }, [])
+  }, [scope])
 
   // loadMore raises how many cards the tab shows and reloads them all, so
   // a reload that races it (a board change, focus) loads the raised count
@@ -1770,7 +1840,8 @@ export function useMentionCandidates(active = true): MentionCandidate[] {
     const first = !candidateListeners.size
     candidateListeners.add(fn)
     if (first) {
-      if (inWails()) candidatesOff = Events.On(EventRosterChanged, loadCandidates)
+      if (inWails())
+        candidatesOff = Events.On(EventRosterChanged, loadCandidates)
       loadCandidates()
     } else fn()
     return () => {

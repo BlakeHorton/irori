@@ -9,11 +9,13 @@
 //! | [`roster`] | `internal/roster` | other devices' agent cards with liveness |
 //! | [`names`] | `internal/names` | friendly session names |
 //! | [`devcolor`] | `internal/devcolor` | device colours |
+//! | [`devname`] | (Rust only, card #184) | the person's names for their devices |
 
 pub mod approvals;
 pub mod board;
 pub mod decision;
 pub mod devcolor;
+pub mod devname;
 pub mod gojson;
 pub(crate) mod gotime;
 pub mod mentions;

@@ -41,6 +41,8 @@ pub enum Topic {
     Board,
     Capture,
     Asks,
+    /// The person renamed one of their devices (`devices:changed`).
+    Devices,
 }
 
 /// One change.
@@ -53,6 +55,9 @@ pub enum CoreEvent {
     Capture(capture::Change),
     /// An ask's id.
     Asks(String),
+    /// What a device is called changed (card #184), here or on another of
+    /// the person's devices.
+    Devices,
     /// Events were dropped for this feed: re-read everything it shows.
     Resync,
 }
@@ -66,6 +71,7 @@ impl CoreEvent {
             CoreEvent::Board(_) => Topic::Board,
             CoreEvent::Capture(_) => Topic::Capture,
             CoreEvent::Asks(_) => Topic::Asks,
+            CoreEvent::Devices => Topic::Devices,
             CoreEvent::Resync => return None,
         })
     }

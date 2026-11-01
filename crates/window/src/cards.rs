@@ -667,9 +667,8 @@ impl Window {
         p.known = c.known_agent_names();
         p.colors = c.device_colors();
         let mut live = 0;
+        p.names = c.device_labels().into_iter().collect();
         for d in c.certified_devices() {
-            p.names
-                .insert(d.cert.device_id.clone(), d.cert.label.clone());
             if !d.revoked {
                 live += 1;
             }

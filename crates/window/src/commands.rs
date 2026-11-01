@@ -69,7 +69,13 @@ pub async fn roster_agents(
 #[tauri::command]
 #[specta::specta]
 pub async fn roster_device(w: W<'_>) -> R<Typed<irori_identity::DeviceJson, ts::Identity>> {
-    Ok(Typed::new(w.core.device().clone()))
+    // The header shows this device by the person's name for it (#184).
+    let mut d = w.core.device().clone();
+    let label = w.core.device_label(&d.id);
+    if !label.is_empty() {
+        d.name = label;
+    }
+    Ok(Typed::new(d))
 }
 
 #[tauri::command]
@@ -661,6 +667,12 @@ pub async fn devices_set_device_color(w: W<'_>, device_id: String, color: String
 
 #[tauri::command]
 #[specta::specta]
+pub async fn devices_rename_device(w: W<'_>, device_id: String, name: String) -> R<String> {
+    w.rename_device(&device_id, &name)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn devices_add_device(w: W<'_>, role: String) -> R<PairStatus> {
     blocking(&w, move |w| w.seams.pairing.add(&role)).await
 }
@@ -930,6 +942,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             devices_devices,
             devices_colors,
             devices_set_device_color,
+            devices_rename_device,
             devices_add_device,
             devices_join_with_code,
             devices_confirm_words,

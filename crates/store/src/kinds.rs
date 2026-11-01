@@ -164,6 +164,8 @@ kinds! {
     NODE_ADDR = "node.addr" => Replicated, Refuses;
     // devcolor
     DEVICE_COLOR = "device.color" => Replicated, Refuses;
+    // devname (card #184)
+    DEVICE_NAME = "device.name" => Replicated, Refuses;
     // v0.5 shared boards: board logs only
     BOARD_CREATED = "board.created" => Replicated, Accepts;
     BOARD_RENAMED = "board.renamed" => Replicated, Accepts;

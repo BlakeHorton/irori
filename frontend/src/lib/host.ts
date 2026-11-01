@@ -114,6 +114,8 @@ export const BoardService = {
   Cards: () => call(commands.boardCards()),
   Card: (id: string) => call(commands.boardCard(id)),
   DoneCards: (limit: number, before: string) => call(commands.boardDoneCards(limit, before)),
+  DoneCardsIn: (limit: number, before: string, scope: string) =>
+    call(commands.boardDoneCardsIn(limit, before, scope)),
   Message: (taskId: string, msgId: string) => call(commands.boardMessage(taskId, msgId)),
   Comment: (id: string, text: string, tell: string, mentions: B.Mention[]) =>
     call(commands.boardComment(id, text, tell, mentions)),
@@ -186,6 +188,7 @@ export const DevicesService = {
   Devices: () => call(commands.devicesDevices()),
   Colors: () => call(commands.devicesColors()),
   SetDeviceColor: (deviceId: string, color: string) => done(commands.devicesSetDeviceColor(deviceId, color)),
+  RenameDevice: (deviceId: string, name: string) => call(commands.devicesRenameDevice(deviceId, name)),
   AddDevice: (role: string) => call(commands.devicesAddDevice(role)),
   JoinWithCode: (code: string, server: string) => call(commands.devicesJoinWithCode(code, server)),
   ConfirmWords: (words: string) => done(commands.devicesConfirmWords(words)),
