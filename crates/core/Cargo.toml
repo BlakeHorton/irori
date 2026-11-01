@@ -40,6 +40,7 @@ tokio-util.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+irori-toast.workspace = true
 irori-search.workspace = true
 ed25519-dalek.workspace = true
 rusqlite.workspace = true

@@ -221,6 +221,8 @@ struct Services {
     /// these events, never on a timer (#91).
     asks_kick: Arc<Kick>,
     colors: coord::devcolor::Picks,
+    /// The person's names for their devices (card #184).
+    device_names: coord::devname::Names,
     files: blob::Files,
     scrubber: Arc<scrub::Scrubber>,
     secrets: Mutex<Vec<String>>,
@@ -600,6 +602,15 @@ struct AgentGone<'a> {
     reason: &'a str,
 }
 
+/// The `device.name` payload (keys sorted, as the colour row's).
+#[derive(Serialize)]
+struct DeviceName<'a> {
+    at_device: &'a str,
+    #[serde(rename = "deviceId")]
+    device_id: &'a str,
+    name: &'a str,
+}
+
 /// The `device.color` payload (a Go map: keys sorted).
 #[derive(Serialize)]
 struct DeviceColor<'a> {
@@ -884,6 +895,8 @@ impl Core {
         let colors = coord::devcolor::Picks::new();
         let colors_sub = Arc::new(st.subscribe());
         load_colors(&st, &colors);
+        let device_names = coord::devname::Names::new();
+        load_device_names(&st, &device_names);
         let decisions_sub = Arc::new(st.subscribe());
 
         // The Core's stop; the shared boards' threads end with it too.
@@ -1028,6 +1041,7 @@ impl Core {
             answering,
             asks_kick: Kick::new(),
             colors,
+            device_names,
             files,
             scrubber,
             secrets: Mutex::new(Vec::new()),
@@ -1118,6 +1132,10 @@ impl Core {
                     })
                 }),
                 room: Some(Arc::new(WatchRoom(s.clone()))),
+                file: Some({
+                    let f = s.files.clone();
+                    Arc::new(move |id: &str| f.has(id).then(|| f.path(id)))
+                }),
             },
         );
         Ok(core)
@@ -1338,8 +1356,15 @@ impl Core {
                 while let Some(ev) = sub.recv() {
                     if ev.is_resync() {
                         load_colors(&s.store, &s.colors);
+                        load_device_names(&s.store, &s.device_names);
+                        s.hub.publish(CoreEvent::Devices);
                     } else if ev.kind == coord::devcolor::KIND {
                         s.colors.apply(&ev);
+                    } else if ev.kind == coord::devname::KIND {
+                        // A rename from this device was folded when it was
+                        // written; the window still hears it here.
+                        s.device_names.apply(&ev);
+                        s.hub.publish(CoreEvent::Devices);
                     }
                 }
             });
@@ -1651,6 +1676,21 @@ impl Core {
     }
     pub fn person(&self) -> irori_identity::Person {
         self.s.ident.current()
+    }
+
+    /// The person renames themself (card #183): person.json here, then a
+    /// person.profile row that carries the name to their other devices;
+    /// the boards' member.profile rows follow as it folds.
+    pub fn set_person_name(&self, name: &str) -> Result<irori_identity::Person, String> {
+        let s = &self.s;
+        if !s.ident.set_name(name).map_err(|e| e.to_string())? {
+            return Ok(s.ident.current());
+        }
+        let prof = s.ident.profile_row().map_err(|e| e.to_string())?;
+        s.store
+            .append("irori", store::kinds::PERSON_PROFILE, &prof)
+            .map_err(|e| e.to_string())?;
+        Ok(s.ident.current())
     }
     pub fn certified_devices(&self) -> Vec<irori_identity::DeviceState> {
         self.s.chain.devices()
@@ -1966,6 +2006,69 @@ impl Core {
             .map_err(|e| e.to_string())
     }
 
+    /// What each of the person's devices is called, by id: the person's
+    /// name for it (card #184), else its certificate's label (the
+    /// computer's name when it joined), else this device's own name.
+    /// Removed devices keep their name, so old lines still read.
+    pub fn device_labels(&self) -> std::collections::BTreeMap<String, String> {
+        let mut out: std::collections::BTreeMap<String, String> = self
+            .s
+            .chain
+            .devices()
+            .into_iter()
+            .map(|d| (d.cert.device_id, d.cert.label))
+            .collect();
+        let me = &self.s.device;
+        let mine = out.entry(me.id.clone()).or_default();
+        if mine.is_empty() {
+            *mine = me.name.clone();
+        }
+        for (id, name) in self.s.device_names.chosen() {
+            if let Some(l) = out.get_mut(&id) {
+                *l = name;
+            }
+        }
+        out
+    }
+
+    /// The person's renames alone, by device id (card #184).
+    pub(crate) fn device_renames(&self) -> std::collections::HashMap<String, String> {
+        self.s.device_names.chosen()
+    }
+
+    /// What device id is called ([`Core::device_labels`]); `""` for one
+    /// this device doesn't know.
+    pub fn device_label(&self, id: &str) -> String {
+        self.device_labels().remove(id).unwrap_or_default()
+    }
+
+    /// Renames one of the person's devices for them (`""` goes back to the
+    /// computer's name). The row replicates to their other devices and
+    /// never to a shared board. Only the window calls it.
+    pub fn set_device_name(&self, device_id: &str, name: &str) -> Result<String, String> {
+        if !self.device_colors().contains_key(device_id) {
+            return Err("that isn't one of your devices".into());
+        }
+        let name = coord::devname::clean(name);
+        let ev = self
+            .s
+            .store
+            .append(
+                "user",
+                coord::devname::KIND,
+                &DeviceName {
+                    at_device: &self.s.device.id,
+                    device_id,
+                    name: &name,
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        // Folded now, so the window's next read has it; the follower
+        // folding it again is a no-op.
+        self.s.device_names.apply(&ev);
+        Ok(name)
+    }
+
     /// Marks this device for Reset at its next start.
     pub fn request_reset(&self) -> std::io::Result<()> {
         crate::reset::request_reset(&self.s.data_dir)
@@ -2094,6 +2197,24 @@ fn ignored_by(
         }
     }
     out
+}
+
+fn load_device_names(st: &Store, names: &coord::devname::Names) {
+    let mut f = Filter {
+        kinds: vec![coord::devname::KIND.into()],
+        limit: store::MAX_LIST_LIMIT,
+        ..Filter::default()
+    };
+    loop {
+        let Ok(evs) = st.list(&f) else { return };
+        for ev in &evs {
+            names.apply(ev);
+        }
+        if (evs.len() as i64) < f.limit {
+            return;
+        }
+        f.after = evs[evs.len() - 1].cursor();
+    }
 }
 
 fn load_colors(st: &Store, colors: &coord::devcolor::Picks) {
@@ -2240,6 +2361,7 @@ impl Services {
             &self.pairing.handle,
             &self.device.id,
             &self.chain,
+            &self.device_names.chosen(),
             &r,
         )
         .map_err(|e| match e {
@@ -2337,6 +2459,7 @@ impl Services {
 
     fn sweep_coord(self: &Arc<Self>) -> Result<(), String> {
         check_branch_waits(&self.coord);
+        self.sweep_where();
         let (ns, err) = self.coord.sweep_notices_partial();
         let (asks, aerr) = self.coord.sweep_asks_partial(&self.ask_agents());
         for n in ns.iter().chain(asks.iter()) {
@@ -2462,6 +2585,57 @@ fn server_addr(home: Option<&home::Server>, servers: &mesh::Servers) -> String {
 /// no git) and queues the wait to fire when one moved, with the new tip's
 /// subject so the waiter needn't go and look. The coord sweep that
 /// follows writes wait.fired and wakes the waiter.
+impl Services {
+    /// Where each card this device's agents hold is (card #137): for every
+    /// open private card a local session holds, its latest working
+    /// directory (capture's, else the session's start one) read as a git
+    /// place, written when it changed. So a card says where its work is
+    /// even if its agent never says, and whoever picks it up after a crash
+    /// can find the branch.
+    fn sweep_where(&self) {
+        for c in self.presence.snapshot() {
+            if c.status == "gone" {
+                continue;
+            }
+            let dir = self
+                .capture
+                .session_dir(&c.key)
+                .unwrap_or_else(|| c.cwd.clone());
+            if dir.is_empty() {
+                continue;
+            }
+            let held = self.coord.list_tasks(&coord::TaskFilter {
+                holder: c.key.clone(),
+                open: true,
+                ..coord::TaskFilter::default()
+            });
+            for t in held {
+                // One writer per card: its holder, not a co-holding step
+                // owner, so two sessions never take turns rewriting it.
+                if t.holder != c.key || t.shared || t.open_ask().is_some() {
+                    continue;
+                }
+                // Only a git place is worth a row (see Where's line).
+                let Some(g) = capture::gitlink::place(&dir) else {
+                    continue;
+                };
+                let w = coord::Where {
+                    who: c.key.clone(),
+                    cwd: dir.clone(),
+                    worktree: g.worktree,
+                    branch: g.branch,
+                    head: g.head,
+                    pushed: g.pushed,
+                    ..coord::Where::default()
+                };
+                if let Err(e) = self.coord.set_where(&t.id, w) {
+                    logf(format_args!("where {}: {e}", t.id));
+                }
+            }
+        }
+    }
+}
+
 fn check_branch_waits(co: &coord::Coord) {
     for w in co.branch_waits() {
         let Some(now) = capture::gitlink::branch_tips(&w.root, &w.branch) else {

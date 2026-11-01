@@ -69,7 +69,13 @@ pub async fn roster_agents(
 #[tauri::command]
 #[specta::specta]
 pub async fn roster_device(w: W<'_>) -> R<Typed<irori_identity::DeviceJson, ts::Identity>> {
-    Ok(Typed::new(w.core.device().clone()))
+    // The header shows this device by the person's name for it (#184).
+    let mut d = w.core.device().clone();
+    let label = w.core.device_label(&d.id);
+    if !label.is_empty() {
+        d.name = label;
+    }
+    Ok(Typed::new(d))
 }
 
 #[tauri::command]
@@ -465,6 +471,13 @@ pub async fn board_resolve_thread(w: W<'_>, id: String) -> R<()> {
     w.resolve_thread(&id)
 }
 
+/// A resolved thread is live again (card #169).
+#[tauri::command]
+#[specta::specta]
+pub async fn board_reopen_thread(w: W<'_>, id: String) -> R<()> {
+    w.reopen_thread(&id)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_move_pin(w: W<'_>, id: String, before: String) -> R<()> {
@@ -662,6 +675,12 @@ pub async fn devices_set_device_color(w: W<'_>, device_id: String, color: String
 
 #[tauri::command]
 #[specta::specta]
+pub async fn devices_rename_device(w: W<'_>, device_id: String, name: String) -> R<String> {
+    w.rename_device(&device_id, &name)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn devices_add_device(w: W<'_>, role: String) -> R<PairStatus> {
     blocking(&w, move |w| w.seams.pairing.add(&role)).await
 }
@@ -779,6 +798,20 @@ pub async fn settings_set_launch_at_login(w: W<'_>, enabled: bool) -> R<()> {
     w.set_launch_at_login(enabled)
 }
 
+/// The person's name (card #183).
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get_your_name(w: W<'_>) -> R<String> {
+    Ok(w.get_your_name())
+}
+
+/// The person renames themself; returns the name as kept.
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_set_your_name(w: W<'_>, name: String) -> R<String> {
+    w.set_your_name(&name)
+}
+
 // ---- AttachmentsService ----------------------------------------------------------
 
 #[tauri::command]
@@ -888,6 +921,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_threads,
             board_card_ref,
             board_resolve_thread,
+            board_reopen_thread,
             board_comment_modify,
             board_comment_modify_cancel,
             board_comment_modify_save,
@@ -917,6 +951,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             devices_devices,
             devices_colors,
             devices_set_device_color,
+            devices_rename_device,
             devices_add_device,
             devices_join_with_code,
             devices_confirm_words,
@@ -935,6 +970,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             settings_test_notification,
             settings_get_launch_at_login,
             settings_set_launch_at_login,
+            settings_get_your_name,
+            settings_set_your_name,
             attachments_info,
             attachments_fetch,
             attachments_save,

@@ -116,6 +116,10 @@ kinds! {
     /// Irori's hand-out of an unheld card to one free agent at a time
     /// (card #82).
     TASK_OFFERED = "task.offered" => Replicated, Accepts;
+    /// Where a card's work is (card #137): the holder's worktree, branch,
+    /// last commit and whether it's pushed, written by the holder's
+    /// device. Private cards only: worktree paths stay with the person.
+    TASK_WHERE = "task.where" => Replicated, Refuses;
     /// Waits (card #87): one-shot wakes on a task's state or a branch.
     WAIT_CREATED = "wait.created" => Replicated, Accepts;
     WAIT_FIRED = "wait.fired" => Replicated, Accepts;
@@ -160,6 +164,8 @@ kinds! {
     NODE_ADDR = "node.addr" => Replicated, Refuses;
     // devcolor
     DEVICE_COLOR = "device.color" => Replicated, Refuses;
+    // devname (card #184)
+    DEVICE_NAME = "device.name" => Replicated, Refuses;
     // v0.5 shared boards: board logs only
     BOARD_CREATED = "board.created" => Replicated, Accepts;
     BOARD_RENAMED = "board.renamed" => Replicated, Accepts;

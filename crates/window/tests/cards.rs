@@ -891,6 +891,40 @@ fn files_with_a_thread_a_reply_and_a_new_card() {
     assert_eq!(got, vec![vec!["second.txt".to_string()]]);
 }
 
+/// Card #169: Reopen brings a resolved thread back as a live one, from the
+/// Threads panel or the card page's Reopen, and a reply goes to who
+/// answered it.
+#[test]
+fn a_resolved_thread_reopens_from_the_window() {
+    let r = Rig::new();
+    let t = held_task(&r);
+    let id =
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[])
+            .unwrap()
+            .task
+            .id;
+    r.w.core
+        .coord()
+        .add_comment(&r.key_a, &id, "Yes, half done.", false)
+        .unwrap();
+    r.w.resolve_thread(&id).unwrap();
+    r.w.reopen_thread(&id).unwrap();
+    assert_eq!(r.w.threads()[0].state, "answered", "live again");
+    assert!(
+        r.w.cards().iter().all(|c| c.id != id),
+        "still not in the grid"
+    );
+    let c =
+        r.w.comment(&id, "One more thing", "wake", &[], &[])
+            .unwrap();
+    assert_eq!(c.told.to, vec![r.key_a.clone()]);
+
+    // The card page's Reopen does the same for a resolved thread.
+    r.w.resolve_thread(&id).unwrap();
+    r.w.reopen(&id).unwrap();
+    assert_eq!(r.w.threads()[0].state, "answered");
+}
+
 /// Card #144: a #ref in text names a done card or a resolved thread too,
 /// by its short ref, so the window links it without the done list.
 #[test]
@@ -919,4 +953,45 @@ fn card_ref_finds_done_cards_and_threads() {
 
     assert!(r.w.card_ref("#9999").is_none(), "nothing has it");
     assert!(r.w.card_ref("not a ref").is_none());
+}
+
+/// Card #158: a blocker on another card waits by itself: it is a wait
+/// ("Waiting on #N"), not a question for the person, and the tray leaves
+/// it out; a question for the person still counts.
+#[test]
+fn a_wait_on_another_card_is_no_decision() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let first = held_task(&r);
+    let t = another_held_task(&r);
+    co.raise(
+        &r.key_a,
+        &t.id,
+        coord::NewBlocker {
+            question: "Needs the save format from the other card".into(),
+            blocked_by: Some(coord::BlockedBy {
+                kind: coord::BLOCKED_ON_TASK.into(),
+                reference: first.id.clone(),
+            }),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let d = r.w.card(&t.id).unwrap();
+    assert_eq!(d.summary.state, coord::BLOCKED);
+    assert_eq!((d.summary.open_blockers, d.summary.waiting_on), (0, 1));
+    assert_eq!(d.summary.wait_on, first.short_ref());
+    assert_eq!(
+        d.summary.wait_question,
+        "Needs the save format from the other card"
+    );
+    let s = r.w.cards().into_iter().find(|c| c.id == t.id).unwrap();
+    assert_eq!(s.wait_on, first.short_ref());
+    assert_eq!(r.w.decide_count(), 0, "a wait on a card is no decision");
+
+    raise(&r, &r.key_a, &t.id, "Which DB?", &["postgres"]);
+    let d = r.w.card(&t.id).unwrap();
+    assert_eq!((d.summary.open_blockers, d.summary.waiting_on), (1, 1));
+    assert_eq!(d.summary.blocker_question, "Which DB?");
+    assert_eq!(r.w.decide_count(), 1);
 }

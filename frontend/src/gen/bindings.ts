@@ -70,6 +70,8 @@ export const commands = {
 	boardCardRef: (r: string) => __TAURI_INVOKE<RefTarget | null>("board_card_ref", { r }),
 	/**  Resolve on a thread: the person is done with it. */
 	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
+	/**  A resolved thread is live again (card #169). */
+	boardReopenThread: (id: string) => __TAURI_INVOKE<null>("board_reopen_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
 	boardCommentModify: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify", { id, commentId }),
 	/**  Cancel on a comment held for editing: it goes out as it was. */
@@ -103,6 +105,7 @@ export const commands = {
 	devicesDevices: () => __TAURI_INVOKE<DeviceView[]>("devices_devices"),
 	devicesColors: () => __TAURI_INVOKE<string[]>("devices_colors"),
 	devicesSetDeviceColor: (deviceId: string, color: string) => __TAURI_INVOKE<null>("devices_set_device_color", { deviceId, color }),
+	devicesRenameDevice: (deviceId: string, name: string) => __TAURI_INVOKE<string>("devices_rename_device", { deviceId, name }),
 	devicesAddDevice: (role: string) => __TAURI_INVOKE<PairStatus>("devices_add_device", { role }),
 	devicesJoinWithCode: (code: string, server: string) => __TAURI_INVOKE<PairStatus>("devices_join_with_code", { code, server }),
 	devicesConfirmWords: (words: string) => __TAURI_INVOKE<null>("devices_confirm_words", { words }),
@@ -121,6 +124,10 @@ export const commands = {
 	settingsTestNotification: () => __TAURI_INVOKE<null>("settings_test_notification"),
 	settingsGetLaunchAtLogin: () => __TAURI_INVOKE<boolean>("settings_get_launch_at_login"),
 	settingsSetLaunchAtLogin: (enabled: boolean) => __TAURI_INVOKE<null>("settings_set_launch_at_login", { enabled }),
+	/**  The person's name (card #183). */
+	settingsGetYourName: () => __TAURI_INVOKE<string>("settings_get_your_name"),
+	/**  The person renames themself; returns the name as kept. */
+	settingsSetYourName: (name: string) => __TAURI_INVOKE<string>("settings_set_your_name", { name }),
 	attachmentsInfo: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_info", { sha }),
 	attachmentsFetch: (sha: string) => __TAURI_INVOKE<AttachmentInfo>("attachments_fetch", { sha }),
 	attachmentsSave: (sha: string) => __TAURI_INVOKE<string>("attachments_save", { sha }),
@@ -358,6 +365,10 @@ export type BoardSummary = {
 	owner: boolean,
 	devices: number,
 	cards: number,
+	/**  Cards completed in the last seven days (card #126). */
+	doneWeek: number,
+	/**  When anything last happened on the board; left out with no cards. */
+	lastAt?: string,
 	ready: boolean,
 	tagClash?: boolean,
 	/**
@@ -472,6 +483,13 @@ export type CardHolder = {
 	others: number,
 };
 
+/**  A holder's one line on what's done and what's next (card #137). */
+export type CardLeftOff = {
+	text: string,
+	by: AgentRef,
+	at: string,
+};
+
 /**
  *  A mention on a thread item or an ask, with the agent as the window
  *  knows it now (card #77).
@@ -580,6 +598,18 @@ export type CardSummary = {
 	 */
 	ready?: boolean,
 	waiting: number,
+	/**
+	 *  Open blockers that wait on something other than the person: another
+	 *  card, a lease, an agent, something external (card #158). They close
+	 *  by themselves, so they are not counted in open_blockers.
+	 */
+	waitingOn?: number,
+	/**
+	 *  What the first of those waits on, as the window names it: "#12" for
+	 *  a card, the agent's name, the resource or the outside thing.
+	 */
+	waitOn?: string,
+	waitQuestion?: string,
 	working: AgentRef[],
 	watching: AgentRef[],
 	holder: CardHolder,
@@ -597,6 +627,13 @@ export type CardSummary = {
 	pinRank?: number,
 	/**  Where the card sits on the Board's canvas (card #93), once placed. */
 	pos?: CanvasPos | null,
+	/**
+	 *  Where the holder's work is (card #137): its worktree, branch, last
+	 *  commit and whether it's pushed.
+	 */
+	where?: CardWhere | null,
+	/**  The holder's last line on what's done and what's next (card #137). */
+	leftOff?: CardLeftOff | null,
 };
 
 /**  One entry of a card's thread. */
@@ -643,6 +680,18 @@ export type CardWait = {
 	who: AgentRef,
 	text: string,
 	onThis: boolean,
+};
+
+/**  Where a card's work is (card #137), as its holder's device last saw it. */
+export type CardWhere = {
+	/**  The holder it describes, with its device. */
+	who: AgentRef,
+	worktree: string,
+	branch: string,
+	/**  The last commit's sha. */
+	head: string,
+	pushed: boolean,
+	at: string,
 };
 
 /**  presence.Change. */
@@ -916,6 +965,11 @@ export type NewCardInput = {
 	/**  An agent's key: hand it to that agent instead of the free one. */
 	assignTo?: string,
 	/**
+	 *  A shared board's id (card #126): the card goes on that board, made
+	 *  from its page. "": the person's own board.
+	 */
+	board?: string,
+	/**
 	 *  Files pasted, dropped or picked in the form (card #124): they go on
 	 *  the card as the person's first comment, and with the hand-out.
 	 */
@@ -930,6 +984,8 @@ export type NotifyOptions = {
 	volume: number,
 	/**  One of the CORNER_* values. */
 	corner: string,
+	/**  A confetti burst from each success card ("Confetti on good news"). */
+	confetti?: boolean,
 };
 
 /**  coord.Outcome: how an ask ended. */
@@ -1070,6 +1126,10 @@ export type SharePreview = {
 	repo: string,
 	visibleTo: string[],
 	dropped: string[],
+	/**  The open subtasks that go under it (card #180). */
+	subtasks: SubtaskPreview[],
+	/**  Its ended subtasks, which stay private: "#6 Old idea (canceled)". */
+	keptPrivate: string[],
 	hash: string,
 };
 
@@ -1093,6 +1153,18 @@ export type Step = {
 	doing?: boolean,
 	/**  The agent doing the step (card #86). */
 	owner?: string,
+};
+
+/**  One subtask as Share would write it under its parent (card #180). */
+export type SubtaskPreview = {
+	taskId: string,
+	ref: string,
+	title: string,
+	goal: string,
+	doneWhen: string,
+	steps: string[],
+	links: string[],
+	repo: string,
 };
 
 /**

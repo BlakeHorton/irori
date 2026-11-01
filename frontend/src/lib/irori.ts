@@ -5,13 +5,22 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Events, RosterService } from "./host"
-import type { AgentCard, Identity, Event as LogEvent, RosterChange } from "./models"
+import type {
+  AgentCard,
+  Identity,
+  Event as LogEvent,
+  RosterChange,
+} from "./models"
 import { sampleRoster } from "./sample"
 
 export type { AgentCard, Identity, LogEvent }
 
 // EventRosterChanged mirrors the Go constant in roster_service.go.
 export const EventRosterChanged = "roster:changed"
+
+// EventDevicesChanged is devices:changed (crates/window events.rs): one of
+// the person's devices was renamed, here or on another device (card #184).
+export const EventDevicesChanged = "devices:changed"
 
 // RecentLimit is how many log rows the activity panel asks for.
 export const RecentLimit = 100
@@ -109,6 +118,13 @@ export function useRoster(): Roster {
       recentTimer.current = window.setTimeout(() => void loadRecent(), 250)
     })
 
+    // A rename changes what the header calls this device.
+    const offDevices = Events.On(EventDevicesChanged, () => {
+      RosterService.Device()
+        .then((device) => live && setState((s) => ({ ...s, device })))
+        .catch(() => {})
+    })
+
     Promise.all([
       RosterService.Device(),
       RosterService.Version(),
@@ -136,6 +152,7 @@ export function useRoster(): Roster {
       live = false
       mounted.current = false
       off()
+      offDevices()
       window.clearTimeout(recentTimer.current)
     }
   }, [state.source, loadRecent])

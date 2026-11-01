@@ -456,6 +456,19 @@ impl Window {
     /// BoardService.Reopen.
     pub fn reopen(&self, id: &str) -> Result<TaskResult, String> {
         let (co, keys) = self.on(trim(id), &[])?;
+        // A resolved thread comes back as a live thread (card #169).
+        if let Some(t) = co.get_task(trim(id))
+            && crate::threads::is_thread(&t)
+            && t.ask.as_ref().is_some_and(|a| a.outcome.is_some())
+        {
+            let t = co
+                .reopen_thread(&keys[0], trim(id))
+                .map_err(|e| e.to_string())?;
+            return Ok(TaskResult {
+                task: t,
+                ..TaskResult::default()
+            });
+        }
         let (t, n) = co.reopen(&keys[0], trim(id)).map_err(|e| e.to_string())?;
         let told = self.tell(&n, Tell::NextTurn);
         Ok(TaskResult {

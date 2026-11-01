@@ -29,6 +29,7 @@ struct Rec {
     destroyed: Vec<u64>,
     timer: bool,
     work_calls: Vec<bool>,
+    bursts: Vec<(Rect, Rect)>,
 }
 
 impl Rec {
@@ -91,6 +92,9 @@ impl Surface for Rec {
     }
     fn timer(&mut self, on: bool) {
         self.timer = on;
+    }
+    fn confetti(&mut self, card: Rect, work: Rect) {
+        self.bursts.push((card, work));
     }
 }
 
@@ -435,4 +439,117 @@ fn two_line_bodies_grow_the_card() {
     let l = s.wins[&e.keys()[0]].look.clone().unwrap();
     assert_eq!(l.lines, 2, "clamped to two lines");
     assert_eq!(l.h, 11 + 21 + 12 + 1 + 34 + 36);
+}
+
+#[test]
+fn confetti_bursts_from_placed_success_cards_only_when_on() {
+    let e = engine();
+    let mut s = Rec::new(1.0);
+    let t0 = Instant::now();
+    let ok = |title: &str| Note {
+        title: title.into(),
+        kind: Kind::Success,
+        ..Note::default()
+    };
+
+    // Off by default: no burst.
+    e.post(ok("done"), t0);
+    e.sync(&mut s, t0);
+    assert!(s.bursts.is_empty());
+
+    e.set_options(Options {
+        confetti: true,
+        ..Options::default()
+    });
+    e.post(note("info"), t0);
+    e.post(
+        Note {
+            kind: Kind::Error,
+            ..note("bad")
+        },
+        t0,
+    );
+    e.sync(&mut s, t0);
+    assert!(s.bursts.is_empty(), "only success cards throw confetti");
+
+    e.post(ok("finished"), t0);
+    e.sync(&mut s, t0);
+    assert_eq!(s.bursts.len(), 1);
+    let key = *e.keys().last().unwrap();
+    let (x, y, w, h) = s.wins[&key].pos;
+    let (card, work) = s.bursts[0];
+    assert_eq!(
+        card,
+        Rect {
+            l: x,
+            t: y,
+            r: x + w,
+            b: y + h
+        }
+    );
+    assert_eq!(work, s.work);
+
+    // Once per post: later syncs don't repeat it.
+    e.sync(&mut s, t0 + Duration::from_millis(30));
+    assert_eq!(s.bursts.len(), 1);
+}
+
+#[test]
+fn a_thumbnail_goes_under_the_body_and_grows_the_card() {
+    use toast::Image;
+    use toast::layout::{TEXT_LEFT_DIP, thumb_size_dip};
+    let e = engine();
+    let mut s = Rec::new(2.0);
+    let t0 = Instant::now();
+    let plain = Note {
+        id: "plain".into(),
+        title: "Finished".into(),
+        body: "Ready for you".into(),
+        ..Note::default()
+    };
+    let img = Image::new(800, 400, vec![0u8; 800 * 400 * 4]).unwrap();
+    e.post(plain.clone(), t0);
+    e.post(
+        Note {
+            id: "pic".into(),
+            image: Some(img.clone()),
+            ..plain
+        },
+        t0,
+    );
+    e.sync(&mut s, t0);
+    let looks: Vec<Look> = s.wins.values().map(|w| w.look.clone().unwrap()).collect();
+    let (a, b) = (&looks[0], &looks[1]);
+    assert!(a.image.is_none());
+    let (got, r) = b.image.clone().unwrap();
+    assert_eq!(got, img, "the same pixels, not a copy");
+    let (tw, th) = thumb_size_dip(800, 400);
+    assert_eq!((r.r - r.l, r.b - r.t), (px(tw, 2.0), px(th, 2.0)));
+    assert_eq!(r.l, px(TEXT_LEFT_DIP, 2.0));
+    assert_eq!(b.lines, a.lines);
+    assert!(r.t > px(11.0 + 21.0, 2.0), "under the title and body");
+    assert!(r.b < b.h, "inside the card");
+    assert_eq!(b.h - a.h, px(8.0 + th, 2.0), "taller by gap + thumbnail");
+}
+
+#[test]
+fn a_thumbnail_sits_above_the_buttons() {
+    use toast::Image;
+    let e = engine();
+    let mut s = Rec::new(1.0);
+    let t0 = Instant::now();
+    e.post(
+        Note {
+            title: "Finished".into(),
+            body: "Ready".into(),
+            image: Image::new(100, 100, vec![255u8; 100 * 100 * 4]),
+            actions: vec![Action::close("Open"), Action::close("Later")],
+            ..Note::default()
+        },
+        t0,
+    );
+    e.sync(&mut s, t0);
+    let l = s.wins.values().next().unwrap().look.clone().unwrap();
+    let (_, r) = l.image.unwrap();
+    assert!(r.b <= l.buttons[0].t, "{r:?} over {:?}", l.buttons[0]);
 }

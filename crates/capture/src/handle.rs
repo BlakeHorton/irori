@@ -42,6 +42,11 @@ impl Inner {
         items: &[Item],
     ) -> Result<(), String> {
         let drop = self.drop_noise(cancel, items);
+        for it in items {
+            if let Some(d) = self.item_dir(it) {
+                self.write().session_dirs.insert(f.key.clone(), d);
+            }
+        }
         for (i, it) in items.iter().enumerate() {
             match it {
                 Item::Turn(t) => self.on_turn(cancel, f, t)?,
@@ -109,6 +114,26 @@ impl Inner {
     }
 
     /// Notes that session `sid` works in `root` (keeps it hot while live).
+    /// The directory an item worked in (card #137): a command's, after
+    /// its `cd`s; an edited file's folder.
+    fn item_dir(&self, it: &Item) -> Option<String> {
+        let d = match it {
+            Item::Bash(b) if !b.cwd.is_empty() => {
+                crate::cmddir::command_dir(&b.command, &b.cwd, &self.opts.home)
+            }
+            Item::Edit(e) if !e.path.is_empty() => {
+                let p = if crate::gopath::is_abs(&e.path) || e.cwd.is_empty() {
+                    e.path.clone()
+                } else {
+                    crate::gopath::join(&[&e.cwd, &e.path])
+                };
+                crate::gopath::dir(&p)
+            }
+            _ => return None,
+        };
+        (!d.is_empty() && crate::gopath::is_abs(&d)).then_some(d)
+    }
+
     pub(crate) fn use_root(&self, root: &str, sid: &str) {
         if root.is_empty() || sid.is_empty() {
             return;

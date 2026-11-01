@@ -9,6 +9,7 @@
 //! | `boards:changed` | `{}` | a shared board opened, went or was renamed |
 //! | `boards:invite` | `InviteStatus` | every change of the open invite |
 //! | `devices:pairing` | [`PairStatus`] | pairing change (M7) |
+//! | `devices:changed` | `{}` | a device renamed, here or synced (#184) |
 //! | `settings:launch-at-login` | bool | after every toggle attempt |
 //! | `app:open` | [`Target`] | a card's Open (M6 toast) |
 //! | `update:status` | [`UpdateStatus`] | updater transitions (M8) |
@@ -38,6 +39,7 @@ pub const EVENT_INBOX_CHANGED: &str = "inbox:changed";
 pub const EVENT_BOARD_CHANGED: &str = "board:changed";
 pub const EVENT_CAPTURE_CHANGED: &str = "capture:changed";
 pub const EVENT_DEVICES_PAIRING: &str = "devices:pairing";
+pub const EVENT_DEVICES_CHANGED: &str = "devices:changed";
 pub const EVENT_APP_OPEN: &str = "app:open";
 
 /// The board:changed and boards:changed payload.
@@ -177,6 +179,18 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
             coalesce(&q, BOARD_EMIT_EVERY, &stop, |_| {
                 w.emit(EVENT_BOARD_CHANGED, &Empty {});
                 w.board_changed();
+            });
+        }));
+    }
+    {
+        // A device renamed (card #184): the header, the cards' "on <device>"
+        // lines and the Devices list read the names again.
+        let (w, stop) = (w.clone(), stop.clone());
+        let feed = w.core.feed(&[Topic::Devices]);
+        out.push(spawn("irori-window-devices", move || {
+            let q = feed.queue().clone();
+            coalesce(&q, BOARD_EMIT_EVERY, &stop, |_| {
+                w.emit(EVENT_DEVICES_CHANGED, &Empty {});
             });
         }));
     }

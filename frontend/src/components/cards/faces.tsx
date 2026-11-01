@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react"
+import { UserIcon } from "lucide-react"
 import { minidenticon } from "minidenticons"
 import { AgentHover } from "@/components/cards/agent-hover"
 import { Avatar, AvatarBadge } from "@/components/ui/avatar"
@@ -65,7 +66,11 @@ export function Face({
         aria-label={title}
         role="img"
       >
-        <Pixels cells={person ? personCells : cells(who.key)} full />
+        {person ? (
+          <UserIcon className="size-full" strokeWidth={2.5} aria-hidden />
+        ) : (
+          <Pixels cells={cells(who.key)} full />
+        )}
       </span>
     )
     return noHover || person ? face : <AgentHover who={who} trigger={face} />
@@ -84,8 +89,9 @@ export function Face({
       aria-label={title}
     >
       {person ? (
-        // The person is a user icon in the colour of the device they wrote
-        // from (card #108), blue with one device, as an agent's face is.
+        // The person is a plain user icon (card #179), not a pixel face, so
+        // they never read as one more agent; in the colour of the device
+        // they wrote from (card #108), blue with one device.
         <span
           className={cn(
             "flex size-full items-center justify-center",
@@ -93,7 +99,7 @@ export function Face({
           )}
           style={tint ? { color: tint } : undefined}
         >
-          <Pixels cells={personCells} />
+          <UserIcon className="size-5" strokeWidth={2.25} aria-hidden />
         </span>
       ) : (
         <span
@@ -144,16 +150,6 @@ function cells(seed: string): [number, number][] {
   }
   return c!
 }
-
-// personCells are the person's face: a pixel user (head over shoulders),
-// drawn like an agent's identicon so it sits square among them (card #108).
-// prettier-ignore
-const personCells: [number, number][] = [
-               [1, 0], [2, 0], [3, 0],
-               [1, 1], [2, 1], [3, 1],
-               [1, 3], [2, 3], [3, 3],
-  [0, 4], [1, 4], [2, 4], [3, 4], [4, 4],
-]
 
 // Identicon draws the seed's 5x5 pattern.
 function Identicon({ seed }: { seed: string }) {

@@ -129,6 +129,12 @@ pub struct BoardSummary {
     pub devices: i64,
     /// Its live cards.
     pub cards: i64,
+    /// Cards completed in the last seven days (card #126's state bar).
+    pub done_week: i64,
+    /// When anything last happened on it: a card's last write or thread
+    /// row (card #126); zero for a board with no cards.
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    pub last_at: GoTime,
     /// Its board.created counted here, so cards can go on it. A board
     /// another device made shows up before its rows arrive.
     pub ready: bool,
@@ -177,10 +183,31 @@ pub struct SharePreview {
     /// What scrub took out, one line each ("a path in the goal"), so the
     /// person sees why the text differs.
     pub dropped: Vec<String>,
+    /// The parent's open subtasks, which go to the board under it (card
+    /// #180), each as it will be written.
+    pub subtasks: Vec<SubtaskPreview>,
+    /// Its ended subtasks, which stay private: "#6 Old idea (canceled)".
+    pub kept_private: Vec<String>,
     /// Covers every field above. Share is given it back and refuses when
     /// the card's preview no longer matches, so the board gets only what
     /// the person saw (an agent may edit the card meanwhile).
     pub hash: String,
+}
+
+/// One subtask as Share to board would write it under its parent.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtaskPreview {
+    /// The private subtask's id and ref ("#5").
+    pub task_id: String,
+    #[serde(rename = "ref")]
+    pub reference: String,
+    pub title: String,
+    pub goal: String,
+    pub done_when: String,
+    pub steps: Vec<String>,
+    pub links: Vec<String>,
+    pub repo: String,
 }
 
 impl SharePreview {
@@ -194,6 +221,14 @@ impl SharePreview {
 
 fn or<'a>(a: &'a str, b: &'a str) -> &'a str {
     if a.is_empty() { b } else { a }
+}
+
+/// " (on #5)" for a subtask's dropped link, "" for the card itself.
+fn on(whose: &str) -> String {
+    match whose.strip_suffix("'s ") {
+        Some(r) => format!(" (on {r})"),
+        None => String::new(),
+    }
 }
 
 fn one_line(s: &str, n: usize) -> String {
@@ -233,6 +268,26 @@ impl Services {
                 self.fold_copy(&ev);
             } else if ev.kind == kinds::BOARD_CARD_OF {
                 self.fold_card_key(&ev);
+            } else if ev.kind == kinds::PERSON_PROFILE {
+                self.follow_person_name();
+            }
+        }
+    }
+
+    /// The person renamed themself, here or on another of their devices
+    /// (card #183): person.json takes the newest person.profile's name, and
+    /// each open board gets a member.profile with it.
+    pub(crate) fn follow_person_name(&self) {
+        let name = self.chain.profile_name();
+        if !name.is_empty()
+            && let Err(e) = self.ident.set_name(&name)
+        {
+            crate::log(&format!("person name: {e}"));
+            return;
+        }
+        for b in self.boards.list() {
+            if let Err(e) = self.keep_current(&b) {
+                crate::log(&format!("person name on board {}: {e}", b.id));
             }
         }
     }
@@ -432,15 +487,30 @@ impl Services {
                     .iter()
                     .filter(|d| !d.revoked)
                     .count() as i64;
-                s.cards = b
-                    .coord()
-                    .list_tasks(&coord::TaskFilter {
-                        open: true,
-                        ..Default::default()
-                    })
+                let co = b.coord();
+                let week = GoTime::from_system(std::time::SystemTime::now()).unix_nano()
+                    - 7 * 24 * 3600 * 1_000_000_000;
+                for t in co
+                    .list_tasks(&coord::TaskFilter::default())
                     .iter()
                     .filter(|t| !t.withdrawn)
-                    .count() as i64;
+                {
+                    let mut last = t.updated_at;
+                    if !coord::is_terminal(&t.state) {
+                        s.cards += 1;
+                        if let Some(acts) = co.activity(&t.id)
+                            && let Some(a) = acts.first()
+                            && a.at.unix_nano() > last.unix_nano()
+                        {
+                            last = a.at;
+                        }
+                    } else if t.state == coord::COMPLETED && t.updated_at.unix_nano() >= week {
+                        s.done_week += 1;
+                    }
+                    if last.unix_nano() > s.last_at.unix_nano() {
+                        s.last_at = last;
+                    }
+                }
                 s
             })
             .collect();
@@ -720,10 +790,18 @@ impl Services {
                 "an ask isn't shared; its outcome card can be",
             ));
         }
-        if !t.parent.is_empty() || !t.subtasks.is_empty() {
+        if !t.parent.is_empty() {
+            let pr = self
+                .coord
+                .get_task(&t.parent)
+                .map(|p| p.short_ref())
+                .unwrap_or_else(|| format!("task:{}", t.parent));
             return Err(Error::coord(
                 CK::Invalid,
-                "a card with subtasks, or a subtask, isn't shared yet",
+                format_args!(
+                    "{} is a subtask of {pr}: share {pr} and its subtasks go with it",
+                    t.short_ref()
+                ),
             ));
         }
         if self.shared_copy_of(task_id).is_some() {
@@ -733,6 +811,56 @@ impl Services {
             ));
         }
         Ok(t)
+    }
+
+    /// A shareable parent's family (card #180): its open subtasks, each
+    /// checked the way the parent was, and its ended ones, which stay
+    /// private. One that can't go stops the whole family before anything
+    /// is written.
+    fn family(&self, t: &Task) -> Result<(Vec<Task>, Vec<Task>)> {
+        let (mut open, mut ended) = (Vec::new(), Vec::new());
+        for id in &t.subtasks {
+            let Some(k) = self.coord.get_task(id) else {
+                continue;
+            };
+            if coord::is_terminal(&k.state) {
+                ended.push(k);
+                continue;
+            }
+            if k.ask.is_some() {
+                return Err(Error::coord(
+                    CK::Invalid,
+                    format_args!(
+                        "{} can't go: its subtask {} is an ask, and an ask isn't shared",
+                        t.short_ref(),
+                        k.short_ref()
+                    ),
+                ));
+            }
+            if self.shared_copy_of(id).is_some() {
+                return Err(Error::coord(
+                    CK::Invalid,
+                    format_args!(
+                        "{} can't go: its subtask {} was shared already",
+                        t.short_ref(),
+                        k.short_ref()
+                    ),
+                ));
+            }
+            open.push(k);
+        }
+        if open.is_empty() && !ended.is_empty() {
+            // Its state follows its subtasks, and Withdraw couldn't bring
+            // it back (a parent with every subtask ended doesn't reopen).
+            return Err(Error::coord(
+                CK::BadState,
+                format_args!(
+                    "{}'s subtasks have all ended; close it, or add a subtask, before sharing it",
+                    t.short_ref()
+                ),
+            ));
+        }
+        Ok((open, ended))
     }
 
     /// The share preview for private card `task_id` on `board_id`.
@@ -755,38 +883,63 @@ impl Services {
             visible_to: self.board_people(&b),
             ..Default::default()
         };
+        let (open, ended) = self.family(&t)?;
         let mut dropped = Vec::new();
+        let f = self.clean_card(&t, "", &mut dropped);
+        (p.title, p.goal, p.done_when) = (f.title, f.goal, f.done_when);
+        (p.steps, p.links, p.repo) = (f.steps, f.links, f.repo);
+        for k in &open {
+            let whose = format!("{}'s ", k.short_ref());
+            let mut f = self.clean_card(k, &whose, &mut dropped);
+            f.task_id = k.id.clone();
+            f.reference = k.short_ref();
+            p.subtasks.push(f);
+        }
+        p.kept_private = ended
+            .iter()
+            .map(|k| format!("{} {} ({})", k.short_ref(), one_line(&k.title, 60), k.state))
+            .collect();
+        p.dropped = dedupe(dropped);
+        p.hash = p.hash();
+        Ok(p)
+    }
+
+    /// Card t's fields as a share would write them, after scrub and the
+    /// stricter pass; what was taken out goes to `dropped`, `whose` naming
+    /// a subtask's ("#5's ") or empty for the card itself.
+    fn clean_card(&self, t: &Task, whose: &str, dropped: &mut Vec<String>) -> SubtaskPreview {
         let mut clean = |what: &str, input: &str| {
             let mut s = self.scrubber.string(input);
             if s != input {
-                dropped.push(format!("a secret in the {what}"));
+                dropped.push(format!("a secret in {}{what}", or(whose, "the ")));
             }
             let st = scrub::strict(&s);
             if st != s {
-                dropped.push(format!("a path in the {what}"));
+                dropped.push(format!("a path in {}{what}", or(whose, "the ")));
                 s = st;
             }
             s
         };
-        p.title = clean("title", &t.title);
-        p.goal = clean("goal", &t.objective);
-        p.done_when = clean("done-when", &t.done_criteria);
-        p.steps = t.steps.iter().map(|s| clean("steps", &s.text)).collect();
+        let mut f = SubtaskPreview {
+            title: clean("title", &t.title),
+            goal: clean("goal", &t.objective),
+            done_when: clean("done-when", &t.done_criteria),
+            steps: t.steps.iter().map(|s| clean("steps", &s.text)).collect(),
+            ..Default::default()
+        };
         for l in &t.links {
             if l.kind == coord::LINK_PATH && scrub::strict_dropped(&l.reference) {
-                dropped.push("a link to a path on this machine".into());
+                dropped.push(format!("a link to a path on this machine{}", on(whose)));
             } else if self.scrubber.string(&l.reference) != l.reference {
-                dropped.push("a link with a secret in it".into());
+                dropped.push(format!("a link with a secret in it{}", on(whose)));
             } else {
-                p.links.push(l.reference.clone());
+                f.links.push(l.reference.clone());
             }
         }
         if !t.repo_key.is_empty() && !scrub::strict_dropped(&t.repo_key) {
-            p.repo = t.repo_key.clone();
+            f.repo = t.repo_key.clone();
         }
-        p.dropped = dedupe(dropped);
-        p.hash = p.hash();
-        Ok(p)
+        f
     }
 
     /// Shares private card `task_id` to `board_id` as the person (§5.2): a
@@ -810,63 +963,121 @@ impl Services {
         }
         let b = self.board(board_id)?;
         let priv_t = self.coord.get_task(task_id).unwrap_or_default();
-        let steps = p
-            .steps
-            .iter()
-            .enumerate()
-            .map(|(i, s)| Step {
-                text: s.clone(),
-                done: priv_t.steps.get(i).is_some_and(|x| x.done),
-                ..Default::default()
-            })
-            .collect();
-        let shared = b.coord().create_task(
-            &self.person_actor(),
-            coord::NewTask {
-                title: p.title.clone(),
-                objective: p.goal.clone(),
-                done_criteria: p.done_when.clone(),
-                repo_key: p.repo.clone(),
-                links: p.links.clone(),
-                steps,
-                ..Default::default()
-            },
-        )?;
+        let new_card = |f: &SubtaskPreview, from: &Task, parent: &str| coord::NewTask {
+            title: f.title.clone(),
+            objective: f.goal.clone(),
+            done_criteria: f.done_when.clone(),
+            repo_key: f.repo.clone(),
+            links: f.links.clone(),
+            steps: f
+                .steps
+                .iter()
+                .enumerate()
+                .map(|(i, s)| Step {
+                    text: s.clone(),
+                    done: from.steps.get(i).is_some_and(|x| x.done),
+                    ..Default::default()
+                })
+                .collect(),
+            parent: parent.into(),
+            ..Default::default()
+        };
+        let top = SubtaskPreview {
+            title: p.title.clone(),
+            goal: p.goal.clone(),
+            done_when: p.done_when.clone(),
+            steps: p.steps.clone(),
+            links: p.links.clone(),
+            repo: p.repo.clone(),
+            ..Default::default()
+        };
+        let actor = self.person_actor();
+        let shared = b.coord().create_task(&actor, new_card(&top, &priv_t, ""))?;
         self.boards
             .inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .task_of
             .insert(shared.id.clone(), board_id.into());
-        let row = SharedCopyRow {
-            private_task_id: task_id.into(),
-            board_id: board_id.into(),
-            task_id: shared.id.clone(),
-        };
-        self.store.append("irori", kinds::SHARED_COPY, &row)?;
-        self.boards
-            .inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .copies
-            .insert(task_id.into(), row);
-        // The private card closes; its holders hear it at their next
-        // turn, with where the card went.
+        // Its open subtasks go under it (card #180). One that fails takes
+        // back what went so far, so the board never holds half a family
+        // and nothing private has closed yet.
+        let mut made: Vec<(String, Task)> = Vec::new();
+        for f in &p.subtasks {
+            let from = self.coord.get_task(&f.task_id).unwrap_or_default();
+            match b
+                .coord()
+                .create_task(&actor, new_card(f, &from, &shared.id))
+            {
+                Ok(k) => {
+                    self.boards
+                        .inner
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .task_of
+                        .insert(k.id.clone(), board_id.into());
+                    made.push((f.task_id.clone(), k));
+                }
+                Err(e) => {
+                    for id in made.iter().map(|(_, k)| &k.id).chain([&shared.id]) {
+                        if let Err(w) = b.coord().withdraw(&actor, id, "the share failed") {
+                            logf(format_args!("share {task_id}: take back {id}: {w}"));
+                        }
+                    }
+                    return Err(e.into());
+                }
+            }
+        }
+        // Every card is on the board: now the copies rows, then the
+        // private family closes, subtasks first and the parent last (a
+        // parent's cancel would cancel its open subtasks with its own
+        // note instead of theirs).
+        let rows = std::iter::once((task_id.to_string(), shared.clone())).chain(made.clone());
+        for (priv_id, k) in rows {
+            let row = SharedCopyRow {
+                private_task_id: priv_id.clone(),
+                board_id: board_id.into(),
+                task_id: k.id.clone(),
+            };
+            self.store.append("irori", kinds::SHARED_COPY, &row)?;
+            self.boards
+                .inner
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .copies
+                .insert(priv_id, row);
+        }
+        // The private cards close; their holders hear it at their next
+        // turn, with where each card went.
+        let visible = p.visible_to.join(", ");
+        let user = self.user_sender().key;
+        for (priv_id, k) in &made {
+            let note = format!(
+                "Shared to {} as {}, a subtask of {} (visible to: {visible}). Work it there; this private card is closed.",
+                p.board_name,
+                k.short_ref(),
+                shared.short_ref()
+            );
+            self.coord
+                .set_task_state(&user, priv_id, coord::CANCELED, &note)?;
+        }
         let note = format!(
-            "Shared to {} as {} (visible to: {}). Work it there; this private card is closed.",
+            "Shared to {} as {} (visible to: {visible}). Work it there; this private card is closed.",
             p.board_name,
-            shared.short_ref(),
-            p.visible_to.join(", ")
+            shared.short_ref()
         );
         self.coord
-            .set_task_state(&self.user_sender().key, task_id, coord::CANCELED, &note)?;
+            .set_task_state(&user, task_id, coord::CANCELED, &note)?;
         Ok(shared)
     }
 
     /// Takes a shared card back off its board as the person (§5.3): it is
     /// canceled with withdrawn set, other members hide it, and its holders
     /// on this device carry on in the private card it came from, or a new
-    /// one, which is returned (`None` when nobody here held it).
+    /// one, which is returned (`None` when nobody here held it). A parent
+    /// takes its subtasks with it, each first (card #180); a subtask alone
+    /// is refused, and so is a family with a subtask this person can't
+    /// withdraw, before anything is written.
     pub(crate) fn withdraw_card(&self, task_id: &str) -> Result<Option<Task>> {
         let (board_id, co) = self.route(task_id)?;
         if board_id.is_empty() {
@@ -875,6 +1086,45 @@ impl Services {
                 format_args!("{task_id} is a private card; cancel it instead"),
             ));
         }
+        let mut kids = Vec::new();
+        if let Some(t) = co.get_task(task_id) {
+            if let Some(p) = co.get_task(&t.parent).filter(|p| !p.withdrawn) {
+                return Err(Error::coord(
+                    CK::Invalid,
+                    format_args!(
+                        "{} is a subtask of {}: withdraw {} and its subtasks come back with it",
+                        t.short_ref(),
+                        p.short_ref(),
+                        p.short_ref()
+                    ),
+                ));
+            }
+            for k in t.subtasks.iter().filter_map(|id| co.get_task(id)) {
+                if k.withdrawn {
+                    continue;
+                }
+                if !co.may_withdraw(&k.id) {
+                    return Err(Error::coord(
+                        CK::NotAllowed,
+                        format_args!(
+                            "{} has a subtask someone else added, {}, which only its creator or a board owner withdraws; {} stays on the board",
+                            t.short_ref(),
+                            k.short_ref(),
+                            t.short_ref()
+                        ),
+                    ));
+                }
+                kids.push(k.id);
+            }
+        }
+        for k in &kids {
+            self.withdraw_one(&co, k)?;
+        }
+        self.withdraw_one(&co, task_id)
+    }
+
+    /// Withdraws one board card and carries its work on privately.
+    fn withdraw_one(&self, co: &Coord, task_id: &str) -> Result<Option<Task>> {
         let t = co.withdraw(&self.person_actor(), task_id, "withdrawn from the board")?;
         let user = self.user_sender().key;
         let locals: Vec<String> = t
@@ -885,7 +1135,8 @@ impl Services {
                 (k != *h && k != user).then_some(k)
             })
             .collect();
-        // A private card it was shared from comes back into play;
+        // A private card it was shared from comes back into play (a
+        // parent may be back already: its subtask's reopening brings it);
         // otherwise a new private card carries the work on, if anyone here
         // held it.
         if let Some(priv_id) = self
@@ -894,8 +1145,14 @@ impl Services {
             .find(|(_, sc)| sc.task_id == task_id)
             .map(|(p, _)| p)
         {
-            let (back, n) = self.coord.reopen(&user, &priv_id)?;
-            self.tell_notices(&n);
+            let back = match self.coord.get_task(&priv_id) {
+                Some(p) if !coord::is_terminal(&p.state) => p,
+                _ => {
+                    let (back, n) = self.coord.reopen(&user, &priv_id)?;
+                    self.tell_notices(&n);
+                    back
+                }
+            };
             for k in &locals {
                 if let Ok((_, n)) = self.coord.assign(&user, &priv_id, k) {
                     self.tell_notices(&n);
@@ -974,11 +1231,14 @@ impl Services {
     /// A notice with a board card's keys (agent:<cardId>, this person's
     /// person:<id>) as this device's inbox knows them, so a notice about a
     /// card on a shared board reaches this person's own agents (§2.4).
-    /// Other people's keys stay as they are; the bridge (§7.1) handles them.
+    /// Other people's keys (and their person:) are left out: their own
+    /// devices hear the board row through the bridge (§7.1), and this
+    /// device's inbox has no agent by those names.
     pub(crate) fn private_notice(&self, mut n: Notice) -> Notice {
         for k in n.to.iter_mut() {
             *k = self.private_key(k);
         }
+        n.to.retain(|k| !coord::board_form(k));
         n.by = self.private_key(&n.by);
         n
     }

@@ -29,6 +29,7 @@ import {
   ShortRef,
   Spinner,
   StatePill,
+  waitLabel,
 } from "./bits"
 import { Faces, TalkBubble } from "./faces"
 
@@ -462,6 +463,25 @@ function CardTile({
           </span>
         </span>
       )}
+      {/* Where its holder left off (card #137), dim: a log, not a
+          question. */}
+      {card.leftOff && !blocked && (
+        <span
+          className="line-clamp-1 text-xs text-muted-foreground"
+          title={plainLine(card.leftOff.text)}
+        >
+          Left off: {plainLine(card.leftOff.text)}
+        </span>
+      )}
+      {!blocked && !!card.waitingOn && (
+        <span className="flex gap-1.5 text-xs text-muted-foreground">
+          <span aria-hidden>●</span>
+          <span className="line-clamp-2">
+            {waitLabel(card)}
+            {card.waitQuestion ? `: ${plainLine(card.waitQuestion)}` : ""}
+          </span>
+        </span>
+      )}
       {!blocked && card.subtaskBlocked && (
         <span className="flex gap-1.5 text-xs text-warning">
           <span aria-hidden>●</span>
@@ -725,6 +745,12 @@ function SubtaskDetailRow({
       {blocked && card.blockerQuestion && (
         <span className={"line-clamp-2 pl-4 text-[11px] text-destructive"}>
           {plainLine(card.blockerQuestion)}
+        </span>
+      )}
+      {!blocked && !!card.waitingOn && (
+        <span className="line-clamp-2 pl-4 text-[11px] text-muted-foreground">
+          {waitLabel(card)}
+          {card.waitQuestion ? `: ${plainLine(card.waitQuestion)}` : ""}
         </span>
       )}
     </button>

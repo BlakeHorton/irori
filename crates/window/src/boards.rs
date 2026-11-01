@@ -3,6 +3,7 @@
 //! every board in the grid (design v0.5-shared-boards.md §8, step 4).
 
 use coord::{Activity, Comment, Task};
+use gocompat::time::GoTime;
 use serde::Serialize;
 use specta::Type;
 
@@ -23,6 +24,12 @@ pub struct BoardSummary {
     pub owner: bool,
     pub devices: i64,
     pub cards: i64,
+    /// Cards completed in the last seven days (card #126).
+    pub done_week: i64,
+    /// When anything last happened on the board; left out with no cards.
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    #[specta(optional, type = crate::ts::Time)]
+    pub last_at: GoTime,
     pub ready: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
@@ -48,6 +55,8 @@ impl From<irori_core::BoardSummary> for BoardSummary {
             owner: s.owner,
             devices: s.devices,
             cards: s.cards,
+            done_week: s.done_week,
+            last_at: s.last_at,
             ready: s.ready,
             tag_clash: s.tag_clash,
             leaving: s.leaving,
@@ -70,7 +79,41 @@ pub struct SharePreview {
     pub repo: String,
     pub visible_to: Vec<String>,
     pub dropped: Vec<String>,
+    /// The open subtasks that go under it (card #180).
+    pub subtasks: Vec<SubtaskPreview>,
+    /// Its ended subtasks, which stay private: "#6 Old idea (canceled)".
+    pub kept_private: Vec<String>,
     pub hash: String,
+}
+
+/// One subtask as Share would write it under its parent (card #180).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtaskPreview {
+    pub task_id: String,
+    #[serde(rename = "ref")]
+    pub reference: String,
+    pub title: String,
+    pub goal: String,
+    pub done_when: String,
+    pub steps: Vec<String>,
+    pub links: Vec<String>,
+    pub repo: String,
+}
+
+impl From<irori_core::SubtaskPreview> for SubtaskPreview {
+    fn from(s: irori_core::SubtaskPreview) -> SubtaskPreview {
+        SubtaskPreview {
+            task_id: s.task_id,
+            reference: s.reference,
+            title: s.title,
+            goal: s.goal,
+            done_when: s.done_when,
+            steps: s.steps,
+            links: s.links,
+            repo: s.repo,
+        }
+    }
 }
 
 impl From<irori_core::SharePreview> for SharePreview {
@@ -86,6 +129,8 @@ impl From<irori_core::SharePreview> for SharePreview {
             repo: p.repo,
             visible_to: p.visible_to,
             dropped: p.dropped,
+            subtasks: p.subtasks.into_iter().map(Into::into).collect(),
+            kept_private: p.kept_private,
             hash: p.hash,
         }
     }

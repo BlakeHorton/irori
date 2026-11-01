@@ -477,6 +477,7 @@ fn an_ask_whose_mentions_are_all_gone_is_unclaimed_at_once() {
 
 const BOARD_PERSON: &str = "person:p1";
 const BOARD_CARD: &str = "agent:c1";
+const OTHER_PERSON: &str = "person:p2";
 
 struct Board {
     _dir: tempfile::TempDir,
@@ -529,27 +530,30 @@ fn board() -> Board {
     Board { _dir: dir, st, c }
 }
 
+/// Card #177: a shared card's comment keeps its mentions in board form
+/// (agent:<cardId>, person:<personId>), so every member's Core resolves
+/// them; a person mentioned gets no notice and doesn't become a watcher.
 #[test]
-fn a_shared_card_keeps_mentions_out_of_the_board_log() {
+fn a_shared_card_keeps_board_mentions_in_the_log() {
     let b = board();
     let t = b.c.create_task(BOARD_PERSON, nt("shared work")).unwrap();
     let (cm, ns) =
         b.c.person_comment(
             BOARD_PERSON,
             &t.id,
-            "@cedar look",
+            "@cedar @Blake look",
             false,
-            &[m(BOARD_CARD, "cedar")],
+            &[m(BOARD_CARD, "cedar"), m(OTHER_PERSON, "Blake")],
             None,
         )
         .unwrap();
-    // The agent is still woken and watches.
+    // The agent is woken and watches; the person is neither.
     let mn = ns.iter().find(|n| n.kind == NOTICE_MENTIONED).unwrap();
     assert_eq!(mn.to, [BOARD_CARD]);
     assert!(mn.wake);
     assert_eq!(b.c.get_task(&t.id).unwrap().watchers, [BOARD_CARD]);
-    // The row and the folded comment carry plain text only.
-    assert!(cm.mentions.is_empty());
+    let keys: Vec<&str> = cm.mentions.iter().map(|m| m.key.as_str()).collect();
+    assert_eq!(keys, [BOARD_CARD, OTHER_PERSON]);
     let rows =
         b.st.list(&store::Filter {
             kinds: vec![kinds::TASK_COMMENT.into()],
@@ -559,9 +563,9 @@ fn a_shared_card_keeps_mentions_out_of_the_board_log() {
         .unwrap();
     assert_eq!(rows.len(), 1);
     let p: TaskCommentRow = payload(&rows[0]);
-    assert!(p.mentions.is_empty());
-    assert!(!String::from_utf8_lossy(&rows[0].payload).contains("mentions"));
-    assert_eq!(p.text, "@cedar look");
+    let keys: Vec<&str> = p.mentions.iter().map(|m| m.key.as_str()).collect();
+    assert_eq!(keys, [BOARD_CARD, OTHER_PERSON]);
+    assert_eq!(p.text, "@cedar @Blake look");
 }
 
 #[test]
@@ -582,16 +586,16 @@ fn a_shared_board_ask_refuses_mentions() {
 }
 
 #[test]
-fn a_board_row_with_mentions_folds_without_them() {
+fn a_board_row_folds_only_board_form_mentions() {
     let b = board();
     let t = b.c.create_task(BOARD_PERSON, nt("shared work")).unwrap();
-    // Another member's device wrote mentions into the board log anyway.
+    // Another member's device wrote mentions, one not in board form.
     let raw = |s: String| gocompat::json::RawJson(s.into_bytes());
     b.st.append(
         BOARD_PERSON,
         kinds::TASK_COMMENT,
         &raw(format!(
-            r#"{{"taskId":"{}","commentId":"cm_x","by":"{BOARD_PERSON}","text":"@cedar look","wake":false,"at":"2026-01-01T00:00:00Z","mentions":[{{"key":"{BOARD_CARD}","name":"cedar"}}]}}"#,
+            r#"{{"taskId":"{}","commentId":"cm_x","by":"{BOARD_PERSON}","text":"@cedar look","wake":false,"at":"2026-01-01T00:00:00Z","mentions":[{{"key":"{BOARD_CARD}","name":"cedar"}},{{"key":"dev-x/oak","name":"oak"}}]}}"#,
             t.id
         )),
     )
@@ -617,7 +621,9 @@ fn a_board_row_with_mentions_folds_without_them() {
     .unwrap();
     let cm = c.get_comment("cm_x").unwrap();
     assert_eq!(cm.text, "@cedar look");
-    assert!(cm.mentions.is_empty(), "{:?}", cm.mentions);
+    let keys: Vec<&str> = cm.mentions.iter().map(|m| m.key.as_str()).collect();
+    assert_eq!(keys, [BOARD_CARD]);
+    // An ask's mentions on a board stay out until #187.
     let a = c.get_task("t_ask").unwrap().ask.unwrap();
     assert!(a.mentions.is_empty(), "{:?}", a.mentions);
 }

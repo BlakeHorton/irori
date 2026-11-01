@@ -114,6 +114,8 @@ export const BoardService = {
   Cards: () => call(commands.boardCards()),
   Card: (id: string) => call(commands.boardCard(id)),
   DoneCards: (limit: number, before: string) => call(commands.boardDoneCards(limit, before)),
+  DoneCardsIn: (limit: number, before: string, scope: string) =>
+    call(commands.boardDoneCardsIn(limit, before, scope)),
   Message: (taskId: string, msgId: string) => call(commands.boardMessage(taskId, msgId)),
   Comment: (id: string, text: string, tell: string, mentions: B.Mention[]) =>
     call(commands.boardComment(id, text, tell, mentions)),
@@ -155,6 +157,7 @@ export const BoardService = {
   Threads: () => call(commands.boardThreads()),
   CardRef: (r: string) => call(commands.boardCardRef(r)),
   ResolveThread: (id: string) => done(commands.boardResolveThread(id)),
+  ReopenThread: (id: string) => done(commands.boardReopenThread(id)),
   CommentModify: (id: string, commentId: string) =>
     done(commands.boardCommentModify(id, commentId)),
   CommentModifyCancel: (id: string, commentId: string) =>
@@ -196,6 +199,7 @@ export const DevicesService = {
   Devices: () => call(commands.devicesDevices()),
   Colors: () => call(commands.devicesColors()),
   SetDeviceColor: (deviceId: string, color: string) => done(commands.devicesSetDeviceColor(deviceId, color)),
+  RenameDevice: (deviceId: string, name: string) => call(commands.devicesRenameDevice(deviceId, name)),
   AddDevice: (role: string) => call(commands.devicesAddDevice(role)),
   JoinWithCode: (code: string, server: string) => call(commands.devicesJoinWithCode(code, server)),
   ConfirmWords: (words: string) => done(commands.devicesConfirmWords(words)),
@@ -218,6 +222,8 @@ export const SettingsService = {
   TestNotification: () => done(commands.settingsTestNotification()),
   GetLaunchAtLogin: () => call(commands.settingsGetLaunchAtLogin()),
   SetLaunchAtLogin: (enabled: boolean) => done(commands.settingsSetLaunchAtLogin(enabled)),
+  GetYourName: () => call(commands.settingsGetYourName()),
+  SetYourName: (name: string) => call(commands.settingsSetYourName(name)),
 }
 
 export const AttachmentsService = {

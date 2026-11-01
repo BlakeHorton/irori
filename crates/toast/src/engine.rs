@@ -22,8 +22,9 @@ use crate::config::{Config, Kind, Palette};
 use crate::layout::{
     CARD_GAP_DIP, CARD_MARGIN_DIP, CARD_WIDTH_DIP, MAX_BODY_LINES, Part, Rect, TEXT_LEFT_DIP,
     TEXT_RIGHT_DIP, button_rects, card_height_dip, close_rect, hit_part, px, stack_origins,
+    thumb_rect, thumb_size_dip,
 };
-use crate::note::{Callback, FULL_ALPHA, Note, Options, Stack, clean};
+use crate::note::{Callback, FULL_ALPHA, Image, Note, Options, Stack, clean};
 use crate::sound::{Sound, sound_for};
 
 /// What a window shows: everything a platform needs to draw a card.
@@ -36,6 +37,8 @@ pub struct Look {
     pub labels: Vec<String>,
     /// Body lines (0, 1 or 2).
     pub lines: usize,
+    /// The thumbnail and where it goes (px), under the body.
+    pub image: Option<(Image, Rect)>,
     pub w: i32,
     pub h: i32,
     /// The pixel scale (1 on macOS, where geometry is in points).
@@ -85,6 +88,11 @@ pub trait Surface {
     fn destroy(&mut self, key: u64);
     /// Runs or stops the 30 ms tick.
     fn timer(&mut self, on: bool);
+    /// Throws a confetti burst from a success card at `card` across the
+    /// screen whose work area is `work` (px, top-down), over everything and
+    /// without taking clicks. Called once per such post, after the card is
+    /// placed. The platform skips it while the OS asks for reduced motion.
+    fn confetti(&mut self, _card: Rect, _work: Rect) {}
 }
 
 /// How the next sync places the stack, in increasing strength.
@@ -119,6 +127,9 @@ struct Shared {
     opts: Options,
     /// Card keys on screen, oldest first (tests).
     keys: Vec<u64>,
+    /// Success cards posted with confetti on, burst at the next sync once
+    /// they are placed.
+    confetti: Vec<u64>,
 }
 
 /// One card's window and its copy of the content.
@@ -132,6 +143,8 @@ struct CardWin {
     kind: Kind,
     labels: Vec<String>,
     clickable: bool,
+    image: Option<Image>,
+    thumb: Rect,
     lines: usize,
     w: i32,
     h: i32,
@@ -210,6 +223,7 @@ impl Engine {
                 cfg: Config::default().normalized(),
                 opts: Options::default(),
                 keys: vec![],
+                confetti: vec![],
             }),
             ui: Mutex::new(Ui {
                 wins: BTreeMap::new(),
@@ -269,7 +283,11 @@ impl Engine {
         }
         let sound =
             (!n.silent && o.sound).then(|| (sound_for(n.kind, !n.actions.is_empty()), o.volume));
-        s.stack.post(n, now);
+        let burst = o.confetti && n.kind == Kind::Success;
+        let (key, _) = s.stack.post(n, now);
+        if burst && !s.confetti.contains(&key) {
+            s.confetti.push(key);
+        }
         s.raise = true;
         Posted { shown: true, sound }
     }
@@ -324,13 +342,14 @@ impl Engine {
             rev: u64,
             title: String,
             body: String,
+            image: Option<Image>,
             kind: Kind,
             labels: Vec<String>,
             clickable: bool,
             alpha: u8,
         }
         let mut timed = false;
-        let (views, reloc, up, corner, cfg) = {
+        let (views, reloc, up, corner, cfg, bursts) = {
             let mut s = lock(&self.shared);
             let views: Vec<View> = s
                 .stack
@@ -346,6 +365,7 @@ impl Engine {
                         rev: c.rev,
                         title: c.note.title.clone(),
                         body: c.note.body.clone(),
+                        image: c.note.image.clone(),
                         kind: c.note.kind,
                         labels: c.note.actions.iter().map(|a| a.label.clone()).collect(),
                         clickable: c.note.on_click.is_some(),
@@ -359,6 +379,7 @@ impl Engine {
                 s.raise,
                 s.opts.corner.clone(),
                 s.cfg.clone(),
+                std::mem::take(&mut s.confetti),
             );
             s.reloc = Reloc::None;
             s.raise = false;
@@ -402,6 +423,8 @@ impl Engine {
                 kind: Kind::Info,
                 labels: vec![],
                 clickable: false,
+                image: None,
+                thumb: Rect::default(),
                 lines: 0,
                 w: 0,
                 h: 0,
@@ -426,6 +449,7 @@ impl Engine {
                 cw.kind = v.kind;
                 cw.labels = v.labels;
                 cw.clickable = v.clickable;
+                cw.image = v.image;
                 measure(&mut cw, surf);
                 if fresh && !surf.create(cw.key, &cw.cfg, cw.w, cw.h) {
                     continue;
@@ -464,6 +488,18 @@ impl Engine {
             if !cw.placed {
                 cw.placed = true;
                 surf.show(cw.key);
+            }
+        }
+
+        for k in bursts {
+            if let Some(cw) = ui.wins.get(&k).filter(|cw| cw.placed) {
+                let card = Rect {
+                    l: cw.x,
+                    t: cw.y,
+                    r: cw.x + cw.w,
+                    b: cw.y + cw.h,
+                };
+                surf.confetti(card, ui.work);
             }
         }
 
@@ -568,6 +604,7 @@ fn look(cw: &CardWin) -> Look {
         kind: cw.kind,
         labels: cw.labels.clone(),
         lines: cw.lines,
+        image: cw.image.clone().map(|i| (i, cw.thumb)),
         w: cw.w,
         h: cw.h,
         scale: cw.scale,
@@ -596,7 +633,12 @@ fn measure(cw: &mut CardWin, surf: &mut dyn Surface) {
             .clamp(1, MAX_BODY_LINES);
     }
     let widths: Option<Vec<i32>> = cw.labels.iter().map(|l| surf.label_width(l, sc)).collect();
-    cw.h = px(card_height_dip(cw.lines, !cw.labels.is_empty()), sc);
+    let (tw, th) = cw
+        .image
+        .as_ref()
+        .map_or((0.0, 0.0), |i| thumb_size_dip(i.w, i.h));
+    cw.thumb = thumb_rect(cw.lines, tw, th, sc);
+    cw.h = px(card_height_dip(cw.lines, th, !cw.labels.is_empty()), sc);
     cw.close = close_rect(cw.w, sc);
     // A failed measure still leaves the buttons clickable.
     let widths = widths.unwrap_or_else(|| vec![0; cw.labels.len()]);

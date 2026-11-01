@@ -22,14 +22,16 @@ use std::time::Instant;
 
 use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CLEARTYPE_QUALITY, CreateCompatibleBitmap, CreateCompatibleDC,
-    CreateFontIndirectW, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DT_CALCRECT, DT_CENTER,
-    DT_EDITCONTROL, DT_END_ELLIPSIS, DT_NOCLIP, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
-    DT_WORDBREAK, DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, FrameRect, GetDC,
-    GetMonitorInfoW, GetStockObject, HDC, HGDIOBJ, InvalidateRect, LOGFONTW,
-    MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint,
+    BitBlt, CLEARTYPE_QUALITY, CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection,
+    CreateFontIndirectW, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DIB_RGB_COLORS,
+    DT_CALCRECT, DT_CENTER, DT_EDITCONTROL, DT_END_ELLIPSIS, DT_NOCLIP, DT_NOPREFIX, DT_SINGLELINE,
+    DT_VCENTER, DT_WORDBREAK, DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, FrameRect,
+    GetDC, GetMonitorInfoW, GetStockObject, HALFTONE, HBITMAP, HDC, HGDIOBJ, InvalidateRect,
+    LOGFONTW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect,
     MonitorFromWindow, NULL_BRUSH, PAINTSTRUCT, PS_SOLID, ReleaseDC, RoundRect, SRCCOPY,
-    SelectObject, SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
+    SelectClipRgn, SelectObject, SetBkMode, SetBrushOrgEx, SetStretchBltMode, SetTextColor,
+    SetWindowRgn, StretchDIBits, TRANSPARENT,
 };
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -40,16 +42,18 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
     GetForegroundWindow, GetMessageW, HWND_MESSAGE, HWND_TOPMOST, IDC_ARROW, IDC_HAND, KillTimer,
-    LWA_ALPHA, LoadCursorW, MA_NOACTIVATE, MSG, PostMessageW, RegisterClassExW, SPI_SETWORKAREA,
-    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetCursor, SetLayeredWindowAttributes,
-    SetTimer, SetWindowDisplayAffinity, SetWindowPos, ShowWindow, TranslateMessage,
+    LWA_ALPHA, LoadCursorW, MA_NOACTIVATE, MSG, PostMessageW, RegisterClassExW,
+    SPI_GETCLIENTAREAANIMATION, SPI_SETWORKAREA, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER,
+    SetCursor, SetLayeredWindowAttributes, SetTimer, SetWindowDisplayAffinity, SetWindowPos,
+    ShowWindow, SystemParametersInfoW, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow,
     WDA_EXCLUDEFROMCAPTURE, WM_APP, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_ERASEBKGND, WM_LBUTTONDOWN,
     WM_LBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR,
     WM_SETTINGCHANGE, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_POPUP,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::ENGINE;
+use crate::confetti::{self, Burst};
 use crate::config::{Color, Config, Kind};
 use crate::engine::{Look, Mouse, Surface, TICK_MS};
 use crate::layout::{
@@ -57,6 +61,7 @@ use crate::layout::{
     PAD_TOP_DIP, Part, Rect, STRIPE_DIP, TEXT_LEFT_DIP, TEXT_RIGHT_DIP, TITLE_DIP, TITLE_RIGHT_DIP,
     TITLE_SIZE_DIP, px,
 };
+use crate::note::Image;
 
 /// The platform draws cards.
 pub const DRAWS: bool = true;
@@ -65,6 +70,9 @@ const WM_SYNC: u32 = WM_APP + 1;
 /// A display or work-area change: re-place the stack.
 const WM_REHOME: u32 = WM_APP + 2;
 const TIMER_TICK: usize = 1;
+/// The confetti overlay's frames.
+const TIMER_CONFETTI: usize = 2;
+const CONFETTI_FRAME_MS: u32 = 16;
 /// WM_MOUSELEAVE (in windows-sys' Controls module, which this crate does not
 /// otherwise need).
 const WM_MOUSELEAVE: u32 = 0x02A3;
@@ -152,12 +160,14 @@ fn run() {
     let inst = unsafe { GetModuleHandleW(null()) };
     let host_class = wide(&c.host_class_name());
     let card_class = wide(&c.card_class_name());
+    let confetti_class = wide(&confetti_class_name(&c));
     for (class, proc) in [
         (
             &host_class,
             host_proc as unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT,
         ),
         (&card_class, card_proc),
+        (&confetti_class, confetti_proc),
     ] {
         let wc = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
@@ -241,6 +251,10 @@ unsafe extern "system" fn host_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -
         WM_REHOME => {
             ENGINE.rehome();
             sync();
+            0
+        }
+        WM_TIMER if wp == TIMER_CONFETTI => {
+            confetti_frame();
             0
         }
         WM_TIMER => {
@@ -578,6 +592,229 @@ impl Surface for Win32Surface {
             }
         }
     }
+
+    fn confetti(&mut self, card: Rect, _work: Rect) {
+        // Client-area animation off is Windows' Reduce Motion
+        // (Settings > Accessibility > Visual effects > Animation effects).
+        let mut anim: i32 = 1;
+        let ok = unsafe {
+            SystemParametersInfoW(
+                SPI_GETCLIENTAREAANIMATION,
+                0,
+                &mut anim as *mut i32 as *mut core::ffi::c_void,
+                0,
+            )
+        } != 0;
+        if ok && anim == 0 {
+            return;
+        }
+        throw_confetti(card);
+    }
+}
+
+// ---- confetti ----
+
+fn confetti_class_name(c: &Config) -> String {
+    format!("{}Confetti", c.class_prefix)
+}
+
+/// The overlay the bursts are drawn in: a layered, click-through
+/// (`WS_EX_TRANSPARENT`), never-activating topmost window over the whole
+/// monitor the card is on, fed premultiplied frames with
+/// UpdateLayeredWindow. One at a time; destroyed when the last burst ends.
+struct Overlay {
+    hwnd: HWND,
+    dc: HDC,
+    bmp: HBITMAP,
+    old: HGDIOBJ,
+    bits: *mut u32,
+    w: i32,
+    h: i32,
+    /// The monitor, physical px.
+    area: Rect,
+    bursts: Vec<(Burst, Instant)>,
+}
+
+thread_local! {
+    static CONFETTI: RefCell<Option<Overlay>> = const { RefCell::new(None) };
+}
+
+unsafe extern "system" fn confetti_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    match msg {
+        WM_MOUSEACTIVATE => MA_NOACTIVATE as LRESULT,
+        _ => unsafe { DefWindowProcW(h, msg, wp, lp) },
+    }
+}
+
+/// Starts a burst from card (physical px), opening the overlay on the
+/// card's monitor if it isn't up there already.
+fn throw_confetti(card: Rect) {
+    let mon = unsafe { MonitorFromRect(&win_rect(card), MONITOR_DEFAULTTONEAREST) };
+    let mut mi: MONITORINFO = unsafe { std::mem::zeroed() };
+    mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+    if unsafe { GetMonitorInfoW(mon, &mut mi) } == 0 {
+        return;
+    }
+    let m = mi.rcMonitor;
+    let area = Rect {
+        l: m.left,
+        t: m.top,
+        r: m.right,
+        b: m.bottom,
+    };
+    let (_, scale) = work_area_of(mon);
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(1);
+    let burst = Burst::new(card, area, scale, seed);
+    CONFETTI.with(|o| {
+        let mut o = o.borrow_mut();
+        if o.as_ref().is_some_and(|ov| ov.area != area) {
+            close_overlay(o.take());
+        }
+        if o.is_none() {
+            *o = open_overlay(area);
+        }
+        if let Some(ov) = o.as_mut() {
+            ov.bursts.push((burst, Instant::now()));
+        }
+    });
+    confetti_frame();
+}
+
+fn open_overlay(area: Rect) -> Option<Overlay> {
+    let (w, h) = (area.r - area.l, area.b - area.t);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let cfg = RUN_CFG
+        .with(|r| r.borrow().clone())
+        .unwrap_or_else(|| ENGINE.config());
+    let class = wide(&confetti_class_name(&cfg));
+    let title = wide(&cfg.app_name);
+    unsafe {
+        let hwnd = CreateWindowExW(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT,
+            class.as_ptr(),
+            title.as_ptr(),
+            WS_POPUP,
+            area.l,
+            area.t,
+            w,
+            h,
+            null_mut(),
+            null_mut(),
+            GetModuleHandleW(null()),
+            null(),
+        );
+        if hwnd.is_null() {
+            return None;
+        }
+        if cfg.capture_exclude {
+            SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+        }
+        let screen = GetDC(null_mut());
+        let dc = CreateCompatibleDC(screen);
+        ReleaseDC(null_mut(), screen);
+        let mut bi: BITMAPINFO = std::mem::zeroed();
+        bi.bmiHeader = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h, // top-down
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            ..std::mem::zeroed()
+        };
+        let mut bits: *mut core::ffi::c_void = null_mut();
+        let bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
+        if dc.is_null() || bmp.is_null() || bits.is_null() {
+            if !bmp.is_null() {
+                DeleteObject(bmp);
+            }
+            if !dc.is_null() {
+                DeleteDC(dc);
+            }
+            DestroyWindow(hwnd);
+            return None;
+        }
+        let old = SelectObject(dc, bmp);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        SetTimer(host(), TIMER_CONFETTI, CONFETTI_FRAME_MS, None);
+        Some(Overlay {
+            hwnd,
+            dc,
+            bmp,
+            old,
+            bits: bits as *mut u32,
+            w,
+            h,
+            area,
+            bursts: vec![],
+        })
+    }
+}
+
+fn close_overlay(o: Option<Overlay>) {
+    let Some(o) = o else { return };
+    unsafe {
+        KillTimer(host(), TIMER_CONFETTI);
+        DestroyWindow(o.hwnd);
+        SelectObject(o.dc, o.old);
+        DeleteObject(o.bmp);
+        DeleteDC(o.dc);
+    }
+}
+
+/// A frame: drops finished bursts, draws the rest, and closes the overlay
+/// when none are left.
+fn confetti_frame() {
+    CONFETTI.with(|o| {
+        let mut o = o.borrow_mut();
+        let Some(ov) = o.as_mut() else { return };
+        let now = Instant::now();
+        ov.bursts
+            .retain(|(_, start)| now.saturating_duration_since(*start) < confetti::DURATION);
+        if ov.bursts.is_empty() {
+            close_overlay(o.take());
+            return;
+        }
+        let pieces: Vec<confetti::Piece> = ov
+            .bursts
+            .iter()
+            .flat_map(|(b, start)| b.at(now.saturating_duration_since(*start)))
+            .collect();
+        let (w, h) = (ov.w as usize, ov.h as usize);
+        // SAFETY: the DIB section is w*h 32-bit pixels and lives as long as ov.
+        let buf = unsafe { std::slice::from_raw_parts_mut(ov.bits, w * h) };
+        confetti::rasterize(&pieces, w, h, buf);
+        let dst = windows_sys::Win32::Foundation::POINT {
+            x: ov.area.l,
+            y: ov.area.t,
+        };
+        let src = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+        let size = windows_sys::Win32::Foundation::SIZE { cx: ov.w, cy: ov.h };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        unsafe {
+            UpdateLayeredWindow(
+                ov.hwnd,
+                null_mut(),
+                &dst,
+                &size,
+                ov.dc,
+                &src,
+                0,
+                &blend,
+                ULW_ALPHA,
+            );
+        }
+    });
 }
 
 /// Draws the card into an off-screen bitmap and copies it in, so a hover
@@ -683,6 +920,79 @@ fn rect_of(r: Rect) -> RECT {
     win_rect(r)
 }
 
+/// img's pixels as top-down BGRX for a DIB, blended over bg (the card's
+/// window is opaque: its fade is whole-window alpha, not per pixel).
+fn bgrx_over(img: &Image, bg: Color) -> Vec<u8> {
+    let (br, bgg, bb) = bg.rgb();
+    let mix = |c: u8, b: u8, a: u32| ((c as u32 * a + b as u32 * (255 - a) + 127) / 255) as u8;
+    img.rgba
+        .chunks_exact(4)
+        .flat_map(|p| {
+            let a = p[3] as u32;
+            [mix(p[2], bb, a), mix(p[1], bgg, a), mix(p[0], br, a), 255]
+        })
+        .collect()
+}
+
+/// The thumbnail scaled into r (HALFTONE, so a shrink stays smooth),
+/// clipped to rounded corners, with a 1px border.
+fn draw_thumb(dc: HDC, img: &Image, r: RECT, bg: Color, border: Color, radius: i32) {
+    let (dw, dh) = (r.right - r.left, r.bottom - r.top);
+    if dw <= 0 || dh <= 0 {
+        return;
+    }
+    let px = bgrx_over(img, bg);
+    let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
+    bmi.bmiHeader = BITMAPINFOHEADER {
+        biSize: size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: img.w as i32,
+        biHeight: -(img.h as i32), // top-down
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB,
+        ..unsafe { std::mem::zeroed() }
+    };
+    unsafe {
+        let clip = if radius > 0 {
+            let rgn = CreateRoundRectRgn(
+                r.left,
+                r.top,
+                r.right + 1,
+                r.bottom + 1,
+                2 * radius,
+                2 * radius,
+            );
+            SelectClipRgn(dc, rgn);
+            Some(rgn)
+        } else {
+            None
+        };
+        let old = SetStretchBltMode(dc, HALFTONE);
+        SetBrushOrgEx(dc, 0, 0, null_mut()); // HALFTONE needs it reset
+        StretchDIBits(
+            dc,
+            r.left,
+            r.top,
+            dw,
+            dh,
+            0,
+            0,
+            img.w as i32,
+            img.h as i32,
+            px.as_ptr().cast(),
+            &bmi,
+            DIB_RGB_COLORS,
+            SRCCOPY,
+        );
+        SetStretchBltMode(dc, old);
+        if let Some(rgn) = clip {
+            SelectClipRgn(dc, null_mut());
+            DeleteObject(rgn);
+        }
+    }
+    boxed(dc, r, Color(0), border, radius);
+}
+
 fn draw_card(dc: HDC, cw: &Look) {
     let sc = cw.scale;
     let pal = cw.palette;
@@ -770,8 +1080,12 @@ fn draw_card(dc: HDC, cw: &Look) {
         );
     }
 
-    // Inner pieces (the x's hover fill, buttons) get a smaller radius.
+    // Inner pieces (the thumbnail, the x's hover fill, buttons) get a
+    // smaller radius.
     let inner = cw.radius * 6 / 10;
+    if let Some((img, r)) = &cw.image {
+        draw_thumb(dc, img, rect_of(*r), pal.background, pal.border, inner);
+    }
     let mut xc = pal.faint;
     if cw.hot == Part::Close {
         boxed(dc, rect_of(cw.close), pal.hover, Color(0), inner);

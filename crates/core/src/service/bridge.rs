@@ -37,7 +37,10 @@ use crate::logf;
 #[serde(default, rename_all = "camelCase")]
 struct RowFields {
     task_id: String,
+    comment_id: String,
     text: String,
+    /// A comment's mentions, in board form (card #177).
+    mentions: Vec<RowMention>,
     wake: bool,
     to: String,
     answer: String,
@@ -50,6 +53,15 @@ struct RowFields {
     reason: String,
     heard: Vec<String>,
     since: String,
+}
+
+/// One mention on a board row: the board key it names (`agent:<cardId>`
+/// or `person:<personId>`) and the name it was written with.
+#[derive(Deserialize, Default, Clone)]
+#[serde(default)]
+struct RowMention {
+    key: String,
+    name: String,
 }
 
 /// The message text of a plan, given how the sender shows.
@@ -119,16 +131,47 @@ impl Services {
         else {
             return;
         };
-        let plan = if ev.kind == kinds::BOARD_ASK_STATE {
-            self.ask_plan(b, ev, f, &t)
+        let who = self.board_person_name(b, &person);
+        // A comment (a blocker reply too) naming this person: a desktop
+        // notification on each of their devices that opens the card at the
+        // comment (card #177). Their agents named in it hear below.
+        let me_key = format!("{PERSON_ACTOR_PREFIX}{me}");
+        if ev.kind == kinds::TASK_COMMENT && f.mentions.iter().any(|m| m.key == me_key) {
+            self.mention_note(&t, &who, &f);
+        }
+        let mut plans = Vec::new();
+        if ev.kind == kinds::BOARD_ASK_STATE {
+            plans.extend(self.ask_plan(b, ev, f, &t));
         } else if ev.kind == kinds::TASK_OFFERED {
-            offer_plan(co, f, &t)
+            plans.extend(offer_plan(co, f, &t));
         } else {
-            row_plan(co, &me, ev, f, &t)
-        };
-        let Some(p) = plan else {
-            return;
-        };
+            let mentioned: Vec<String> = if ev.kind == kinds::TASK_COMMENT {
+                f.mentions
+                    .iter()
+                    .filter(|m| m.key.starts_with(AGENT_ACTOR_PREFIX))
+                    .map(|m| m.key.clone())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let mention = (!mentioned.is_empty())
+                .then(|| mention_plan(ev, &f, &t, mentioned.clone()))
+                .flatten();
+            if let Some(mut p) = row_plan(co, &me, ev, f, &t) {
+                // One notice each: a mentioned agent hears the mention only.
+                p.to.retain(|k| !mentioned.contains(k));
+                plans.push(p);
+            }
+            plans.extend(mention);
+        }
+        for p in plans {
+            self.send_plan(b, &t, &person, &who, ev, p);
+        }
+    }
+
+    /// Hands one plan to the inbox's bridge, for the agents this device
+    /// hosts among its `to`.
+    fn send_plan(&self, b: &BoardLog, t: &Task, person: &str, who: &str, ev: &Event, p: Plan) {
         let to: Vec<String> =
             p.to.iter()
                 .filter(|k| k.starts_with(AGENT_ACTOR_PREFIX))
@@ -137,7 +180,7 @@ impl Services {
         if to.is_empty() {
             return;
         }
-        let who = self.board_person_name(b, &person);
+        let who = who.to_string();
         let name = if p.card_id.is_empty() {
             who.clone()
         } else {
@@ -158,7 +201,7 @@ impl Services {
             from: BoardFrom {
                 board_id: b.id.clone(),
                 tag,
-                person_id: person,
+                person_id: person.to_string(),
                 card_id: p.card_id,
                 row: p.row,
                 kind: p.kind.into(),
@@ -174,6 +217,42 @@ impl Services {
         if let Err(e) = self.inbox.bridge(&r) {
             logf(format_args!("board {}: bridge {}: {e}", b.id, r.from.row));
         }
+    }
+
+    /// The desktop notification for a comment that mentions this person:
+    /// "<who> mentioned you on <title>", opening the card at the comment.
+    /// Every device of the person posts its own, so it shows wherever they
+    /// are; a resync never replays it (bridge_row runs on live rows only).
+    fn mention_note(&self, t: &Task, who: &str, f: &RowFields) {
+        let n = &self.notifier.0;
+        if n.is_headless() {
+            return;
+        }
+        let short = if t.short.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", t.short_ref())
+        };
+        let target = notify::Target {
+            tab: notify::TAB_BOARD.into(),
+            ref_: if f.comment_id.is_empty() {
+                format!("task:{}", t.id)
+            } else {
+                format!("task:{}/comment:{}", t.id, f.comment_id)
+            },
+        };
+        let opener = n.clone();
+        n.post(notify::Note {
+            id: format!("mention:{}:{}", t.id, f.comment_id),
+            title: format!(
+                "{who} mentioned you on “{}”{short}",
+                notify::preview(&t.title)
+            ),
+            body: notify::preview(&f.text),
+            level: notify::Level::Info,
+            on_click: Some(Arc::new(move || opener.open(target.clone()))),
+            ..notify::Note::default()
+        });
     }
 
     /// A board ask's round of telling (§9): the asking device's
@@ -337,6 +416,43 @@ fn offer_plan(co: &Coord, f: RowFields, t: &Task) -> Option<Plan> {
                 "\nIt is yours to take: board_join {short} and start. If you can't take it on now, board_leave {short} and it goes to the next free agent."
             ));
             s
+        }),
+    })
+}
+
+/// The plan for the agents a comment mentions (card #177): each woken,
+/// as "a request to wake one of your agents" in the receive table (§7.2),
+/// so the person's receive setting, holds and rate limits decide.
+fn mention_plan(ev: &Event, f: &RowFields, t: &Task, to: Vec<String>) -> Option<Plan> {
+    let card_id = ev
+        .actor
+        .strip_prefix(AGENT_ACTOR_PREFIX)
+        .unwrap_or_default()
+        .to_string();
+    if card_id.is_empty() && !ev.actor.starts_with(PERSON_ACTOR_PREFIX) {
+        return None;
+    }
+    let title = gocompat::quote::quote(&t.title);
+    let (refs, short) = (t.refs(), t.short_ref());
+    let held = t.holders.iter().any(|h| to.contains(h));
+    let ending = if t.holders.is_empty() {
+        format!(
+            "Nobody holds it. If the work is yours, board_join {short}; else answer on the card with board_comment if it asks you."
+        )
+    } else if held {
+        "Answer on the card with board_comment if it asks you.".to_string()
+    } else {
+        "Its holders answer; answer on the card with board_comment if it asks you.".to_string()
+    };
+    let text = f.text.clone();
+    Some(Plan {
+        kind: row_kind::COMMENT,
+        card_id,
+        to,
+        row: format!("{}/{}", ev.device_id, ev.seq),
+        wake: true,
+        text: Box::new(move |name| {
+            format!("{name} mentioned you on {title} ({refs}):\n{text}\n{ending}")
         }),
     })
 }
