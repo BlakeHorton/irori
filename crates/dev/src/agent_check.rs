@@ -23,6 +23,9 @@
 //!     can make; the agent raises a blocker instead of asking in its reply.
 //!   3 purpose: the person's comment turns the agent's card into other
 //!     work; the agent renames the card and redoes its steps.
+//!   4 answered: the person answers the agent's blocker; the agent
+//!     resolves it in the turn it acts on the answer (card #204), so the
+//!     card stops reading as waiting on the person.
 //!
 //! The Core's claude dir is --claude, a scratch dir holding only the
 //! sessions this run starts, so it never sees the real sessions; claude
@@ -62,6 +65,9 @@ const S3_STEPS: [&str; 3] = [
     "Write the dark palette",
     "Remember the choice between runs",
 ];
+const S4_TITLE: &str = "Add a license file to this folder";
+const S4_QUESTION: &str = "Which license should the LICENSE file use?";
+const S4_OPTIONS: [&str; 2] = ["MIT", "Apache-2.0"];
 const S3_COMMENT: &str = "Change of plan: forget dark mode. What we actually need here is a high-contrast mode for people with low vision, toggled from the same settings page. Dark mode can wait.";
 
 pub struct Opts {
@@ -107,9 +113,9 @@ impl Opts {
                 }
                 "--only" => {
                     for p in val()?.split(',').filter(|p| !p.is_empty()) {
-                        let n: u32 = p.parse().map_err(|_| format!("--only {p}: 1, 2 or 3"))?;
-                        if !(1..=3).contains(&n) {
-                            return Err(format!("--only {p}: 1, 2 or 3"));
+                        let n: u32 = p.parse().map_err(|_| format!("--only {p}: 1 to 4"))?;
+                        if !(1..=4).contains(&n) {
+                            return Err(format!("--only {p}: 1 to 4"));
                         }
                         o.only.push(n);
                     }
@@ -529,6 +535,83 @@ fn purpose(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
     (r, log)
 }
 
+/// 4: the person answers the agent's blocker; the agent resolves it in
+/// the turn it acts on the answer (card #204).
+fn answered(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
+    let mut a = match Agent::start(o, h, "s4-answered") {
+        Ok(a) => a,
+        Err(e) => return (Err(e), None),
+    };
+    let log = Some(a.log.clone());
+    let caller = tools::Caller {
+        sender: inbox::Sender::new(&a.key, "s4-answered", "claude"),
+        path: String::new(),
+    };
+    let call = |tool: &str, args: serde_json::Value| {
+        let raw = serde_json::to_vec(&args).unwrap_or_default();
+        h.core
+            .tools()
+            .call(&caller, tool, &raw)
+            .map_err(|e| format!("the agent's {tool}: {e}"))
+    };
+    // The agent's card and its question, made as the agent.
+    let args = serde_json::json!({
+        "title": S4_TITLE,
+        "objective": "Write a LICENSE file in the working folder once the person picks the license.",
+        "steps": [{"text": "Ask which license"}, {"text": "Write LICENSE"}],
+    });
+    if let Err(e) = call("board_create", args) {
+        return (Err(e), log);
+    }
+    let Some(t) = tasks(h).into_iter().find(|t| t.title == S4_TITLE) else {
+        return (Err("the agent's card was not made".into()), log);
+    };
+    let task = format!("task:{}", t.id);
+    if !t.holders.contains(&a.key) {
+        if let Err(e) = call("board_join", serde_json::json!({ "task_id": task })) {
+            return (Err(e), log);
+        }
+    }
+    let options: Vec<serde_json::Value> = S4_OPTIONS
+        .iter()
+        .map(|o| serde_json::json!({ "answer": o }))
+        .collect();
+    let args = serde_json::json!({"task_id": task, "question": S4_QUESTION, "options": options});
+    if let Err(e) = call("board_block", args) {
+        return (Err(e), log);
+    }
+    let Some(bid) = h
+        .core
+        .coord()
+        .get_task(&t.id)
+        .and_then(|t| t.blockers.iter().find(|b| b.resolved.is_none()).map(|b| b.id.clone()))
+    else {
+        return (Err("the agent's blocker was not raised".into()), log);
+    };
+    // The person picks MIT in the window.
+    if let Err(e) = h.window.answer(&t.id, &bid, 0, "", true, &[]) {
+        return (Err(format!("the person's answer: {e}")), log);
+    }
+    let id = t.id.clone();
+    let r = play(o, h, &mut a, |h, _| {
+        let t = h.core.coord().get_task(&id).ok_or("the card is gone")?;
+        let b = t
+            .blockers
+            .iter()
+            .find(|b| b.id == bid)
+            .ok_or("the blocker is gone")?;
+        match &b.resolved {
+            Some(r) => Ok(format!("resolved: {:?}", r.note)),
+            None => Err(format!(
+                "the agent left the answered blocker open (it reads {}; card {})",
+                b.status, t.state
+            )),
+        }
+    });
+    a.stop();
+    (r, log)
+}
+
 pub fn run(o: &Opts) -> ExitCode {
     for d in [&o.home, &o.claude, &o.work] {
         if let Err(e) = empty_dir(d) {
@@ -545,7 +628,7 @@ pub fn run(o: &Opts) -> ExitCode {
     };
     let mut tally = Tally { failed: 0 };
     type Scenario = fn(&Opts, &Host) -> (Result<String, String>, Option<PathBuf>);
-    let all: [(u32, &str, Scenario); 3] = [
+    let all: [(u32, &str, Scenario); 4] = [
         (1, "1 ask: taken and closed with an outcome", ask),
         (
             2,
@@ -556,6 +639,11 @@ pub fn run(o: &Opts) -> ExitCode {
             3,
             "3 purpose changed: card renamed and steps redone",
             purpose,
+        ),
+        (
+            4,
+            "4 answered: the agent resolves the blocker as it acts on the answer",
+            answered,
         ),
     ];
     for (n, name, f) in all {
@@ -615,7 +703,7 @@ mod tests {
         assert!(
             Opts::parse(&args(&[
                 "--home", "h", "--claude", "c", "--work", "w", "--irori", "i", "--mod", "m",
-                "--only", "4"
+                "--only", "5"
             ]))
             .is_err()
         );
