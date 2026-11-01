@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -35,7 +35,11 @@ export function ThreadsPanel({
   onHide: () => void
   now: Date
 }) {
-  const [showResolved, setShowResolved] = useState(false)
+  const [showResolvedPick, setShowResolved] = useState(false)
+  // A resolved thread opened from a #ref (card #144) unfolds its list.
+  const showResolved =
+    showResolvedPick ||
+    threads.some((t) => t.id === open && t.state === "resolved")
   const live = threads.filter((t) => t.state !== "resolved")
   const resolved = threads.filter((t) => t.state === "resolved")
   return (
@@ -77,7 +81,7 @@ export function ThreadsPanel({
           <button
             type="button"
             className="flex items-center gap-1 justify-self-start text-xs text-muted-foreground hover:text-ink"
-            onClick={() => setShowResolved((v) => !v)}
+            onClick={() => setShowResolved(!showResolved)}
             aria-expanded={showResolved}
           >
             {showResolved ? (
@@ -145,11 +149,17 @@ function ThreadRow({
   onToggle: () => void
   now: Date
 }) {
+  // Opened from elsewhere (a #ref, card #144), it scrolls into view.
+  const box = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (open) box.current?.scrollIntoView({ block: "nearest" })
+  }, [open])
   const at = parseTime(t.updatedAt)
   const waiting = t.state === "waiting" || t.state === "handed"
   const badge = stateBadges[t.state]
   return (
     <section
+      ref={box}
       className={
         open
           ? "grid min-w-0 gap-2 border border-primary bg-background/40 px-3 py-2.5"

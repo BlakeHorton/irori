@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { AgentRef, CardAsk } from "./models"
 import { TaskState } from "./models"
-import { askLine, busy, cardFromHash, cardHash, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
+import { askLine, busy, sampleCardRef, cardFromHash, cardHash, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
 
 const agent = (status: string, more: Partial<AgentRef> = {}) =>
   AgentRef({ key: "d/s", name: "a", status, live: status !== "gone", where: "This PC", ...more })
@@ -140,5 +140,25 @@ describe("closed cards (Done tab)", () => {
       expect(workLabel(card(st, [agent("idle", { assigned: true, waiting: true })]))).toBe("")
       expect(busy(card(st, [agent("busy")]))).toBe(false)
     }
+  })
+})
+
+describe("sampleCardRef: done cards and threads (card #144)", () => {
+  // The sample reads ?empty from the address; bun has no window.
+  const g = globalThis as unknown as { window?: unknown }
+  g.window ??= { location: { search: "" } }
+  test("a done card", () => {
+    expect(sampleCardRef("#5")).toMatchObject({ id: "sample-card-5", thread: false, done: true })
+  })
+  test("a resolved thread and an open one", () => {
+    expect(sampleCardRef("#26")).toMatchObject({ id: "sample-thread-4", thread: true, done: true })
+    expect(sampleCardRef("#21")).toMatchObject({ id: "sample-thread-2", thread: true, done: false })
+    // #20 is a card and a thread in the sample: ambiguous, so text.
+    expect(sampleCardRef("#20")).toBeNull()
+  })
+  test("a board card by its tag; nothing for an unknown ref", () => {
+    expect(sampleCardRef("mlg#1")?.id).toBeTruthy()
+    expect(sampleCardRef("#9999")).toBeNull()
+    expect(sampleCardRef("nonsense")).toBeNull()
   })
 })

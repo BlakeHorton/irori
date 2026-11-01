@@ -396,6 +396,13 @@ pub async fn board_start_thread(
     w.start_thread(&text, &mentions)
 }
 
+/// What a #ref in text names (card #144), or null.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_card_ref(w: W<'_>, r: String) -> R<Option<crate::threads::RefTarget>> {
+    Ok(w.card_ref(&r))
+}
+
 /// The Threads panel: open threads, then the newest resolved.
 #[tauri::command]
 #[specta::specta]
@@ -816,6 +823,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_create,
             board_start_thread,
             board_threads,
+            board_card_ref,
             board_resolve_thread,
             board_comment_modify,
             board_comment_modify_cancel,

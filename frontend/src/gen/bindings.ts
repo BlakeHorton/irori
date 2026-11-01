@@ -52,6 +52,8 @@ export const commands = {
 	boardStartThread: (text: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions }),
 	/**  The Threads panel: open threads, then the newest resolved. */
 	boardThreads: () => __TAURI_INVOKE<ThreadSummary[]>("board_threads"),
+	/**  What a #ref in text names (card #144), or null. */
+	boardCardRef: (r: string) => __TAURI_INVOKE<RefTarget | null>("board_card_ref", { r }),
 	/**  Resolve on a thread: the person is done with it. */
 	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
@@ -953,6 +955,20 @@ export type PolicyInput = {
 	block?: string[],
 	allow?: string[],
 	paused?: boolean,
+};
+
+/**
+ *  What a #ref in text names (card #144): a card or a thread, live or
+ *  done, so the window can link it without loading every done card.
+ */
+export type RefTarget = {
+	id: string,
+	short: string,
+	title: string,
+	/**  A thread opens in the Threads panel, not on a card's page. */
+	thread: boolean,
+	/**  Done, failed or canceled (a thread: resolved). */
+	done: boolean,
 };
 
 /**  The advanced relay line (D4: no iroh meaning, always "none"). */
