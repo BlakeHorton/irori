@@ -331,7 +331,7 @@ impl Fold {
         let by = caller(by)?;
         if !valid_state(s) {
             return Err(bad_state(format!(
-                "{} (submitted|working|input_required|completed|failed|canceled)",
+                "{} (submitted|working|input_required|in_review|completed|failed|canceled)",
                 quote(s)
             )));
         }
@@ -375,6 +375,9 @@ impl Fold {
         }
         if !self.may_manage(&t, &by) {
             return Err(not_allowed(format!("change task {id}")));
+        }
+        if s == IN_REVIEW {
+            self.review_refusal(&t)?;
         }
         let cascade = self.parent_state_refusal(&t, s)?;
         // The person has the final say on done (card #112): an agent's

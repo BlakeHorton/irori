@@ -20,8 +20,9 @@ use store::{Event, kinds};
 use super::comments::check_comment;
 use super::error::{Result, invalid, not_allowed, not_found};
 use super::fold::Fold;
+use super::fold::is_holder;
 use super::links::pr_link;
-use super::rows::{ReviewRequestedRow, ReviewReviewerRow, TaskCommentRow, row};
+use super::rows::{ReviewRequestedRow, ReviewReviewerRow, TaskCommentRow, TaskStateRow, row};
 use super::types::*;
 use super::util::{caller, deeper, new_id};
 use crate::names::trim_space;
@@ -250,6 +251,7 @@ impl Fold {
                 at,
             });
         }
+        self.enter_review(&by, id)?;
         let n = Notice {
             kind: NOTICE_REVIEW.into(),
             task_id: id.into(),
@@ -299,6 +301,7 @@ impl Fold {
             at,
         };
         self.write(by, kinds::REVIEW_REQUESTED, &row)?;
+        self.enter_review(by, &t.id)?;
         let short = t.short_ref();
         let what = if pr.is_empty() {
             "its work".to_string()
@@ -329,6 +332,52 @@ impl Fold {
             at,
         };
         Ok((vec![r], n))
+    }
+
+    /// Refuses putting t in review (card #191) unless there is something to
+    /// review: a PR it links, or a review already asked. A parent's state
+    /// follows its subtasks, so it is never put in review by hand.
+    pub(crate) fn review_refusal(&self, t: &Task) -> Result<()> {
+        if !t.subtasks.is_empty() {
+            return Err(invalid(format!(
+                "{} is a parent: it shows in_review when its open subtasks are",
+                t.short_ref()
+            )));
+        }
+        let has_pr = t.links.iter().any(|l| pr_link(l).is_some());
+        let asked = self.reviews.get(&t.id).is_some_and(|rs| !rs.is_empty());
+        if !has_pr && !asked {
+            return Err(invalid(format!(
+                "{} has nothing to review yet: board_link its pull request, or ask for a review with board_review",
+                t.short_ref()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Puts t in review after `by` asked for one (card #191): only a holder's
+    /// request on a working card moves it; a watcher's leaves it as it is.
+    fn enter_review(&mut self, by: &str, id: &str) -> Result<()> {
+        let Some(t) = self.tasks.get(id) else {
+            return Ok(());
+        };
+        if t.state != WORKING || !is_holder(t, by) || !t.subtasks.is_empty() {
+            return Ok(());
+        }
+        let at = self.stamp();
+        self.write(
+            by,
+            kinds::TASK_STATUS,
+            &TaskStateRow {
+                task_id: id.into(),
+                state: IN_REVIEW.into(),
+                note: "waiting on its review".into(),
+                by: by.into(),
+                at,
+                ..TaskStateRow::default()
+            },
+        )?;
+        Ok(())
     }
 
     /// An agent's key: `agent:<cardId>` on a shared board; on the private
@@ -415,6 +464,23 @@ impl Fold {
                 ..TaskCommentRow::default()
             },
         )?;
+        if changes && self.tasks[id].state == IN_REVIEW {
+            let at = self.stamp();
+            let note = format!("{} asked for changes", self.named(&by));
+            let actor = self.actor_for(&by);
+            self.write(
+                &actor,
+                kinds::TASK_STATUS,
+                &TaskStateRow {
+                    task_id: id.into(),
+                    state: WORKING.into(),
+                    note,
+                    by: by.clone(),
+                    at,
+                    ..TaskStateRow::default()
+                },
+            )?;
+        }
         let nt = self.tasks[id].clone();
         let mut to = self.recipients(&nt, &by);
         for a in askers {

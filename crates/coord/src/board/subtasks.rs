@@ -121,6 +121,7 @@ impl Fold {
         let mut r = Rollup::default();
         let (mut ended, mut completed, mut failed) = (0, 0, 0);
         let (mut blocked, mut input, mut working, mut started) = (false, false, false, false);
+        let (mut reviewing, mut not_reviewing) = (0, 0);
         for id in ks {
             let k = &self.tasks[id];
             match k.state.as_str() {
@@ -148,6 +149,12 @@ impl Fold {
                 WORKING => working = true,
                 _ => {}
             }
+            // Card #191: the parent is in review when every open subtask is.
+            if k.state == IN_REVIEW {
+                reviewing += 1;
+            } else if !is_terminal(&k.state) {
+                not_reviewing += 1;
+            }
             if k.state != SUBMITTED {
                 started = true;
             }
@@ -170,6 +177,8 @@ impl Fold {
             BLOCKED.into()
         } else if input || t.state == INPUT_REQUIRED {
             INPUT_REQUIRED.into()
+        } else if reviewing > 0 && not_reviewing == 0 {
+            IN_REVIEW.into()
         } else if working || started {
             WORKING.into()
         } else {
