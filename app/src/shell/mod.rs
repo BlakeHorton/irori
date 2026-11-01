@@ -19,6 +19,8 @@ mod golden;
 pub mod instance;
 pub mod login;
 mod probe;
+// No tray on a phone (card #226): the same API with nothing behind it.
+#[cfg_attr(mobile, path = "tray_mobile.rs")]
 pub mod tray;
 pub mod tray_text;
 mod update;
@@ -42,10 +44,15 @@ pub use irori_window::events::EVENT_LAUNCH_AT_LOGIN;
 
 /// The one generated context (the frontend is embedded once).
 fn context() -> tauri::Context<tauri::Wry> {
+    #[allow(unused_mut)]
     let mut ctx = tauri::generate_context!();
     // The single-instance plugin takes its id from the identifier
     // (architecture.md 4.2); a test copy's IRORI_HOME makes it distinct.
-    ctx.config_mut().identifier = instance::current();
+    // A phone's identifier is its package name and never changes (#226).
+    #[cfg(desktop)]
+    {
+        ctx.config_mut().identifier = instance::current();
+    }
     ctx
 }
 
@@ -121,14 +128,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let invoke = builder.invoke_handler();
 
     let probe = probe::Probe::from_env();
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init({
-            let probe = probe.clone();
-            move |app, _args, _cwd| {
-                probe.note("second-instance");
-                show(app);
-            }
-        }))
+    let app = tauri::Builder::default();
+    // A phone runs one copy by itself (card #226).
+    #[cfg(desktop)]
+    let app = app.plugin(tauri_plugin_single_instance::init({
+        let probe = probe.clone();
+        move |app, _args, _cwd| {
+            probe.note("second-instance");
+            show(app);
+        }
+    }));
+    let app = app
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(core.clone())
@@ -269,8 +279,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
 /// Reaching the end means no copy answered (a Go GUI holds the Core: the
 /// two builds' locks differ, surface.md 7.18), so there is nothing to show.
 fn hand_off() -> Result<(), String> {
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
+    let app = tauri::Builder::default();
+    #[cfg(desktop)]
+    let app = app.plugin(tauri_plugin_single_instance::init(|_, _, _| {}));
+    let app = app
         .build(context())
         .map_err(|e| e.to_string())?;
     drop(app);
@@ -285,9 +297,12 @@ fn main_window(app: &AppHandle, startup: bool) -> tauri::Result<()> {
     let b = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::default())
         .title("Irori")
         .inner_size(1100.0, 720.0)
-        .background_color(tauri::window::Color(233, 238, 248, 255))
-        .center()
-        .visible(!startup);
+        .background_color(tauri::window::Color(233, 238, 248, 255));
+    // A phone's window is the whole screen (card #226).
+    #[cfg(desktop)]
+    let b = b.center().visible(!startup);
+    #[cfg(mobile)]
+    let _ = startup;
     // macOS draws the title in the title bar, where it is hard to read and
     // repeats the header's Irori (#76). Hide it there; the window keeps the
     // title for the Dock, the Window menu and Mission Control.
@@ -316,6 +331,7 @@ pub fn show(app: &AppHandle) {
     }
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.show();
+        #[cfg(desktop)]
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
