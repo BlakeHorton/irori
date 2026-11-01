@@ -5,6 +5,7 @@ import {
   type FormEvent,
   type ReactElement,
 } from "react"
+import { Popover } from "@base-ui/react/popover"
 import { PreviewCard } from "@base-ui/react/preview-card"
 
 import { cardRef } from "@/components/cards/bits"
@@ -17,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { plainLine } from "@/lib/irori"
+import { useMedia } from "@/lib/media"
 import { errorText, talk } from "@/lib/talk"
 
 // AgentCards is what an agent's hover card (card #104) and a #ref in text
@@ -29,6 +31,9 @@ export const AgentCards = createContext<{
   threads?: readonly { id: string; short: string; title: string }[]
   onOpenThread?: (id: string) => void
 } | null>(null)
+
+const popupClass =
+  "z-50 flex w-72 max-w-[calc(100vw-16px)] origin-(--transform-origin) flex-col gap-2.5 rounded-none bg-popover/90! p-3 text-sm text-popover-foreground glass-panel outline-hidden duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
 
 // MaxRows is how many cards each list shows before "and N more".
 const MaxRows = 6
@@ -46,14 +51,37 @@ export function AgentHover({
   trigger: ReactElement
 }) {
   const ctx = useContext(AgentCards)
+  // A touch screen has no hover (card #227): a tap opens the same card.
+  const touch = useMedia("(pointer: coarse)")
   if (!ctx || who.status === "person") return trigger
+  if (touch)
+    return (
+      <Popover.Root>
+        <Popover.Trigger
+          nativeButton={false}
+          render={trigger}
+          // A face sits on a card tile, which opens on a tap.
+          onClick={(e) => e.stopPropagation()}
+        />
+        <Popover.Portal>
+          <Popover.Positioner sideOffset={6} collisionPadding={8} className="isolate z-50">
+            <Popover.Popup
+              className={popupClass}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <AgentSummary who={who} cards={ctx.cards} onOpen={ctx.onOpen} />
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
+    )
   return (
     <PreviewCard.Root>
       <PreviewCard.Trigger render={trigger} delay={250} closeDelay={150} />
       <PreviewCard.Portal>
         <PreviewCard.Positioner sideOffset={6} className="isolate z-50">
           <PreviewCard.Popup
-            className="z-50 flex w-72 origin-(--transform-origin) flex-col gap-2.5 rounded-none bg-popover/90! p-3 text-sm text-popover-foreground glass-panel outline-hidden duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+            className={popupClass}
             // The popup is portalled, but React still bubbles its clicks to
             // the face's ancestors (a card tile opens on click).
             onClick={(e) => e.stopPropagation()}

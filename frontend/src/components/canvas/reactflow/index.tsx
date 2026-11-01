@@ -27,6 +27,7 @@ import {
 } from "@xyflow/react"
 
 import { Button } from "@/components/ui/button"
+import { useMedia, useNarrow } from "@/lib/media"
 
 import {
   followers,
@@ -240,6 +241,11 @@ export default function Canvas({ graph, layout, auto, onOpen, onPlace }: CanvasP
     [graph, layout, nodes]
   )
   const placed = graph.nodes.some((n) => n.kind === "card" && n.card.pos)
+  // A touch screen (card #227): a finger pans and pinches, so nodes don't
+  // drag (a pan that starts on a card would move it), and a phone has no
+  // room for the minimap.
+  const touch = useMedia("(pointer: coarse)")
+  const narrow = useNarrow()
 
   return (
     <div className="irori-flow h-full w-full">
@@ -261,9 +267,11 @@ export default function Canvas({ graph, layout, auto, onOpen, onPlace }: CanvasP
         minZoom={0.15}
         maxZoom={1.75}
         nodesConnectable={false}
+        nodesDraggable={!touch}
         elevateNodesOnSelect={false}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--border)" />
+        {!narrow && (
         <MiniMap
           pannable
           zoomable
@@ -277,6 +285,7 @@ export default function Canvas({ graph, layout, auto, onOpen, onPlace }: CanvasP
           maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
           style={{ background: "var(--card)" }}
         />
+        )}
         <Controls showInteractive={false} />
       </ReactFlow>
       {placed && (
