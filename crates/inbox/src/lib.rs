@@ -490,6 +490,11 @@ pub struct SendOptions {
 pub const REASON_PAUSED: &str = "paused";
 /// The reason on the wake a card's Resume sends each holder (card #207).
 pub const REASON_RESUMED: &str = "resumed";
+/// The reason on the person's Wind down all (card #220,
+/// docs/design/wind-down.md): save your place, hand back your cards and
+/// stop. Only the person sends it; Pause all doesn't hold it; it waits for
+/// the agent's safe point (a wake, never a stop).
+pub const REASON_WIND_DOWN: &str = "wind_down";
 
 /// The reason on a mentioned agent's copy of a message (card #77).
 pub const REASON_MENTIONED: &str = "mentioned";

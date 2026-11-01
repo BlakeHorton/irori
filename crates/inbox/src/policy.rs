@@ -107,9 +107,11 @@ impl Inner {
                 return hold::HOP_LIMIT;
             }
         }
-        // The person's stop (card #207) gets through Pause all: they are
-        // the one who paused.
-        if self.pol.paused && !(m.stop && self.is_person(&m.from)) {
+        // The person's stop (card #207) and wind-down (card #220) get
+        // through Pause all: they are the one who paused.
+        if self.pol.paused
+            && !((m.stop || m.reason == crate::REASON_WIND_DOWN) && self.is_person(&m.from))
+        {
             return hold::PAUSED;
         }
         ""

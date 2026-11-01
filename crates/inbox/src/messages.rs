@@ -350,6 +350,11 @@ impl Inbox {
                     )));
                 }
             }
+            if o.reason == crate::REASON_WIND_DOWN && !b.is_person(from) {
+                return Err(Error::other(
+                    "inbox: only the person may wind an agent down (reason wind_down)",
+                ));
+            }
             if o.attachments.len() > MAX_ATTACHMENTS {
                 return Err(Error::other(format!(
                     "inbox: at most {MAX_ATTACHMENTS} attachments on a message"

@@ -26,6 +26,13 @@ fn ids_of(ds: &[&Drec]) -> Vec<String> {
 }
 
 impl Inner {
+    /// d is the person's wind-down (card #220): it goes out under Pause all.
+    pub(crate) fn wind_down(&self, d: &Drec) -> bool {
+        self.msgs
+            .get(&d.d.message_id)
+            .is_some_and(|m| m.reason == crate::REASON_WIND_DOWN && self.is_person(&m.from))
+    }
+
     fn next_wake(&mut self, agent: &str, p: &str) -> Result<Option<Wake>> {
         // Wakes reach only sessions this device hosts (v0.4 §6.3).
         if !self.local(agent) {
@@ -54,12 +61,17 @@ impl Inner {
                 .issue(agent, p, &id, &token, false, mode::STOP, &ready)
                 .map(Some);
         }
-        if self.pol.paused || self.outstanding(agent).is_some() {
+        if self.outstanding(agent).is_some() {
             return Ok(None);
         }
+        // Under Pause all only the person's wind-down (card #220) wakes.
+        let paused = self.pol.paused;
         let (mut wake_items, mut ride): (Vec<&Drec>, Vec<&Drec>) = (vec![], vec![]);
         for d in self.open_recs() {
             if d.d.to != agent || d.d.state != st::QUEUED || !d.d.wake_id.is_empty() {
+                continue;
+            }
+            if paused && !self.wind_down(d) {
                 continue;
             }
             if d.next_turn() || (p != path::CHANNEL && d.untaken()) {
@@ -78,6 +90,8 @@ impl Inner {
         } else if p == path::CHANNEL && !ride.is_empty() {
             md = mode::NEXT_TURN;
             ids_of(&ride)
+        } else if paused {
+            return Ok(None);
         } else {
             let mut due: Vec<&Drec> = vec![];
             for id in self.reminders.get(agent).cloned().unwrap_or_default() {
@@ -110,13 +124,18 @@ impl Inner {
     }
 
     fn next_append(&mut self, agent: &str) -> Result<Option<Wake>> {
-        if self.pol.paused || !self.local(agent) || self.pending_append(agent).is_some() {
+        if !self.local(agent) || self.pending_append(agent).is_some() {
             return Ok(None);
         }
         self.drop_stale(agent)?;
+        // Under Pause all only the person's wind-down (card #220) goes.
+        let paused = self.pol.paused;
         let behind = self.queued_behind(agent);
         let mut ready: Vec<&Drec> = vec![];
         for d in self.open_recs() {
+            if paused && !self.wind_down(d) {
+                continue;
+            }
             if d.d.to == agent
                 && d.d.state == st::QUEUED
                 && d.d.wake_id.is_empty()
