@@ -369,6 +369,46 @@ fn test_pins() {
     assert_eq!(pinned_order(&e.reopen()), want);
 }
 
+/// Card #138: the person clears done cards; only closed ones, only the
+/// person, and the clear survives a reopen of the log. A board card's id
+/// (not in this log) is taken as given.
+#[test]
+fn test_archive() {
+    let e = Env::new();
+    let a = e.c.create_task(ALICE, nt("a")).unwrap();
+    let b = e.c.create_task(ALICE, nt("b")).unwrap();
+    e.c.set_task_state(USER, &a.id, CANCELED, "").unwrap();
+    want_err(
+        e.c.archive(ALICE, std::slice::from_ref(&a.id), true),
+        ErrorKind::NotAllowed,
+    );
+    want_err(
+        e.c.archive(USER, &[a.id.clone(), b.id.clone()], true),
+        ErrorKind::Invalid,
+    );
+    assert!(
+        e.c.archived_ids().is_empty(),
+        "a refused batch writes nothing"
+    );
+    let n =
+        e.c.archive(USER, &[a.id.clone(), "board-card".into()], true)
+            .unwrap();
+    assert_eq!(n, 2);
+    assert_eq!(
+        e.c.archive(USER, std::slice::from_ref(&a.id), true)
+            .unwrap(),
+        0
+    );
+    let ids = e.c.archived_ids();
+    assert!(ids.contains(&a.id) && ids.contains("board-card") && !ids.contains(&b.id));
+    assert!(e.c.get_task(&a.id).is_some(), "show still finds it");
+    let back = e.reopen();
+    assert_eq!(back.archived_ids(), ids);
+    e.c.archive(USER, std::slice::from_ref(&a.id), false)
+        .unwrap();
+    assert!(!e.c.archived_ids().contains(&a.id));
+}
+
 fn event(dev: &str, seq: i64, at: u64, actor: &str, kind: &str, raw: Vec<u8>) -> Event {
     Event {
         device_id: dev.into(),

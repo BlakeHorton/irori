@@ -1270,6 +1270,104 @@ impl Window {
         pinned
     }
 
+    /// Every closed card the window lists: private ones, then every ready
+    /// board's (#115), the way the grid's All holds every live card. A
+    /// board card's `from` is its index in the boards returned. Cards the
+    /// person cleared (#138) are left out.
+    #[allow(clippy::type_complexity)]
+    fn closed(
+        &self,
+        scope: &str,
+    ) -> (
+        Vec<(Task, Option<usize>)>,
+        Vec<(irori_core::BoardSummary, std::sync::Arc<coord::Coord>)>,
+    ) {
+        let co = self.core.coord();
+        let cleared = co.archived_ids();
+        let terminal = |t: &Task| coord::is_terminal(coord::effective_state(t));
+        let own = scope == SCOPE_ALL || scope == SCOPE_OWN;
+        let mut done: Vec<(Task, Option<usize>)> = if own {
+            co.list_tasks(&coord::TaskFilter::default())
+                .into_iter()
+                .filter(|t| {
+                    terminal(t) && !crate::threads::is_thread(t) && !cleared.contains(&t.id)
+                })
+                .map(|t| (t, None))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let boards: Vec<_> = self
+            .core
+            .board_list()
+            .into_iter()
+            .filter(|s| s.ready)
+            .filter(|s| scope == SCOPE_ALL || s.board_id == scope)
+            .filter_map(|s| self.core.board_coord(&s.board_id).ok().map(|c| (s, c)))
+            .collect();
+        for (i, (_, bc)) in boards.iter().enumerate() {
+            for t in bc.list_tasks(&coord::TaskFilter::default()) {
+                if !t.withdrawn
+                    && terminal(&t)
+                    && !crate::threads::is_thread(&t)
+                    && !cleared.contains(&t.id)
+                {
+                    done.push((t, Some(i)));
+                }
+            }
+        }
+        (done, boards)
+    }
+
+    /// The closed cards a clear would take (card #138): the ones given, or
+    /// with none given, every one closed (last changed) more than
+    /// `older_than_secs` ago (0: all of them), within `scope` (see
+    /// [`Self::cards_in`]): a board's Closed clears that board's alone.
+    fn to_clear(&self, older_than_secs: i64, ids: &[String], scope: &str) -> Vec<String> {
+        let (done, _) = self.closed(scope);
+        if !ids.is_empty() {
+            let want: std::collections::HashSet<&str> =
+                ids.iter().map(|s| crate::trim(s)).collect();
+            return done
+                .into_iter()
+                .filter(|(t, _)| want.contains(t.id.as_str()))
+                .map(|(t, _)| t.id)
+                .collect();
+        }
+        let cut = self.now_ms() - older_than_secs.max(0) * 1000;
+        done.into_iter()
+            .filter(|(t, _)| older_than_secs <= 0 || t.updated_at.unix_milli_value() < cut)
+            .map(|(t, _)| t.id)
+            .collect()
+    }
+
+    /// BoardService.ClearDoneCount: how many closed cards a clear by age
+    /// would take (card #138), for its confirm.
+    pub fn clear_done_count(&self, older_than_secs: i64, scope: &str) -> i64 {
+        self.to_clear(older_than_secs, &[], scope).len() as i64
+    }
+
+    /// BoardService.ClearDone (card #138): takes closed cards out of the
+    /// window's lists (the ids given, else by age as clear_done_count).
+    /// They stay in the log, so agents still find them with search and
+    /// show. Returns how many it cleared.
+    pub fn clear_done(
+        &self,
+        older_than_secs: i64,
+        ids: &[String],
+        scope: &str,
+    ) -> Result<i64, String> {
+        let ids = self.to_clear(older_than_secs, ids, scope);
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        self.core
+            .coord()
+            .archive(&self.user_key(), &ids, true)
+            .map(|n| n as i64)
+            .map_err(|e| e.to_string())
+    }
+
     /// BoardService.DoneCards: one page of the closed cards.
     pub fn done_cards(&self, limit: i64, before: &str) -> Result<DonePage, String> {
         self.done_cards_in(limit, before, SCOPE_ALL)
@@ -1303,35 +1401,7 @@ impl Window {
             }
             cursor = Some((at, id.to_string()));
         }
-        let terminal = |t: &Task| coord::is_terminal(coord::effective_state(t));
-        // Private closed cards, then every ready board's (#115): Closed
-        // holds them all, the way the grid's All holds every live card.
-        // A board card's `from` is its index in `boards`.
-        let own = scope == SCOPE_ALL || scope == SCOPE_OWN;
-        let mut done: Vec<(Task, Option<usize>)> = if own {
-            co.list_tasks(&coord::TaskFilter::default())
-                .into_iter()
-                .filter(|t| terminal(t) && !crate::threads::is_thread(t))
-                .map(|t| (t, None))
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let boards: Vec<_> = self
-            .core
-            .board_list()
-            .into_iter()
-            .filter(|s| s.ready)
-            .filter(|s| scope == SCOPE_ALL || s.board_id == scope)
-            .filter_map(|s| self.core.board_coord(&s.board_id).ok().map(|c| (s, c)))
-            .collect();
-        for (i, (_, bc)) in boards.iter().enumerate() {
-            for t in bc.list_tasks(&coord::TaskFilter::default()) {
-                if !t.withdrawn && terminal(&t) && !crate::threads::is_thread(&t) {
-                    done.push((t, Some(i)));
-                }
-            }
-        }
+        let (mut done, boards) = self.closed(scope);
         done.sort_by(|(a, _), (b, _)| newer(&a.updated_at, &a.id, &b.updated_at, &b.id));
         if let Some((at, id)) = &cursor {
             let i = done.partition_point(|(t, _)| {

@@ -618,6 +618,20 @@ fn closed_pages_per_scope() {
     let own = w.done_cards_in(10, "", SCOPE_OWN).unwrap();
     assert_eq!(own.cards.len(), 3);
     assert!(own.cards.iter().all(|c| c.scope == SCOPE_MINE));
+
+    // Card #138: a clear on a board's Closed takes that board's cards
+    // alone; Home's clear takes yours alone.
+    assert_eq!(w.clear_done_count(0, &mlg.board_id), 2);
+    assert_eq!(w.clear_done_count(0, SCOPE_OWN), 3);
+    assert_eq!(w.clear_done_count(0, ""), 5);
+    assert_eq!(w.clear_done(0, &[], &mlg.board_id).unwrap(), 2);
+    assert!(
+        w.done_cards_in(10, "", &mlg.board_id)
+            .unwrap()
+            .cards
+            .is_empty()
+    );
+    assert_eq!(w.done_cards_in(10, "", SCOPE_OWN).unwrap().cards.len(), 3);
 }
 
 /// Card #146: a card another member's agent holds shows that agent on it,

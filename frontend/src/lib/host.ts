@@ -116,6 +116,10 @@ export const BoardService = {
   DoneCards: (limit: number, before: string) => call(commands.boardDoneCards(limit, before)),
   DoneCardsIn: (limit: number, before: string, scope: string) =>
     call(commands.boardDoneCardsIn(limit, before, scope)),
+  ClearDoneCount: (olderThanSecs: number, scope: string) =>
+    call(commands.boardClearDoneCount(olderThanSecs, scope)),
+  ClearDone: (olderThanSecs: number, ids: string[], scope: string) =>
+    call(commands.boardClearDone(olderThanSecs, ids, scope)),
   Message: (taskId: string, msgId: string) => call(commands.boardMessage(taskId, msgId)),
   Comment: (id: string, text: string, tell: string, mentions: B.Mention[]) =>
     call(commands.boardComment(id, text, tell, mentions)),

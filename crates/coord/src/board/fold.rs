@@ -276,6 +276,9 @@ pub struct Fold {
     pub(crate) stale: Arc<RwLock<StaleMap>>,
     pub(crate) links: Vec<ParentLink>,
     pub(crate) pins: HashMap<String, PinRec>,
+    /// Done cards the person cleared from the window (card #138), by id,
+    /// with the row that last set it. Any id: a board card's too.
+    pub(crate) archived: HashMap<String, (bool, RowPos)>,
     /// A board's review requests by card, and its dedicated reviewers.
     pub(crate) reviews: BTreeMap<String, Vec<super::review::ReviewRequest>>,
     pub(crate) reviewers: super::review::Reviewers,
@@ -382,6 +385,7 @@ impl Fold {
             stale: Arc::new(RwLock::new(StaleMap::default())),
             links: Vec::new(),
             pins: HashMap::new(),
+            archived: HashMap::new(),
             reviews: BTreeMap::new(),
             reviewers: BTreeMap::new(),
             deleted: HashSet::new(),
@@ -782,6 +786,7 @@ impl Fold {
             | kinds::TASK_STEP
             | kinds::TASK_WATCHED => self.apply_card(ev, &at),
             kinds::TASK_PINNED => self.fold_pin(ev),
+            kinds::TASK_ARCHIVED => self.fold_archived(ev),
             kinds::TASK_PLACED => self.fold_placed(ev),
             kinds::TASK_COMMENT_EDITED => self.fold_comment_edited(ev, &at),
             kinds::TASK_OFFERED => self.fold_offered(ev, &at),

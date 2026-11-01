@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
   busy,
+  cards as cardsApi,
   deviceVar,
   type DeviceChip,
   displayName,
@@ -32,6 +33,8 @@ import {
   StatePill,
   waitLabel,
 } from "./bits"
+import { ConfirmButton } from "@/components/common/confirm-button"
+import { ClearDone } from "./clear-done"
 import { Faces, TalkBubble } from "./faces"
 
 // Filter is a chip: All, Needs a decision, My devices, Closed (done,
@@ -230,9 +233,13 @@ export function CardGrid({
   context,
   label = "Shared work",
   onMove,
+  picked,
 }: {
   cards: CardSummary[]
   selected: string
+  // picked: the cards ticked in select mode (card #138), marked like the
+  // selected one.
+  picked?: Set<string>
   onSelect: (id: string) => void
   now?: Date
   // context: cards shown only because a subtask of theirs matched the
@@ -291,7 +298,7 @@ export function CardGrid({
     >
       <CardTile
         card={c}
-        selected={c.id === selected}
+        selected={picked ? picked.has(c.id) : c.id === selected}
         onSelect={() => onSelect(c.id)}
         now={now}
         dim={context?.has(c.id) ?? false}
@@ -322,7 +329,7 @@ export function CardGrid({
                   <SubtaskDetailRow
                     key={k.id}
                     card={k}
-                    selected={k.id === selected}
+                    selected={picked ? picked.has(k.id) : k.id === selected}
                     dim={context?.has(k.id) ?? false}
                     onSelect={() => onSelect(k.id)}
                   />
@@ -585,15 +592,33 @@ export function DoneGrid({
   selected,
   onSelect,
   now,
+  byAge,
 }: {
   done: DoneState
   query?: string
   selected: string
   onSelect: (id: string) => void
   now: Date
+  // byAge: offer clearing by age here, within this scope ("" all, "own"
+  // Home's, else a board id; card #138).
+  byAge?: string
 }) {
   const done = { ...all, cards: matching(all.cards, query) }
   const [outcome, setOutcome] = useState<Outcome>("any")
+  // Select mode (card #138): clicks tick cards to clear or delete.
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const pick = (id: string) =>
+    setPicked((p) => {
+      const n = new Set(p)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const stopPicking = () => {
+    setPicking(false)
+    setPicked(new Set())
+  }
   if (done.error && !done.cards.length)
     return (
       <p className="px-1 text-[12.5px] text-destructive" role="alert">
@@ -646,7 +671,31 @@ export function DoneGrid({
             {o.label}
           </Button>
         ))}
+        <span className="ml-auto flex items-center gap-2">
+          {byAge !== undefined && !picking && (
+            <ClearDone compact scope={byAge} onCleared={done.reload} />
+          )}
+          <Button
+            size="xs"
+            variant={picking ? "secondary" : "outline"}
+            aria-pressed={picking}
+            onClick={() => (picking ? stopPicking() : setPicking(true))}
+          >
+            {picking ? "Done selecting" : "Select"}
+          </Button>
+        </span>
       </div>
+      {picking && (
+        <PickBar
+          picked={done.cards.filter((c) => picked.has(c.id))}
+          onAll={() => setPicked(new Set(shown.map((c) => c.id)))}
+          onNone={() => setPicked(new Set())}
+          onDone={() => {
+            setPicked(new Set())
+            done.reload()
+          }}
+        />
+      )}
       {done.error && (
         <p className="px-1 text-[12.5px] text-destructive" role="alert">
           Could not reload the closed cards: {done.error}
@@ -661,7 +710,8 @@ export function DoneGrid({
       <CardGrid
         cards={shown}
         selected={selected}
-        onSelect={onSelect}
+        onSelect={picking ? pick : onSelect}
+        picked={picking ? picked : undefined}
         now={now}
       />
       {done.more && (
@@ -675,6 +725,73 @@ export function DoneGrid({
         </Button>
       )}
     </>
+  )
+}
+
+// PickBar acts on the closed cards ticked in select mode (card #138):
+// clear them from the lists, or delete them for good (your own cards
+// only: a shared board's card is withdrawn by its board, not deleted).
+function PickBar({
+  picked,
+  onAll,
+  onNone,
+  onDone,
+}: {
+  picked: CardSummary[]
+  onAll: () => void
+  onNone: () => void
+  onDone: () => void
+}) {
+  const n = picked.length
+  const shared = picked.some((c) => c.scope === "board")
+  const what = `${n} ${n === 1 ? "card" : "cards"}`
+  return (
+    <div className="flex flex-wrap items-center gap-2 glass-panel px-3 py-2 text-[12.5px]">
+      <span className="text-ink tabular-nums">{n ? `${what} selected` : "Click cards to select them"}</span>
+      <Button size="xs" variant="ghost" onClick={onAll}>
+        Select all shown
+      </Button>
+      {n > 0 && (
+        <Button size="xs" variant="ghost" onClick={onNone}>
+          Clear selection
+        </Button>
+      )}
+      <span className="ml-auto flex items-start gap-2">
+        <ConfirmButton
+          label={n ? `Clear ${n}…` : "Clear…"}
+          disabled={!n}
+          confirmLabel={`Clear ${what}`}
+          question={
+            <>
+              Clear {what}? They leave the app's lists. Agents still find them
+              with search and show. Nothing is deleted.
+            </>
+          }
+          onConfirm={async () => {
+            await cardsApi.clearDone(0, picked.map((c) => c.id))
+            onDone()
+          }}
+        />
+        <ConfirmButton
+          label="Delete permanently…"
+          variant="destructive"
+          disabled={!n || shared}
+          confirmLabel={`Delete ${what}`}
+          question={
+            <>
+              Delete {what} permanently? They leave Irori on every device, and
+              agents no longer find them with search or show. This can't be
+              undone.
+              {shared && " Cards on a shared board can't be deleted here."}
+            </>
+          }
+          onConfirm={async () => {
+            for (const c of picked) await cardsApi.remove(c.id)
+            onDone()
+          }}
+        />
+      </span>
+    </div>
   )
 }
 

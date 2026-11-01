@@ -140,6 +140,10 @@ kinds! {
     /// The person deleted a card (card #57): it leaves every view; the
     /// log keeps it. Go v0.5 Cores store and replicate it and ignore it.
     TASK_DELETED = "task.deleted" => Replicated, Refuses;
+    /// The person cleared a done card out of the window's lists (card
+    /// #138): search and show still find it. The private log only, so a
+    /// shared board's card is cleared for this person alone.
+    TASK_ARCHIVED = "task.archived" => Replicated, Refuses;
     // capture
     CAPTURE_TURN = "capture.turn" => Replicated, Refuses;
     CAPTURE_EDIT = "capture.edit" => Replicated, Refuses;

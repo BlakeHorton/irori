@@ -746,6 +746,23 @@ function sampleClose(id: string, state: TaskState, note: string) {
   sampleChanged()
 }
 
+// sampleCleared is the sample's cleared done cards (card #138).
+const sampleCleared = new Set<string>()
+
+// sampleToClear is BoardService.ClearDone's pick on the sample.
+function sampleToClear(olderThanSecs: number, ids: string[], scope: string): string[] {
+  const inScope = (c: { board?: string | null }) =>
+    !scope || (scope === "own" ? !c.board : c.board === scope)
+  const done = sampleState().filter(
+    (c) => over(c) && !sampleThreadIds.has(c.id) && !sampleCleared.has(c.id) && inScope(c)
+  )
+  if (ids.length) return done.filter((c) => ids.includes(c.id)).map((c) => c.id)
+  const cut = Date.now() - Math.max(0, olderThanSecs) * 1000
+  return done
+    .filter((c) => olderThanSecs <= 0 || updated(c) < cut)
+    .map((c) => c.id)
+}
+
 // sampleDelete is BoardService.Delete on the sample: the card is gone.
 function sampleDelete(id: string) {
   sampleCard(id)
@@ -1401,6 +1418,25 @@ export const cards = {
     sampleDelete(id)
   },
 
+  // clearDoneCount is how many done cards a clear by age would take
+  // (card #138): closed more than olderThanSecs ago, 0 for all of them.
+  // scope: "" every card, "own" Home's, else one board's (as DoneCardsIn).
+  async clearDoneCount(olderThanSecs: number, scope = ""): Promise<number> {
+    if (inWails()) return BoardService.ClearDoneCount(olderThanSecs, scope)
+    return sampleToClear(olderThanSecs, [], scope).length
+  },
+
+  // clearDone takes done cards out of the app's lists (card #138): the
+  // ids given, else by age as clearDoneCount. Agents still find them with
+  // search and show. Returns how many it cleared.
+  async clearDone(olderThanSecs: number, ids: string[] = [], scope = ""): Promise<number> {
+    if (inWails()) return BoardService.ClearDone(olderThanSecs, ids, scope)
+    const gone = sampleToClear(olderThanSecs, ids, scope)
+    for (const id of gone) sampleCleared.add(id)
+    sampleChanged()
+    return gone.length
+  },
+
   // reopen brings a finished card back into play, with whoever held it.
   async reopen(id: string): Promise<void> {
     if (inWails()) {
@@ -1608,7 +1644,7 @@ async function loadDone(
   const inScope = (c: { board?: string | null }) =>
     !scope || (scope === "own" ? !c.board : c.board === scope)
   const done = sampleState()
-    .filter((c) => over(c) && !sampleThreadIds.has(c.id) && inScope(c))
+    .filter((c) => over(c) && !sampleThreadIds.has(c.id) && !sampleCleared.has(c.id) && inScope(c))
     .sort((a, b) => updated(b) - updated(a) || (a.id < b.id ? 1 : -1))
   const from = before ? done.findIndex((c) => c.id === before) + 1 : 0
   const page = done.slice(from, from + limit)
@@ -1624,6 +1660,8 @@ export type DoneState = {
   loading: boolean
   error: string | null
   loadMore: () => void
+  // reload re-reads the cards showing (after a clear, card #138).
+  reload: () => void
 }
 
 // useDoneCards is the Done tab: closed cards, the latest first, read only
@@ -1687,6 +1725,7 @@ export function useDoneCards(active: boolean, scope = ""): DoneState {
     loading: st.loading,
     error: st.error,
     loadMore,
+    reload: () => void reload(),
   }
 }
 

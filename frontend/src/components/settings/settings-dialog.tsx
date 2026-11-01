@@ -3,6 +3,7 @@ import {
   BellIcon,
   InfoIcon,
   LaptopIcon,
+  Trash2Icon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react"
@@ -10,6 +11,7 @@ import {
 import { InvitePanel, JoinInvite } from "@/components/boards/parts"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { DevicesPanel } from "@/components/settings/devices-panel"
+import { MaintenancePane } from "@/components/settings/maintenance-pane"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -26,7 +28,8 @@ import { go } from "@/lib/nav"
 import { corners, useSettings, useYourName } from "@/lib/settings"
 import { UpdateStatusLine } from "@/updater"
 
-export type SettingsSection = "notifications" | "devices" | "people" | "app"
+export type SettingsSection =
+  "notifications" | "devices" | "people" | "maintenance" | "app"
 
 export const settingsSections: {
   id: SettingsSection
@@ -51,6 +54,12 @@ export const settingsSections: {
     label: "People and invites",
     icon: UsersIcon,
     hint: "Who is on your boards, and joining someone else's.",
+  },
+  {
+    id: "maintenance",
+    label: "Maintenance",
+    icon: Trash2Icon,
+    hint: "Clear out done cards.",
   },
   {
     id: "app",
@@ -124,6 +133,7 @@ export function SettingsDialog({
           {here.id === "people" && (
             <PeoplePane onOpenBoard={() => onOpenChange(false)} />
           )}
+          {here.id === "maintenance" && <MaintenancePane />}
           {here.id === "app" && <AppPane open={open} version={version} />}
         </section>
       </DialogContent>

@@ -36,6 +36,8 @@ export const commands = {
 	boardCardsIn: (scope: string) => __TAURI_INVOKE<CardSummary[]>("board_cards_in", { scope }),
 	/**  One page of one scope's closed cards (card #161). */
 	boardDoneCardsIn: (limit: number, before: string, scope: string) => __TAURI_INVOKE<DonePage>("board_done_cards_in", { limit, before, scope }),
+	boardClearDoneCount: (olderThanSecs: number, scope: string) => __TAURI_INVOKE<number>("board_clear_done_count", { olderThanSecs, scope }),
+	boardClearDone: (olderThanSecs: number, ids: string[], scope: string) => __TAURI_INVOKE<number>("board_clear_done", { olderThanSecs, ids, scope }),
 	boardMessage: (taskId: string, msgId: string) => __TAURI_INVOKE<CardMessage>("board_message", { taskId, msgId }),
 	boardComment: (id: string, text: string, tell: string, mentions: Mention[]) => __TAURI_INVOKE<CommentResult>("board_comment", { id, text, tell, mentions }),
 	/**

@@ -362,6 +362,16 @@ crate::go_struct! {
 
 crate::go_struct! {
     #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskArchivedRow {
+        pub task_id: String = "taskId",
+        pub archived: bool = "archived",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    #[derive(Debug, Clone, Default, PartialEq)]
     pub struct TaskPinnedRow {
         pub task_id: String = "taskId",
         pub pinned: bool = "pinned",

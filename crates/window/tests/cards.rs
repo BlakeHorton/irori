@@ -996,3 +996,54 @@ fn a_wait_on_another_card_is_no_decision() {
     assert_eq!(d.summary.blocker_question, "Which DB?");
     assert_eq!(r.w.decide_count(), 1);
 }
+
+/// Card #138: clearing done cards takes them out of Closed (by id, by age
+/// or all); they stay in the log, and a reopened one is back on the grid.
+#[test]
+fn clearing_done_cards() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let me = r.w.core.user_sender().key;
+    let mk = |title: &str| {
+        let t = co
+            .create_task(
+                &r.key_a,
+                coord::NewTask {
+                    title: title.into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        co.set_task_state(&me, &t.id, coord::CANCELED, "").unwrap();
+        t
+    };
+    let a = mk("a");
+    let b = mk("b");
+    let c = mk("c");
+    let closed = || -> Vec<String> {
+        r.w.done_cards(0, "")
+            .unwrap()
+            .cards
+            .into_iter()
+            .map(|c| c.id)
+            .collect()
+    };
+    assert_eq!(closed().len(), 3);
+    assert_eq!(r.w.clear_done_count(3600, ""), 0, "none older than an hour");
+    assert_eq!(r.w.clear_done(3600, &[], "").unwrap(), 0);
+    assert_eq!(
+        r.w.clear_done(0, std::slice::from_ref(&a.id), "").unwrap(),
+        1
+    );
+    assert!(!closed().contains(&a.id));
+    assert!(co.get_task(&a.id).is_some(), "show still finds it");
+    assert_eq!(r.w.clear_done_count(0, ""), 2);
+    assert_eq!(r.w.clear_done(0, &[], "").unwrap(), 2);
+    assert!(closed().is_empty());
+    r.w.reopen(&b.id).unwrap();
+    assert!(
+        r.w.cards().iter().any(|x| x.id == b.id),
+        "a reopened card is back on the grid"
+    );
+    let _ = c;
+}

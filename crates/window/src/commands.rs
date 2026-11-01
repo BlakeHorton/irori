@@ -248,6 +248,23 @@ pub async fn board_done_cards_in(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn board_clear_done_count(w: W<'_>, older_than_secs: i64, scope: String) -> R<i64> {
+    Ok(w.clear_done_count(older_than_secs, &scope))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn board_clear_done(
+    w: W<'_>,
+    older_than_secs: i64,
+    ids: Vec<String>,
+    scope: String,
+) -> R<i64> {
+    w.clear_done(older_than_secs, &ids, &scope)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn board_message(w: W<'_>, task_id: String, msg_id: String) -> R<CardMessage> {
     w.message(&task_id, &msg_id)
 }
@@ -916,6 +933,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_done_cards,
             board_cards_in,
             board_done_cards_in,
+            board_clear_done_count,
+            board_clear_done,
             board_message,
             board_comment,
             board_comment_with_files,

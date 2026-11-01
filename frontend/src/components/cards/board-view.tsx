@@ -223,6 +223,7 @@ export function BoardView({
           {active === "done" ? (
             <DoneGrid
               done={done}
+              byAge={scope}
               query={query}
               selected={selected}
               onSelect={onOpen}

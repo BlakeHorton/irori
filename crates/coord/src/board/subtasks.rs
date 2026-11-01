@@ -436,6 +436,92 @@ impl Fold {
         }
     }
 
+    /// Folds task.archived (card #138): the person's only; the newest row
+    /// for a card wins. The id needn't be a card here: a shared board's
+    /// card is cleared through the private log.
+    pub(crate) fn fold_archived(&mut self, ev: &Event) {
+        let Some(p) = row::<TaskArchivedRow>(&ev.payload) else {
+            return;
+        };
+        if p.task_id.is_empty() {
+            return;
+        }
+        if ev.actor != "user" || !self.is_owner(&p.by) {
+            self.ignore(&ev.device_id);
+            return;
+        }
+        let at = RowPos::of(ev);
+        if let Some((_, old)) = self.archived.get(&p.task_id)
+            && !old.before(&at)
+        {
+            return;
+        }
+        self.archived.insert(p.task_id.clone(), (p.archived, at));
+        if self.tasks.contains_key(&p.task_id) {
+            self.note(Change {
+                kind: TASK_CHANGED.into(),
+                task_id: p.task_id,
+                ..Change::default()
+            });
+        }
+    }
+
+    /// The person clears done cards from the window, or brings them back
+    /// (card #138). A card of this log must be closed to be cleared; an id
+    /// this log doesn't hold is a shared board's card, which the caller
+    /// checked. Returns how many rows it wrote.
+    pub(crate) fn archive(&mut self, by: &str, ids: &[String], archived: bool) -> Result<usize> {
+        let by = trim_space(by).to_string();
+        if !self.is_owner(&by) {
+            return Err(not_allowed("only the person clears cards"));
+        }
+        if self.on_board {
+            return Err(invalid("cards are cleared in the private log"));
+        }
+        for id in ids {
+            if id.is_empty() {
+                return Err(invalid("an empty card id"));
+            }
+            if archived
+                && let Some(t) = self.tasks.get(id)
+                && !is_terminal(effective_state(t))
+            {
+                return Err(invalid(format!(
+                    "{} isn't closed: only done cards are cleared",
+                    t.short_ref()
+                )));
+            }
+        }
+        let mut n = 0;
+        for id in ids {
+            if self.archived.get(id).map(|(a, _)| *a).unwrap_or(false) == archived {
+                continue;
+            }
+            let at = self.stamp();
+            self.write(
+                &by,
+                kinds::TASK_ARCHIVED,
+                &TaskArchivedRow {
+                    task_id: id.clone(),
+                    archived,
+                    by: by.clone(),
+                    at,
+                },
+            )?;
+            n += 1;
+        }
+        Ok(n)
+    }
+
+    /// The ids the person cleared (card #138).
+    pub(crate) fn archived_ids(&self) -> std::collections::HashSet<String> {
+        self.archived
+            .iter()
+            .filter(|(_, (a, _))| *a)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     /// Folds task.deleted (card #57): the person's only. The card leaves
     /// the fold for good, whatever arrives about it later, and its
     /// subtasks stand alone (relink drops the link to a missing parent).

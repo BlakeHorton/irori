@@ -837,6 +837,7 @@ impl Fold {
         self.reset_stale();
         self.links.clear();
         self.pins.clear();
+        self.archived.clear();
         self.replay_store()?;
         for (id, was) in shorts {
             if was.is_empty() {

@@ -606,6 +606,15 @@ impl Coord {
     pub fn delete_task(&self, by: &str, id: &str) -> Result<Task> {
         self.lock().delete_task(by, id)
     }
+    /// The person clears done cards from the window, or brings them back
+    /// (card #138); returns how many changed.
+    pub fn archive(&self, by: &str, ids: &[String], archived: bool) -> Result<usize> {
+        self.lock().archive(by, ids, archived)
+    }
+    /// The cards the person cleared (card #138).
+    pub fn archived_ids(&self) -> std::collections::HashSet<String> {
+        self.lock().archived_ids()
+    }
     pub fn pin(&self, by: &str, id: &str, pinned: bool) -> Result<Task> {
         self.lock().pin(by, id, pinned, "", false)
     }
