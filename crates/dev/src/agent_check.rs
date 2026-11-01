@@ -26,6 +26,9 @@
 //!   4 answered: the person answers the agent's blocker; the agent
 //!     resolves it in the turn it acts on the answer (card #204), so the
 //!     card stops reading as waiting on the person.
+//!   5 stop (card #207): the person stops an agent in the middle of a long
+//!     task; its turn is cut, it answers the person first and leaves the
+//!     task unfinished.
 //!
 //! The Core's claude dir is --claude, a scratch dir holding only the
 //! sessions this run starts, so it never sees the real sessions; claude
@@ -68,6 +71,10 @@ const S3_STEPS: [&str; 3] = [
 const S4_TITLE: &str = "Add a license file to this folder";
 const S4_QUESTION: &str = "Which license should the LICENSE file use?";
 const S4_OPTIONS: [&str; 2] = ["MIT", "Apache-2.0"];
+/// 5 (card #207): a long task, then the person's stop with a question.
+const S5_FILES: usize = 40;
+const S5_TASK: &str = "Read every file in this folder (note-01.txt to note-40.txt) one at a time with the Read tool, in order, one call each. When all 40 are read, write SUMMARY.md listing each file's first line. Don't stop early.";
+const S5_STOP: &str = "Which note file were you reading when I stopped you? Answer me with the irori send tool (to: \"user\"), then wait: don't go back to the notes.";
 const S3_COMMENT: &str = "Change of plan: forget dark mode. What we actually need here is a high-contrast mode for people with low vision, toggled from the same settings page. Dark mode can wait.";
 
 pub struct Opts {
@@ -113,9 +120,9 @@ impl Opts {
                 }
                 "--only" => {
                     for p in val()?.split(',').filter(|p| !p.is_empty()) {
-                        let n: u32 = p.parse().map_err(|_| format!("--only {p}: 1 to 4"))?;
-                        if !(1..=4).contains(&n) {
-                            return Err(format!("--only {p}: 1 to 4"));
+                        let n: u32 = p.parse().map_err(|_| format!("--only {p}: 1 to 5"))?;
+                        if !(1..=5).contains(&n) {
+                            return Err(format!("--only {p}: 1 to 5"));
                         }
                         o.only.push(n);
                     }
@@ -342,6 +349,35 @@ impl Agent {
             std::thread::sleep(Duration::from_millis(200));
         }
         Ok(a)
+    }
+
+    /// Waits until the running turn has made `n` tool calls (card #207).
+    fn wait_tool_uses(&mut self, n: usize, wait: Duration) -> Result<(), String> {
+        let deadline = Instant::now() + wait;
+        let mut seen = 0;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.lines.recv_timeout(left) {
+                Ok(l) => {
+                    let v: serde_json::Value = serde_json::from_str(&l).unwrap_or_default();
+                    if v["type"] == "result" {
+                        return Err("the turn ended first".into());
+                    }
+                    if v["type"] == "assistant"
+                        && let Some(c) = v["message"]["content"].as_array()
+                    {
+                        seen += c.iter().filter(|x| x["type"] == "tool_use").count();
+                        if seen >= n {
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(format!("{seen} tool call(s) within {} s", wait.as_secs()));
+                }
+                Err(RecvTimeoutError::Disconnected) => return Err("claude exited".into()),
+            }
+        }
     }
 
     /// Waits for the end of the agent's next turn: claude's `result` line.
@@ -612,6 +648,60 @@ fn answered(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
     (r, log)
 }
 
+/// 5 (card #207): the person stops an agent in the middle of a long task;
+/// it answers the person first and doesn't finish the task.
+fn stop(o: &Opts, h: &Host) -> (Result<String, String>, Option<PathBuf>) {
+    let mut a = match Agent::start(o, h, "s5-stop") {
+        Ok(a) => a,
+        Err(e) => return (Err(e), None),
+    };
+    let log = Some(a.log.clone());
+    let cwd = o.work.join("s5-stop");
+    for i in 1..=S5_FILES {
+        let body = format!("note {i:02}: {}\n", "lorem ipsum ".repeat(40));
+        if let Err(e) = std::fs::write(cwd.join(format!("note-{i:02}.txt")), body) {
+            return (Err(format!("the notes: {e}")), log);
+        }
+    }
+    let person = h.core.user_sender();
+    let sent = h.core.inbox().send_with(
+        &person,
+        &inbox::Address::new(inbox::addr::AGENT, &a.key),
+        S5_TASK,
+        inbox::SendOptions {
+            mode: inbox::mode::WAKE.into(),
+            ..inbox::SendOptions::default()
+        },
+    );
+    if let Err(e) = sent {
+        return (Err(format!("the person's task: {e}")), log);
+    }
+    // Stop once the long turn is under way: its third tool call.
+    if let Err(e) = a.wait_tool_uses(3, o.turn_wait) {
+        return (Err(format!("the long turn never got going: {e}")), log);
+    }
+    let since = h.core.inbox().for_agent(&person.key, true, 500).len();
+    if let Err(e) = h.window.agent_stop(&a.key, S5_STOP) {
+        return (Err(format!("the person's stop: {e}")), log);
+    }
+    let summary = cwd.join("SUMMARY.md");
+    let r = play(o, h, &mut a, |h, a| {
+        let to_me = h.core.inbox().for_agent(&h.core.user_sender().key, true, 500);
+        let answered = to_me.len() > since
+            && to_me
+                .iter()
+                .any(|d| d.message.from.key == a.key && d.message.text.contains("note"));
+        match (answered, summary.exists()) {
+            (true, false) => Ok("answered the person, the task stayed cut".into()),
+            (true, true) => Err("answered, but went back and finished the task".into()),
+            (false, true) => Err("finished the task instead of answering the stop".into()),
+            (false, false) => Err("no answer to the person yet".into()),
+        }
+    });
+    a.stop();
+    (r, log)
+}
+
 pub fn run(o: &Opts) -> ExitCode {
     for d in [&o.home, &o.claude, &o.work] {
         if let Err(e) = empty_dir(d) {
@@ -628,7 +718,7 @@ pub fn run(o: &Opts) -> ExitCode {
     };
     let mut tally = Tally { failed: 0 };
     type Scenario = fn(&Opts, &Host) -> (Result<String, String>, Option<PathBuf>);
-    let all: [(u32, &str, Scenario); 4] = [
+    let all: [(u32, &str, Scenario); 5] = [
         (1, "1 ask: taken and closed with an outcome", ask),
         (
             2,
@@ -644,6 +734,11 @@ pub fn run(o: &Opts) -> ExitCode {
             4,
             "4 answered: the agent resolves the blocker as it acts on the answer",
             answered,
+        ),
+        (
+            5,
+            "5 stop: a busy agent's turn is cut and it answers the person first",
+            stop,
         ),
     ];
     for (n, name, f) in all {
@@ -703,7 +798,7 @@ mod tests {
         assert!(
             Opts::parse(&args(&[
                 "--home", "h", "--claude", "c", "--work", "w", "--irori", "i", "--mod", "m",
-                "--only", "5"
+                "--only", "6"
             ]))
             .is_err()
         );
