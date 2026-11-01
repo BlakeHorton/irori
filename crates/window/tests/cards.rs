@@ -900,7 +900,7 @@ fn a_resolved_thread_reopens_from_the_window() {
     let r = Rig::new();
     let t = held_task(&r);
     let id =
-        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[])
+        r.w.start_thread(&format!("Is #{} still moving?", t.short), &[], &[], "")
             .unwrap()
             .task
             .id;
@@ -910,7 +910,7 @@ fn a_resolved_thread_reopens_from_the_window() {
         .unwrap();
     r.w.resolve_thread(&id).unwrap();
     r.w.reopen_thread(&id).unwrap();
-    assert_eq!(r.w.threads()[0].state, "answered", "live again");
+    assert_eq!(r.w.threads("")[0].state, "answered", "live again");
     assert!(
         r.w.cards().iter().all(|c| c.id != id),
         "still not in the grid"
@@ -923,7 +923,7 @@ fn a_resolved_thread_reopens_from_the_window() {
     // The card page's Reopen does the same for a resolved thread.
     r.w.resolve_thread(&id).unwrap();
     r.w.reopen(&id).unwrap();
-    assert_eq!(r.w.threads()[0].state, "answered");
+    assert_eq!(r.w.threads("")[0].state, "answered");
 }
 
 /// Card #144: a #ref in text names a done card or a resolved thread too,
