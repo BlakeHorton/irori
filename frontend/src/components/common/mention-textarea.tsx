@@ -19,6 +19,7 @@ import { deviceVar, useMentionCandidates } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 import {
   addMention,
+  boardRows,
   cardTokenAt,
   composing as imeComposing,
   filterCards,
@@ -35,6 +36,7 @@ import {
   settle,
   settleRange,
   tokenAt,
+  MentionBoard,
   type Mention,
   type MentionCandidate,
   type Token,
@@ -87,7 +89,9 @@ export function MentionTextarea({
   const listId = useId()
 
   const loaded = useMentionCandidates(!given && wanted)
-  const cands = given ?? loaded
+  const board = useContext(MentionBoard)
+  const all = given ?? loaded
+  const cands = useMemo(() => boardRows(all, board), [all, board])
   const names = useMemo(() => cands.map((c) => c.who.name), [cands])
 
   // The # picker (card #114): the window's live cards. An "@" token wins.

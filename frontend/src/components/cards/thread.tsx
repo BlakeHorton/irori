@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { AttachmentList } from "@/components/attachments"
@@ -14,8 +14,10 @@ import {
 import { parseTime, plainBlock, plainLine, relativeTime } from "@/lib/irori"
 import { errorText, talk } from "@/lib/talk"
 import {
+  FocusComment,
   isRevision,
   opensInFull,
+  threadEntryId,
   threadLabel,
   ThreadKind,
   visible,
@@ -62,7 +64,21 @@ export function Thread({
   scroll?: string
 }) {
   const [showAll, setShowAll] = useState(false)
-  const shown = visible(items, showAll)
+  // A comment a notification opened the card at: shown even when it is
+  // older than the first page, scrolled into view once (card #177).
+  const focus = useContext(FocusComment)
+  const holds = !!focus && items.some((it) => it.id === focus)
+  const paged = visible(items, showAll)
+  const shown =
+    holds && !paged.some((it) => it.id === focus) ? visible(items, true) : paged
+  const scrolled = useRef("")
+  useEffect(() => {
+    if (!holds || scrolled.current === focus) return
+    scrolled.current = focus
+    document
+      .getElementById(threadEntryId(focus))
+      ?.scrollIntoView({ block: "center" })
+  }, [holds, focus])
   const hidden = items.length - shown.length
   const gap = compact ? "gap-1" : "gap-2"
   // The newest entry is last: keep it in view as entries arrive.
@@ -95,13 +111,23 @@ export function Thread({
       )}
       {shown.length ? (
         shown.map((it) => (
-          <ThreadRow
+          <div
             key={it.id}
-            cardId={cardId}
-            item={it}
-            now={now}
-            inBlocker={inBlocker}
-          />
+            id={threadEntryId(it.id)}
+            className={cn(
+              "grid scroll-mt-16",
+              holds &&
+                it.id === focus &&
+                "-mx-1.5 rounded-sm bg-primary/10 px-1.5 py-0.5 ring-1 ring-primary/40"
+            )}
+          >
+            <ThreadRow
+              cardId={cardId}
+              item={it}
+              now={now}
+              inBlocker={inBlocker}
+            />
+          </div>
         ))
       ) : (
         <p className="text-muted-foreground">{empty}</p>

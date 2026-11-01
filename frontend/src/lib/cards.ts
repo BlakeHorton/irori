@@ -1804,6 +1804,20 @@ export function cardHash(id: string): string {
   return `#card/${encodeURIComponent(id)}`
 }
 
+// openTarget reads a notification's ref: "task:<id>" opens the card,
+// "task:<id>/comment:<commentId>" opens it at that comment (card #177).
+// Anything else is null.
+export function openTarget(
+  ref: string
+): { card: string; comment: string } | null {
+  if (!ref.startsWith("task:")) return null
+  const rest = ref.slice("task:".length)
+  const i = rest.indexOf("/comment:")
+  const card = i < 0 ? rest : rest.slice(0, i)
+  const comment = i < 0 ? "" : rest.slice(i + "/comment:".length)
+  return card ? { card, comment } : null
+}
+
 export function cardFromHash(hash: string): string {
   const m = /^#card\/(.+)$/.exec(hash)
   if (!m) return ""

@@ -680,3 +680,100 @@ fn another_members_agent_shows_on_its_card() {
         "the card's page names it"
     );
 }
+
+/// Card #177: another member's agent is a mention candidate tagged with its
+/// board, and a comment on that board's card that mentions it stores its
+/// board key (their devices deliver it); nothing is routed here for it.
+#[test]
+fn another_members_agent_can_be_mentioned_on_its_board() {
+    let r = Rig::new();
+    let w = &r.w;
+    let mlg = w.boards_create("Horton", "horton").unwrap();
+    let card_id = "0123456789abcdef0123456789abcdef";
+    let agent = format!("{AGENT_ACTOR_PREFIX}{card_id}");
+    w.core
+        .board_store(&mlg.board_id)
+        .unwrap()
+        .append(
+            &agent,
+            kinds::AGENT_CARD,
+            &serde_json::json!({"cardId": card_id, "name": "otter", "kind": "claude",
+                "personId": "friend-person", "status": "idle"}),
+        )
+        .unwrap();
+    wait("the friend's agent card folds", || {
+        w.core.board_agents().iter().any(|a| a.key == agent)
+    });
+    let c = w
+        .mention_candidates()
+        .into_iter()
+        .find(|c| c.who.key == agent)
+        .expect("the friend's agent is a candidate");
+    assert_eq!(c.board, mlg.board_id);
+    assert_eq!(c.who.name, "otter");
+    assert!(
+        w.mention_candidates()
+            .iter()
+            .filter(|c| c.board.is_empty())
+            .all(|c| !c.who.key.starts_with(AGENT_ACTOR_PREFIX)),
+        "your own agents carry no board"
+    );
+
+    let co = w.core.board_coord(&mlg.board_id).unwrap();
+    let me = w
+        .core
+        .board_key(&mlg.board_id, &w.core.user_sender().key)
+        .unwrap();
+    let card = co
+        .create_task(
+            &me,
+            coord::NewTask {
+                title: "shared work".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let res = w
+        .comment(
+            &card.id,
+            "@otter can you look?",
+            "wake",
+            &[irori_window::ts::Mention {
+                key: agent.clone(),
+                name: "otter".into(),
+                gone: false,
+            }],
+            &[],
+        )
+        .unwrap();
+    let keys: Vec<&str> = res
+        .comment
+        .mentions
+        .iter()
+        .map(|m| m.key.as_str())
+        .collect();
+    assert_eq!(keys, [agent.as_str()]);
+    assert!(
+        res.mentioned.iter().all(|o| o.key != agent),
+        "this device has no outcome for it: {:?}",
+        res.mentioned
+    );
+    assert!(
+        !res.told.to.contains(&agent),
+        "nothing is routed here for it: {:?}",
+        res.told
+    );
+    let d = w.card(&card.id).unwrap();
+    let item = d
+        .thread
+        .iter()
+        .find(|i| i.text.contains("@otter"))
+        .expect("the comment is on the thread");
+    assert!(
+        item.mentions
+            .iter()
+            .any(|m| m.who.key == agent && m.who.name == "otter" && !m.gone),
+        "{:?}",
+        item.mentions
+    );
+}

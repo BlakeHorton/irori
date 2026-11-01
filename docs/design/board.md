@@ -386,9 +386,16 @@ The tool texts gain (the tool descriptions are capped at 500 bytes and had no ro
 
 ### Shared boards
 
-v1 mentions your own agents only, on any card, private or shared. On a shared card, the window and tools map each mentioned key to its board form with `Core::board_key`, coord delivers and adds the watcher in the board log as on a private card, and the notice goes to your agent through your own inbox as any board notice does.
+*2026-11-01, card #177. Stephen: "If I do a shared board, and my friend on the board is "Blake" can I do @Blake and have it ping him via notification that leads him to that mention?" Decided on #176: you @ the person, never a device.*
 
-The `mentions` field never goes in a board log. `task.comment` and `task.created` are on the board allow-list as whole kinds (`store/src/kinds.rs`; the list is per kind, not per field), so the fold clears `mentions` (and `ask.mentions`) on every row it writes while `on_board`, in the comment and ask writers, before `write_as`, and drops them again when it folds a board row, in case another member's Core wrote them anyway. On a shared card the comment therefore reads as plain `@name` on every device, yours included, and a gone mention isn't recorded there. Why: other people's devices can't resolve your agents' keys, the board-log row shapes stay as they are for every member's Core, and a private side-row joined into a board card's thread would be a second store for a v1 that needs none. An ask on a shared board refuses mentions in v1: "mentions work on an ask on your own board; on a shared board, ask the room". Mentioning other people's agents is later work.
+On a shared card you mention your own agents, the board's other people, and their agents. A mention names a board key every member's Core resolves: `agent:<cardId>` for an agent (yours too, mapped with `Core::board_key`) and `person:<personId>` for a person, named by their `member.profile` (#183's Your name).
+
+- **The row keeps them.** `task.comment` rows on a board carry `mentions`, in board form only: the comment writer keeps keys with `agent:` or `person:` and drops anything else, and the fold drops anything else another device wrote (`coord::board_form`). The board store already refuses a private key in a board row. Older Cores read the field as any other comment's (it was already in the row shape) and only miss the delivery below. This covers the person's blocker replies too: they are `task.comment` rows with `blockerId`.
+- **Your own agents** hear as on a private card: the writer's coord makes them watchers in the board log and the notice goes through your own inbox.
+- **Another person's agents.** The writer's coord makes them watchers in the board log as well (`task.watched` names any board key), but nothing is routed on the writer's device: `Core::private_notice` leaves board-form keys out, since this inbox has no agent by those names. On the other person's device the bridge (v0.5 §7.1) reads the row's `mentions` and sends each mentioned agent it hosts one message, kind `comment`, `wake` set, headed "<who> mentioned you on <title> (<refs>):", ending with who answers. That is "a request to wake one of your agents" in their receive table (§7.2): Open wakes it, Ask me holds it (`member_wake`), Closed delivers it at its next turn. Holds, the rate limit, Pause all and the hop limit apply as to any bridged row. A mentioned agent hears only the mention, not the plain comment too; the card's other holders and watchers hear the comment as before.
+- **Another person.** No notice and no watcher: on each of their devices the bridge posts a desktop card, "<who> mentioned you on “<title>” (<ref>)", the comment's first line as its body, that opens the window on the card at the comment (`task:<id>/comment:<commentId>`; the thread shows that entry, even past "Show earlier", scrolled into view and marked). Each device posts its own, so it shows wherever they are; the bridge runs on live rows only, so a resync doesn't post it again.
+- **The writer's result** has no outcome for another person's mentions: their devices deliver them, under their settings.
+- **Asks and threads** on a shared board with mentions are #187.
 
 ### In the window
 
@@ -422,7 +429,7 @@ The site's own `onKeyDown` (Enter sends) is passed through and runs only when th
 - **Caret anchoring**: the popover uses `PopoverContent` from `components/ui/popover.tsx`, opened in controlled mode with no trigger, and its Positioner's `anchor` is a virtual element whose `getBoundingClientRect` is the caret's: measured with a hidden mirror `div` that copies the textarea's font, padding, width and wrapping, holds the text up to the caret, and ends in a marker `span`. The popup must not take focus (`initialFocus` off, no focus trap), and the list is `role="listbox"` with `aria-activedescendant` on the textarea.
 - **Rows** show the agent through the existing `Face` (`components/cards/faces.tsx`, so #79's faces arrive by themselves), its name, its device chip in the device colour, and its cwd's last part or repo label, so two agents with one name tell apart. Live agents come first (this device's, then the others', by name), then gone ones, greyed, last 20 at most. A gone row can be picked; it is stored and not delivered.
 
-**Candidates.** `useMentionCandidates()` (`lib/cards.ts`) reads `BoardService.MentionCandidates()` when the popover first opens and again on `roster:changed`, and returns a sample list outside Tauri.
+**Candidates.** `useMentionCandidates()` (`lib/cards.ts`) reads `BoardService.MentionCandidates()` when the popover first opens and again on `roster:changed`, and returns a sample list outside Tauri. The list ends with each shared board's other people and their live agents, each with `board` set (card #177). A box offers those only on that board's cards: the card page provides `MentionBoard` (`lib/mentions.ts`) with its board, and `boardRows` keeps your own agents plus that board's rows; everywhere else (your own cards, messages, the ask box, the New card dialog) they are left out.
 
 **Sites.**
 - Ask box (`cards/ask-box.tsx`): the prompt. It has no board picker (card #102): on a shared board's page the ask goes on that board, anywhere else on My board. On a board's page `disabledMentions` is "Mentions work on your own board's asks".
@@ -656,8 +663,9 @@ and the description sentences above. The arg tables in `tools/src/board.rs` and 
   - an agent's `@cedar` resolves across devices; two live agents named cedar: not delivered, both keys listed; `@nobody`: unknown; a gone key in `mention`: stored `gone`, not delivered;
   - `@name` with a space in the name, trailing punctuation, `a@b.com` (not a token);
   - an ask with mentions tells only them, woken; the sweep tells nobody new; Wake them re-tells only them;
-  - a comment with mentions on a shared card: the board-log row has no `mentions`, the agent is woken and watches;
-  - a shared-board ask with mentions is refused;
+  - a comment with mentions on a shared card: the board-log row keeps the board-form keys, the agent is woken and watches, a mentioned person gets no notice;
+  - across two Cores (#177): Bob's mentioned agent is woken once by the bridge, his watcher hears the comment, Bob gets a card that opens the comment; Ask me holds the mention (`member_wake`), Closed delivers it next turn;
+  - a shared-board ask with mentions is refused (until #187);
   - removing `@name` from the box drops its key; Enter with the popover open inserts and doesn't send; Esc keeps the text.
 
 ## Links out

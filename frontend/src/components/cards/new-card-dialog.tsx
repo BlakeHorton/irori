@@ -58,7 +58,9 @@ export function NewCardDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const attach = useFileAttach(busy)
-  const agents = useMentionCandidates(open).filter((c) => c.who.live)
+  const agents = useMentionCandidates(open).filter(
+    (c) => c.who.live && !c.board
+  )
 
   useEffect(() => {
     if (!open) return

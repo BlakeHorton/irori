@@ -161,6 +161,16 @@ pub struct BoardAgent {
     pub person: String,
 }
 
+/// Another person on a shared board ([`super::Core::board_people`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BoardMember {
+    /// The board's key for them: person:<personId>.
+    pub key: String,
+    /// Their member.profile name, "" when unknown.
+    pub name: String,
+    pub board_id: String,
+}
+
 /// A folded `agent.card` row.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -1976,6 +1986,33 @@ impl super::Core {
                     status: a.status,
                     board_id: b.id.clone(),
                     person_id,
+                });
+            }
+        }
+        out
+    }
+
+    /// The other people on the boards this device holds, keyed as the
+    /// boards write them (person:<personId>), named by their member.profile
+    /// (else the name they were added with): the @ picker's people and the
+    /// names a mention of one shows (card #177). This person isn't listed.
+    pub fn board_people(&self) -> Vec<BoardMember> {
+        let me = self.s.person_id();
+        let mut out = Vec::new();
+        for b in self.s.boards.list() {
+            for p in b.verifier.membership().members {
+                if p.person_id.is_empty() || p.person_id == me {
+                    continue;
+                }
+                let name = b
+                    .verifier
+                    .profile(&p.person_id)
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or(p.name);
+                out.push(BoardMember {
+                    key: format!("{PERSON_ACTOR_PREFIX}{}", p.person_id),
+                    name,
+                    board_id: b.id.clone(),
                 });
             }
         }
