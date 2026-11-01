@@ -59,8 +59,8 @@ export function ThreadsPanel({
       </div>
       {live.length === 0 && (
         <p className="text-[12.5px] text-muted-foreground">
-          No open threads. Ask about anything in the box above: an agent on
-          the cards you name answers, or an idle one does.
+          No open threads. Ask about anything in the box above: an agent on the
+          cards you name answers, or an idle one does.
         </p>
       )}
       {live.map((t) => (
@@ -73,7 +73,7 @@ export function ThreadsPanel({
         />
       ))}
       {resolved.length > 0 && (
-        <div className="grid gap-2">
+        <div className="grid gap-2 border-t border-border pt-3">
           <button
             type="button"
             className="flex items-center gap-1 justify-self-start text-xs text-muted-foreground hover:text-ink"
@@ -101,6 +101,17 @@ export function ThreadsPanel({
       )}
     </aside>
   )
+}
+
+// stateBadges label a thread's state on its title line (#128).
+const stateBadges: Record<
+  string,
+  { label: string; variant: "info" | "success" | "warning" | "slate" }
+> = {
+  waiting: { label: "Waiting", variant: "warning" },
+  handed: { label: "Answering", variant: "info" },
+  answered: { label: "Answered", variant: "success" },
+  resolved: { label: "Resolved", variant: "slate" },
 }
 
 // stateLine says where a folded thread stands.
@@ -136,12 +147,13 @@ function ThreadRow({
 }) {
   const at = parseTime(t.updatedAt)
   const waiting = t.state === "waiting" || t.state === "handed"
+  const badge = stateBadges[t.state]
   return (
     <section
       className={
         open
-          ? "grid min-w-0 gap-2 border-l-2 border-primary pl-2.5"
-          : "grid min-w-0 gap-1 border-l-2 border-border pl-2.5"
+          ? "grid min-w-0 gap-2 border border-primary bg-background/40 px-3 py-2.5"
+          : "grid min-w-0 gap-1 border border-border bg-background/40 px-3 py-2.5"
       }
     >
       <button
@@ -150,10 +162,23 @@ function ThreadRow({
         onClick={onToggle}
         aria-expanded={open}
       >
-        <span className="flex min-w-0 items-baseline gap-2">
+        <span className="flex min-w-0 items-center gap-2">
+          {t.short && (
+            <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+              #{plainLine(t.short)}
+            </span>
+          )}
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">
             {plainLine(t.title)}
           </span>
+          {badge && (
+            <Badge
+              variant={badge.variant}
+              className="h-4 shrink-0 px-1.5 text-[10.5px]"
+            >
+              {badge.label}
+            </Badge>
+          )}
           <time
             className="shrink-0 text-[11px] text-muted-foreground tabular-nums"
             dateTime={at?.toISOString()}
@@ -206,7 +231,11 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
           <span className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
             {t.state === "waiting" ? "Asked first:" : "Told:"}
             {t.told.map((w) => (
-              <Badge key={w.key} variant="slate" className="h-4 gap-1 px-1 text-[10.5px]">
+              <Badge
+                key={w.key}
+                variant="slate"
+                className="h-4 gap-1 px-1 text-[10.5px]"
+              >
                 <Face who={w} noDot />
                 {displayName(w)}
               </Badge>

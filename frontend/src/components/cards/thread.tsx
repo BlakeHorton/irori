@@ -241,11 +241,11 @@ function ThreadRow({
     }
   }
   return (
-    <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-2">
+    <div className="group/row grid grid-cols-[56px_minmax(0,1fr)] gap-2">
       {time}
       <div className="grid min-w-0 gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Face who={item.who} noDot />
+          <Face who={item.who} inline />
           <span className="font-medium text-ink">{plainLine(l.author)}</span>
           {item.to && l.arrow && (
             <>
@@ -253,7 +253,7 @@ function ThreadRow({
                 {"->"}
               </span>
               <span className="sr-only">to</span>
-              <Face who={item.to} noDot />
+              <Face who={item.to} inline />
               <span className="font-medium text-ink">{plainLine(l.arrow)}</span>
             </>
           )}

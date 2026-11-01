@@ -248,8 +248,8 @@ function sampleThread(
   } as unknown as CardDetail
 }
 
-// sampleThreadSeed is the preview's two threads: one sample-heron
-// answered, one still in its quiet spell.
+// sampleThreadSeed is the preview's threads: one sample-heron answered,
+// one still in its quiet spell, one handed to an idle agent, one resolved.
 function sampleThreadSeed(now: Date): CardDetail[] {
   const ago = (s: number) => new Date(now.getTime() - s * 1000).toISOString()
   return [
@@ -276,6 +276,22 @@ function sampleThreadSeed(now: Date): CardDetail[] {
       ago(20),
       [],
       "waiting"
+    ),
+    sampleThread(
+      "sample-thread-3",
+      "25",
+      "Can someone check why the lobby list is empty after a restart?",
+      ago(90),
+      [],
+      "handed"
+    ),
+    sampleThread(
+      "sample-thread-4",
+      "26",
+      "Where do the release builds go now?",
+      ago(3600),
+      [],
+      "resolved"
     ),
   ]
 }
