@@ -424,7 +424,10 @@ fn test_pause() {
     assert!(e.c.paused_ids().is_empty());
     let (t, changed) = e.c.pause(USER, &a.id, true, "wait for me").unwrap();
     assert!(changed && t.id == a.id);
-    assert!(!e.c.pause(USER, &a.id, true, "").unwrap().1, "already paused");
+    assert!(
+        !e.c.pause(USER, &a.id, true, "").unwrap().1,
+        "already paused"
+    );
     assert!(e.c.paused_ids().contains(&a.id));
     assert!(task(&e, &a.id).paused, "the card says so");
     let back = e.reopen();

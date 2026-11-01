@@ -90,7 +90,12 @@ impl Window {
                 ref_: r.clone(),
                 ..::inbox::SendOptions::default()
             };
-            match ib.send_with(&me, &::inbox::Address::new(::inbox::addr::AGENT, &to), &text, o) {
+            match ib.send_with(
+                &me,
+                &::inbox::Address::new(::inbox::addr::AGENT, &to),
+                &text,
+                o,
+            ) {
                 Ok(_) => told.push(to),
                 Err(e) => errs.push(format!("{to}: {e}")),
             }

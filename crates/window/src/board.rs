@@ -819,9 +819,10 @@ mod tests {
         assert!(parse_tell("").unwrap() == Tell::NextTurn);
         assert!(parse_tell(" wake ").unwrap() == Tell::Wake);
         assert!(parse_tell("none").unwrap() == Tell::None);
+        assert!(parse_tell("stop").unwrap() == Tell::Stop);
         assert_eq!(
             parse_tell("loud").unwrap_err(),
-            "tell is next_turn, wake or none, not \"loud\""
+            "tell is next_turn, wake, stop or none, not \"loud\""
         );
     }
 }

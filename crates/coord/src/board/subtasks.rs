@@ -576,7 +576,10 @@ impl Fold {
             return Err(not_found(format!("task {}", quote(id))));
         };
         if paused && is_terminal(effective_state(&t)) {
-            return Err(invalid(format!("{} is closed: nothing to pause", t.short_ref())));
+            return Err(invalid(format!(
+                "{} is closed: nothing to pause",
+                t.short_ref()
+            )));
         }
         if self.is_paused(id) == paused {
             return Ok((t, false));

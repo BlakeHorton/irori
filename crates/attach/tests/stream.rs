@@ -630,7 +630,10 @@ async fn stop_pause_resume_on_the_wire() {
     )
     .unwrap();
     let ev = b.next("deliver").await;
-    assert!(ev["stop"] == true && strs(&ev, "pause") == vec!["#9".to_string()], "pause {ev}");
+    assert!(
+        ev["stop"] == true && strs(&ev, "pause") == vec!["#9".to_string()],
+        "pause {ev}"
+    );
     let tok = str_of(&ev, "token").to_string();
     ib.mark_delivered(&r.key_b, &tok).unwrap();
     ib.mark_engaged(&r.key_b, &tok, "t2").unwrap();
