@@ -156,6 +156,37 @@ fn completing_from_in_review_works_and_an_in_review_holder_is_free() {
     assert_ne!(done.state, IN_REVIEW);
 }
 
+/// Card #208: a merge Irori has seen on GitHub stands in for an approval
+/// that never came; an open PR still holds it.
+#[test]
+fn completing_from_in_review_after_github_merges_the_pr() {
+    let pr = "https://github.com/a/b/pull/3";
+    let e = Env::new();
+    let t = held_card(&e);
+    e.c.add_link(ALICE, &t.id, pr).unwrap();
+    e.c.request_review(ALICE, &t.id, "", BOB).unwrap();
+    assert_eq!(state(&e, &t.id), IN_REVIEW);
+    let heard = |s: &str| PrCheck {
+        pr: pr.into(),
+        state: s.into(),
+        ..PrCheck::default()
+    };
+
+    // Not approved and the PR open: refused.
+    e.c.record_pr_state(&t.id, heard(PR_OPEN)).unwrap();
+    want_err(
+        e.c.set_task_state(ALICE, &t.id, COMPLETED, "done"),
+        ErrorKind::Invalid,
+    );
+    // Not approved but the PR merged: allowed.
+    e.clk.add(secs(5));
+    e.c.record_pr_state(&t.id, heard(PR_MERGED)).unwrap();
+    let done =
+        e.c.set_task_state(ALICE, &t.id, COMPLETED, "merged")
+            .unwrap();
+    assert_ne!(done.state, IN_REVIEW);
+}
+
 #[test]
 fn a_parents_rollup_is_in_review_when_every_open_subtask_is() {
     let e = Env::new();
