@@ -51,6 +51,21 @@ impl Fake {
             &json!({"boardId": "b0", "creator": {"personId": "pStephen"}, "name": "MLG farming", "tag": "mlg"}),
         )
         .unwrap();
+        // Blake is on the board, with three agent cards (card #186).
+        st.append(
+            ME,
+            store::kinds::BOARD_MEMBER_ADDED,
+            &json!({"personId": "pBlake", "name": "Blake", "role": "member"}),
+        )
+        .unwrap();
+        for (card, name) in [("cb1", "mlg-lead"), ("cb2", "twin"), ("cb3", "twin")] {
+            st.append(
+                &format!("agent:{card}"),
+                store::kinds::AGENT_CARD,
+                &json!({"cardId": card, "name": name, "personId": "pBlake", "status": "active"}),
+            )
+            .unwrap();
+        }
         let c = clk.clone();
         let co = Arc::new(
             Coord::new(
