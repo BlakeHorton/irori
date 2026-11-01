@@ -6,6 +6,12 @@ license.workspace = true
 publish.workspace = true
 description = "The irori binary: CLI roles and the Tauri window"
 
+# The phone build loads the app as a library (card #226).
+[lib]
+name = "irori_app_lib"
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [[bin]]
 name = "irori"
 path = "src/main.rs"
@@ -27,7 +33,6 @@ tokio-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { workspace = true, features = ["tray-icon", "image-png"] }
-tauri-plugin-single-instance = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 tauri-plugin-opener = { workspace = true }
@@ -36,6 +41,10 @@ irori-mcp = { workspace = true }
 irori-window = { workspace = true }
 irori-notify = { workspace = true }
 irori-update = { workspace = true }
+
+# Desktop only: a phone runs one copy by itself (card #226).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }
