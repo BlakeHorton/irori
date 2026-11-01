@@ -170,6 +170,30 @@ pub struct Core {
     closed: AtomicBool,
 }
 
+/// What a card's buttons act through (notify's room): the private board,
+/// and a finished card's Mark Done tells the agent that finished it, as the
+/// window's Done does (card #140).
+struct WatchRoom(Arc<Services>);
+
+impl notify::watch::RoomSource for WatchRoom {
+    fn ask_again(&self, by: &str, id: &str) -> Result<(), String> {
+        notify::watch::RoomSource::ask_again(&*self.0.coord, by, id)
+    }
+    fn set_task_state(&self, by: &str, id: &str, state: &str, note: &str) -> Result<(), String> {
+        notify::watch::RoomSource::set_task_state(&*self.0.coord, by, id, state, note)
+    }
+    fn mark_done(&self, by: &str, id: &str) -> Result<(), String> {
+        let ns = notify::watch::mark_done(&self.0.coord, by, id)?;
+        let from = self.0.user_sender();
+        for n in &ns {
+            if let Some(e) = notice::notice_err(&self.0.route_notice(&from, n)) {
+                eprintln!("notify: mark done {id}: telling the agent: {e}");
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Everything the loops share.
 struct Services {
     data_dir: PathBuf,
@@ -1093,7 +1117,7 @@ impl Core {
                             .unwrap_or_default()
                     })
                 }),
-                room: Some(s.coord.clone()),
+                room: Some(Arc::new(WatchRoom(s.clone()))),
             },
         );
         Ok(core)

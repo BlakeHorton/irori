@@ -394,6 +394,126 @@ fn watch_board_needs_you() {
     r.fake.wait_post(&id);
 }
 
+/// Card #130: an agent's completed waits on the person's Done (card
+/// #112). Its card is good news: green, "finished", Open and Mark Done,
+/// and Mark Done closes the card. A blocked card still warns.
+#[test]
+fn watch_board_finished_is_ready_to_review() {
+    let r = rig_with(
+        None,
+        coord::Options {
+            done_check: true,
+            ..coord::Options::default()
+        },
+    );
+    let task =
+        r.co.create_task(KEY_A, new_task("ship the release"))
+            .unwrap();
+    r.co.claim_task(KEY_A, &task.id).unwrap();
+    r.block_on_person(KEY_A, &task.id, "which version number?");
+    let id = needs_id(&task.id);
+    r.fake.wait_post(&id);
+    let c = r.fake.card(&id);
+    assert_eq!(c.title, "alpha is blocked on you (#1)");
+    assert_eq!(c.kind, toast::Kind::Warn, "a blocker still warns");
+    r.co.unblock(USER, &task.id, "0.4").unwrap();
+    r.fake.wait_gone(&id);
+
+    // Card #140: the body is the proof's first line, with its screenshots.
+    let shot = coord::FileRef {
+        sha256: "ab".repeat(32),
+        name: "panel.png".into(),
+        size: 12,
+        mime: "image/png".into(),
+        device: "dev1".into(),
+    };
+    let got =
+        r.co.set_task_state_with(
+            KEY_A,
+            &task.id,
+            coord::COMPLETED,
+            "Release notes cut for 0.4.\nChecked: cargo test; opened the page.",
+            vec![shot],
+            true,
+        )
+        .unwrap();
+    assert_eq!(got.state, coord::BLOCKED, "a done check, not closed");
+    let c = r
+        .fake
+        .wait_title(&id, "alpha finished “ship the release” (#1)");
+    assert_eq!(c.body, "Release notes cut for 0.4. · 1 screenshot");
+    assert_eq!(c.kind, toast::Kind::Success);
+    let labels: Vec<&str> = c.actions.iter().map(|a| a.label.as_str()).collect();
+    assert_eq!(labels, vec!["Open", "Mark Done"]);
+    r.fake.drain();
+    // A press takes the card down, as the engine does: Mark Done.
+    r.fake.press(&id, "Mark Done");
+    wait_for("Mark Done closes the card", || {
+        r.co.get_task(&task.id)
+            .is_some_and(|t| t.state == coord::COMPLETED && t.open_blockers().is_empty())
+    });
+    r.fake.no_post(Duration::from_millis(100)); // closed: it doesn't come back
+}
+
+/// Card #140: new proof while the card is still up re-posts it in place
+/// with the new first line, and a question raised after it went up stops
+/// Mark Done from closing the card over it.
+#[test]
+fn watch_board_finished_follows_new_proof() {
+    let r = rig_with(
+        None,
+        coord::Options {
+            done_check: true,
+            ..coord::Options::default()
+        },
+    );
+    let task = r.co.create_task(KEY_A, new_task("ship it")).unwrap();
+    r.co.claim_task(KEY_A, &task.id).unwrap();
+    let id = needs_id(&task.id);
+    r.co.set_task_state_with(
+        KEY_A,
+        &task.id,
+        coord::COMPLETED,
+        "First try.",
+        Vec::new(),
+        true,
+    )
+    .unwrap();
+    r.fake.wait_title(&id, "alpha finished “ship it” (#1)");
+    assert_eq!(r.fake.card(&id).body, "First try.");
+    r.co.set_task_state_with(
+        KEY_A,
+        &task.id,
+        coord::COMPLETED,
+        "Second try.
+more",
+        Vec::new(),
+        true,
+    )
+    .unwrap();
+    wait_for("the card shows the new proof", || {
+        r.fake.is_live(&id) && r.fake.card(&id).body == "Second try."
+    });
+
+    // A real question after the card went up: Mark Done refuses.
+    r.co.raise(
+        KEY_A,
+        &task.id,
+        coord::NewBlocker {
+            question: "Which version?".into(),
+            blocked_by: Some(coord::BlockedBy {
+                kind: coord::BLOCKED_ON_PERSON.into(),
+                ..Default::default()
+            }),
+            ..coord::NewBlocker::default()
+        },
+    )
+    .unwrap();
+    let err = notify::watch::mark_done(&r.co, USER, &task.id).unwrap_err();
+    assert!(err.contains("open question"), "{err}");
+    assert_ne!(r.co.get_task(&task.id).unwrap().state, coord::COMPLETED);
+}
+
 #[test]
 fn watch_seeds_quietly() {
     // A card already waiting when the app starts doesn't pop up.
