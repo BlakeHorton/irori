@@ -140,7 +140,7 @@ export function BoardPage({
             <p className="px-1 text-[12.5px] text-muted-foreground">
               {tab === "decide"
                 ? "Nothing on this board waits on you."
-                : "No cards on this board yet. Make one with New card, or share a card to it from its page."}
+                : "No cards on this board yet: share a card to it from its page."}
             </p>
           )}
         </div>
