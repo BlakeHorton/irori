@@ -1,6 +1,9 @@
 //! Shows the settings' test card for a look at it:
 //!
-//!   IRORI_HOME=<scratch dir> cargo run -p irori-notify --example test_card [seconds]
+//!   IRORI_HOME=<scratch dir> cargo run -p irori-notify --example test_card [seconds] [png]
+//!
+//! With a PNG path it also shows a finished card with that picture as its
+//! thumbnail (card #149).
 //!
 //! It refuses to run without IRORI_HOME (never the live data dir), keeps
 //! the card visible to screen capture so it can be screenshotted, turns
@@ -59,6 +62,24 @@ fn main() {
     } else if let Err(e) = n.post_test() {
         eprintln!("{e}");
         std::process::exit(1);
+    }
+    if let Some(path) = std::env::args().nth(2) {
+        let Some(img) = notify::thumbnail(std::path::Path::new(&path)) else {
+            eprintln!("{path}: not a PNG this can read");
+            std::process::exit(1);
+        };
+        n.post(notify::Note {
+            id: "test-thumb".into(),
+            title: "ember finished “Card thumbnails” (#149)".into(),
+            body: "Toast cards show the proof's first screenshot · 1 screenshot".into(),
+            image: Some(img),
+            level: notify::Level::Success,
+            actions: vec![
+                notify::Action::close("Open"),
+                notify::Action::close("Mark Done"),
+            ],
+            ..notify::Note::default()
+        });
     }
     toast::run_for(std::time::Duration::from_secs(secs));
 }

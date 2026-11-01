@@ -81,8 +81,14 @@ impl Two {
 /// Alice (Core a) makes board "mlg" and adds Bob (Core b); Bob's Core
 /// opens it from Alice's pin and certifies its own device.
 fn two_people() -> Two {
+    two_people_with(None)
+}
+
+/// [`two_people`] with `notes` as Bob's desktop cards.
+fn two_people_with(notes: Option<notify::Notifier>) -> Two {
     let turn = TURN.lock().unwrap_or_else(|e| e.into_inner());
-    let (ra, rb) = (Rig::new(), Rig::new());
+    let ra = Rig::new();
+    let rb = Rig::with(|o| o.notifier = notes);
     let (a, b) = (&ra.core, &rb.core);
     assert_ne!(a.person().id, b.person().id, "two people");
     let board = a.create_board("MLG farming", "mlg").unwrap();
@@ -335,4 +341,201 @@ fn a_release_request_reaches_the_lease_holder() {
     let ds = wait_bridged(t.a(), &t.ra.key_a, 2);
     assert!(ds.iter().any(|d| d.hold.is_empty()), "{ds:?}");
     settle_bridged(t.a(), &t.ra.key_b, 0);
+}
+
+/// Records the cards a Notifier posts.
+#[derive(Default)]
+struct Cards(std::sync::Mutex<Vec<toast::Note>>);
+
+impl notify::Toaster for Cards {
+    fn configure(&self, _: toast::Config) {}
+    fn set_options(&self, _: toast::Options) {}
+    fn post(&self, n: toast::Note) {
+        self.0.lock().unwrap().push(n);
+    }
+    fn close(&self, _: &str) {}
+}
+
+impl Cards {
+    fn mentions(&self) -> Vec<(String, String, String)> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.id.starts_with("mention:"))
+            .map(|n| (n.id.clone(), n.title.clone(), n.body.clone()))
+            .collect()
+    }
+}
+
+/// Card #177: Alice mentions Bob and one of his agents in a comment on a
+/// shared card. Bob's device shows Bob a card that opens the comment; his
+/// agent is woken by the bridge, under his receive setting, and hears the
+/// mention once, not the plain comment too. His other agent, a watcher,
+/// hears the comment as before.
+#[test]
+fn a_mention_reaches_the_other_person_and_their_agent() {
+    let cards = Arc::new(Cards::default());
+    let notes = notify::Notifier::new(notify::Config {
+        toaster: Some(cards.clone()),
+        ..notify::Config::default()
+    });
+    let opened = Arc::new(std::sync::Mutex::new(Vec::<notify::Target>::new()));
+    {
+        let opened = opened.clone();
+        notes.set_opener(move |t| opened.lock().unwrap().push(t));
+    }
+    let t = two_people_with(Some(notes));
+    let a1 = t.a().board_key(&t.board, &t.ra.key_a).unwrap();
+    let b1 = t.b().board_key(&t.board, &t.rb.key_a).unwrap();
+    let b2 = t.b().board_key(&t.board, &t.rb.key_b).unwrap();
+    let bob = Two::person(t.b());
+    let co_a = t.a().board_coord(&t.board).unwrap();
+    let card = co_a
+        .create_task(
+            &a1,
+            coord::NewTask {
+                title: "Tune the harvest loop".into(),
+                objective: "make it faster".into(),
+                shared: true,
+                ..coord::NewTask::default()
+            },
+        )
+        .unwrap();
+    t.sync();
+    let co_b = t.b().board_coord(&t.board).unwrap();
+    wait_for(10, "the card on bob's side", || {
+        co_b.get_task(&card.id).is_some()
+    });
+    co_b.watch(&b2, &card.id).unwrap();
+    t.sync();
+    wait_for(10, "bob's watcher on alice's side", || {
+        co_a.get_task(&card.id)
+            .is_some_and(|c| c.watchers.contains(&b2))
+    });
+
+    let m = |key: &str, name: &str| coord::Mention {
+        key: key.into(),
+        name: name.into(),
+        gone: false,
+    };
+    let (cm, ns) = co_a
+        .person_comment(
+            &Two::person(t.a()),
+            &card.id,
+            "@bob @alpha can you look at the loop?",
+            false,
+            &[m(&bob, "bob"), m(&b1, "alpha")],
+            None,
+        )
+        .unwrap();
+    // On Alice's side, nothing for Bob's keys is routed to her own inbox.
+    let routed: Vec<String> = ns
+        .iter()
+        .map(|n| t.a().private_notice(n.clone()))
+        .flat_map(|n| n.to)
+        .collect();
+    assert!(!routed.iter().any(|k| coord::board_form(k)), "{routed:?}");
+    t.sync();
+
+    // Bob's agent: one woken mention, not the comment too.
+    let ds = wait_bridged(t.b(), &t.rb.key_a, 1);
+    let (d, msg) = (&ds[0], &ds[0].message);
+    assert_eq!(d.mode, mode::WAKE, "{d:?}");
+    assert_eq!(d.hold, "", "Open wakes it: {d:?}");
+    assert_eq!(msg.board.kind, row_kind::COMMENT);
+    assert_eq!(msg.ref_, format!("task:{}", card.id));
+    assert!(
+        msg.text.contains("mentioned you on") && msg.text.contains("can you look at the loop?"),
+        "{}",
+        msg.text
+    );
+    settle_bridged(t.b(), &t.rb.key_a, 1);
+    // Bob's watcher hears the comment as it would have before.
+    let ws = wait_bridged(t.b(), &t.rb.key_b, 1);
+    assert!(!ws[0].message.text.contains("mentioned you"), "{ws:?}");
+
+    // Bob: a card that opens the card at the comment.
+    wait_for(10, "bob's mention card", || !cards.mentions().is_empty());
+    let got = cards.mentions();
+    assert_eq!(got.len(), 1, "{got:?}");
+    let (id, title, body) = &got[0];
+    assert!(
+        title.contains("mentioned you on") && title.contains("Tune the harvest loop"),
+        "{title}"
+    );
+    assert!(body.contains("can you look at the loop?"), "{body}");
+    let n = cards
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|n| &n.id == id)
+        .cloned()
+        .unwrap();
+    (n.on_click.as_ref().expect("it opens"))();
+    let opened = opened.lock().unwrap().clone();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0].tab, notify::TAB_BOARD);
+    assert_eq!(
+        opened[0].ref_,
+        format!("task:{}/comment:{}", card.id, cm.id)
+    );
+    // A copy of the same rows again changes nothing.
+    t.sync();
+    settle_bridged(t.b(), &t.rb.key_a, 1);
+    assert_eq!(cards.mentions().len(), 1);
+}
+
+/// Card #177, §7.2: under Ask me a mention of Bob's agent is a request to
+/// wake it, held for Bob (member_wake); under Closed it arrives at its
+/// next turn.
+#[test]
+fn a_mention_of_their_agent_follows_their_receive_setting() {
+    let t = two_people();
+    let a1 = t.a().board_key(&t.board, &t.ra.key_a).unwrap();
+    let b1 = t.b().board_key(&t.board, &t.rb.key_a).unwrap();
+    let co_a = t.a().board_coord(&t.board).unwrap();
+    let card = co_a
+        .create_task(
+            &a1,
+            coord::NewTask {
+                title: "Count the crops".into(),
+                objective: "count them".into(),
+                shared: true,
+                ..coord::NewTask::default()
+            },
+        )
+        .unwrap();
+    t.sync();
+    let mention = |text: &str| {
+        co_a.person_comment(
+            &Two::person(t.a()),
+            &card.id,
+            text,
+            false,
+            &[coord::Mention {
+                key: b1.clone(),
+                name: "alpha".into(),
+                gone: false,
+            }],
+            None,
+        )
+        .unwrap();
+        t.sync();
+    };
+    set_receive(t.b(), &t.board, receive::ASK);
+    mention("@alpha first");
+    let ds = wait_bridged(t.b(), &t.rb.key_a, 1);
+    assert_eq!(ds[0].hold, hold::MEMBER_WAKE, "{:?}", ds[0]);
+
+    set_receive(t.b(), &t.board, receive::CLOSED);
+    mention("@alpha second");
+    let ds = wait_bridged(t.b(), &t.rb.key_a, 2);
+    let d = ds
+        .iter()
+        .find(|d| d.message.text.contains("second"))
+        .unwrap();
+    assert_eq!(d.mode, mode::NEXT_TURN, "{d:?}");
+    assert_eq!(d.hold, "", "{d:?}");
 }

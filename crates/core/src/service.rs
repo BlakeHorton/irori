@@ -1118,6 +1118,10 @@ impl Core {
                     })
                 }),
                 room: Some(Arc::new(WatchRoom(s.clone()))),
+                file: Some({
+                    let f = s.files.clone();
+                    Arc::new(move |id: &str| f.has(id).then(|| f.path(id)))
+                }),
             },
         );
         Ok(core)
