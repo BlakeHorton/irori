@@ -97,6 +97,16 @@ export function MessageDialog({
     void act(() => talk.reply(id, reply, mentions, files))
   }
 
+  // Stop and read (card #207): the sender's running turn is cut and the
+  // reply is its next prompt. Text only: mentions and files go with Reply.
+  const stopAndRead = () => {
+    if (!reply.trim()) {
+      setError("Write a reply first.")
+      return
+    }
+    void act(() => talk.replyStop(id, reply))
+  }
+
   const from = d
     ? plainLine(d.message.from.name) || name(d.message.from.key)
     : ""
@@ -222,6 +232,16 @@ export function MessageDialog({
                 >
                   Mark read
                 </Button>
+                {!d.message.from.key.startsWith("user:") && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    title="Cut the sender's running turn: it reads this first and answers you before anything else"
+                    onClick={stopAndRead}
+                  >
+                    Stop and read
+                  </Button>
+                )}
                 <Button type="submit" form="message-reply" disabled={busy}>
                   {busy ? "Sending…" : "Reply"}
                 </Button>

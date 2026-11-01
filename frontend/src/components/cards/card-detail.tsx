@@ -2,8 +2,10 @@ import { useState, type FormEvent, type ReactNode } from "react"
 import {
   ArrowLeftIcon,
   ExternalLinkIcon,
+  PauseIcon,
   PinIcon,
   PinOffIcon,
+  PlayIcon,
 } from "lucide-react"
 
 import {
@@ -214,6 +216,7 @@ export function CardPage({
               onOpen={onOpen}
               onBack={onBack}
             />
+            {!detail.onBoard && <PauseButton card={detail} />}
             {!detail.onBoard && (
               <DeleteButton detail={detail} onDeleted={onBack} />
             )}
@@ -771,6 +774,51 @@ function PinButton({ card }: { card: CardSummary }) {
   )
 }
 
+// PauseButton pauses an open card of the person's own board, or resumes it
+// (card #207): pausing stops every holder and refuses their tools, except
+// Irori's own, until Resume. While paused it says so.
+function PauseButton({ card }: { card: CardSummary }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const paused = !!card.paused
+  const closed =
+    card.state === TaskState.Completed ||
+    card.state === TaskState.Failed ||
+    card.state === TaskState.Canceled
+  if (closed && !paused) return null
+  return (
+    <>
+      <Button
+        variant={paused ? "destructive" : "ghost"}
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        disabled={busy}
+        aria-pressed={paused}
+        title={
+          paused
+            ? "Resume: its holders' tools come back and they carry on"
+            : "Pause: stop every holder now; they may only answer you on the card until you resume"
+        }
+        onClick={async () => {
+          setBusy(true)
+          setError(null)
+          try {
+            await cards.pause(card.id, !paused)
+          } catch (err) {
+            setError(errorText(err))
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        {paused ? <PlayIcon aria-hidden /> : <PauseIcon aria-hidden />}
+        {paused ? "Paused · Resume" : "Pause"}
+      </Button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </>
+  )
+}
+
 // Subtasks is a parent's list of its subtasks: each with its short ref,
 // title, state, holder and progress, opening its page on a click.
 function Subtasks({
@@ -1115,8 +1163,10 @@ export function CommentBox({
   )
   const attach = useFileAttach(busy || noFiles, noFiles ? SharedNoFiles : "")
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
+  // stop (card #207): the holders' running turns are cut and this is
+  // their next prompt.
+  const submit = async (e: FormEvent | null, stop = false) => {
+    e?.preventDefault()
     if (busy) return
     if (!text.trim()) {
       setError("Write a comment first.")
@@ -1128,7 +1178,7 @@ export function CommentBox({
       const res = await cards.comment(
         cardId,
         text,
-        wake,
+        stop ? "stop" : wake || reply,
         mentions,
         attach.files
       )
@@ -1212,6 +1262,16 @@ export function CommentBox({
               <AttachButton attach={attach} disabled={busy} />
             </>
           )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            title="Cut the agents' running turns: they read this first and answer you before anything else"
+            onClick={() => void submit(null, true)}
+          >
+            Stop and read
+          </Button>
           <Button type="submit" size="sm" disabled={busy}>
             {busy ? "Sending…" : reply ? "Reply" : "Comment"}
           </Button>

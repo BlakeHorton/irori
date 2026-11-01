@@ -1278,13 +1278,14 @@ export const cards = {
   async comment(
     id: string,
     text: string,
-    wake = true,
+    wake: boolean | "stop" = true,
     mentions: Mention[] = [],
     files: File[] = []
   ): Promise<CommentResult> {
     checkUploads(files)
     if (inWails()) {
-      const tell = wake ? "wake" : "next_turn"
+      // "stop" (card #207): the holders' running turns are cut.
+      const tell = wake === "stop" ? "stop" : wake ? "wake" : "next_turn"
       if (!files.length) return BoardService.Comment(id, text, tell, mentions)
       return BoardService.CommentWithFiles(
         id,
@@ -1294,7 +1295,7 @@ export const cards = {
         await Promise.all(files.map(uploadOf))
       )
     }
-    return sampleComment(id, text, wake, mentions)
+    return sampleComment(id, text, wake !== false, mentions)
   },
 
   // askAgain is Wake them on an ask nobody took.
@@ -1365,6 +1366,16 @@ export const cards = {
       return
     }
     samplePin(id, pinned)
+  },
+
+  // pause pauses card id or resumes it (card #207): its holders are
+  // stopped and their tools refused until Resume. Returns who was told.
+  async pause(id: string, paused: boolean, note = ""): Promise<string[]> {
+    if (inWails()) return (await BoardService.Pause(id, paused, note)) ?? []
+    const c = sampleCard(id)
+    c.paused = paused
+    sampleChanged()
+    return []
   },
 
   // movePin puts pinned card id in front of pinned card before ("": last).

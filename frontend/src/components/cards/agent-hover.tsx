@@ -1,4 +1,10 @@
-import { createContext, useContext, type ReactElement } from "react"
+import {
+  createContext,
+  useContext,
+  useState,
+  type FormEvent,
+  type ReactElement,
+} from "react"
 import { PreviewCard } from "@base-ui/react/preview-card"
 
 import { cardRef } from "@/components/cards/bits"
@@ -8,7 +14,10 @@ import {
   type AgentRef,
   type CardSummary,
 } from "@/lib/cards"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { plainLine } from "@/lib/irori"
+import { errorText, talk } from "@/lib/talk"
 
 // AgentCards is what an agent's hover card (card #104) and a #ref in text
 // read: the live cards and the threads, and how to open each (card #144).
@@ -127,7 +136,60 @@ function AgentSummary({
       {!holding.length && !offered.length && !watching.length && (
         <p className="text-xs text-muted-foreground">No open cards.</p>
       )}
+      {!gone && !who.offline && who.live && <StopAgent who={who} />}
     </>
+  )
+}
+
+// StopAgent is Stop on an agent (card #207): its running turn is cut and
+// what the person writes (or "Stop and wait for me.") is its next prompt.
+function StopAgent({ who }: { who: AgentRef }) {
+  const [text, setText] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [line, setLine] = useState<{ ok: boolean; text: string } | null>(null)
+  const stop = async (e: FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setLine(null)
+    try {
+      await talk.stop(who.key, text)
+      setText("")
+      setLine({ ok: true, text: `${displayName(who)} is stopped and reads this first.` })
+    } catch (err) {
+      setLine({ ok: false, text: errorText(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="grid grid-cols-1 gap-1" onSubmit={(e) => void stop(e)}>
+      <div className="flex min-w-0 gap-1">
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Why (optional)"
+          aria-label={`Why you stop ${displayName(who)}`}
+          className="h-7 min-w-0 text-xs"
+          disabled={busy}
+        />
+        <Button
+          type="submit"
+          size="sm"
+          variant="destructive"
+          className="h-7 shrink-0 text-xs"
+          disabled={busy}
+          title="Cut its running turn now: it reads this first and answers you before anything else"
+        >
+          Stop
+        </Button>
+      </div>
+      {line && (
+        <p className={line.ok ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>
+          {line.text}
+        </p>
+      )}
+    </form>
   )
 }
 

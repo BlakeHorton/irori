@@ -227,6 +227,24 @@ export const talk = {
     return mentions.map((m) => ({ key: m.key, name: m.name, state: "woke" }))
   },
 
+  // replyStop is Stop and read on a message (card #207): the sender's
+  // running turn is cut and the reply is its next prompt.
+  async replyStop(id: string, text: string): Promise<void> {
+    if (inWails()) {
+      await InboxService.ReplyStop(id, text)
+      return
+    }
+    sampleDelivery(id)
+    if (!text.trim()) throw new Error("inbox: invalid input: write a reply")
+    sampleSetState(id, State.Answered)
+  },
+
+  // stop cuts agent key's running turn (card #207); text (empty: "Stop and
+  // wait for me.") is its next prompt.
+  async stop(key: string, text = ""): Promise<void> {
+    if (inWails()) return RosterService.Stop(key, text)
+  },
+
   // markRead closes a message sent to the person without replying.
   async markRead(id: string): Promise<void> {
     if (inWails()) return InboxService.MarkRead(id)

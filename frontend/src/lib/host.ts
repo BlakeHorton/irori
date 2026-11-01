@@ -89,6 +89,8 @@ export const RosterService = {
   Recent: (limit: number) => call(commands.rosterRecent(limit)),
   Gone: (limit: number) => call(commands.rosterGone(limit)),
   Revive: (sessionId: string) => call(commands.rosterRevive(sessionId)),
+  // Stop (card #207): cuts the agent's running turn; text is its next prompt.
+  Stop: (key: string, text: string) => done(commands.agentStop(key, text)),
 }
 
 export const InboxService = {
@@ -101,6 +103,9 @@ export const InboxService = {
     call(commands.inboxSend(to, repo, text, mentions)),
   Reply: (deliveryId: string, text: string, mentions: B.Mention[]) =>
     call(commands.inboxReply(deliveryId, text, mentions)),
+  // Stop and read (card #207): the sender's running turn is cut.
+  ReplyStop: (deliveryId: string, text: string) =>
+    call(commands.inboxReplyStop(deliveryId, text)),
   ReplyWithFiles: (
     deliveryId: string,
     text: string,
@@ -159,6 +164,9 @@ export const BoardService = {
   Close: (id: string, state: string, note: string) => call(commands.boardClose(id, state, note)),
   Delete: (id: string) => done(commands.boardDelete(id)),
   Pin: (id: string, pinned: boolean) => done(commands.boardPin(id, pinned)),
+  // Pause / Resume (card #207): who was told.
+  Pause: (id: string, paused: boolean, note: string) =>
+    call(commands.boardPause(id, paused, note)),
   MovePin: (id: string, before: string) => done(commands.boardMovePin(id, before)),
   Place: (id: string, x: number, y: number) => done(commands.boardPlace(id, x, y)),
   Create: (input: B.NewCardInput) => call(commands.boardCreate(input)),

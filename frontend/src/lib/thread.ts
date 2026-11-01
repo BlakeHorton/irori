@@ -192,13 +192,17 @@ export function heardLine(
     `${names(rs)} ${woken ? (rs.length > 1 ? "are woken" : "is woken") : rs.length > 1 ? "hear it at their next turn" : "hears it at its next turn"}`
   if (!answers.length && !watching.length) return "Nobody has heard this yet."
   const parts: string[] = []
-  if (answers.length)
+  if (answers.length && mode === "stop")
+    parts.push(
+      `${names(answers)} ${answers.length > 1 ? "are" : "is"} stopped and will answer here first.`
+    )
+  else if (answers.length)
     parts.push(`${how(answers, mode === "wake")} and will answer here.`)
   if (watching.length)
     parts.push(
       answers.length
         ? `${how(watching, false)}, watching: they answer only if asked.`
-        : `${how(watching, mode === "wake")}, watching.`
+        : `${how(watching, mode === "wake" || mode === "stop")}, watching.`
     )
   return parts.join(" ")
 }
