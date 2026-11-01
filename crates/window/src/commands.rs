@@ -501,6 +501,13 @@ pub async fn boards_list(w: W<'_>) -> R<Vec<BoardSummary>> {
     Ok(w.boards_list())
 }
 
+/// Pins a board to the sidebar, or unpins it (card #135).
+#[tauri::command]
+#[specta::specta]
+pub async fn boards_pin(w: W<'_>, board_id: String, pinned: bool) -> R<()> {
+    w.boards_pin(&board_id, pinned)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn boards_create(w: W<'_>, name: String, tag: String) -> R<BoardSummary> {
@@ -937,6 +944,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_move_pin,
             board_reopen,
             boards_list,
+            boards_pin,
             boards_create,
             boards_rename,
             boards_leave,

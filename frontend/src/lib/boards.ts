@@ -119,6 +119,8 @@ function boardsState(): BoardSummary[] {
       doneWeek: 1,
       lastAt: new Date(Date.now() - 7 * 60_000).toISOString(),
       ready: true,
+      pinned: true,
+      pinRank: 1,
     }),
     BoardSummary({
       boardId: "sample-board-site",
@@ -198,6 +200,17 @@ export const boards = {
     boardsState().push(b)
     sampleMoved()
     return b
+  },
+
+  // pin puts a board in the sidebar's Pinned boards, or takes it out (card
+  // #135): a pin in your own log, so it follows you to your other devices.
+  async pin(id: string, pinned: boolean): Promise<void> {
+    if (inWails()) return BoardsService.Pin(id, pinned)
+    const b = sampleFind(id)
+    const top = Math.max(0, ...boardsState().map((x) => x.pinRank ?? 0))
+    b.pinned = pinned
+    b.pinRank = pinned ? top + 1 : 0
+    sampleMoved()
   },
 
   async rename(id: string, name: string): Promise<BoardSummary> {

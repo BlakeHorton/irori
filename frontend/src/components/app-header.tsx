@@ -1,138 +1,81 @@
+import type { ReactNode } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { SettingsMenu } from "@/components/settings/settings-menu"
-import { agentCounts } from "@/lib/agent-counts"
 import type { Roster } from "@/lib/irori"
-import { go, type Section } from "@/lib/nav"
+import type { Section } from "@/lib/nav"
 
-// AppHeader is the top bar: the product mark, Home | Boards (card #96),
-// this device, New card (card #116) or New board on Boards (card #126), the version, the Held list (with how many messages wait on
-// the person) and the settings.
+// AppHeader is the page header (card #135): the page's title and its own
+// actions. The nav lives in the sidebar. New card on Home and on a board's
+// page (card #116, there it goes on that board), New board on Boards (card
+// #126); a board's page adds its own actions (pin, rename, leave) as
+// `actions`.
 export function AppHeader({
   roster,
-  held,
-  onHeld,
+  title,
+  sub,
+  bar,
+  actions,
   onNewCard,
   onNewBoard,
   section,
-  boardsNeedYou = 0,
 }: {
   roster: Roster
-  held: number
-  onHeld: () => void
-  // New card (card #116): on a board's page it goes on that board.
+  // The page's title (Home, Boards, a board's name) and a line beside it.
+  title: ReactNode
+  sub?: ReactNode
+  // bar replaces the title (a board's page: its name, rename and actions).
+  bar?: ReactNode
+  // The page's own actions, before New card / New board.
+  actions?: ReactNode
   onNewCard: () => void
-  // New board (card #126): the button reads New board on Boards.
   onNewBoard: () => void
-  // Where the window is; null on a card's page (neither is current).
+  // Where the window is; null on a card's page.
   section?: Section | null
-  // Cards on boards waiting on the person, shown on Boards.
-  boardsNeedYou?: number
 }) {
-  const { device, version, source, agents } = roster
-  // Working · free · not answering, by the rule threads go out by
-  // (card #172): "shell" (waiting on its own command) is working, not free.
-  const n = agentCounts(agents)
-
   return (
-    <header className="sticky top-0 z-20 glass-panel border-x-0! border-t-0!">
+    <header className="sticky top-0 z-20 border-x-0! border-t-0! glass-panel">
       <div className="mx-auto flex h-14 max-w-[1920px] items-center gap-3 px-4 sm:px-6">
-        <div className="flex items-baseline gap-2">
-          <span className="text-lg font-semibold tracking-tight text-ink">
-            Irori
+        {bar ?? (
+          <h1 className="flex min-w-0 items-baseline gap-2 text-lg font-semibold text-ink">
+            {title}
+          </h1>
+        )}
+        {!bar && sub && (
+          <span className="hidden min-w-0 truncate text-xs text-muted-foreground md:inline">
+            {sub}
           </span>
-          <span lang="ja" className="text-sm font-normal text-muted-foreground">
-            囲炉裏
-          </span>
-        </div>
-        <nav className="ml-2 flex items-center gap-1" aria-label="Sections">
-          <Button
-            size="sm"
-            variant={section?.kind === "home" ? "secondary" : "ghost"}
-            aria-current={section?.kind === "home" ? "page" : undefined}
-            onClick={() => go({ kind: "home" })}
-          >
-            Home
-          </Button>
-          <Button
-            size="sm"
-            variant={section && section.kind !== "home" ? "secondary" : "ghost"}
-            aria-current={section && section.kind !== "home" ? "page" : undefined}
-            onClick={() => go({ kind: "boards" })}
-          >
-            Boards
-            {boardsNeedYou > 0 && (
-              <Badge variant="destructive" className="tabular-nums" title="Cards on your boards waiting on you">
-                {boardsNeedYou}
-              </Badge>
-            )}
-          </Button>
-        </nav>
-        {source === "sample" && (
+        )}
+        {roster.source === "sample" && (
           <Badge variant="warning" title="Not connected to the Irori app">
             Sample data
           </Badge>
         )}
-        <div className="ml-auto flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
-          <span className="hidden text-xs tabular-nums sm:inline">
-            <span
-              title={[
-                `${n.working} working${n.running ? ` (${n.running} waiting on a command they started)` : ""}`,
-                `${n.free} free: idle, so a thread or card can go to them`,
-                n.silent && `${n.silent} idle but not answering`,
-                n.offline && `${n.offline} on an offline device`,
-              ]
-                .filter(Boolean)
-                .join("\n")}
-            >
-              {n.total} {n.total === 1 ? "agent" : "agents"}
-              {n.working > 0 && <span className="text-primary"> · {n.working} working</span>}
-              {" · "}
-              {n.free} free
-              {n.silent > 0 && <span className="text-warning"> · {n.silent} not answering</span>}
-            </span>
-          </span>
-          <span className="truncate text-xs font-medium text-ink-2" title={device?.id}>
-            {device?.name || "this device"}
-          </span>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {actions}
           {section?.kind === "boards" ? (
-            <Button size="sm" onClick={onNewBoard} title="Make a board for a project, or join one with an invite">
+            <Button
+              size="sm"
+              onClick={onNewBoard}
+              title="Make a board for a project, or join one with an invite"
+            >
               + New board
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={onNewCard}
-              title={
-                section?.kind === "board"
-                  ? "Make a card on this board"
-                  : "Make a card for an agent to pick up"
-              }
-            >
-              + New card
-            </Button>
+            section && (
+              <Button
+                size="sm"
+                onClick={onNewCard}
+                title={
+                  section.kind === "board"
+                    ? "Make a card on this board"
+                    : "Make a card for an agent to pick up"
+                }
+              >
+                + New card
+              </Button>
+            )
           )}
-          <Button
-            size="sm"
-            variant={held > 0 ? "outline" : "ghost"}
-            onClick={onHeld}
-            title="Messages Irori's wake policy held"
-          >
-            Held
-            {held > 0 && (
-              <Badge variant="warning" className="tabular-nums">
-                {held}
-              </Badge>
-            )}
-          </Button>
-          {version && (
-            <Badge variant="slate" className="font-mono normal-case">
-              {version === "dev" || version === "sample"
-                ? version
-                : `v${version.replace(/^v/, "")}`}
-            </Badge>
-          )}
-          <SettingsMenu version={version} />
         </div>
       </div>
     </header>

@@ -40,6 +40,7 @@ unchanged.
 | `/?open=held` | the Held list: three held (one by Pause all), and History with a dismissed one to release |
 | `/?open=held:sample-device/grok-sample7` | the Held list showing one sender's, as a held notification opens it |
 | `/?devices` | Settings at Devices and connections (this PC, a MacBook, an offline node) |
+| `/?sidebar=folded` | the sidebar folded to icons (card #135); its top button opens it again |
 | `/?boards` | the Boards dialog: two boards of your own (MLG, Website refresh), New board |
 | `/?filter=board:sample-board-mlg` | the grid on the MLG board's chip: mlg#1 and mlg#2 |
 | `/?open=board:task:sample-board-1` | a card on a shared board: `mlg#1`, "Visible to", Withdraw |

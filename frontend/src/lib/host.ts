@@ -161,6 +161,7 @@ export const BoardsService = {
   List: () => call(commands.boardsList()),
   Create: (name: string, tag: string) => call(commands.boardsCreate(name, tag)),
   Rename: (boardId: string, name: string) => call(commands.boardsRename(boardId, name)),
+  Pin: (boardId: string, pinned: boolean) => done(commands.boardsPin(boardId, pinned)),
   Leave: (boardId: string) => done(commands.boardsLeave(boardId)),
   Forget: (boardId: string) => done(commands.boardsForget(boardId)),
   ForgetNow: (boardId: string) => done(commands.boardsForgetNow(boardId)),

@@ -43,6 +43,25 @@ pub struct BoardSummary {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub warnings: Vec<String>,
+    /// The person pinned it to the sidebar (card #135): a pin row in their
+    /// own log, so it follows them to their devices; theirs alone.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub pinned: bool,
+    /// Its place among the pinned boards, lowest first.
+    #[serde(skip_serializing_if = "is_zero_rank")]
+    #[specta(optional)]
+    pub pin_rank: f64,
+}
+
+fn is_zero_rank(r: &f64) -> bool {
+    *r == 0.0
+}
+
+/// The pin row key of board `id` in the person's own log (card #135):
+/// beside card pins, in one rank space, never a card id.
+pub fn board_pin_key(id: &str) -> String {
+    format!("board:{id}")
 }
 
 impl From<irori_core::BoardSummary> for BoardSummary {
@@ -61,6 +80,8 @@ impl From<irori_core::BoardSummary> for BoardSummary {
             tag_clash: s.tag_clash,
             leaving: s.leaving,
             warnings: s.warnings,
+            pinned: false,
+            pin_rank: 0.0,
         }
     }
 }
@@ -146,7 +167,30 @@ fn text(e: irori_core::BoardError) -> String {
 impl Window {
     /// BoardsService.List: every board on this device, by name.
     pub fn boards_list(&self) -> Vec<BoardSummary> {
-        self.core.board_list().into_iter().map(Into::into).collect()
+        let pins = self.core.coord().pinned_ranks();
+        self.core
+            .board_list()
+            .into_iter()
+            .map(|s| {
+                let mut b: BoardSummary = s.into();
+                if let Some(r) = pins.get(&board_pin_key(&b.board_id)) {
+                    b.pinned = true;
+                    b.pin_rank = *r;
+                }
+                b
+            })
+            .collect()
+    }
+
+    /// BoardsService.Pin: pins (or unpins) a board to the sidebar (card
+    /// #135), in the person's own log.
+    pub fn boards_pin(&self, id: &str, pinned: bool) -> Result<(), String> {
+        let id = crate::trim(id);
+        self.boards_find(id)?;
+        self.core
+            .coord()
+            .pin_ref(&self.user_key(), &board_pin_key(id), pinned, "", false)
+            .map_err(|e| e.to_string())
     }
 
     fn boards_find(&self, id: &str) -> Result<BoardSummary, String> {

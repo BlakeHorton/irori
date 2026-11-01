@@ -895,3 +895,38 @@ fn private_board_threads_stay_in_your_own_log() {
         "the private one stays"
     );
 }
+
+/// Card #135: a board pins to the sidebar in the person's own log, and
+/// unpins; a board that isn't here is refused; card pins are untouched.
+#[test]
+fn boards_pin_to_the_sidebar() {
+    let r = Rig::new();
+    let w = &r.w;
+    let mlg = w.boards_create("MLG", "mlg").unwrap();
+    let site = w.boards_create("Site", "site").unwrap();
+    let card = create(&r, "a private card");
+    w.pin(&card.id, true).unwrap();
+    w.boards_pin(&site.board_id, true).unwrap();
+    w.boards_pin(&mlg.board_id, true).unwrap();
+    let list = w.boards_list();
+    let pin = |id: &str| {
+        let b = list.iter().find(|b| b.board_id == id).unwrap();
+        (b.pinned, b.pin_rank)
+    };
+    let (sp, sr) = pin(&site.board_id);
+    let (mp, mr) = pin(&mlg.board_id);
+    assert!(sp && mp && sr < mr, "pinned in the order pinned: {sr} {mr}");
+    w.boards_pin(&site.board_id, false).unwrap();
+    assert!(
+        !w.boards_list()
+            .iter()
+            .find(|b| b.board_id == site.board_id)
+            .unwrap()
+            .pinned
+    );
+    assert!(w.boards_pin("no-such-board", true).is_err());
+    // The board pins don't show as cards, and the card stays pinned.
+    let cards = w.cards();
+    assert_eq!(cards.len(), 1);
+    assert!(cards[0].pinned);
+}

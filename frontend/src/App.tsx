@@ -9,6 +9,7 @@ import {
 } from "react"
 
 import { AppHeader } from "@/components/app-header"
+import { AppSidebar } from "@/components/app-sidebar"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
@@ -35,7 +36,7 @@ import { onOpen } from "@/lib/settings"
 import { nameLookup, useGone, useHeld } from "@/lib/talk"
 import { UpdateBanner } from "@/updater"
 import { useBoardView } from "@/components/canvas/switch"
-import { BoardPage } from "@/components/boards/board-page"
+import { BoardHeaderBar, BoardPage } from "@/components/boards/board-page"
 import { BoardsPage } from "@/components/boards/boards-page"
 import { go, Home, sectionFromHash, type Section } from "@/lib/nav"
 
@@ -351,15 +352,37 @@ export function App() {
 
   return (
     <AgentCards.Provider value={agentCards}>
-    <div className="flex h-svh flex-col overflow-hidden bg-background">
-      <AppHeader
+    <div className="flex h-svh overflow-hidden bg-background">
+      {/* The sidebar is the nav (card #135); the header is the page's. */}
+      <AppSidebar
         roster={roster}
         held={held.held.length}
         onHeld={() => openHeld("")}
+        section={open ? null : section}
+        boardsNeedYou={boardDecide.length}
+        boards={boards}
+        cards={cards}
+        openCard={open}
+        onOpenCard={openCard}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+      <AppHeader
+        roster={roster}
+        title={
+          open
+            ? "Card"
+            : section.kind === "boards"
+              ? "Boards"
+              : "Home"
+        }
+        bar={
+          !open && section.kind === "board" ? (
+            <BoardHeaderBar key={section.id} boardId={section.id} />
+          ) : undefined
+        }
         onNewCard={() => setNewCard(true)}
         onNewBoard={() => setNewBoard(true)}
         section={open ? null : section}
-        boardsNeedYou={boardDecide.length}
       />
       <main className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 px-4 pt-[18px] sm:px-6">
         <UpdateBanner />
@@ -445,6 +468,7 @@ export function App() {
           />
         )}
       </main>
+      </div>
       <NewCardDialog
         open={newCard}
         onClose={() => setNewCard(false)}

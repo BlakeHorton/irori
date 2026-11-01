@@ -6,7 +6,7 @@
 // own Threads panel above who is on it.
 
 import { useState, type FormEvent } from "react"
-import { ArrowLeftIcon } from "lucide-react"
+import { ArrowLeftIcon, PinIcon, PinOffIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
 import { BoardView } from "@/components/cards/board-view"
@@ -76,7 +76,7 @@ export function BoardPage({
   // with who is on it beside them.
   return (
     <>
-      <BoardHead board={b} onChanged={reload} />
+      <BoardNotes board={b} />
       <BoardView
         scope={boardId}
         cards={cards}
@@ -128,122 +128,161 @@ function BackToBoards() {
   )
 }
 
-// BoardHead is the board's name and tag, its state, and the actions on
-// the board itself: Rename (owners), Leave, Forget here.
-function BoardHead({ board: b, onChanged }: { board: BoardSummary; onChanged: () => Promise<void> }) {
+// BoardHeaderBar is a board's page header (card #135): its state dot,
+// name and tag, its cards and people, and the actions on the board itself:
+// Pin to the sidebar, Rename (owners), Leave, Forget here.
+export function BoardHeaderBar({ boardId }: { boardId: string }) {
+  const { boards, reload } = useBoards()
+  const b = boards.find((x) => x.boardId === boardId)
   const [renaming, setRenaming] = useState(false)
-  const [name, setName] = useState(b.name)
+  const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
+  if (!b)
+    return <h1 className="text-lg font-semibold text-ink">Board</h1>
   const rename = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
       await actions.rename(b.boardId, name)
       setRenaming(false)
-      await onChanged()
+      await reload()
+    } catch (err) {
+      setError(errorText(err))
+    }
+  }
+  const pin = async () => {
+    setError(null)
+    try {
+      await actions.pin(b.boardId, !b.pinned)
+      await reload()
     } catch (err) {
       setError(errorText(err))
     }
   }
   const ok = b.ready && !b.warnings?.length
   return (
-    <div className="grid gap-1.5">
-      <BackToBoards />
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        {renaming ? (
-          <form className="flex gap-1.5" onSubmit={rename}>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={MaxBoardName}
-              aria-label="Board name"
-              className="h-8 w-64"
-              autoFocus
-            />
-            <Button type="submit" size="sm" className="h-8" disabled={!name.trim()}>
-              Save
-            </Button>
-            <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setRenaming(false)}>
-              Cancel
-            </Button>
-          </form>
-        ) : (
-          <h1 className="flex items-baseline gap-2 text-lg font-semibold text-ink">
-            <span className={cn("size-2 self-center rounded-full", ok ? "bg-success" : "bg-warning")} aria-hidden />
-            {plainLine(b.name) || "(unnamed)"}
-            <span className="font-mono text-sm font-normal text-muted-foreground">{plainLine(b.tag)}#</span>
-          </h1>
+    <div className="flex min-w-0 flex-1 items-center gap-x-3">
+      {renaming ? (
+        <form className="flex gap-1.5" onSubmit={rename}>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={MaxBoardName}
+            aria-label="Board name"
+            className="h-8 w-64"
+            autoFocus
+          />
+          <Button type="submit" size="sm" className="h-8" disabled={!name.trim()}>
+            Save
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setRenaming(false)}>
+            Cancel
+          </Button>
+        </form>
+      ) : (
+        <h1 className="flex min-w-0 items-baseline gap-2 text-lg font-semibold text-ink">
+          <span className={cn("size-2 shrink-0 self-center rounded-full", ok ? "bg-success" : "bg-warning")} aria-hidden />
+          <span className="truncate">{plainLine(b.name) || "(unnamed)"}</span>
+          <span className="font-mono text-sm font-normal text-muted-foreground">{plainLine(b.tag)}#</span>
+        </h1>
+      )}
+      <span className="hidden min-w-0 truncate text-xs text-muted-foreground lg:inline">
+        {b.leaving
+          ? "Leaving…"
+          : b.ready
+            ? `${b.cards === 1 ? "1 card" : `${b.cards} cards`} · visible to ${b.people.map(plainLine).join(", ")}`
+            : "Its cards are still arriving from your other device"}
+      </span>
+      {error && <span className="truncate text-xs text-destructive">{error}</span>}
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={!!b.pinned}
+          onClick={() => void pin()}
+          title={b.pinned ? "Take it out of the sidebar" : "Keep it in the sidebar, on all your devices"}
+        >
+          {b.pinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+          {b.pinned ? "Unpin" : "Pin"}
+        </Button>
+        {b.owner && !renaming && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setName(b.name)
+              setRenaming(true)
+            }}
+          >
+            Rename
+          </Button>
         )}
-        <span className="text-xs text-muted-foreground">
-          {b.leaving
-            ? "Leaving…"
-            : b.ready
-              ? `${b.cards === 1 ? "1 card" : `${b.cards} cards`} · visible to ${b.people.map(plainLine).join(", ")}`
-              : "Its cards are still arriving from your other device"}
-        </span>
-        <span className="ml-auto flex items-center gap-1.5">
-          {b.owner && !renaming && (
-            <Button variant="ghost" size="sm" onClick={() => setRenaming(true)}>
-              Rename
-            </Button>
-          )}
-          {b.leaving ? (
-            <ConfirmButton
-              label="Forget now"
-              variant="destructive"
-              confirmLabel="Forget it now"
-              question={
-                <>
-                  Forget <b>{plainLine(b.name)}</b> on every one of your devices now? The others may not hear
-                  that you left until one of their devices next reaches yours, which may be never.
-                </>
-              }
-              onConfirm={async () => {
-                await actions.forgetNow(b.boardId)
-                go({ kind: "boards" })
-              }}
-            />
-          ) : (
-            <ConfirmButton
-              label="Leave"
-              variant="destructive"
-              confirmLabel="Leave the board"
-              question={
-                b.people.length > 1 ? (
-                  <>
-                    Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices once another
-                    member's Irori has your leave, and nothing you write there counts after it. Coming back
-                    needs a new invite.
-                  </>
-                ) : (
-                  <>
-                    Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices, with its cards.
-                    Coming back needs a new board.
-                  </>
-                )
-              }
-              onConfirm={async () => {
-                await actions.leave(b.boardId)
-                await onChanged()
-              }}
-            />
-          )}
+        {b.leaving ? (
           <ConfirmButton
-            label="Forget here"
-            confirmLabel="Forget on this device"
+            label="Forget now"
+            variant="destructive"
+            confirmLabel="Forget it now"
             question={
               <>
-                Forget <b>{plainLine(b.name)}</b> on this device only? Its file goes from here; your other
-                devices keep it.
+                Forget <b>{plainLine(b.name)}</b> on every one of your devices now? The others may not hear
+                that you left until one of their devices next reaches yours, which may be never.
               </>
             }
             onConfirm={async () => {
-              await actions.forget(b.boardId)
+              await actions.forgetNow(b.boardId)
               go({ kind: "boards" })
             }}
           />
-        </span>
-      </div>
+        ) : (
+          <ConfirmButton
+            label="Leave"
+            variant="destructive"
+            confirmLabel="Leave the board"
+            question={
+              b.people.length > 1 ? (
+                <>
+                  Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices once another
+                  member's Irori has your leave, and nothing you write there counts after it. Coming back
+                  needs a new invite.
+                </>
+              ) : (
+                <>
+                  Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices, with its cards.
+                  Coming back needs a new board.
+                </>
+              )
+            }
+            onConfirm={async () => {
+              await actions.leave(b.boardId)
+              await reload()
+            }}
+          />
+        )}
+        <ConfirmButton
+          label="Forget here"
+          confirmLabel="Forget on this device"
+          question={
+            <>
+              Forget <b>{plainLine(b.name)}</b> on this device only? Its file goes from here; your other
+              devices keep it.
+            </>
+          }
+          onConfirm={async () => {
+            await actions.forget(b.boardId)
+            go({ kind: "boards" })
+          }}
+        />
+      </span>
+    </div>
+  )
+}
+
+// BoardNotes is what the page says about the board under its header: a tag
+// that clashes with another board's, and the board's warning lines.
+function BoardNotes({ board: b }: { board: BoardSummary }) {
+  if (!b.tagClash && !b.warnings?.length) return null
+  return (
+    <div className="grid gap-1">
       {b.tagClash && (
         <p className="text-xs text-destructive">
           Another board is also {plainLine(b.tag)}#: its refs need the card's id.
@@ -254,7 +293,6 @@ function BoardHead({ board: b, onChanged }: { board: BoardSummary; onChanged: ()
           {plainLine(w)}
         </p>
       ))}
-      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }

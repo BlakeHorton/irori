@@ -87,6 +87,8 @@ export const commands = {
 	boardMovePin: (id: string, before: string) => __TAURI_INVOKE<null>("board_move_pin", { id, before }),
 	boardReopen: (id: string) => __TAURI_INVOKE<TaskResult>("board_reopen", { id }),
 	boardsList: () => __TAURI_INVOKE<BoardSummary[]>("boards_list"),
+	/**  Pins a board to the sidebar, or unpins it (card #135). */
+	boardsPin: (boardId: string, pinned: boolean) => __TAURI_INVOKE<null>("boards_pin", { boardId, pinned }),
 	boardsCreate: (name: string, tag: string) => __TAURI_INVOKE<BoardSummary>("boards_create", { name, tag }),
 	boardsRename: (boardId: string, name: string) => __TAURI_INVOKE<BoardSummary>("boards_rename", { boardId, name }),
 	boardsLeave: (boardId: string) => __TAURI_INVOKE<null>("boards_leave", { boardId }),
@@ -390,6 +392,13 @@ export type BoardSummary = {
 	leaving?: boolean,
 	/**  The board's warning lines (§8: only when something is wrong). */
 	warnings?: string[],
+	/**
+	 *  The person pinned it to the sidebar (card #135): a pin row in their
+	 *  own log, so it follows them to their devices; theirs alone.
+	 */
+	pinned?: boolean,
+	/**  Its place among the pinned boards, lowest first. */
+	pinRank?: number | null,
 };
 
 /**  A card's spot on the Board's canvas, in canvas pixels (card #93). */
