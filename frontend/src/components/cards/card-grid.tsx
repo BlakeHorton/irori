@@ -41,11 +41,13 @@ import { Faces, TalkBubble } from "./faces"
 // canceled and failed cards, which load on their own: useDoneCards; its
 // id stays "done" for old ?filter= links), one device
 // ("device:<id>", card #22), or one shared board ("board:<id>", v0.5 §8).
+// Home's board row (card #199) adds "private": the cards on no board.
 export type Filter =
   | "all"
   | "decide"
   | "mine"
   | "done"
+  | "private"
   | `device:${string}`
   | `board:${string}`
 
@@ -59,6 +61,7 @@ export const filters: { id: Filter; label: string }[] = [
 // asFilter is a filter id from outside (the preview's ?filter=), else all.
 export function asFilter(id: string | null): Filter {
   if (id?.startsWith("board:")) return id as Filter
+  if (id === "private") return "private"
   if (id === "closed") return "done"
   return filters.find((f) => f.id === id)?.id ?? "all"
 }
@@ -90,6 +93,7 @@ export function matches(c: CardSummary, f: Filter): boolean {
   if (over(c)) return false
   if (f === "decide") return c.openBlockers > 0
   if (f === "mine") return c.scope === "mine"
+  if (f === "private") return c.scope !== "board"
   if (f.startsWith("device:")) return c.devices.includes(f.slice(7))
   if (f.startsWith("board:")) return c.board === f.slice(6)
   return true
@@ -185,15 +189,18 @@ export function DeviceBar({
 
 // BoardBar is the board switcher (v0.5 §8): one chip per shared board, its
 // name, narrowing the grid to that board's cards. "All" includes every
-// board; "My devices" is the private board alone.
+// board. On Home (card #199) withPrivate adds Private first: the cards on
+// no board.
 export function BoardBar({
   filter,
   onFilter,
   boards,
+  withPrivate = false,
 }: {
   filter: Filter
   onFilter: (f: Filter) => void
   boards: { boardId: string; name: string; tag: string }[]
+  withPrivate?: boolean
 }) {
   if (!boards.length) return null
   return (
@@ -202,6 +209,17 @@ export function BoardBar({
       role="group"
       aria-label="Filter cards by board"
     >
+      {withPrivate && (
+        <Button
+          size="sm"
+          aria-pressed={filter === "private"}
+          variant={filter === "private" ? "secondary" : "ghost"}
+          onClick={() => onFilter(filter === "private" ? "all" : "private")}
+          title="Your private cards: on no shared board"
+        >
+          Private
+        </Button>
+      )}
       {boards.map((b) => {
         const id: Filter = `board:${b.boardId}`
         return (

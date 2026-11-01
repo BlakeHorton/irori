@@ -1109,6 +1109,9 @@ export function sampleCards(now: Date): CardDetail[] {
         canWithdraw: true,
       }),
       working: [otter],
+      // sample-otter is one of your agents: Home shows it (card #199);
+      // mlg#2 below, nobody's, stays on MLG's page alone.
+      ours: true,
       updatedAt: at(7),
       steps: steps([
         ["Mirror the boat actors", true],

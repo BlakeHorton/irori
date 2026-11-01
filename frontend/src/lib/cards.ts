@@ -513,6 +513,7 @@ function summary(c: CardDetail): CardSummary {
     scope: c.scope,
     scopeLabel: c.scopeLabel,
     board: c.board,
+    ours: c.ours,
     tag: c.tag,
     progress: c.progress,
     openBlockers: c.openBlockers,

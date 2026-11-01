@@ -18,7 +18,13 @@ import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
 import { whyWaiting } from "@/lib/agent-counts"
 import { asFilter, EmptyCards, matches, type Filter } from "@/components/cards/card-grid"
-import { BoardView, ScopeOwn } from "@/components/cards/board-view"
+import {
+  BoardView,
+  ScopeOwn,
+  homeFilterKey,
+  rememberedFilter,
+  savedHomeFilter,
+} from "@/components/cards/board-view"
 import {
   cardFromHash,
   cardHash,
@@ -84,10 +90,28 @@ export function App() {
   const { cards, loading, error } = useCards()
   const { boards } = useBoards()
   const now = useNow()
-  // ?filter=done in the browser preview starts on that filter.
-  const [filter, setFilter] = useState<Filter>(() =>
-    asFilter(previewFlag("filter"))
-  )
+  // ?filter=done in the browser preview starts on that filter; otherwise
+  // Home starts on its remembered board pick (card #199).
+  const [filter, setFilter] = useState<Filter>(() => {
+    const flag = previewFlag("filter")
+    if (flag !== null) return asFilter(flag)
+    try {
+      return savedHomeFilter(localStorage.getItem(homeFilterKey))
+    } catch {
+      return "all"
+    }
+  })
+  // pickHomeFilter is a click on Home's tabs or board row: shown now, and
+  // All, Private or a board remembered for the next start (card #199).
+  const pickHomeFilter = (f: Filter) => {
+    setFilter(f)
+    if (!rememberedFilter(f)) return
+    try {
+      localStorage.setItem(homeFilterKey, f)
+    } catch {
+      // A blocked storage only loses the memory.
+    }
+  }
   // Where the window is (card #96): Home (your own cards), Boards, or one
   // board's page; in the address so back and forward move between them.
   // ?boards in the preview starts on Boards.
@@ -444,7 +468,7 @@ export function App() {
             cards={cards}
             done={done}
             filter={filter}
-            onFilter={setFilter}
+            onFilter={pickHomeFilter}
             view={view}
             onView={setView}
             query={query}

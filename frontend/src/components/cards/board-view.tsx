@@ -11,10 +11,12 @@
 import type { ReactNode } from "react"
 
 import {
+  BoardBar,
   CardGrid,
   DeviceBar,
   DoneGrid,
   FilterBar,
+  asFilter,
   shownCards,
   type Filter,
 } from "@/components/cards/card-grid"
@@ -38,21 +40,66 @@ import {
 // ScopeOwn is Home's scope: your own cards. Any other scope is a board id.
 export const ScopeOwn = "own"
 
-// inScope says whether card c belongs on scope's page.
+// inScope says whether card c belongs on scope's page. Home (card #199)
+// is your private cards and every shared board's card one of your agents
+// holds or watches (ours).
 export function inScope(c: CardSummary, scope: string): boolean {
-  return scope === ScopeOwn ? c.scope !== "board" : c.board === scope
+  return scope === ScopeOwn
+    ? c.scope !== "board" || !!c.ours
+    : c.board === scope
+}
+
+// homeBoards is Home's board row (card #199): each board with a card on
+// Home, in the order they first appear.
+export function homeBoards(
+  cards: CardSummary[]
+): { boardId: string; name: string; tag: string }[] {
+  const out: { boardId: string; name: string; tag: string }[] = []
+  for (const c of cards) {
+    if (c.scope !== "board" || !c.board || out.some((b) => b.boardId === c.board))
+      continue
+    out.push({ boardId: c.board, name: c.scopeLabel, tag: c.tag ?? "" })
+  }
+  return out
 }
 
 // activeFilter is filter as the page can show it: a device chip whose
-// device has no cards left, a board filter, or Mine fall back to All.
-export function activeFilter(filter: Filter, chips: { id: string }[]): Filter {
+// device has no cards left, or Mine fall back to All. A board filter and
+// Private are Home's (boards: its board row, card #199): kept while that
+// board has cards there; elsewhere they fall back to All.
+export function activeFilter(
+  filter: Filter,
+  chips: { id: string }[],
+  boards?: { boardId: string }[]
+): Filter {
   if (
     filter.startsWith("device:") &&
     !chips.some((d) => filter === `device:${d.id}`)
   )
     return "all"
-  if (filter.startsWith("board:") || filter === "mine") return "all"
+  if (filter === "private") return boards ? filter : "all"
+  if (filter.startsWith("board:"))
+    return boards?.some((b) => filter === `board:${b.boardId}`) ? filter : "all"
+  if (filter === "mine") return "all"
   return filter
+}
+
+// Home remembers its last board pick per viewer (card #199): All, Private
+// or one board, kept in this window's localStorage under homeFilterKey.
+// The other tabs (Needs a decision, Closed) are not remembered.
+export const homeFilterKey = "irori.homeFilter"
+
+// rememberedFilter says whether f is a pick Home keeps.
+export function rememberedFilter(f: Filter): boolean {
+  return f === "all" || f === "private" || f.startsWith("board:")
+}
+
+// savedHomeFilter is the pick Home starts on from what was saved: a
+// remembered pick, else All.
+export function savedHomeFilter(saved: string | null): Filter {
+  if (!saved) return "all"
+  const f = asFilter(saved)
+  return rememberedFilter(f) ? f : "all"
 }
 
 export type ThreadsProps = {
@@ -112,7 +159,9 @@ export function BoardView({
 }) {
   const mine = cards.filter((c) => inScope(c, scope))
   const chips = deviceChips(mine)
-  const active = activeFilter(filter, chips)
+  // Home's board row (card #199); a board page has none.
+  const rowBoards = scope === ScopeOwn ? homeBoards(mine) : undefined
+  const active = activeFilter(filter, chips, rowBoards)
   const { shown, context } = shownCards(mine, active, query)
   // The Pinned group: pinned cards in their order, each pinned parent with
   // its subtasks (as BoardService.Cards lists them).
@@ -199,6 +248,14 @@ export function BoardView({
               only={["all", "decide", "done"]}
             />
             <DeviceBar filter={active} onFilter={onFilter} devices={chips} />
+            {rowBoards && (
+              <BoardBar
+                filter={active}
+                onFilter={onFilter}
+                boards={rowBoards}
+                withPrivate
+              />
+            )}
             <span className="ml-auto flex items-center gap-2">
               {threads && !showThreads && threads.list.length > 0 && (
                 <Button

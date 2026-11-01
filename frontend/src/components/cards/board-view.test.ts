@@ -1,0 +1,93 @@
+import { describe, expect, test } from "bun:test"
+
+import { CardSummary } from "@/lib/models"
+import { asFilter, matches } from "./card-grid"
+import {
+  ScopeOwn,
+  activeFilter,
+  homeBoards,
+  inScope,
+  rememberedFilter,
+  savedHomeFilter,
+} from "./board-view"
+
+const priv = CardSummary({ id: "p", scope: "mine" })
+const ours = CardSummary({
+  id: "o",
+  scope: "board",
+  board: "b-wind",
+  scopeLabel: "Wind Waker Multiplayer",
+  tag: "wind",
+  ours: true,
+})
+const theirs = CardSummary({
+  id: "t",
+  scope: "board",
+  board: "b-wind",
+  scopeLabel: "Wind Waker Multiplayer",
+  tag: "wind",
+})
+const horton = CardSummary({
+  id: "h",
+  scope: "board",
+  board: "b-horton",
+  scopeLabel: "horton",
+  tag: "horton",
+  ours: true,
+})
+
+describe("Home lists your agents' board cards (card #199)", () => {
+  test("Home: private cards and board cards one of your agents is on", () => {
+    expect(inScope(priv, ScopeOwn)).toBe(true)
+    expect(inScope(ours, ScopeOwn)).toBe(true)
+    expect(inScope(theirs, ScopeOwn)).toBe(false)
+  })
+  test("a board's page is unchanged: every card of that board, nothing else", () => {
+    expect(inScope(ours, "b-wind")).toBe(true)
+    expect(inScope(theirs, "b-wind")).toBe(true)
+    expect(inScope(horton, "b-wind")).toBe(false)
+    expect(inScope(priv, "b-wind")).toBe(false)
+  })
+  test("the board row: each board with a card on Home, once, in order", () => {
+    expect(homeBoards([priv, ours, horton, theirs])).toEqual([
+      { boardId: "b-wind", name: "Wind Waker Multiplayer", tag: "wind" },
+      { boardId: "b-horton", name: "horton", tag: "horton" },
+    ])
+    expect(homeBoards([priv])).toEqual([])
+  })
+})
+
+describe("Home's board filter (card #199)", () => {
+  const row = homeBoards([priv, ours, horton])
+  test("Private narrows to the cards on no board", () => {
+    expect(matches(priv, "private")).toBe(true)
+    expect(matches(ours, "private")).toBe(false)
+    expect(asFilter("private")).toBe("private")
+  })
+  test("a board chip narrows to that board", () => {
+    expect(matches(ours, "board:b-wind")).toBe(true)
+    expect(matches(horton, "board:b-wind")).toBe(false)
+  })
+  test("on Home, Private and a board with cards there stay; a board with none falls back", () => {
+    expect(activeFilter("private", [], row)).toBe("private")
+    expect(activeFilter("board:b-horton", [], row)).toBe("board:b-horton")
+    expect(activeFilter("board:b-gone", [], row)).toBe("all")
+  })
+  test("on a board page (no row) they fall back to All, as before", () => {
+    expect(activeFilter("private", [])).toBe("all")
+    expect(activeFilter("board:b-wind", [])).toBe("all")
+    expect(activeFilter("mine", [], row)).toBe("all")
+  })
+  test("the pick Home remembers: All, Private or a board; not the other tabs", () => {
+    expect(rememberedFilter("all")).toBe(true)
+    expect(rememberedFilter("private")).toBe(true)
+    expect(rememberedFilter("board:b-wind")).toBe(true)
+    expect(rememberedFilter("decide")).toBe(false)
+    expect(rememberedFilter("done")).toBe(false)
+    expect(savedHomeFilter(null)).toBe("all")
+    expect(savedHomeFilter("board:b-wind")).toBe("board:b-wind")
+    expect(savedHomeFilter("private")).toBe("private")
+    expect(savedHomeFilter("done")).toBe("all")
+    expect(savedHomeFilter("nonsense")).toBe("all")
+  })
+})

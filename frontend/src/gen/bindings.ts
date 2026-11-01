@@ -649,6 +649,11 @@ export type CardSummary = {
 	devices: string[],
 	accent?: string,
 	talking: AgentRef[],
+	/**
+	 *  A shared board's card that one of the person's own agents holds or
+	 *  watches: Home lists it beside the private cards (card #199).
+	 */
+	ours?: boolean,
 	ask?: CardAsk | null,
 	parent?: CardRef | null,
 	/**  The person's thread this card was made from (card #155). */

@@ -239,6 +239,11 @@ pub struct CardSummary {
     #[specta(optional)]
     pub accent: String,
     pub talking: Vec<AgentRef>,
+    /// A shared board's card that one of the person's own agents holds or
+    /// watches: Home lists it beside the private cards (card #199).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub ours: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub ask: Option<CardAsk>,
@@ -1163,6 +1168,19 @@ fn open_ask_summary(s: &CardSummary) -> bool {
     s.ask.as_ref().is_some_and(|a| a.state != ASK_CLOSED)
 }
 
+/// Whether one of the person's own agents holds or watches board card `t`
+/// (card #199), by its board keys: an agent's board key (`agent:<card>`)
+/// that `private` maps to a session key is one of this person's agents
+/// (§2.4); another person's stays as it was. The person's own `person:`
+/// key is not an agent. Watchers count (drop `t.watchers` to leave
+/// watch-only cards off Home).
+pub(crate) fn ours(t: &Task, private: impl Fn(&str) -> String) -> bool {
+    t.holders
+        .iter()
+        .chain(t.watchers.iter())
+        .any(|k| k.starts_with(store::kinds::AGENT_ACTOR_PREFIX) && private(k) != *k)
+}
+
 /// Go `time.Time.After` on the cards' order: newest first, then id.
 fn newer(a: &GoTime, a_id: &str, b: &GoTime, b_id: &str) -> std::cmp::Ordering {
     use std::cmp::Ordering;
@@ -1511,6 +1529,7 @@ impl Window {
                 }
                 let pt = self.priv_task(t.clone());
                 let mut cs = card_summary(&pt, p);
+                cs.ours = ours(&t, |k| self.core.private_key(k));
                 cs.pos = pos_of(&placed, &pt.id);
                 cs.scope = crate::boards::SCOPE_BOARD.into();
                 cs.scope_label = s.name.clone();
@@ -2107,6 +2126,38 @@ mod tests {
             assigned,
             ..AgentRef::default()
         }
+    }
+
+    // Card #199: a board card is ours when one of this person's agents
+    // holds or watches it; the map stands in for private_key (this
+    // person's agent:<card> keys map to a session, anyone else's stay).
+    #[test]
+    fn ours_is_an_own_agent_holding_or_watching() {
+        let private = |k: &str| match k {
+            "agent:mine1" => "dev/sess-1".to_string(),
+            "agent:mine2" => "dev/sess-2".to_string(),
+            "person:me" => "user:dev".to_string(),
+            other => other.to_string(),
+        };
+        let t = |holders: &[&str], watchers: &[&str]| Task {
+            holders: holders.iter().map(|s| s.to_string()).collect(),
+            watchers: watchers.iter().map(|s| s.to_string()).collect(),
+            ..Task::default()
+        };
+        assert!(ours(&t(&["agent:mine1"], &[]), private), "own holder");
+        assert!(
+            ours(&t(&["agent:other"], &["agent:mine2"]), private),
+            "own watcher"
+        );
+        assert!(
+            !ours(&t(&["agent:other"], &["agent:other2"]), private),
+            "another person's agents"
+        );
+        assert!(
+            !ours(&t(&["person:me"], &[]), private),
+            "the person is not an agent"
+        );
+        assert!(!ours(&t(&[], &[]), private), "nobody on it");
     }
 
     #[test]
