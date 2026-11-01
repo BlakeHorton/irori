@@ -145,6 +145,10 @@ pub struct Options {
     pub volume: f64,
     /// One of the `CORNER_*` values.
     pub corner: String,
+    /// A confetti burst from each success card (off by default). Left out
+    /// of settings.json while off, so the file stays as Go wrote it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub confetti: bool,
 }
 
 impl Default for Options {
@@ -167,6 +171,7 @@ fn to_toast(o: &Options) -> toast::Options {
         sound: o.sound,
         volume: o.volume,
         corner: o.corner.clone(),
+        confetti: o.confetti,
     }
 }
 
@@ -176,6 +181,7 @@ fn from_toast(o: toast::Options) -> Options {
         sound: o.sound,
         volume: o.volume,
         corner: o.corner,
+        confetti: o.confetti,
     }
 }
 
@@ -549,7 +555,12 @@ impl Notifier {
             id: TEST_ID.into(),
             title: "Irori notifications are on".into(),
             body: "Cards like this show what needs you: held messages, blocked cards, and agents asking you to choose.".into(),
-            level: Level::Info,
+            // With confetti on, the test card is good news, so it shows it.
+            level: if self.options().confetti {
+                Level::Success
+            } else {
+                Level::Info
+            },
             actions: vec![
                 Action::new("Open Board", move || {
                     n.open(Target {

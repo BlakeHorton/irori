@@ -70,6 +70,8 @@ export const commands = {
 	boardCardRef: (r: string) => __TAURI_INVOKE<RefTarget | null>("board_card_ref", { r }),
 	/**  Resolve on a thread: the person is done with it. */
 	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
+	/**  A resolved thread is live again (card #169). */
+	boardReopenThread: (id: string) => __TAURI_INVOKE<null>("board_reopen_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */
 	boardCommentModify: (id: string, commentId: string) => __TAURI_INVOKE<null>("board_comment_modify", { id, commentId }),
 	/**  Cancel on a comment held for editing: it goes out as it was. */
@@ -468,6 +470,13 @@ export type CardHolder = {
 	others: number,
 };
 
+/**  A holder's one line on what's done and what's next (card #137). */
+export type CardLeftOff = {
+	text: string,
+	by: AgentRef,
+	at: string,
+};
+
 /**
  *  A mention on a thread item or an ask, with the agent as the window
  *  knows it now (card #77).
@@ -593,6 +602,13 @@ export type CardSummary = {
 	pinRank?: number,
 	/**  Where the card sits on the Board's canvas (card #93), once placed. */
 	pos?: CanvasPos | null,
+	/**
+	 *  Where the holder's work is (card #137): its worktree, branch, last
+	 *  commit and whether it's pushed.
+	 */
+	where?: CardWhere | null,
+	/**  The holder's last line on what's done and what's next (card #137). */
+	leftOff?: CardLeftOff | null,
 };
 
 /**  One entry of a card's thread. */
@@ -639,6 +655,18 @@ export type CardWait = {
 	who: AgentRef,
 	text: string,
 	onThis: boolean,
+};
+
+/**  Where a card's work is (card #137), as its holder's device last saw it. */
+export type CardWhere = {
+	/**  The holder it describes, with its device. */
+	who: AgentRef,
+	worktree: string,
+	branch: string,
+	/**  The last commit's sha. */
+	head: string,
+	pushed: boolean,
+	at: string,
 };
 
 /**  presence.Change. */
@@ -931,6 +959,8 @@ export type NotifyOptions = {
 	volume: number,
 	/**  One of the CORNER_* values. */
 	corner: string,
+	/**  A confetti burst from each success card ("Confetti on good news"). */
+	confetti?: boolean,
 };
 
 /**  coord.Outcome: how an ask ended. */

@@ -778,6 +778,38 @@ impl Fold {
             kinds::TASK_PLACED => self.fold_placed(ev),
             kinds::TASK_COMMENT_EDITED => self.fold_comment_edited(ev, &at),
             kinds::TASK_OFFERED => self.fold_offered(ev, &at),
+            // Where the work is (card #137): no thread line and no
+            // updated_at, so a commit doesn't reorder the grid.
+            kinds::TASK_WHERE => {
+                let Some(p) = row::<TaskWhereRow>(&ev.payload) else {
+                    return;
+                };
+                let Some(t) = self.tasks.get_mut(&p.task_id) else {
+                    return;
+                };
+                let w = Where {
+                    who: p.who,
+                    cwd: p.cwd,
+                    worktree: p.worktree,
+                    branch: p.branch,
+                    head: p.head,
+                    pushed: p.pushed,
+                    at: at(p.at),
+                };
+                if t.where_
+                    .as_ref()
+                    .is_none_or(|o| !crate::gotime::after(&o.at, &w.at))
+                {
+                    t.where_ = Some(w);
+                    let holder = t.holder.clone();
+                    self.note(Change {
+                        kind: TASK_CHANGED.into(),
+                        task_id: p.task_id,
+                        holder,
+                        ..Change::default()
+                    });
+                }
+            }
             kinds::WAIT_CREATED | kinds::WAIT_FIRED | kinds::WAIT_CANCELED => self.fold_wait(ev),
             kinds::TASK_DELETED => self.fold_deleted(ev),
             kinds::TASK_PARENT => {
@@ -999,7 +1031,18 @@ impl Fold {
         } else if !is_terminal(&p.state) {
             t.withdrawn = false;
         }
-        if t.open_ask().is_some() {
+        // The person reopens their resolved thread (card #169): its ask is
+        // live again, and rows after this one fold as an open ask's.
+        if p.reopen_ask
+            && !is_terminal(&p.state)
+            && self.is_owner(&p.by)
+            && t.ask.as_ref().is_some_and(|a| a.thread && !a.is_open())
+        {
+            if let Some(a) = t.ask.as_mut() {
+                a.outcome = None;
+            }
+            self.asks.closed_at.remove(&t.id);
+        } else if t.open_ask().is_some() {
             let o = p.outcome.clone().unwrap_or_else(|| Outcome {
                 kind: super::asks::OUTCOME_NONE.into(),
                 note: cmp_str(&p.note, "closed by the person"),

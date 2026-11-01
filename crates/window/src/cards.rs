@@ -243,6 +243,40 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub pos: Option<CanvasPos>,
+    /// Where the holder's work is (card #137): its worktree, branch, last
+    /// commit and whether it's pushed.
+    #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub where_: Option<CardWhere>,
+    /// The holder's last line on what's done and what's next (card #137).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub left_off: Option<CardLeftOff>,
+}
+
+/// Where a card's work is (card #137), as its holder's device last saw it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CardWhere {
+    /// The holder it describes, with its device.
+    pub who: AgentRef,
+    pub worktree: String,
+    pub branch: String,
+    /// The last commit's sha.
+    pub head: String,
+    pub pushed: bool,
+    #[specta(type = ts::Time)]
+    pub at: GoTime,
+}
+
+/// A holder's one line on what's done and what's next (card #137).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CardLeftOff {
+    pub text: String,
+    pub by: AgentRef,
+    #[specta(type = ts::Time)]
+    pub at: GoTime,
 }
 
 /// A card's spot on the Board's canvas, in canvas pixels (card #93).
@@ -799,6 +833,25 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
             done: r.done,
             total: r.total,
         };
+    }
+    if !coord::is_terminal(&t.state) {
+        s.where_ = t
+            .where_
+            .as_ref()
+            .filter(|w| !w.worktree.is_empty())
+            .map(|w| CardWhere {
+                who: p.ref_(&w.who),
+                worktree: w.worktree.clone(),
+                branch: w.branch.clone(),
+                head: w.head.clone(),
+                pushed: w.pushed,
+                at: w.at,
+            });
+        s.left_off = t.left_off.as_ref().map(|l| CardLeftOff {
+            text: l.text.clone(),
+            by: p.ref_(&l.by),
+            at: l.at,
+        });
     }
     let open = t.open_blockers();
     if !open.is_empty() {

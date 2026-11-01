@@ -19,9 +19,9 @@ use super::util::{
 };
 use super::{
     DONE_ANSWER, DONE_CONTEXT, DONE_QUESTION, KEEP_RESOLVED, MAX_ANSWER, MAX_ATTACHMENTS,
-    MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT, MAX_MISSING, MAX_MISSING_TEXT, MAX_OBJECTIVE,
-    MAX_OPEN_BLOCKERS, MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION, MAX_STEP_TEXT, MAX_STEPS,
-    MAX_WHY, NEEDS_PROOF,
+    MAX_BLOCKER_LINKS, MAX_COMMENT, MAX_CONTEXT, MAX_LEFT_OFF, MAX_MISSING, MAX_MISSING_TEXT,
+    MAX_OBJECTIVE, MAX_OPEN_BLOCKERS, MAX_OPTIONS, MAX_OWN_ANSWER, MAX_QUESTION, MAX_STEP_TEXT,
+    MAX_STEPS, MAX_WHY, NEEDS_PROOF,
 };
 use crate::names::trim_space;
 
@@ -789,6 +789,14 @@ impl Fold {
                 );
                 if let Some(o) = &p.owner {
                     t.steps[i].owner = trim_space(o).to_string();
+                }
+                let lo = trim_space(&p.left_off);
+                if !lo.is_empty() {
+                    t.left_off = Some(LeftOff {
+                        text: lo.to_string(),
+                        by: p.by.clone(),
+                        at: at(p.at),
+                    });
                 }
                 sync_co_holders(t);
                 let after = t.steps[i].clone();
@@ -1677,13 +1685,52 @@ impl Fold {
         Ok(self.tasks[id].clone())
     }
 
+    /// Where the holder's work on card id is (card #137), written by the
+    /// holder's device only when the place changed (not when only the time
+    /// it was seen did), so a sweep doesn't fill the log.
+    pub(crate) fn set_where(&mut self, id: &str, w: Where) -> Result<bool> {
+        let t = self.open_task(id)?.clone();
+        if let Some(o) = &t.where_ {
+            // A git place is never replaced by a place outside git: a new
+            // holder still in its home folder, or one that stepped out,
+            // mustn't hide where the work is.
+            if o.same_place(&w) || (w.worktree.is_empty() && !o.worktree.is_empty()) {
+                return Ok(false);
+            }
+        }
+        let at = self.stamp();
+        self.write(
+            SWEEPER,
+            kinds::TASK_WHERE,
+            &TaskWhereRow {
+                task_id: id.into(),
+                who: w.who,
+                cwd: w.cwd,
+                worktree: w.worktree,
+                branch: w.branch,
+                head: w.head,
+                pushed: w.pushed,
+                by: SWEEPER.into(),
+                at,
+            },
+        )?;
+        Ok(true)
+    }
+
     pub(crate) fn set_step(
         &mut self,
         by: &str,
         id: &str,
         sid: &str,
         u: StepUpdate,
+        left_off: &str,
     ) -> Result<Task> {
+        let left_off = trim_space(left_off).to_string();
+        if runes(&left_off) > MAX_LEFT_OFF {
+            return Err(invalid(format!(
+                "left_off is one line of at most {MAX_LEFT_OFF} characters"
+            )));
+        }
         let by = caller(by)?;
         let sid = trim_space(sid);
         if u.done.is_none() && u.doing.is_none() {
@@ -1700,7 +1747,9 @@ impl Fold {
         if !self.may_manage(&t, &by) && t.steps[i].owner != by {
             return Err(not_allowed(format!("tick a step of task {id}")));
         }
-        if apply_step(&t.steps, i, u) == t.steps {
+        let new_left_off =
+            !left_off.is_empty() && t.left_off.as_ref().is_none_or(|l| l.text != left_off);
+        if apply_step(&t.steps, i, u) == t.steps && !new_left_off {
             return Ok(t);
         }
         let at = self.stamp();
@@ -1712,6 +1761,7 @@ impl Fold {
                 step_id: sid.into(),
                 done: u.done,
                 doing: u.doing,
+                left_off,
                 by: by.clone(),
                 at,
                 ..TaskStepRow::default()

@@ -202,6 +202,15 @@ impl Window {
         open
     }
 
+    /// BoardService.ReopenThread: a resolved thread is live again (card
+    /// #169); the person's next reply goes to the agents that answered.
+    pub fn reopen_thread(&self, id: &str) -> Result<(), String> {
+        let (co, keys) = self.on(crate::trim(id), &[])?;
+        co.reopen_thread(&keys[0], crate::trim(id))
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// BoardService.ResolveThread: the person is done with it.
     pub fn resolve_thread(&self, id: &str) -> Result<(), String> {
         self.core

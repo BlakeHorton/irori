@@ -59,7 +59,7 @@ pub const BOARD_INSTRUCTIONS: &str = concat!(
     "board_leave it and it goes to the next free agent. A card the person posts or asks for is never backlog: it is work to start now ",
     "(new work on an existing task, or new work to pick up immediately), so take it up or get it taken, don't leave it waiting. ",
     "When you take a card, give it steps (board_create's steps, or board_steps) and keep them ",
-    "ticked with board_step: they are how the person sees how far along it is. ",
+    "ticked with board_step: they are how the person sees how far along it is. At each step, commit and push your branch (WIP is fine) and tick it with left_off: one line on what's done and what's next; Irori shows the card's branch and where you left off, so anyone can pick it up if your machine stops. ",
     "When an answer or a comment changes what a card is for, board_edit it so its title, objective and done-when say what it is now, ",
     "and redo its steps with board_steps: never leave the old title on new work. When you need the person (a decision, an access, ",
     "a permission), raise one board_block per question, never several asks in one note or one blocker: give each enough context that ",

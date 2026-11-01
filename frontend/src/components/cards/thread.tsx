@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { AttachmentList } from "@/components/attachments"
@@ -41,6 +41,7 @@ export function Thread({
   compact,
   inBlocker,
   composer,
+  scroll,
 }: {
   cardId?: string
   items: CardThreadItem[]
@@ -55,12 +56,24 @@ export function Thread({
   // inBlocker: the items sit under their blocker, so they don't name it.
   inBlocker?: boolean
   composer?: ReactNode
+  // scroll caps the entries' height (a class, e.g. a max-h): they scroll
+  // by themselves, newest in view, and the composer stays under them
+  // (a thread in the Threads panel, card #170).
+  scroll?: string
 }) {
   const [showAll, setShowAll] = useState(false)
   const shown = visible(items, showAll)
   const hidden = items.length - shown.length
-  return (
-    <div className={cn("grid text-[12.5px]", compact ? "gap-1" : "gap-2")}>
+  const gap = compact ? "gap-1" : "gap-2"
+  // The newest entry is last: keep it in view as entries arrive.
+  const list = useRef<HTMLDivElement>(null)
+  const newest = shown[shown.length - 1]?.id
+  useEffect(() => {
+    const el = list.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [newest])
+  const entries = (
+    <>
       {hidden > 0 ? (
         <Button
           size="xs"
@@ -93,6 +106,30 @@ export function Thread({
       ) : (
         <p className="text-muted-foreground">{empty}</p>
       )}
+    </>
+  )
+  if (scroll) {
+    return (
+      <div className={cn("grid text-[12.5px]", gap)}>
+        <div
+          ref={list}
+          className={cn("grid min-h-0 content-start overflow-y-auto", gap, scroll)}
+        >
+          {entries}
+        </div>
+        {/* In a short window the column scrolls too: the composer sticks
+            to its bottom edge, so it is never scrolled out of sight. */}
+        {composer && (
+          <div className="sticky bottom-0 z-10 bg-background/95 pb-1 backdrop-blur-sm">
+            {composer}
+          </div>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div className={cn("grid text-[12.5px]", gap)}>
+      {entries}
       {composer}
     </div>
   )

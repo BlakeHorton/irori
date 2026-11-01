@@ -44,7 +44,7 @@ export function ThreadsPanel({
   const resolved = threads.filter((t) => t.state === "resolved")
   return (
     <aside
-      className="grid min-w-0 content-start gap-3 overflow-hidden p-3 glass-panel"
+      className="grid min-w-0 content-start gap-3 overflow-clip p-3 glass-panel"
       aria-label="Threads"
     >
       <div className="flex items-center justify-between">
@@ -221,18 +221,20 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
   const [error, setError] = useState<string | null>(null)
   const resolved = t.state === "resolved"
   const items = (detail?.thread ?? []).filter((it) => it.kind !== "event")
-  const resolve = async () => {
+  const act = (f: (id: string) => Promise<void>) => async () => {
     if (busy) return
     setBusy(true)
     setError(null)
     try {
-      await threadsApi.resolve(t.id)
+      await f(t.id)
     } catch (err) {
       setError(errorText(err))
     } finally {
       setBusy(false)
     }
   }
+  const resolve = act(threadsApi.resolve)
+  const reopen = act(threadsApi.reopen)
   return (
     <div className="grid min-w-0 gap-2">
       <div className="grid min-w-0 gap-1 text-[12.5px]">
@@ -264,9 +266,23 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
             : "No answer yet."
         }
         composer={resolved ? undefined : <CommentBox cardId={t.id} reply />}
+        // Its messages scroll and the reply box stays in view (card #170):
+        // the cap leaves room in the column for the panel's header, the
+        // thread's title and question, the box and Resolve.
+        scroll={OpenThreadMax}
       />
-      {!resolved && (
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        {resolved ? (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void reopen()}
+            title="Bring it back: your next reply goes to the agents that answered"
+          >
+            Reopen
+          </Button>
+        ) : (
           <Button
             size="xs"
             variant="outline"
@@ -276,9 +292,13 @@ function ThreadView({ t, now }: { t: ThreadSummary; now: Date }) {
           >
             Resolve
           </Button>
-          {error && <span className="text-xs text-destructive">{error}</span>}
-        </div>
-      )}
+        )}
+        {error && <span className="text-xs text-destructive">{error}</span>}
+      </div>
     </div>
   )
 }
+
+// How tall an open thread's messages grow before they scroll (card #170):
+// the window less the header, the ask box and the thread's own lines.
+const OpenThreadMax = "max-h-[max(6rem,calc(100svh-30rem))]"

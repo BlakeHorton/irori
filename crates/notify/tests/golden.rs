@@ -11,6 +11,7 @@ fn options(v: &Value) -> Options {
         sound: v["sound"].as_bool().unwrap(),
         volume: v["volume"].as_f64().unwrap(),
         corner: v["corner"].as_str().unwrap().into(),
+        confetti: v["confetti"].as_bool().unwrap_or(false),
     }
 }
 

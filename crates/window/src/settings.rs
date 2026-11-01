@@ -26,6 +26,9 @@ pub struct NotifyOptions {
     pub volume: f64,
     /// One of the CORNER_* values.
     pub corner: String,
+    /// A confetti burst from each success card ("Confetti on good news").
+    #[serde(default)]
+    pub confetti: bool,
 }
 
 impl Default for NotifyOptions {
@@ -36,6 +39,7 @@ impl Default for NotifyOptions {
             sound: true,
             volume: 0.6,
             corner: CORNER_TOP_RIGHT.into(),
+            confetti: false,
         }
     }
 }
@@ -89,6 +93,7 @@ fn from_notify(o: notify::Options) -> NotifyOptions {
         sound: o.sound,
         volume: o.volume,
         corner: o.corner,
+        confetti: o.confetti,
     }
 }
 
@@ -102,6 +107,7 @@ impl Notifier for NotifierSeam {
             sound: o.sound,
             volume: o.volume,
             corner: o.corner,
+            confetti: o.confetti,
         });
         saved?;
         Ok(from_notify(o))

@@ -116,6 +116,10 @@ kinds! {
     /// Irori's hand-out of an unheld card to one free agent at a time
     /// (card #82).
     TASK_OFFERED = "task.offered" => Replicated, Accepts;
+    /// Where a card's work is (card #137): the holder's worktree, branch,
+    /// last commit and whether it's pushed, written by the holder's
+    /// device. Private cards only: worktree paths stay with the person.
+    TASK_WHERE = "task.where" => Replicated, Refuses;
     /// Waits (card #87): one-shot wakes on a task's state or a branch.
     WAIT_CREATED = "wait.created" => Replicated, Accepts;
     WAIT_FIRED = "wait.fired" => Replicated, Accepts;

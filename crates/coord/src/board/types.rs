@@ -373,6 +373,13 @@ pub struct Task {
     /// Irori's hand-out of this unheld card (card #82).
     #[serde(skip_serializing_if = "omit")]
     pub offer: Option<Offer>,
+    /// Where the holder's work is (card #137), kept after it stops so
+    /// whoever takes the card over can find it.
+    #[serde(rename = "where", skip_serializing_if = "omit")]
+    pub where_: Option<Where>,
+    /// The holder's last line on what's done and what's next (card #137).
+    #[serde(skip_serializing_if = "omit")]
+    pub left_off: Option<LeftOff>,
     #[serde(skip_serializing_if = "omit")]
     pub returned: Option<Returned>,
     #[serde(skip_serializing_if = "omit")]
@@ -951,4 +958,101 @@ pub struct WaitSpec {
     /// when the ref doesn't exist yet.
     pub refs: Vec<String>,
     pub note: String,
+}
+
+/// Where a card's work is (card #137): the holder's session as its device
+/// saw it last.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Where {
+    pub who: String,
+    #[serde(skip_serializing_if = "omit")]
+    pub cwd: String,
+    #[serde(skip_serializing_if = "omit")]
+    pub worktree: String,
+    #[serde(skip_serializing_if = "omit")]
+    pub branch: String,
+    #[serde(skip_serializing_if = "omit")]
+    pub head: String,
+    #[serde(skip_serializing_if = "omit")]
+    pub pushed: bool,
+    pub at: GoTime,
+}
+
+impl Where {
+    /// The same place: everything but when it was seen.
+    pub fn same_place(&self, o: &Where) -> bool {
+        self.who == o.who
+            && self.cwd == o.cwd
+            && self.worktree == o.worktree
+            && self.branch == o.branch
+            && self.head == o.head
+            && self.pushed == o.pushed
+    }
+
+    /// One line: "branch feat/x @ 1a2b3c4 (pushed) in /path/to/worktree".
+    pub fn line(&self) -> String {
+        let place = if self.worktree.is_empty() {
+            self.cwd.as_str()
+        } else {
+            self.worktree.as_str()
+        };
+        if self.branch.is_empty() && self.head.is_empty() {
+            return format!("{place} (not a git repo)");
+        }
+        let mut s = String::new();
+        if self.branch.is_empty() {
+            s.push_str("detached");
+        } else {
+            s.push_str("branch ");
+            s.push_str(&self.branch);
+        }
+        if !self.head.is_empty() {
+            s.push_str(" @ ");
+            s.push_str(self.head.get(..7).unwrap_or(&self.head));
+        }
+        s.push_str(if self.pushed {
+            " (pushed)"
+        } else {
+            " (not pushed)"
+        });
+        if !place.is_empty() {
+            s.push_str(" in ");
+            s.push_str(place);
+        }
+        s
+    }
+}
+
+/// A holder's one line on what's done and what's next (card #137).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeftOff {
+    pub text: String,
+    pub by: String,
+    pub at: GoTime,
+}
+
+impl Task {
+    /// What a new holder needs to pick the work up (card #137): where the
+    /// last holder's work is and where it left off, one line each; "" when
+    /// neither is known.
+    pub fn handover_lines(&self) -> String {
+        let mut s = String::new();
+        // Only a git place says where to continue.
+        if let Some(w) = self.where_.as_ref().filter(|w| !w.worktree.is_empty()) {
+            s.push_str(&format!("\nWhere: {}", w.line()));
+            if !w.branch.is_empty() {
+                s.push_str(if w.pushed {
+                    "; continue from that branch"
+                } else {
+                    "; not pushed, so the last commits may be only on that machine"
+                });
+            }
+        }
+        if let Some(l) = &self.left_off {
+            s.push_str(&format!("\nLeft off: {}", l.text));
+        }
+        s
+    }
 }

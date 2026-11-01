@@ -462,6 +462,16 @@ function CardTile({
           </span>
         </span>
       )}
+      {/* Where its holder left off (card #137), dim: a log, not a
+          question. */}
+      {card.leftOff && !blocked && (
+        <span
+          className="line-clamp-1 text-xs text-muted-foreground"
+          title={plainLine(card.leftOff.text)}
+        >
+          Left off: {plainLine(card.leftOff.text)}
+        </span>
+      )}
       {!blocked && card.subtaskBlocked && (
         <span className="flex gap-1.5 text-xs text-warning">
           <span aria-hidden>●</span>

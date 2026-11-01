@@ -28,6 +28,7 @@ export type CardBlocker = B.CardBlocker
 export type CardBoard = B.CardBoard
 export type CardDetail = B.CardDetail
 export type CardHolder = B.CardHolder
+export type CardLeftOff = B.CardLeftOff
 export type CardMention = B.CardMention
 export type CardMessage = B.CardMessage
 export type CardOption = B.CardOption
@@ -40,6 +41,7 @@ export type CardSubtask = B.CardSubtask
 export type CardSummary = B.CardSummary
 export type CardThreadItem = B.CardThreadItem
 export type CardWait = B.CardWait
+export type CardWhere = B.CardWhere
 export type Change = B.Change
 export type ChangeKind = B.ChangeKind
 export type Comment = B.Comment
@@ -206,6 +208,11 @@ export function CardHolder(p: Partial<B.CardHolder> = {}): B.CardHolder {
   return { "who": AgentRef(), "state": "", "others": 0, ...p } as B.CardHolder
 }
 
+/** CardLeftOff with Go's zero values for every field left out. */
+export function CardLeftOff(p: Partial<B.CardLeftOff> = {}): B.CardLeftOff {
+  return { "text": "", "by": AgentRef(), "at": "", ...p } as B.CardLeftOff
+}
+
 /** CardMention with Go's zero values for every field left out. */
 export function CardMention(p: Partial<B.CardMention> = {}): B.CardMention {
   return { "name": "", "who": AgentRef(), "gone": false, ...p } as B.CardMention
@@ -264,6 +271,11 @@ export function CardThreadItem(p: Partial<B.CardThreadItem> = {}): B.CardThreadI
 /** CardWait with Go's zero values for every field left out. */
 export function CardWait(p: Partial<B.CardWait> = {}): B.CardWait {
   return { "id": "", "who": AgentRef(), "text": "", "onThis": false, ...p } as B.CardWait
+}
+
+/** CardWhere with Go's zero values for every field left out. */
+export function CardWhere(p: Partial<B.CardWhere> = {}): B.CardWhere {
+  return { "who": AgentRef(), "worktree": "", "branch": "", "head": "", "pushed": false, "at": "", ...p } as B.CardWhere
 }
 
 /** Change with Go's zero values for every field left out. */
