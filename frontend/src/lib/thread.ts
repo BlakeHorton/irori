@@ -10,6 +10,17 @@ import {
   type CardThreadItem,
 } from "./cards"
 
+import { createContext } from "react"
+
+// FocusComment is the comment a notification opened the card at (card
+// #177): the thread that holds it shows it, scrolled into view.
+export const FocusComment = createContext("")
+
+// threadEntryId is a thread entry's element id, for scrolling to it.
+export function threadEntryId(id: string): string {
+  return `thread-entry-${id}`
+}
+
 // ThreadPage is how many of the newest entries show before "Show earlier".
 export const ThreadPage = 50
 

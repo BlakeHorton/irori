@@ -5,7 +5,7 @@
 // allows: a query that is exactly one live agent's name when the person
 // types a space or sends.
 
-import { useCallback, useEffect, useState } from "react"
+import { createContext, useCallback, useEffect, useState } from "react"
 
 import type { AgentRef } from "./models"
 
@@ -13,7 +13,26 @@ import type { AgentRef } from "./models"
 export type Mention = { key: string; name: string; gone?: boolean }
 
 // MentionCandidate mirrors the bindings' MentionCandidate: one picker row.
-export type MentionCandidate = { who: AgentRef; cwd: string; repo: string }
+// board is set for another person on a shared board, or one of their
+// agents: the board they can be mentioned on (card #177).
+export type MentionCandidate = {
+  who: AgentRef
+  cwd: string
+  repo: string
+  board?: string
+}
+
+// MentionBoard is the shared board (its id) the boxes inside sit on, ""
+// on your own board: there the picker also offers the board's other people
+// and their agents, and only there (card #177).
+export const MentionBoard = createContext("")
+
+// boardRows keeps the candidates a box on board `board` may mention: your
+// own agents everywhere, another person and their agents on their board.
+export function boardRows(cands: MentionCandidate[], board: string) {
+  return cands.filter((c) => !c.board || c.board === board)
+}
+
 
 // MaxMentions mirrors coord's MAX_MENTIONS.
 export const MaxMentions = 10

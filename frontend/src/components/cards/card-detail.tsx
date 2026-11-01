@@ -73,7 +73,7 @@ import { AttachmentList } from "@/components/attachments"
 import type { FileRef } from "@/lib/attachments"
 import { LinkChip, RichLine, RichText } from "@/components/common/rich-text"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
-import { composing, useMissed } from "@/lib/mentions"
+import { composing, MentionBoard, useMissed } from "@/lib/mentions"
 import { useBoards, type BoardSummary } from "@/lib/boards"
 import { previewFlag } from "@/lib/preview"
 import { ShareButton, WithdrawButton } from "./share-dialog"
@@ -198,6 +198,7 @@ export function CardPage({
   const hasObjective = !!(detail.goal || detail.doneWhen || showNote)
   const hasBlockers = blockers.length > 0 || legacy || !!answered
   return (
+    <MentionBoard.Provider value={detail.onBoard?.id ?? ""}>
     <article className="grid gap-3" aria-label="Card">
       {back}
       <PageHeader
@@ -446,6 +447,7 @@ export function CardPage({
         </Card>
       </div>
     </article>
+    </MentionBoard.Provider>
   )
 }
 

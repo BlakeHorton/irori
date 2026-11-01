@@ -41,6 +41,12 @@ pub struct MentionCandidate {
     pub cwd: String,
     /// repo_label(repoKey), or "".
     pub repo: String,
+    /// Set for another person on a shared board, or one of their agents:
+    /// the board they can be mentioned on (card #177). The picker offers
+    /// them only in a box on that board's cards.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub board: String,
 }
 
 /// The person's mentions checked: what the log stores, and the outcome of
@@ -164,6 +170,7 @@ impl Window {
                 } else {
                     repo_label(&a.repo_key)
                 },
+                board: String::new(),
             };
             if a.status == "gone" {
                 gone.push((a.updated_at.unix_milli_value(), c));
@@ -175,7 +182,64 @@ impl Window {
         gone.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| x.1.who.key.cmp(&y.1.who.key)));
         let mut out: Vec<MentionCandidate> = live.into_iter().map(|(_, _, c)| c).collect();
         out.extend(gone.into_iter().take(MAX_GONE_CANDIDATES).map(|(_, c)| c));
+        out.extend(self.board_candidates(&p));
         out
+    }
+
+    /// The other people on each shared board and their live agents, by
+    /// name, each tagged with its board (card #177).
+    fn board_candidates(&self, p: &crate::cards::People) -> Vec<MentionCandidate> {
+        let me = self.core.person().id;
+        let mut out: Vec<(String, String, MentionCandidate)> = Vec::new();
+        for m in self.core.board_people() {
+            out.push((
+                m.board_id.clone(),
+                format!("0{}", m.name.to_lowercase()),
+                MentionCandidate {
+                    who: p.ref_(&m.key),
+                    board: m.board_id,
+                    ..MentionCandidate::default()
+                },
+            ));
+        }
+        for a in self.core.board_agents() {
+            if a.person_id.is_empty() || a.person_id == me || a.status == "gone" {
+                continue;
+            }
+            out.push((
+                a.board_id.clone(),
+                format!("1{}", a.name.to_lowercase()),
+                MentionCandidate {
+                    who: p.ref_(&a.key),
+                    board: a.board_id,
+                    ..MentionCandidate::default()
+                },
+            ));
+        }
+        out.sort_by(|x, y| (&x.0, &x.1, &x.2.who.key).cmp(&(&y.0, &y.1, &y.2.who.key)));
+        out.into_iter().map(|(_, _, c)| c).collect()
+    }
+
+    /// Whether `key` is another person, or one of their agents, on board
+    /// `board`: delivered by their own devices (card #177).
+    fn on_board(&self, board: &str, key: &str) -> Option<String> {
+        if board.is_empty() || !coord::board_form(key) {
+            return None;
+        }
+        let me = self.core.person().id;
+        if let Some(m) = self
+            .core
+            .board_people()
+            .into_iter()
+            .find(|m| m.board_id == board && m.key == key)
+        {
+            return Some(m.name);
+        }
+        self.core
+            .board_agents()
+            .into_iter()
+            .find(|a| a.board_id == board && a.key == key && a.person_id != me)
+            .map(|a| a.name)
     }
 
     /// Checks the keys the picker recorded against every device's roster.
@@ -198,6 +262,22 @@ impl Window {
                 || plan.private.iter().any(|m| m.key == key)
                 || plan.unknown.iter().any(|m| m.key == key)
             {
+                continue;
+            }
+            if let Some(known) = self.on_board(&board, &key) {
+                // Another person or their agent: the board row carries it,
+                // and their devices deliver it; this device has no outcome
+                // for it.
+                let name = if g.name.trim().is_empty() {
+                    known
+                } else {
+                    g.name.trim().to_string()
+                };
+                plan.log.push(coord::Mention {
+                    key: key.clone(),
+                    name,
+                    gone: false,
+                });
                 continue;
             }
             let Some(a) = roster.iter().find(|a| a.key == key) else {

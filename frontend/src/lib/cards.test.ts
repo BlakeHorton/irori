@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { AgentRef, CardAsk } from "./models"
 import { TaskState } from "./models"
-import { askLine, busy, sampleCardRef, cardFromHash, cardHash, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
+import { askLine, busy, sampleCardRef, cardFromHash, cardHash, openTarget, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
 
 const agent = (status: string, more: Partial<AgentRef> = {}) =>
   AgentRef({ key: "d/s", name: "a", status, live: status !== "gone", where: "This PC", ...more })
@@ -160,5 +160,17 @@ describe("sampleCardRef: done cards and threads (card #144)", () => {
     expect(sampleCardRef("mlg#1")?.id).toBeTruthy()
     expect(sampleCardRef("#9999")).toBeNull()
     expect(sampleCardRef("nonsense")).toBeNull()
+  })
+})
+
+describe("openTarget", () => {
+  test("a card, and a card at a comment (card #177)", () => {
+    expect(openTarget("task:t1")).toEqual({ card: "t1", comment: "" })
+    expect(openTarget("task:t1/comment:c9")).toEqual({ card: "t1", comment: "c9" })
+  })
+  test("anything else is null", () => {
+    expect(openTarget("msg:x")).toBeNull()
+    expect(openTarget("task:")).toBeNull()
+    expect(openTarget("")).toBeNull()
   })
 })

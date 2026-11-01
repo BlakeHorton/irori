@@ -913,6 +913,12 @@ export type MentionCandidate = {
 	cwd: string,
 	/**  repo_label(repoKey), or "". */
 	repo: string,
+	/**
+	 *  Set for another person on a shared board, or one of their agents:
+	 *  the board they can be mentioned on (card #177). The picker offers
+	 *  them only in a box on that board's cards.
+	 */
+	board?: string,
 };
 
 /**  One mention's outcome after a send. */

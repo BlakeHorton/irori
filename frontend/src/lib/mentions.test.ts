@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { AgentRef } from "../gen/models"
 import {
   addMention,
+  boardRows,
   cardRefs,
   localRef,
   refText,
@@ -413,5 +414,25 @@ describe("localRef (card #144)", () => {
   test("refText is what the backend reads", () => {
     expect(refText(ref("in #136"))).toBe("#136")
     expect(refText(ref("mlg#12"))).toBe("mlg#12")
+  })
+})
+
+describe("boardRows", () => {
+  const row = (key: string, board?: string) => ({
+    who: AgentRef({ key, name: key, status: "idle", live: true, where: "" }),
+    cwd: "",
+    repo: "",
+    board,
+  })
+  const rows = [row("d/me"), row("person:blake", "b1"), row("agent:c1", "b1"), row("agent:c2", "b2")]
+  test("your own board offers only your agents", () => {
+    expect(boardRows(rows, "").map((r) => r.who.key)).toEqual(["d/me"])
+  })
+  test("a shared board adds its people and their agents (card #177)", () => {
+    expect(boardRows(rows, "b1").map((r) => r.who.key)).toEqual([
+      "d/me",
+      "person:blake",
+      "agent:c1",
+    ])
   })
 })

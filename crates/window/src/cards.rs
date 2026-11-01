@@ -618,6 +618,9 @@ pub(crate) struct People {
     /// another member's agents are named and live on a card they hold
     /// rather than "gone" (card #146).
     board: HashMap<String, irori_core::BoardAgent>,
+    /// The other people on the shared boards by board key
+    /// (person:<personId>), so a mention of one is named (card #177).
+    persons: HashMap<String, irori_core::BoardMember>,
 }
 
 fn unsent_key(agent: &str, r: &str) -> String {
@@ -668,6 +671,9 @@ impl Window {
         }
         for a in c.board_agents() {
             p.board.insert(a.key.clone(), a);
+        }
+        for m in c.board_people() {
+            p.persons.insert(m.key.clone(), m);
         }
         p.known = c.known_agent_names();
         p.colors = c.device_colors();
@@ -760,6 +766,21 @@ impl People {
                     String::new()
                 },
                 device_id: dev.to_string(),
+                ..AgentRef::default()
+            };
+        }
+        if let Some(m) = self.persons.get(key) {
+            // Another person on a shared board (card #177).
+            return AgentRef {
+                key: key.into(),
+                name: if m.name.is_empty() {
+                    "Another person".into()
+                } else {
+                    m.name.clone()
+                },
+                status: "person".into(),
+                live: true,
+                where_: "On the board".into(),
                 ..AgentRef::default()
             };
         }
