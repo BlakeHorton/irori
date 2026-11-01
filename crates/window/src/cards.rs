@@ -1092,7 +1092,7 @@ impl Window {
             .collect();
         for (i, (_, bc)) in boards.iter().enumerate() {
             for t in bc.list_tasks(&coord::TaskFilter::default()) {
-                if !t.withdrawn && terminal(&t) {
+                if !t.withdrawn && terminal(&t) && !crate::threads::is_thread(&t) {
                     done.push((t, Some(i)));
                 }
             }
@@ -1206,7 +1206,8 @@ impl Window {
                 open: true,
                 ..Default::default()
             }) {
-                if t.withdrawn {
+                // A board's threads show in its Threads panel (card #134).
+                if t.withdrawn || crate::threads::is_thread(&t) {
                     continue;
                 }
                 let pt = self.priv_task(t);

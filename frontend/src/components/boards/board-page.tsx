@@ -1,12 +1,15 @@
 // BoardPage is one board as its own page (card #96): the board's cards
 // (List or Canvas, with Needs a decision and Closed) on the left, and on
 // the right who is on it, Invite someone (owners), and the board's
-// settings. Rename, Leave and Forget sit by its name.
+// settings. Rename, Leave and Forget sit by its name. The box over the
+// cards starts a thread on this board (card #134), listed in the board's
+// own Threads panel above who is on it.
 
 import { useState, type FormEvent } from "react"
 import { ArrowLeftIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
+import { ThreadsPanel } from "@/components/cards/threads-panel"
 import { CardGrid, DoneGrid, shownCards } from "@/components/cards/card-grid"
 import { BoardCanvas, ViewSwitch, type BoardView } from "@/components/canvas/switch"
 import { ConfirmButton } from "@/components/common/confirm-button"
@@ -19,7 +22,7 @@ import {
   useInvite,
   type BoardSummary,
 } from "@/lib/boards"
-import type { CardSummary, DoneState } from "@/lib/cards"
+import { useThreads, type CardSummary, type DoneState } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 import { go } from "@/lib/nav"
 import { errorText } from "@/lib/talk"
@@ -53,6 +56,10 @@ export function BoardPage({
   now: Date
 }) {
   const { boards, reload } = useBoards()
+  const { threads } = useThreads(boardId)
+  // The thread unfolded in the panel, and whether the person hid it.
+  const [thread, setThread] = useState("")
+  const [threadsHidden, setThreadsHidden] = useState(false)
   const b = boards.find((x) => x.boardId === boardId)
   if (!b)
     return (
@@ -70,12 +77,34 @@ export function BoardPage({
     tab === "decide" ? "decide" : tab === "done" ? "done" : "all"
   )
   const closed = { ...done, cards: done.cards.filter((c) => c.board === boardId) }
+  const openThreads = threads.filter((t) => t.state !== "resolved").length
   return (
     <div className="grid gap-3.5">
       <BoardHead board={b} onChanged={reload} />
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid min-w-0 gap-3.5">
-          <AskBox board={boardId} onAsked={() => onTab("all")} />
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <AskBox
+                board={boardId}
+                onThread={(id) => {
+                  setThread(id)
+                  setThreadsHidden(false)
+                }}
+              />
+            </div>
+            {threadsHidden && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-1.5"
+                onClick={() => setThreadsHidden(false)}
+              >
+                Threads
+                {openThreads > 0 && <span className="tabular-nums">{openThreads}</span>}
+              </Button>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter cards">
             {(
               [
@@ -111,11 +140,22 @@ export function BoardPage({
             <p className="px-1 text-[12.5px] text-muted-foreground">
               {tab === "decide"
                 ? "Nothing on this board waits on you."
-                : "No cards on this board yet. Ask the room above, or share a card to it from its page."}
+                : "No cards on this board yet: share a card to it from its page."}
             </p>
           )}
         </div>
-        <PeoplePanel board={b} onChanged={reload} />
+        <div className="grid min-w-0 content-start gap-3.5">
+          {!threadsHidden && (threads.length > 0 || !!thread) && (
+            <ThreadsPanel
+              threads={threads}
+              open={thread}
+              onOpen={setThread}
+              onHide={() => setThreadsHidden(true)}
+              now={now}
+            />
+          )}
+          <PeoplePanel board={b} onChanged={reload} />
+        </div>
       </div>
     </div>
   )

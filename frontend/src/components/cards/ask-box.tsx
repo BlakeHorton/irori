@@ -1,55 +1,35 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { PaperclipIcon, XIcon } from "lucide-react"
+import { useState, type FormEvent } from "react"
 
-import { FileKindIcon } from "@/components/attachments"
-
-import { ChoiceSelect } from "@/components/common/choice-select"
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
-import {
-  cards,
-  MaxComment,
-  MaxUploadFiles,
-  threads,
-  type AskRepo,
-} from "@/lib/cards"
+import { MaxComment, threads } from "@/lib/cards"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
-import { askingLine, composing, notDelivered } from "@/lib/mentions"
+import { composing } from "@/lib/mentions"
 import { errorText } from "@/lib/talk"
 
-// AskBox is the person talking to the room (docs/design/board.md "Asks"):
-// one line over the grid. What they type goes to every free agent, one of
-// them takes it, and it shows first in the grid as an ask until it becomes
-// a card or closes. It is the card comment box lifted out: Enter sends,
-// Shift+Enter is a new line. It always wakes them: only idle agents hear
-// an ask, and an idle agent gets no next turn until someone types in its
-// window. The repo chip keeps it to one repo's agents. Files go with it: pick them with the clip, drop them
-// on the box, or paste a screenshot (card #25); pictures show as
-// thumbnails before they go, other files an icon for their kind (#73). The window stays on the
-// grid. On a shared board's page it goes on that board (v0.5 §9, cards
-// #59, #96): every member's free agents hear it, the other people's through
-// their own devices. There is no board picker (card #102): to ask on
-// another board, go to that board. A board's agents carry no repo, and a
-// board ask takes no files yet, so the repo chip and the clip step aside.
-// An @mention (card #77) narrows it: only the agents it names hear it,
-// woken, in any repo, so the repo chip steps aside too. Mentions work on
-// your own board only.
+// AskBox is the box over the grid that starts a thread (cards #116, #134):
+// a question or a conversation with the room, not a card. The agents on
+// the cards it names (#12) and the agents it @mentions hear it first,
+// woken; if none answers within 45s, one idle agent gets it. It shows in
+// the Threads panel, where the person replies and resolves it. Enter
+// sends, Shift+Enter is a new line. On a shared board's page it starts the
+// thread on that board: only that board's agents and people see it, the
+// other people's agents hear it through their own devices, and its page
+// lists it in its own Threads panel. A board thread takes no mentions (a
+// board log carries none): name a card instead. No files on a thread yet.
+// New cards come from the header's "+ New card".
 export function AskBox({
-  onAsked,
   onThread,
   board: onPage = "",
 }: {
-  onAsked: (id: string) => void
-  // On your own board the box starts a thread (card #116): onThread gets
-  // it, for the Threads panel to open.
-  onThread?: (id: string) => void
+  // onThread gets the new thread, for the Threads panel to open.
+  onThread: (id: string) => void
   board?: string
 }) {
-  const [text, setText] = useDraft("ask/room")
-  const [mentions, setMentions] = useMentionsDraft("ask/room")
-  const [repo, setRepo] = useState("")
-  const [repos, setRepos] = useState<AskRepo[]>([])
+  const draft = onPage ? `ask/board/${onPage}` : "ask/room"
+  const [text, setText] = useDraft(draft)
+  const [mentions, setMentions] = useMentionsDraft(draft)
   const { boards } = useBoards()
   // The page's board, while it is still a ready board of ours.
   const onBoard = boards.some(
@@ -57,92 +37,36 @@ export function AskBox({
   )
     ? onPage
     : ""
-  // A board ask takes no mentions in v1.
-  const targeted = onBoard ? [] : mentions
-  // Your own board's box starts a thread, not an ask (card #116); a shared
-  // board's page keeps the ask.
-  const thread = !onBoard && !!onThread
   const [busy, setBusy] = useState(false)
-  const [files, setFiles] = useState<File[]>([])
-  const picker = useRef<HTMLInputElement>(null)
-  const addFiles = (list: FileList | File[] | null | undefined) => {
-    const add = Array.from(list ?? [])
-    // A thread takes no files yet (card #116).
-    if (!add.length || thread) return
-    setFiles((fs) => [...fs, ...add].slice(0, MaxUploadFiles))
-    setLine(null)
-  }
   const [line, setLine] = useState<{ text: string; error?: boolean } | null>(
     null
   )
 
-  useEffect(() => {
-    let live = true
-    cards
-      .askRepos()
-      .then((rs) => live && setRepos(rs))
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [])
-
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (busy || !text.trim()) return
-    if (onBoard && files.length) {
-      setLine({
-        text: "Files don't go on a board ask yet: remove them, or ask on My board.",
-        error: true,
-      })
+    if (onPage && !onBoard) {
+      setLine({ text: "This board isn't ready here yet.", error: true })
       return
     }
     setBusy(true)
     setLine(null)
-    if (thread) {
-      try {
-        const res = await threads.start(text, mentions)
-        const n = res.told.to?.length ?? 0
-        setLine({
-          text:
-            n === 0
-              ? "Sent. No agent is free yet: the first to go idle answers it."
-              : `Sent to ${n === 1 ? "1 agent" : `${n} agents`}. If nobody answers in 45s, an idle agent picks it up.`,
-        })
-        setText("")
-        setMentions([])
-        onThread?.(res.task.id)
-      } catch (err) {
-        setLine({ text: errorText(err), error: true })
-      } finally {
-        setBusy(false)
-      }
-      return
-    }
     try {
-      const res = onBoard
-        ? await cards.ask(text, "", true, [], onBoard)
-        : await cards.ask(text, targeted.length ? "" : repo, true, files, "", targeted)
+      const res = await threads.start(text, onBoard ? [] : mentions, onBoard)
       // On a board the other people's agents are told by their own
-      // devices: count every agent the ask's round names.
-      const n = onBoard ? (res.task.ask?.told ?? 0) : (res.told.to?.length ?? 0)
-      const missed = notDelivered(res.mentioned)
+      // devices: count every agent the thread's round names.
+      const n = onBoard
+        ? (res.task.ask?.told ?? 0)
+        : (res.told.to?.length ?? 0)
       setLine({
-        text: targeted.length
-          ? n === 0
-            ? `Nobody you mentioned could hear it; it stays first on the board. ${missed}`.trim()
-            : `${n === 1 ? "Woke the agent you mentioned." : `Woke ${n} agents you mentioned; one of them takes it.`} ${missed}`.trim()
-          : n === 0
-            ? "Nobody is free to hear it yet; it stays first on the board."
-            : n === 1
-              ? "Woke 1 agent."
-              : `Woke ${n} agents; one of them takes it.`,
-        error: !!missed && n === 0,
+        text:
+          n === 0
+            ? "Sent. No agent is free yet: the first to go idle answers it."
+            : `Sent to ${n === 1 ? "1 agent" : `${n} agents`}. If nobody answers in 45s, an idle agent picks it up.`,
       })
       setText("")
       setMentions([])
-      setFiles([])
-      onAsked(res.task.id)
+      onThread(res.task.id)
     } catch (err) {
       setLine({ text: errorText(err), error: true })
     } finally {
@@ -151,26 +75,17 @@ export function AskBox({
   }
 
   return (
-    <form
-      className="grid gap-1"
-      onSubmit={(e) => void submit(e)}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("Files")) e.preventDefault()
-      }}
-      onDrop={(e) => {
-        if (!e.dataTransfer.files.length) return
-        e.preventDefault()
-        if (!busy) addFiles(e.dataTransfer.files)
-      }}
-    >
+    <form className="grid gap-1" onSubmit={(e) => void submit(e)}>
       <div className="flex items-start gap-2 p-1.5 glass-panel">
         <MentionTextarea
           autoSize
           rows={1}
           value={text}
-          mentions={mentions}
+          mentions={onBoard ? [] : mentions}
           disabledMentions={
-            onBoard ? "Mentions work on your own board's asks" : undefined
+            onBoard
+              ? "Mentions work in threads on your own board; name a card (#12) here"
+              : undefined
           }
           maxLength={MaxComment}
           onChange={(v, ms) => {
@@ -178,114 +93,37 @@ export function AskBox({
             setMentions(ms)
             setLine(null)
           }}
-          onPaste={(e) => {
-            // A pasted screenshot is a file; pasted text stays text.
-            if (busy || !e.clipboardData.files.length) return
-            e.preventDefault()
-            addFiles(e.clipboardData.files)
-          }}
           onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !composing(e)
-            ) {
+            if (e.key === "Enter" && !e.shiftKey && !composing(e)) {
               e.preventDefault()
               e.currentTarget.form?.requestSubmit()
             }
           }}
           placeholder={
-            thread
-              ? "Ask about anything… (# a card, @ an agent)"
-              : "Ask the room… (@ to ask one agent, # for a card)"
+            onBoard
+              ? "Ask about anything… (# a card)"
+              : "Ask about anything… (# a card, @ an agent)"
           }
-          aria-label={
-            thread
-              ? "Start a thread"
-              : targeted.length
-                ? askingLine(targeted)
-                : "Ask every free agent"
-          }
+          aria-label="Start a thread"
           className="max-h-40 min-h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-transparent"
           // readOnly, not disabled: disabling the focused box would blur it,
-          // and the next ask would need a click back in.
+          // and the next message would need a click back in.
           readOnly={busy}
           aria-busy={busy}
         />
-        {/* The controls ride the box's first line (h-9, its min height)
-            whatever their own heights, and stay up top as it grows. */}
+        {/* The button rides the box's first line (h-9, its min height)
+            and stays up top as it grows. */}
         <div className="flex h-9 shrink-0 items-center gap-2">
-          {!thread && targeted.length > 0 && (
-            <span
-              className="max-w-56 truncate text-xs text-muted-foreground"
-              title="Only the agents you mention hear it, in any repo"
-            >
-              {askingLine(targeted)}
-            </span>
-          )}
-          {!thread && !onBoard && !targeted.length && repos.length > 0 && (
-            <ChoiceSelect
-              label="Which agents hear it"
-              size="sm"
-              value={repo}
-              onValueChange={setRepo}
-              disabled={busy}
-              className="w-auto shrink-0"
-              choices={[
-                { value: "", label: "Any repo" },
-                ...repos.map((r) => ({ value: r.repoKey, label: r.label })),
-              ]}
-            />
-          )}
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              addFiles(e.target.files)
-              e.target.value = ""
-            }}
-          />
-          {!thread && (
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            className="shrink-0"
-            title="Add files (or drop them here, or paste a screenshot)"
-            aria-label="Add files"
-            disabled={busy || !!onBoard || files.length >= MaxUploadFiles}
-            onClick={() => picker.current?.click()}
-          >
-            <PaperclipIcon />
-          </Button>
-          )}
           <Button
             type="submit"
             size="sm"
             className="shrink-0"
             disabled={busy || !text.trim()}
           >
-            {busy ? (thread ? "Sending…" : "Asking…") : thread ? "Send" : "Ask"}
+            {busy ? "Sending…" : "Send"}
           </Button>
         </div>
       </div>
-      {files.length > 0 && (
-        <ul
-          className="flex flex-wrap gap-2 px-1"
-          aria-label="Files with the ask"
-        >
-          {files.map((f, i) => (
-            <PendingFile
-              key={fileKey(f)}
-              file={f}
-              disabled={busy}
-              onRemove={() => setFiles((fs) => fs.filter((_, j) => j !== i))}
-            />
-          ))}
-        </ul>
-      )}
       {line && (
         <p
           className={
@@ -299,81 +137,5 @@ export function AskBox({
         </p>
       )}
     </form>
-  )
-}
-
-// fileKey keeps a pending file's row (and its preview) when another one
-// before it is removed.
-const keys = new WeakMap<File, string>()
-let nextKey = 0
-function fileKey(f: File): string {
-  let k = keys.get(f)
-  if (!k) keys.set(f, (k = `f${nextKey++}`))
-  return k
-}
-
-// Pictures the webview can draw: these show as a thumbnail before sending.
-const Previewable = /^image\/(png|jpe?g|gif|webp|bmp|avif|svg\+xml)$/i
-const MaxThumb = 32 << 20
-
-// PendingFile is one file waiting to go with the ask (card #73): a pasted
-// or picked picture shows itself, anything else an icon for its kind and
-// its name. Either one has an × to take it back off.
-function PendingFile({
-  file,
-  disabled,
-  onRemove,
-}: {
-  file: File
-  disabled: boolean
-  onRemove: () => void
-}) {
-  const name = file.name || "pasted image"
-  const image = Previewable.test(file.type) && file.size <= MaxThumb
-  // One object URL per file, let go when the file leaves the list.
-  const url = useMemo(
-    () => (image ? URL.createObjectURL(file) : null),
-    [file, image]
-  )
-  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url])
-  const remove = (
-    <button
-      type="button"
-      className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-      aria-label={`Remove ${name}`}
-      title="Remove"
-      disabled={disabled}
-      onClick={onRemove}
-    >
-      <XIcon className="size-3" />
-    </button>
-  )
-  if (image && url) {
-    return (
-      <li className="group relative" title={name}>
-        <img
-          src={url}
-          alt={name}
-          draggable={false}
-          className="h-20 max-w-40 min-w-12 rounded-md object-cover ring-1 ring-border"
-        />
-        <span className="absolute top-1 right-1 flex rounded-full bg-background/85 p-0.5 shadow-sm ring-1 ring-border">
-          {remove}
-        </span>
-      </li>
-    )
-  }
-  return (
-    <li className="flex h-8 items-center gap-1.5 rounded-md bg-secondary px-2 text-xs ring-1 ring-border">
-      <FileKindIcon
-        name={file.name}
-        mime={file.type}
-        className="size-4 shrink-0 text-muted-foreground"
-      />
-      <span className="max-w-48 truncate" title={name}>
-        {name}
-      </span>
-      {remove}
-    </li>
   )
 }

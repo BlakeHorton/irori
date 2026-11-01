@@ -392,15 +392,17 @@ pub async fn board_start_thread(
     w: W<'_>,
     text: String,
     mentions: Vec<crate::ts::Mention>,
+    board_id: String,
 ) -> R<TaskResult> {
-    w.start_thread(&text, &mentions)
+    w.start_thread(&text, &mentions, &board_id)
 }
 
-/// The Threads panel: open threads, then the newest resolved.
+/// The Threads panel: open threads, then the newest resolved; your own
+/// board's, or with `board_id` that shared board's (card #134).
 #[tauri::command]
 #[specta::specta]
-pub async fn board_threads(w: W<'_>) -> R<Vec<crate::threads::ThreadSummary>> {
-    Ok(w.threads())
+pub async fn board_threads(w: W<'_>, board_id: String) -> R<Vec<crate::threads::ThreadSummary>> {
+    Ok(w.threads(&board_id))
 }
 
 /// Resolve on a thread: the person is done with it.

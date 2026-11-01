@@ -23,7 +23,6 @@ import {
   Told,
   TaskResult,
   ThreadSummary,
-  UploadFile,
   type AgentRef,
   type CardActivity,
   type CardBlocker,
@@ -204,6 +203,8 @@ function sampleState(): CardDetail[] {
 // keeps the real ones.
 const sampleThreadIds = new Set<string>()
 const sampleThreadState = new Map<string, string>()
+// sampleThreadBoard is the shared board a sample thread was started on.
+const sampleThreadBoard = new Map<string, string>()
 
 // sampleThread is one of the sample's threads.
 function sampleThread(
@@ -297,8 +298,12 @@ function sampleThreadSeed(now: Date): CardDetail[] {
 }
 
 // sampleThreads is BoardService.Threads on the sample.
-function sampleThreads(): ThreadSummary[] {
-  const all = sampleState().filter((c) => sampleThreadIds.has(c.id))
+function sampleThreads(boardId = ""): ThreadSummary[] {
+  const all = sampleState().filter(
+    (c) =>
+      sampleThreadIds.has(c.id) &&
+      (sampleThreadBoard.get(c.id) ?? "") === boardId
+  )
   const rows = all.map((c) => {
     const replies = c.thread.filter((it) => it.kind === "comment")
     const last = replies[replies.length - 1]
@@ -335,17 +340,23 @@ function sampleThreads(): ThreadSummary[] {
 // threads is the Threads panel's side of the Board (card #116): the
 // header box starts one, the panel lists them, the person resolves them.
 // Replies go through cards.comment, like any card's.
+// boardId (card #134) is a shared board's: its threads, started from its
+// page, are in its log; "" is your own board.
 export const threads = {
-  async list(): Promise<ThreadSummary[]> {
-    if (inWails()) return (await BoardService.Threads()) ?? []
-    return sampleThreads()
+  async list(boardId = ""): Promise<ThreadSummary[]> {
+    if (inWails()) return (await BoardService.Threads(boardId)) ?? []
+    return sampleThreads(boardId)
   },
 
   // start is the header box's message as a thread: the agents on the
   // cards it names (#12) and the ones it @mentions hear it first; after
   // 45s with no answer, one idle agent gets it.
-  async start(text: string, mentions: Mention[] = []): Promise<TaskResult> {
-    if (inWails()) return BoardService.StartThread(text, mentions)
+  async start(
+    text: string,
+    mentions: Mention[] = [],
+    boardId = ""
+  ): Promise<TaskResult> {
+    if (inWails()) return BoardService.StartThread(text, mentions, boardId)
     const t = text.trim()
     if (!t) throw new Error("coord: invalid input: an empty comment")
     const cs = sampleState()
@@ -355,6 +366,7 @@ export const threads = {
       sampleThread(id, String(top + 1), t, new Date().toISOString(), [], "waiting"),
       ...cs,
     ]
+    if (boardId) sampleThreadBoard.set(id, boardId)
     sampleChanged()
     return TaskResult({
       task: { id } as TaskResult["task"],
@@ -370,14 +382,12 @@ export const threads = {
 }
 
 // useThreads is the Threads panel's rows, fresh on every card change.
-export function useThreads(): {
+export function useThreads(boardId = ""): {
   threads: ThreadSummary[]
   error: string | null
 } {
-  const { value, error, reload } = useLatest<ThreadSummary[]>(
-    threads.list,
-    []
-  )
+  const load = useCallback(() => threads.list(boardId), [boardId])
+  const { value, error, reload } = useLatest<ThreadSummary[]>(load, [])
   useFresh(reload, error, true)
   return { threads: value, error }
 }
@@ -433,85 +443,6 @@ function summary(c: CardDetail): CardSummary {
 // in memory.
 export const MaxUpload = 32 << 20
 export const MaxUploadFiles = 10
-
-// uploadOf is a File as BoardService takes it: its name and base64 bytes
-// (Go's []byte in JSON).
-async function uploadOf(f: File): Promise<UploadFile> {
-  const bytes = new Uint8Array(await f.arrayBuffer())
-  let bin = ""
-  for (let i = 0; i < bytes.length; i += 0x8000)
-    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return UploadFile({ name: f.name || "pasted.png", data: btoa(bin) })
-}
-
-// sampleAsk is BoardService.Ask on the sample: a new ask first in the
-// grid, heard by the sample's idle agents.
-function sampleAsk(text: string, repoKey: string, wake: boolean, mentions: Mention[]): TaskResult {
-  const t = text.trim()
-  if (!t) throw new Error("coord: invalid input: an empty comment")
-  const now = new Date().toISOString()
-  const cs = sampleState()
-  const top = Math.max(0, ...cs.map((c) => parseInt(c.short, 10) || 0))
-  // With mentions, only the agents it names hear it.
-  const named = sampleMentions(mentions)
-  const heard = mentions.length
-    ? named.filter((m) => !m.gone).map((m) => m.who.key)
-    : ["sample-heron"]
-  const first = t.split(/\r?\n/)[0].replace(/\s+/g, " ")
-  const c = {
-    ...cs[0],
-    id: `sample-ask-${Date.now()}`,
-    short: String(top + 1),
-    shortWas: "",
-    title: first.length > 80 ? first.slice(0, 79) + "…" : first,
-    goal: t,
-    doneWhen: "",
-    note: "",
-    state: TaskState.Submitted,
-    repoKey,
-    steps: [],
-    blockers: [],
-    prs: [],
-    links: [],
-    comments: [],
-    working: [],
-    watching: [],
-    progress: { done: 0, total: 0 },
-    openBlockers: 0,
-    waiting: 0,
-    blockerQuestion: "",
-    holder: cs[0].holder,
-    recent: [],
-    thread: [
-      CardThreadItem({
-        id: "sample-ask-post",
-        kind: "event",
-        at: now,
-        who: sampleYou,
-        text: "You asked the room",
-      }),
-    ],
-    threadEarlier: 0,
-    historyTrimmed: false,
-    updatedAt: now,
-    ask: CardAsk({
-      state: AskState.Open,
-      told: heard.length,
-      owner: "This PC",
-      wake,
-      taker: null,
-      outcome: null,
-      mentions: named.length ? named : undefined,
-    }),
-  } as CardDetail
-  sample = [c, ...cs]
-  sampleChanged()
-  return TaskResult({
-    task: { id: c.id } as TaskResult["task"],
-    told: Told({ to: heard, mode: wake ? "wake" : "next_turn" }),
-    mentioned: sampleOutcomes(named),
-  })
-}
 
 // sampleCreate is BoardService.Create on the sample: a new open card,
 // handed to the agent picked or to sample-heron (the free one).
@@ -1130,44 +1061,6 @@ export const cards = {
     if (inWails())
       return BoardService.Comment(id, text, wake ? "wake" : "next_turn", mentions)
     return sampleComment(id, text, wake, mentions)
-  },
-
-  // ask posts the person's prompt to the room: every free agent hears it
-  // (in repoKey's repo when one is named), at its next turn or, with wake,
-  // now. One of them takes it.
-  // files (picked, dropped or pasted) go on the ask's card, and the agent
-  // that takes it fetches them (card #25).
-  // boardId posts it to that shared board instead (v0.5 §9): every
-  // member's free agents hear it. A board ask names no repo and takes no
-  // files. With mentions it goes only to the agents they name, woken, in
-  // any repo.
-  async ask(
-    text: string,
-    repoKey = "",
-    wake = false,
-    files: File[] = [],
-    boardId = "",
-    mentions: Mention[] = []
-  ): Promise<TaskResult> {
-    if (files.length > MaxUploadFiles)
-      throw new Error(`at most ${MaxUploadFiles} files`)
-    const big = files.find((f) => f.size > MaxUpload)
-    if (big)
-      throw new Error(
-        `${big.name} is over ${MaxUpload >> 20} MiB; ask an agent to attach it from disk`
-      )
-    if (inWails()) {
-      if (!files.length) return BoardService.Ask(text, repoKey, wake, boardId, mentions)
-      return BoardService.AskWithFiles(
-        text,
-        repoKey,
-        wake,
-        await Promise.all(files.map(uploadOf)),
-        boardId,
-        mentions
-      )
-    }
-    return sampleAsk(text, repoKey, wake, mentions)
   },
 
   // askAgain is Wake them on an ask nobody took.

@@ -241,7 +241,7 @@ impl Fold {
             } else {
                 a.mentions.clone()
             },
-            thread: a.thread && !self.on_board,
+            thread: a.thread,
             ..Ask::default()
         });
     }
@@ -1450,7 +1450,8 @@ impl Fold {
             return Err(bad_state(format!("{} isn't an open ask", t.short_ref())));
         };
         let person = self.is_owner(&by);
-        if !person && a.thread {
+        // On a board, a thread is the member's who started it (card #134).
+        if a.thread && (!person || (self.on_board && t.created_by != by)) {
             return Err(not_allowed(format!(
                 "{} is the person's thread: they resolve it",
                 t.short_ref()

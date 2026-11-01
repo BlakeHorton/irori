@@ -418,7 +418,7 @@ export function App() {
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
         ) : homeCards.length === 0 && filter !== "done" ? (
           <>
-            <AskBox onAsked={setLast} onThread={startedThread} />
+            <AskBox onThread={startedThread} />
             {withThreads(
               <>
                 <FilterBar
@@ -434,13 +434,7 @@ export function App() {
           </>
         ) : (
           <>
-            <AskBox
-              onAsked={(id) => {
-                setLast(id)
-                setFilter("all")
-              }}
-              onThread={startedThread}
-            />
+            <AskBox onThread={startedThread} />
             {withThreads(
             <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

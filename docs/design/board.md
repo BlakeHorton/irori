@@ -256,6 +256,8 @@ The taker (or the person) ends an ask with `ask_close`. `task.status` gains `out
 
 ### In the window
 
+*Cards #116, #134 (10-31):* the box over the grid now starts a **thread** ("Ask about anything…", Send), not an ask, on your own board and on a shared board's page alike; no "Ask the room" box is left in the window. A thread is an ask with `thread` set: the agents holding the cards it names (and, on your own board, the agents it @mentions) hear it first, woken; with no answer after 45s one idle agent gets it; once an agent answers nobody holds it, the person's follow-ups go to the agents that answered, and the person resolves it. It stays off the grid and Closed and shows in a Threads panel. On a shared board the thread lives in the board's log: only that board's agents and people see it, the asking device writes its `board.ask.state` rows, other members' agents hear it (and the person's follow-ups, by `Coord::thread_to`) through their own devices' bridge, another member's comment is a person's and doesn't answer it, the member who started it resolves it, and the board's page lists it in its own Threads panel. Board threads take no mentions or files. The rest of this section is the ask as it was, still what `ask_claim` and older rows work by.
+
 **The prompt box.** It is one line at the top of the grid, left of the filter chips (and above `EmptyCards` on a fresh install). Placeholder: "Ask the room…". It grows to a few lines as you type. The rest:
 - It is the card comment composer (rich text, paste or drop files, which show as thumbnails or a file-kind icon before sending, Enter sends, Shift+Enter for a new line), lifted out of `CommentBox`.
 - **Wake** is a small toggle beside it, off by default (the spec, and the herd).

@@ -49,9 +49,12 @@ export const commands = {
 	 */
 	boardCreate: (input: NewCardInput) => __TAURI_INVOKE<TaskResult>("board_create", { input }),
 	/**  The header box's message as a thread (card #116). */
-	boardStartThread: (text: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions }),
-	/**  The Threads panel: open threads, then the newest resolved. */
-	boardThreads: () => __TAURI_INVOKE<ThreadSummary[]>("board_threads"),
+	boardStartThread: (text: string, mentions: Mention[], boardId: string) => __TAURI_INVOKE<TaskResult>("board_start_thread", { text, mentions, boardId }),
+	/**
+	 *  The Threads panel: open threads, then the newest resolved; your own
+	 *  board's, or with `board_id` that shared board's (card #134).
+	 */
+	boardThreads: (boardId: string) => __TAURI_INVOKE<ThreadSummary[]>("board_threads", { boardId }),
 	/**  Resolve on a thread: the person is done with it. */
 	boardResolveThread: (id: string) => __TAURI_INVOKE<null>("board_resolve_thread", { id }),
 	/**  Modify on the person's comment no agent read yet (card #105): holds it. */

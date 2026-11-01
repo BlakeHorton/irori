@@ -68,7 +68,7 @@ pub use review::{
     NOTICE_REVIEW, REVIEW_REQUESTED, Review, ReviewRequest, VERDICT_APPROVED, VERDICT_CHANGES,
 };
 pub use short::{parse_ref, parse_short, short_suffix};
-pub use threads::{TAKE_ANSWERED, THREAD_QUIET};
+pub use threads::{NOT_YOURS_TO_CLOSE as THREAD_NOT_YOURS, TAKE_ANSWERED, THREAD_QUIET};
 pub use types::*;
 pub use waits::{
     MAX_WAITS, UNTIL_BLOCKED, UNTIL_CHANGED, UNTIL_DONE, UNTIL_UNBLOCKED, WAIT_CARD_GONE,
@@ -370,6 +370,21 @@ impl Coord {
     }
     pub fn is_person(&self, key: &str) -> bool {
         self.lock().is_owner(key)
+    }
+    /// Whether `key` is a person on this log, not an agent: on a board,
+    /// any member's person actor (card #134).
+    pub fn is_any_person(&self, key: &str) -> bool {
+        self.lock().is_person(key)
+    }
+    /// Who hears a person's follow-up in thread `id` now (card #134): the
+    /// agents that answered, else the ones it went to. Empty when `id`
+    /// isn't an open thread.
+    pub fn thread_to(&self, id: &str) -> Vec<String> {
+        let f = self.lock();
+        match f.tasks.get(id) {
+            Some(t) if t.open_ask().is_some_and(|a| a.thread) => f.thread_to(t),
+            _ => Vec::new(),
+        }
     }
     pub fn ignored_rows(&self) -> usize {
         self.lock().ignored
