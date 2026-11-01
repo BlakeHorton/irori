@@ -26,7 +26,9 @@ const MaxRows = 6
 
 // AgentHover wraps an agent's face (trigger) in a hover card: its name,
 // its device, whether it's live, and the cards it holds, is offered, and
-// watches, each one click from its page.
+// watches, each one click from its page. Its grids are grid-cols-1
+// (minmax(0,1fr)) so a long name, path or title truncates inside the
+// card's width instead of widening the column past it (card #148).
 export function AgentHover({
   who,
   trigger,
@@ -88,16 +90,16 @@ function AgentSummary({
           : "idle"
   return (
     <>
-      <div className="grid gap-0.5">
-        <div className="flex items-center gap-2">
+      <div className="grid grid-cols-1 gap-0.5">
+        <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-medium">{displayName(who)}</span>
           <span
             className={
               gone || who.offline || !who.live
-                ? "text-xs text-muted-foreground"
+                ? "shrink-0 text-xs text-muted-foreground"
                 : who.status === "unresponsive"
-                ? "text-xs text-warning"
-                : "text-xs text-success"
+                ? "shrink-0 text-xs text-warning"
+                : "shrink-0 text-xs text-success"
             }
           >
             {state}
@@ -141,11 +143,11 @@ function CardList({
   if (!cards.length) return null
   const more = cards.length - MaxRows
   return (
-    <div className="grid gap-1">
+    <div className="grid grid-cols-1 gap-1">
       <div className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
         {label} · {cards.length}
       </div>
-      <ul className="grid gap-0.5">
+      <ul className="grid grid-cols-1 gap-0.5">
         {cards.slice(0, MaxRows).map((c) => (
           <li key={c.id}>
             <button
