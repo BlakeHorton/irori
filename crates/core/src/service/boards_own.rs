@@ -1231,11 +1231,14 @@ impl Services {
     /// A notice with a board card's keys (agent:<cardId>, this person's
     /// person:<id>) as this device's inbox knows them, so a notice about a
     /// card on a shared board reaches this person's own agents (§2.4).
-    /// Other people's keys stay as they are; the bridge (§7.1) handles them.
+    /// Other people's keys (and their person:) are left out: their own
+    /// devices hear the board row through the bridge (§7.1), and this
+    /// device's inbox has no agent by those names.
     pub(crate) fn private_notice(&self, mut n: Notice) -> Notice {
         for k in n.to.iter_mut() {
             *k = self.private_key(k);
         }
+        n.to.retain(|k| !coord::board_form(k));
         n.by = self.private_key(&n.by);
         n
     }

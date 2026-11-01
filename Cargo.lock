@@ -3174,6 +3174,7 @@ dependencies = [
  "irori-search",
  "irori-store",
  "irori-sys",
+ "irori-toast",
  "irori-tools",
  "rusqlite",
  "serde",

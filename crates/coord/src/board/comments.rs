@@ -768,11 +768,12 @@ impl Fold {
     }
 
     /// Appends a task.comment row as actor; returns the comment it folded to.
-    /// On a board the row carries no `mentions`: other people's devices
-    /// can't resolve this person's agents (board.md "Mentions").
+    /// On a board the row keeps only mentions in board form (`agent:<cardId>`,
+    /// `person:<personId>`), which every member's Core resolves (card #177;
+    /// board.md "Mentions"): a private key never goes in a board log.
     pub(crate) fn write_comment(&mut self, actor: &str, mut r: TaskCommentRow) -> Result<Comment> {
         if self.on_board {
-            r.mentions.clear();
+            r.mentions.retain(|m| super::mention::board_form(&m.key));
         }
         let cid = r.comment_id.clone();
         self.write_as(actor, kinds::TASK_COMMENT, &r)?;

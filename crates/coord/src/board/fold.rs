@@ -1148,10 +1148,14 @@ impl Fold {
             blocker_id: p.blocker_id.clone(),
             pick: p.pick.max(0),
             missing: p.missing.clone(),
-            // A board log never carries mentions (board.md "Mentions"); one
-            // another device wrote anyway is dropped here too.
+            // A board log carries mentions in board form only (card #177);
+            // anything else another device wrote is dropped here.
             mentions: if self.on_board {
-                Vec::new()
+                p.mentions
+                    .iter()
+                    .filter(|m| super::mention::board_form(&m.key))
+                    .cloned()
+                    .collect()
             } else {
                 p.mentions.clone()
             },

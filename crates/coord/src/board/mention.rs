@@ -13,6 +13,14 @@ use crate::names::trim_space;
 /// How much of the text a mention notice carries.
 const MAX_MENTION_TEXT: usize = 1200;
 
+/// Whether `key` is in a shared board's form: another member's Core can
+/// resolve it (`agent:<cardId>` or `person:<personId>`; v0.5 §2.4).
+pub fn board_form(key: &str) -> bool {
+    key.strip_prefix(store::kinds::AGENT_ACTOR_PREFIX)
+        .or_else(|| key.strip_prefix(store::kinds::PERSON_ACTOR_PREFIX))
+        .is_some_and(|id| !id.is_empty())
+}
+
 /// Takes the keys of `ms` out of `n.to`: a mentioned agent hears only its
 /// mention notice.
 pub fn without_mentioned(n: &mut Notice, ms: &[Mention]) {
@@ -98,9 +106,11 @@ impl Fold {
         reference: &str,
         was: &str,
     ) -> Result<Vec<Notice>> {
+        // A person (another board member) hears through their own devices'
+        // notification, not as a notice or a watcher (card #177).
         let to: Vec<String> = ms
             .iter()
-            .filter(|m| !m.gone)
+            .filter(|m| !m.gone && !m.key.starts_with(store::kinds::PERSON_ACTOR_PREFIX))
             .map(|m| m.key.clone())
             .collect();
         if to.is_empty() {
