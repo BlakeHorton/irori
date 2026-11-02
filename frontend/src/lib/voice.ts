@@ -15,6 +15,7 @@
 
 import { Events, VoiceService } from "./host"
 import { inWails } from "./irori"
+import { previewFlag } from "./preview"
 import { errorText } from "./talk"
 import type { VoiceDownload, VoiceEvent, VoiceStatus } from "../gen/bindings"
 
@@ -171,8 +172,24 @@ const unsupported: VoiceStatus = {
 export async function loadVoiceStatus(force = false): Promise<VoiceStatus> {
   if (shared.status && !force) return shared.status
   if (!inWails()) {
-    set({ status: unsupported })
-    return unsupported
+    // ?voice=ready (or needs-model, denied) shows the mic in the preview.
+    const flag = previewFlag("voice")
+    const st: VoiceStatus =
+      flag === "ready" || flag === "needs-model" || flag === "denied"
+        ? {
+            state: flag,
+            reason:
+              flag === "denied"
+                ? "No microphone was found."
+                : flag === "needs-model"
+                  ? "Voice input needs a one-time download of the speech model (147 MB)."
+                  : "",
+            fix: flag === "denied" ? "mic-denied" : "",
+            modelBytes: 147_964_211,
+          }
+        : unsupported
+    set({ status: st })
+    return st
   }
   try {
     const st = await VoiceService.Status()

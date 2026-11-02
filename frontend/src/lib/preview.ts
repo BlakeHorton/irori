@@ -8,6 +8,7 @@
 //   ?boards         opens the Boards dialog
 //   ?share=<card>   opens Share to board on that card's page
 //   ?update=ready   shows the update card (also downloading, installing)
+//   ?voice=ready    shows the mic on the text boxes (also needs-model, denied)
 //   ?from=<card>    the grid as that card's Back leaves it (App.tsx)
 //   ?filter=done    the grid on that filter tab (App.tsx)
 
