@@ -14,7 +14,6 @@ import { cardRef } from "@/components/cards/bits"
 import {
   BlockerState,
   cards as cardsApi,
-  MaxAnswer,
   useCard,
   type CardBlocker,
   type CardSummary,
@@ -26,7 +25,6 @@ import {
   allowLifts,
   errorText,
   holdText,
-  MaxText,
   talk,
   type Delivery,
 } from "@/lib/talk"
@@ -164,7 +162,6 @@ function OwnWords({
   label,
   placeholder,
   send,
-  max,
   busy,
   onSend,
   onCancel,
@@ -172,7 +169,6 @@ function OwnWords({
   label: string
   placeholder: string
   send: string
-  max: number
   busy: boolean
   onSend: (text: string) => void
   onCancel: () => void
@@ -189,7 +185,6 @@ function OwnWords({
         autoSize
         rows={1}
         value={text}
-        maxLength={max}
         aria-label={label}
         placeholder={placeholder}
         className="max-h-40 min-h-9 min-w-[min(100%,16rem)] flex-1 bg-card py-1.5"
@@ -331,7 +326,6 @@ function BlockerAnswer({
               : "Answer in your own words"
           }
           send={b.doneCheck ? "Not done" : "Answer"}
-          max={MaxAnswer}
           busy={act.busy}
           onSend={(t) => send(-1, t)}
           onCancel={() => setOwn(false)}
@@ -426,7 +420,6 @@ function MessageNeed({
           label={`Your reply to ${sender(d)}`}
           placeholder={`Reply to ${sender(d)}`}
           send="Reply"
-          max={MaxText}
           busy={act.busy}
           onSend={(t) => void act.run(() => talk.reply(d.id, t), "Replied.")}
           onCancel={() => setReplying(false)}
