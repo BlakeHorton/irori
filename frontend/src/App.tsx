@@ -495,7 +495,9 @@ export function App() {
 
   return (
     <AgentCards.Provider value={agentCards}>
-    <div className="flex h-svh overflow-hidden bg-background">
+    {/* No background of its own: the body paints the backdrop the glass
+        shows (design/irori-ds.css, #266). */}
+    <div className="flex h-svh overflow-hidden">
       {/* The sidebar is the nav (card #135); the header is the page's. */}
       <AppSidebar
         roster={roster}

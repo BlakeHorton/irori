@@ -1,7 +1,8 @@
 /*
- * Irori's own design system (card #259): a first draft for choosing a glass
- * style. Not wired into the app yet: everything here is scoped to
- * html[data-ds="irori"], which only the preview gallery (?gallery) sets.
+ * Irori's own design system (card #259; the app's look since #266). Scoped
+ * to html[data-ds="irori"]: index.html sets it with data-glass="frost" and
+ * class="dark"; the preview gallery (?gallery) switches the glass styles
+ * and light/dark to compare them.
  *
  * Palette "hearth": warm ash and charcoal neutrals (hue ~50-70), one ember
  * accent. Glass styles live under data-glass; each sets the same five knobs
@@ -58,6 +59,38 @@ html[data-ds="irori"] {
   --card: var(--glass-bg);
   --popover: var(--glass-bg);
   --sidebar: var(--glass-bg);
+
+  --fs: 1;
+  --track: 0em;
+
+  /* Irori's own names (were Toru's), onto the hearth ramp */
+  --ink: var(--foreground);
+  --ink-2: oklch(0.36 0.014 52);
+  --hair: var(--border);
+  --blue: var(--primary);
+  --blue-deep: oklch(0.5 0.17 36);
+  /* The person's face: violet, clear of the ember accent and the status hues */
+  --person: oklch(0.5 0.15 300);
+  --person-surface: oklch(0.5 0.15 300 / 0.12);
+
+  --topbar-bg: var(--glass-bg);
+  --topbar-border: var(--glass-border);
+  --topbar-shadow: 0 8px 24px oklch(0.3 0.03 50 / 0.1);
+
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* The backdrop the glass shows: warm light from the hearth, smoke, and a
+     cool ember-blue in the far corner. Fixed, so it stays put on scroll. */
+  --backdrop:
+    radial-gradient(56rem 44rem at 8% -12%, oklch(0.8 0.12 55 / 0.55), transparent 62%),
+    radial-gradient(44rem 40rem at 100% 30%, oklch(0.78 0.09 340 / 0.35), transparent 60%),
+    radial-gradient(50rem 42rem at 40% 118%, oklch(0.8 0.07 195 / 0.35), transparent 62%);
 }
 
 html[data-ds="irori"].dark {
@@ -87,6 +120,21 @@ html[data-ds="irori"].dark {
   --glass-tint: oklch(0.23 0.014 48);
   --glass-border: oklch(1 0 0 / 0.12);
   --glass-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 16px 40px oklch(0 0 0 / 0.42);
+
+  --ink-2: oklch(0.86 0.01 65);
+  --blue-deep: oklch(0.68 0.16 48);
+  --person: oklch(0.76 0.12 300);
+  --person-surface: oklch(0.76 0.12 300 / 0.16);
+  --topbar-shadow: 0 8px 30px oklch(0 0 0 / 0.35);
+  --chart-2: oklch(0.74 0.11 180);
+  --chart-3: oklch(0.84 0.13 80);
+  --chart-4: oklch(0.72 0.12 300);
+  --chart-5: oklch(0.7 0.02 60);
+
+  --backdrop:
+    radial-gradient(56rem 44rem at 8% -12%, oklch(0.5 0.14 45 / 0.4), transparent 62%),
+    radial-gradient(44rem 40rem at 100% 30%, oklch(0.42 0.12 330 / 0.28), transparent 60%),
+    radial-gradient(50rem 42rem at 40% 118%, oklch(0.44 0.08 195 / 0.3), transparent 62%);
 }
 
 /* ---- the glass styles -------------------------------------------------- */
@@ -210,7 +258,18 @@ html[data-ds="irori"]
 }
 
 html[data-ds="irori"] body {
-  background: var(--background);
+  background: var(--backdrop), var(--background);
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Irori's own panels (glass-panel) were drawn for Toru's square corners;
+   under Frost they round like the shadcn surfaces. The sticky top bar runs
+   edge to edge, so it stays square. */
+html[data-ds="irori"] .glass-panel {
+  border-radius: var(--radius);
+}
+html[data-ds="irori"] header.glass-panel {
+  border-radius: 0;
 }

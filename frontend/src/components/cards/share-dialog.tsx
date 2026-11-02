@@ -127,7 +127,7 @@ export function ShareButton({
 // Preview is the scrubbed card as the board will hold it.
 function Preview({ p }: { p: SharePreview }) {
   return (
-    <div className="grid gap-2 border border-border bg-muted/30 p-3 text-[13px]">
+    <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3 text-[13px]">
       <p className="font-semibold text-ink">{plainLine(p.title)}</p>
       {p.goal && <p className="whitespace-pre-wrap text-ink-2">{p.goal}</p>}
       {p.doneWhen && (

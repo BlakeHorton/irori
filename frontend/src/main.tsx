@@ -6,6 +6,7 @@ import App from "./App.tsx"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { commands } from "./gen/bindings"
 import { inHost } from "./lib/irori"
+import { previewFlag } from "./lib/preview"
 
 // Card #232: index.html shows the opening screen while the Core starts on
 // its own thread (a fully synced log takes a while on a phone); every
@@ -34,10 +35,16 @@ async function mount() {
     )
     return
   }
+  // Card #266: dark is the app's default (index.html class="dark"); the
+  // browser preview shows the light hearth palette with ?mode=light.
+  if (previewFlag("mode") === "light") {
+    document.documentElement.classList.remove("dark")
+    document.documentElement.style.colorScheme = "light"
+  }
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      {/* Dark only, like Toru: index.html carries class="dark", so there is
-          no theme provider and no light/dark toggle on this branch. */}
+      {/* Dark by default: index.html carries class="dark". There is no
+          theme provider or light/dark toggle in the app yet. */}
       <TooltipProvider delay={300}>
         <App />
       </TooltipProvider>

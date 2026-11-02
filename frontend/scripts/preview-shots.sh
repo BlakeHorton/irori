@@ -18,12 +18,22 @@ profile=$(mktemp -d)
 trap 'rm -rf "$profile"' EXIT
 mkdir -p "$out"
 
+# PREVIEW_MODE=light shoots every row in the light palette (?mode=light).
+mode="${PREVIEW_MODE:-}"
+withmode() { # query -> query with ?mode=<mode> added
+  [ -n "$mode" ] || { printf '%s' "$1"; return; }
+  case "$1" in
+    \?*) printf '?mode=%s&%s' "$mode" "${1#\?}" ;;
+    *) printf '?mode=%s%s' "$mode" "$1" ;;
+  esac
+}
+
 shot() { # name query [width height [reduce]]
   "$browser" --headless=new --disable-gpu --hide-scrollbars --no-first-run \
     ${5:+--force-prefers-reduced-motion} \
     --user-data-dir="$profile" --window-size="${3:-1440},${4:-900}" \
     --virtual-time-budget=4000 --screenshot="$(cygpath -w "$out/$1.png" 2>/dev/null || echo "$out/$1.png")" \
-    "$base$2" >/dev/null 2>&1
+    "$base$(withmode "$2")" >/dev/null 2>&1
   echo "$out/$1.png"
 }
 

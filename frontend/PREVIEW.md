@@ -50,6 +50,7 @@ unchanged.
 | `/?settings` | Settings (card #132): Notifications; `?settings=devices`, `=people`, `=app` open those sections |
 | `/?update=ready` | the update card (`downloading`, `installing` too) |
 | `/?empty` | no cards yet |
+| `/?mode=light` | the light hearth palette (the app is dark by default, card #266); add it to any row above |
 | `/?from=sample-card-4` | the grid as a card's Back leaves it (that card marked and focused) |
 | `/?open=board:task:sample-ask-2` | an ask (the person's prompt to the room) an agent took: status line, Close, the thread |
 | `/?open=board:task:sample-ask-1` | an ask the agents heard and nobody has taken yet |
@@ -65,4 +66,6 @@ too); its Back, Esc and the browser's back return to the grid.
 
 With the preview running, `sh scripts/preview-shots.sh` (Git Bash) saves
 PNGs of every row above to `frontend/preview-shots/` (gitignored) using the
-installed Chrome or Edge, headless, with a throwaway profile.
+installed Chrome or Edge, headless, with a throwaway profile. On macOS set
+`BROWSER_EXE` to Chrome's binary; `PREVIEW_MODE=light` shoots the light
+palette and `PREVIEW_URL` points it at another port.

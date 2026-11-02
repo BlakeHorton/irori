@@ -242,7 +242,7 @@ function PeoplePane({ onOpenBoard }: { onOpenBoard: () => void }) {
           {boards.map((b) => (
             <li
               key={b.boardId}
-              className="flex items-center justify-between gap-3 border border-border px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
             >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate font-medium text-ink">

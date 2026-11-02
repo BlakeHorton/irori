@@ -213,8 +213,8 @@ function ThreadRow({
       ref={box}
       className={
         open
-          ? "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border border-primary bg-background/40 px-3 py-2.5"
-          : "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 border border-border bg-background/40 px-3 py-2.5"
+          ? "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border border-primary bg-background/40 px-3 py-2.5"
+          : "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-lg border border-border bg-background/40 px-3 py-2.5"
       }
     >
       <button

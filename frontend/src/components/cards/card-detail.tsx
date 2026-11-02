@@ -296,7 +296,7 @@ export function CardPage({
             {hasBlockers && (
               <Section title="Blockers" last>
                 {legacy && (
-                  <div className="grid gap-1.5 border border-destructive/50 bg-destructive/10 p-3">
+                  <div className="grid gap-1.5 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                     <div className="text-[13.5px] font-semibold text-ink">
                       <RichLine text={detail.blockerQuestion} />
                     </div>
@@ -307,7 +307,7 @@ export function CardPage({
                   </div>
                 )}
                 {answered && !open.some((b) => b.id === NoteItem) && (
-                  <div className="grid gap-2 border border-border bg-muted/40 p-3 opacity-85">
+                  <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3 opacity-85">
                     <div className="text-[13.5px] font-semibold text-ink">
                       <span className="text-success" aria-label="Answered: ">
                         ✓{" "}
@@ -1546,7 +1546,7 @@ function BlockerItem({
         onClick={() => setUnfolded(true)}
         aria-expanded={false}
         title="Show the whole item"
-        className="flex min-w-0 items-baseline gap-2 border border-border bg-muted/30 px-3 py-2 text-left text-[12.5px] opacity-85 outline-none hover:bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex min-w-0 items-baseline gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-left text-[12.5px] opacity-85 outline-none hover:bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring"
       >
         <span className="shrink-0 text-success" aria-label="Resolved: ">
           ✓
@@ -1736,7 +1736,7 @@ function OptionItem({
   return (
     <div
       className={cn(
-        "grid gap-1 border bg-card",
+        "grid gap-1 rounded-lg border bg-card",
         o.recommended
           ? "border-primary/60 bg-accent/40 ring-1 ring-primary/20"
           : "border-border"
@@ -2016,7 +2016,7 @@ const reviewStates: Record<
 function ReviewRow({ review, now }: { review: CardReview; now: Date }) {
   const st = reviewStates[review.state] ?? reviewStates.requested
   return (
-    <div className="grid gap-1.5 border border-border bg-background/40 px-3 py-2.5">
+    <div className="grid gap-1.5 rounded-lg border border-border bg-background/40 px-3 py-2.5">
       <div className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 text-[13px]">
         <Face who={review.reviewer} noDot />
         <span className="min-w-0 truncate">
@@ -2051,7 +2051,7 @@ function PRRow({ pr }: { pr: CardPR }) {
   ]
   const known = roles.filter(([, who]) => who.length > 0)
   return (
-    <div className="grid gap-1.5 border border-border bg-background/40 px-3 py-2.5">
+    <div className="grid gap-1.5 rounded-lg border border-border bg-background/40 px-3 py-2.5">
       <div className="flex min-w-0 items-center gap-2 text-[13px]">
         <span className="shrink-0 font-mono text-xs text-muted-foreground">
           #{pr.number}

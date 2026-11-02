@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="en" class="dark" data-theme="toru" style="color-scheme: dark; background: #0b0c0f">
+<!-- Card #266: Irori's own design system, Frost glass; dark by default.
+     design/irori-ds.css paints the page and its backdrop. -->
+<html lang="en" class="dark" data-ds="irori" data-glass="frost" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/irori.svg" />
@@ -10,7 +12,7 @@
       window.__iroriSplashAt = performance.now()
     </script>
   </head>
-  <body style="margin: 0; background: #0b0c0f">
+  <body style="margin: 0">
     <!-- Card #232: the opening screen. Plain markup, so it paints with the
          page, before any script runs; React replaces it once the Core has
          started (main.tsx waits for it). -->
@@ -26,7 +28,7 @@
           justify-content: center;
           gap: 16px;
           font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-          color: #b4b8c2;
+          color: var(--muted-foreground);
         "
       >
         <img src="/irori.svg" width="64" height="64" alt="" />

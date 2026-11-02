@@ -158,7 +158,7 @@ export function MessageDialog({
           </p>
         )}
         {d && (
-          <div className="max-h-[50vh] overflow-y-auto border border-border bg-background/60 px-3 py-2.5 text-[13.5px] whitespace-pre-wrap text-ink">
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-border bg-background/60 px-3 py-2.5 text-[13.5px] whitespace-pre-wrap text-ink">
             {plainBlock(d.message.text)}
           </div>
         )}
