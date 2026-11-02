@@ -83,7 +83,7 @@ export function ThreadsPanel({
   const resolved = threads.filter((t) => t.state === "resolved")
   return (
     <aside
-      className="grid min-w-0 content-start gap-3 overflow-clip p-3 glass-panel"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 overflow-clip p-3 glass-panel"
       aria-label="Threads"
     >
       <div className="flex items-center justify-between">
@@ -213,13 +213,13 @@ function ThreadRow({
       ref={box}
       className={
         open
-          ? "grid min-w-0 gap-2 border border-primary bg-background/40 px-3 py-2.5"
-          : "grid min-w-0 gap-1 border border-border bg-background/40 px-3 py-2.5"
+          ? "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border border-primary bg-background/40 px-3 py-2.5"
+          : "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 border border-border bg-background/40 px-3 py-2.5"
       }
     >
       <button
         type="button"
-        className="grid min-w-0 gap-0.5 text-left"
+        className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5 text-left"
         onClick={onToggle}
         aria-expanded={open}
       >
@@ -285,10 +285,10 @@ const cardStates: Record<string, "info" | "success" | "warning" | "slate"> = {
 
 // ThreadCards are the cards made or changed from a thread (card #155),
 // each one click from its page.
-function ThreadCards({ cards }: { cards: ThreadCard[] }) {
+export function ThreadCards({ cards }: { cards: ThreadCard[] }) {
   const ctx = useContext(AgentCards)
   return (
-    <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+    <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
       Cards:
       {cards.map((c) => (
         <button
@@ -349,9 +349,9 @@ function ThreadView({
   })
   const reopen = act(threadsApi.reopen)
   return (
-    <div className="grid min-w-0 gap-2">
-      <div className="grid min-w-0 gap-1 text-[12.5px]">
-        <RichText text={t.text} className="break-words text-ink-2" />
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-[12.5px]">
+        <RichText text={t.text} className="text-ink-2 [overflow-wrap:anywhere]" />
         {t.told.length > 0 && (
           <span className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
             {t.state === "waiting" ? "Asked first:" : "Told:"}
