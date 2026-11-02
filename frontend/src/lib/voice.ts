@@ -231,6 +231,30 @@ export function onVoiceEvent(f: (e: VoiceEvent) => void): () => void {
   return Events.On<VoiceEvent>(EventVoice, (e) => f(e.data))
 }
 
-export const startVoice = () => VoiceService.Start()
+// Android (card #240): the native engine records with AAudio, which needs
+// the RECORD_AUDIO runtime permission. Tauri's WebView asks Android for it
+// when the page asks for the mic, so the first press opens the mic here
+// once (Android shows its Allow prompt) and closes it again before the
+// engine starts. Elsewhere the engine's own status and errors cover it.
+const onAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
+let micAllowed = false
+
+export async function allowMic(): Promise<void> {
+  if (!onAndroid || micAllowed || !navigator.mediaDevices?.getUserMedia) return
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    for (const t of stream.getTracks()) t.stop()
+    micAllowed = true
+  } catch {
+    throw new Error(
+      "Allow Irori to use the microphone in Settings > Apps > Irori > Permissions, then try again."
+    )
+  }
+}
+
+export const startVoice = async () => {
+  await allowMic()
+  return VoiceService.Start()
+}
 export const stopVoice = (session: number) => VoiceService.Stop(session)
 export const openVoiceSettings = (code: string) => VoiceService.OpenSettings(code)
