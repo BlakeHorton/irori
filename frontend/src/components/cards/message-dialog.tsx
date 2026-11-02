@@ -18,13 +18,7 @@ import {
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { parseTime, plainBlock, plainLine, relativeTime } from "@/lib/irori"
 import { notDelivered, type Mention } from "@/lib/mentions"
-import {
-  errorText,
-  holdText,
-  State,
-  talk,
-  type Delivery,
-} from "@/lib/talk"
+import { errorText, holdText, State, talk, type Delivery } from "@/lib/talk"
 
 // MessageDialog is one message a notification's Open named (there is no
 // inbox in the window): a message Irori held, with Release and Dismiss, or

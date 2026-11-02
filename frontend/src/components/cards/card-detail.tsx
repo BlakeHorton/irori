@@ -83,6 +83,15 @@ import { ShareButton, WithdrawButton } from "./share-dialog"
 // card once answered, so the panel keeps it to show who heard.
 type Answered = { question: string; answer: string; told: Told; to: AgentRef }
 
+// gist quotes the start of a blocker answer on one summary line: the
+// person's answer may be a pasted log (card #265), and the blocker's thread
+// shows all of it.
+const GistChars = 200
+function gist(s: string): string {
+  const l = plainLine(s)
+  return l.length > GistChars ? `${l.slice(0, GistChars - 1)}…` : l
+}
+
 // CardPage is one card on its own page, in the window's full width: a
 // header (short ref, title, state, scope, Back), a main column with the
 // objective, its blockers and the thread, and a side column with progress,
@@ -306,7 +315,7 @@ export function CardPage({
                       {plainLine(answered.question)}
                     </div>
                     <div className="text-[11.5px] text-muted-foreground">
-                      You answered: “{plainLine(answered.answer)}”
+                      You answered: “{gist(answered.answer)}”
                     </div>
                     <ToldLine told={answered.told} raiser={answered.to} />
                   </div>
@@ -1524,10 +1533,10 @@ function BlockerItem({
 
   const by = r
     ? r.closed
-      ? `closed by ${name(r.by)}${r.answer ? `: “${plainLine(r.answer)}”` : ""}`
+      ? `closed by ${name(r.by)}${r.answer ? `: “${gist(r.answer)}”` : ""}`
       : r.note
-        ? `resolved by ${name(r.by)}: “${plainLine(r.note)}”`
-        : `${name(r.by)} answered: “${plainLine(r.answer)}”`
+        ? `resolved by ${name(r.by)}: “${gist(r.note)}”`
+        : `${name(r.by)} answered: “${gist(r.answer)}”`
     : ""
 
   if (r && !unfolded && !told && !error)
