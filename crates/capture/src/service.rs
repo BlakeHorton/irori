@@ -175,6 +175,30 @@ pub(crate) struct Inner {
     pub idx: Index,
     /// The registered outside sources; the mutex also serializes pulls.
     pub srcs: Mutex<Sources>,
+    /// Open once the start's replay has folded every row (card #243):
+    /// [`Inner::read`] and [`Inner::write`] wait for it.
+    pub ready: Gate,
+}
+
+/// A one-way latch: closed until [`Gate::open`], then open for good.
+#[derive(Default)]
+pub(crate) struct Gate {
+    open: Mutex<bool>,
+    cv: std::sync::Condvar,
+}
+
+impl Gate {
+    pub(crate) fn open(&self) {
+        *lock(&self.open) = true;
+        self.cv.notify_all();
+    }
+
+    pub(crate) fn wait(&self) {
+        let mut g = lock(&self.open);
+        while !*g {
+            g = self.cv.wait(g).unwrap_or_else(|p| p.into_inner());
+        }
+    }
 }
 
 /// The capture service. Cloning shares one service; safe for concurrent
@@ -229,11 +253,15 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Inner {
+    /// The fold, once the start's replay is done (card #243).
     pub fn read(&self) -> RwLockReadGuard<'_, Fold> {
+        self.ready.wait();
         self.fold.read().unwrap_or_else(|p| p.into_inner())
     }
 
+    /// The fold for writing, once the start's replay is done (card #243).
     pub fn write(&self) -> RwLockWriteGuard<'_, Fold> {
+        self.ready.wait();
         self.fold.write().unwrap_or_else(|p| p.into_inner())
     }
 
@@ -482,34 +510,38 @@ impl Capture {
             ignores: Mutex::new(HashMap::new()),
             idx: Index::open()?,
             srcs: Mutex::new(Sources::default()),
+            ready: Gate::default(),
             opts,
         };
         let c = Capture {
             inner: Arc::new(inner),
         };
-        c.replay()?;
-        // The search index fills off the start path (card #243): a search
-        // before it's done waits for it.
-        let inner = Arc::downgrade(&c.inner);
+        // The replay runs off the start path (card #243): the fold opens
+        // when it's done, and every read or write waits for that. Then the
+        // search index fills; a search before that waits for it.
+        let inner = c.inner.clone();
+        // Docs collect from the first replayed row, before anyone can search.
+        inner.idx.defer();
         std::thread::Builder::new()
-            .name("capture-index".into())
+            .name("capture-replay".into())
             .spawn(move || {
-                if let Some(inner) = inner.upgrade()
-                    && let Err(e) = inner.idx.flush()
-                {
-                    inner.write().last_err = format!("capture: search index: {e}");
+                let res = Capture::replay(&inner);
+                inner.ready.open();
+                let idx = inner.idx.flush();
+                if let Err(e) = res.and(idx.map_err(|e| format!("capture: search index: {e}"))) {
+                    inner.write().last_err = e;
                 }
             })
-            .map_err(|e| format!("capture: search index thread: {e}"))?;
+            .map_err(|e| format!("capture: replay thread: {e}"))?;
         Ok(c)
     }
 
     /// Folds every capture row, oldest first, paging past the list cap by
     /// the `(hlc, device, seq)` cursor. The search docs wait in memory for
     /// the index's flush.
-    fn replay(&self) -> Result<(), String> {
-        let inner = &self.inner;
-        let mut f = inner.write();
+    fn replay(inner: &Inner) -> Result<(), String> {
+        // Straight at the lock: the gate opens after this.
+        let mut f = inner.fold.write().unwrap_or_else(|p| p.into_inner());
         inner.idx.defer();
         Self::replay_rows(inner, &mut f)
     }
