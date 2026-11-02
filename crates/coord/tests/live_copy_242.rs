@@ -48,7 +48,10 @@ fn sweeping_a_live_board_copy_writes_no_repeat_task_left() {
                     cards.entry(s(&v["cardId"])).or_insert(s(&v["personId"]));
                 }
                 kinds::BOARD_CREATED => {
-                    devs.insert(s(&v["creator"]["rootDeviceId"]), s(&v["creator"]["personId"]));
+                    devs.insert(
+                        s(&v["creator"]["rootDeviceId"]),
+                        s(&v["creator"]["personId"]),
+                    );
                 }
                 kinds::BOARD_MEMBER_ADDED => {
                     devs.insert(s(&v["rootDeviceId"]), s(&v["personId"]));
@@ -92,7 +95,9 @@ fn sweeping_a_live_board_copy_writes_no_repeat_task_left() {
                 .and_then(|c| cards.get(c).cloned())
                 .unwrap_or_default()
         })),
-        device_person: Some(Arc::new(move |d: &str| devs.get(d).cloned().unwrap_or_default())),
+        device_person: Some(Arc::new(move |d: &str| {
+            devs.get(d).cloned().unwrap_or_default()
+        })),
         ..Options::default()
     };
     // No agent is live here: every holder is absent.
