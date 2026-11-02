@@ -102,6 +102,8 @@ impl Capture {
             q.limit = search::DEFAULT_LIMIT;
         }
         q.limit = q.limit.min(search::MAX_LIMIT + 1);
+        // The start's replay first (card #243): its docs are the index.
+        self.inner.ready.wait();
         self.pull();
         self.inner.idx.search(&q).map_err(Error::Other)
     }
@@ -122,6 +124,7 @@ impl Capture {
 
     /// How many docs the index holds (tools and tests).
     pub fn index_size(&self) -> usize {
+        self.inner.ready.wait();
         self.inner.idx.size()
     }
 
