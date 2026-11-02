@@ -640,6 +640,8 @@ impl Core {
     /// home server and API listener). The lockfile is written by
     /// [`Core::write_lockfile`] once the API listens.
     pub fn start(mut opts: Options) -> Result<Core, StartError> {
+        // Card #232: how long each part of the start takes, in one log line.
+        let mut laps = StartLaps::new();
         let dir = opts.data_dir.clone();
         lockfile::create_dir_all_private(&dir).map_err(|e| other("", e))?;
         if let Ok(lf) = lockfile::read(&dir)
@@ -661,6 +663,7 @@ impl Core {
         let ident = Arc::new(
             Identity::load(&dir, dev, opts.keystore.take()).map_err(|e| other("identity", e))?,
         );
+        laps.lap("identity");
         let device = ident.self_device();
         let me = device.id.clone();
         let person = ident.current();
@@ -689,6 +692,7 @@ impl Core {
             )
             .map_err(|e| other("open event log", e))?,
         );
+        laps.lap("store");
         let role = if opts.headless {
             irori_identity::objects::ROLE_NODE
         } else {
@@ -703,6 +707,7 @@ impl Core {
         if let Err(e) = irori_pair::learn_saved(&dir, &st, &chain) {
             logf(format_args!("pairing rows: {e}"));
         }
+        laps.lap("cert");
         let fail = |st: &Store, e: StartError| {
             let _ = st.close();
             e
@@ -733,6 +738,7 @@ impl Core {
             edit(&mut popts);
         }
         let presence = Arc::new(presence::Watcher::new(popts));
+        laps.lap("presence");
 
         st.append(
             "irori",
@@ -745,6 +751,7 @@ impl Core {
             },
         )
         .map_err(|e| fail(&st, other("", e)))?;
+        laps.lap("started-row");
 
         let revoked = {
             let ch = chain.clone();
@@ -788,6 +795,7 @@ impl Core {
             revoked: Some(revoked.clone()),
         })
         .map_err(|e| fail(&st, other("roster", e)))?;
+        laps.lap("roster");
         {
             let r = roster.clone();
             names.set_mesh(move || r.agents());
@@ -841,6 +849,7 @@ impl Core {
             Inbox::new(st.clone(), Arc::new(MeshAgents(roster.clone())), iopts)
                 .map_err(|e| fail(&st, other("inbox", e)))?,
         );
+        laps.lap("inbox");
 
         let co = Arc::new(
             Coord::new(
@@ -861,6 +870,7 @@ impl Core {
             .map_err(|e| fail(&st, other("coord", e)))?,
         );
         let _ = coord_cell.set(co.clone());
+        laps.lap("coord");
 
         let scrubber = Arc::new(scrub::Scrubber::new::<&str>(&[]));
         let blobs =
@@ -884,6 +894,7 @@ impl Core {
         )
         .map_err(|e| fail(&st, other("capture", e)))?;
         let _ = capture_cell.set(cap.clone());
+        laps.lap("capture");
         // Capture's search dispatches the Board and inbox kinds to them
         // (capture.md §2.7).
         cap.add_source(co.clone());
@@ -912,6 +923,7 @@ impl Core {
         });
         let asks_sub = Arc::new(st.subscribe());
         let asks = coord::approvals::Book::new(aopts).map_err(|e| fail(&st, other("asks", e)))?;
+        laps.lap("asks");
 
         let files =
             blob::Files::open(dir.join("files")).map_err(|e| fail(&st, other("attachments", e)))?;
@@ -920,6 +932,7 @@ impl Core {
         load_colors(&st, &colors);
         let device_names = coord::devname::Names::new();
         load_device_names(&st, &device_names);
+        laps.lap("colors+names");
         let decisions_sub = Arc::new(st.subscribe());
 
         // The Core's stop; the shared boards' threads end with it too.
@@ -1004,6 +1017,7 @@ impl Core {
         };
         let (pairing, mesh) = pairing;
         let _ = node_cell.set(mesh.node.clone());
+        laps.lap("mesh");
 
         let invites = invites::Invites::default();
         let home = (!opts.no_home).then(|| {
@@ -1107,6 +1121,7 @@ impl Core {
                 .set_notify(Some(Arc::new(move || h.kick())));
         }
         s.add_secret(&token);
+        laps.lap("services");
 
         let tools = tools::Set::new(Arc::new(ToolsView(s.clone())), Some(s.now.clone()));
         let core = Core {
@@ -1122,6 +1137,7 @@ impl Core {
         // decision before anything serves an attach stream that could wake
         // them.
         s.inbox.catch_up();
+        laps.lap("catch-up");
         let changes = Arc::new(s.presence.subscribe());
         core.start_loops(
             &opts,
@@ -1133,6 +1149,7 @@ impl Core {
                 decisions: decisions_sub,
             },
         );
+        laps.lap("loops");
         // The cards' Watch once the services run (Go core.go: notify.Watch
         // after Start); `None` when headless.
         *core.watch.lock().unwrap_or_else(|e| e.into_inner()) = notify::watch(
@@ -1163,6 +1180,8 @@ impl Core {
                 }),
             },
         );
+        laps.lap("watch");
+        laps.report();
         Ok(core)
     }
 
@@ -1250,7 +1269,9 @@ impl Core {
         // The shared boards on this device, and the person's board.joined
         // and board.forgot rows from every device (Go openBoards,
         // followOwnBoards).
+        let boards_t = Instant::now();
         s.open_boards();
+        logf(format_args!("start: boards opened in {} ms", boards_t.elapsed().as_millis()));
         {
             let sub = Arc::new(s.store.subscribe());
             let reg = self.on_stop(&sub, |s| s.cancel());
@@ -2757,5 +2778,47 @@ fn commit_subject(root: &str, sha: &str) -> String {
             .take(120)
             .collect(),
         Err(_) => String::new(),
+    }
+}
+
+/// Card #232: times the parts of [`Core::start`] and logs them as one line,
+/// so a slow start (a phone with a fully synced log) shows where it went.
+struct StartLaps {
+    t0: Instant,
+    last: Instant,
+    parts: Vec<(&'static str, Duration)>,
+}
+
+impl StartLaps {
+    fn new() -> Self {
+        let now = Instant::now();
+        StartLaps {
+            t0: now,
+            last: now,
+            parts: Vec::new(),
+        }
+    }
+
+    fn lap(&mut self, what: &'static str) {
+        let now = Instant::now();
+        self.parts.push((what, now - self.last));
+        self.last = now;
+    }
+
+    fn line(&self) -> String {
+        let parts: Vec<String> = self
+            .parts
+            .iter()
+            .map(|(w, d)| format!("{w} {}", d.as_millis()))
+            .collect();
+        format!(
+            "start: core ready in {} ms ({})",
+            (self.last - self.t0).as_millis(),
+            parts.join(", ")
+        )
+    }
+
+    fn report(&self) {
+        logf(format_args!("{}", self.line()));
     }
 }

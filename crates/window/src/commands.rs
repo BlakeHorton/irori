@@ -1000,10 +1000,22 @@ pub async fn update_restart_to_update(w: W<'_>) -> R<()> {
     w.update_restart()
 }
 
+/// Card #232: waits until the Core has started (the window opens first and
+/// shows the opening screen); an error says why it couldn't start.
+#[tauri::command]
+#[specta::specta]
+pub async fn core_ready(r: State<'_, Arc<crate::ready::Ready>>) -> R<()> {
+    let r = r.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || r.wait())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Every command, plus the event payload types the frontend listens for.
 pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
+            core_ready,
             roster_agents,
             roster_device,
             roster_version,

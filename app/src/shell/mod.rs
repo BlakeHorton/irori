@@ -25,7 +25,7 @@ pub mod tray;
 pub mod tray_text;
 mod update;
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use irori_window::{Config, Window, attachments};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -57,18 +57,36 @@ fn context() -> tauri::Context<tauri::Wry> {
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
+    let launched = std::time::Instant::now();
     // Opened from Finder, the Dock or at login, the app has launchd's PATH:
     // take the login shell's before anything starts claude, git or gh.
     // SAFETY: first thing in the window role, before any thread is spawned.
     unsafe { sys::shellpath::fix_gui_path() };
     let startup = login::started_at_login(args);
     let data = datadir::process_data_dir()?;
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| e.to_string())?;
+    let rt = Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?,
+    );
     // One runtime for the Core, the API and Tauri (architecture.md 2).
     tauri::async_runtime::set(rt.handle().clone());
+
+    // Another Irori holding this data dir: the same test the Core makes
+    // (Core::start), made before the window opens. A desktop one gets the
+    // launch handed to it (it shows its window); a headless one is an error.
+    if let Ok(lf) = irori_core::lockfile::read(&data)
+        && lf.pid != irori_core::lockfile::own_pid()
+    {
+        if !lf.headless {
+            return hand_off();
+        }
+        return Err(format!(
+            "start: {}",
+            irori_core::StartError::AlreadyRunning { pid: lf.pid }
+        ));
+    }
 
     // The desktop cards, one per data dir (settings.json there). The dev
     // shell probe (automated tests) never puts a card on screen.
@@ -77,52 +95,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
         headless: probe::Probe::from_env().on(),
         ..notify::Config::default()
     });
-    let hosted = match host::start(&rt, data.clone(), false, Some(notifier.clone())) {
-        Ok(h) => h,
-        Err(host::HostError::Start(e @ irori_core::StartError::AlreadyRunning { .. })) => {
-            // Another desktop Irori holds the Core: hand the launch to it
-            // (it shows its window) and exit. A headless one is an error.
-            if let Ok(lf) = irori_core::lockfile::read(&data)
-                && !lf.headless
-            {
-                return hand_off();
-            }
-            return Err(format!("start: {e}"));
-        }
-        Err(e) => return Err(format!("start: {e}")),
-    };
-    let core = hosted.core.clone();
-    let api_port = hosted.port;
-    irori_core::log(&format!(
-        "irori {} desktop app (device {}, data {})",
-        version(),
-        core.device_id(),
-        data.display()
-    ));
-
-    // The window's backend (crates/window) with the shell's login item.
-    let handle: Arc<OnceLock<AppHandle>> = Arc::default();
-    let mut seams = Window::default_seams(&core);
-    seams.login = Arc::new(ShellLogin(handle.clone()));
-    seams.notifier = Arc::new(irori_window::settings::NotifierSeam(notifier.clone()));
     // The updater (M8), GUI role only; a dev build never checks.
     let updater = update::new(&data);
-    seams.updater = Arc::new(update::WindowUpdater(updater.clone()));
-    let window = Arc::new(Window::new(
-        core.clone(),
-        seams,
-        Config {
-            claude_dir: host::claude_dir()?,
-            downloads: Box::new(attachments::downloads_dir),
-        },
-    ));
-    {
-        let w = Arc::downgrade(&window);
-        core.set_reviver(Some(Arc::new(move |id: &str| match w.upgrade() {
-            Some(w) => w.revive(id),
-            None => Err("Irori is closing".into()),
-        })));
-    }
+
+    // Card #232: the window opens first, with the opening screen, and the
+    // Core starts on its own thread (a fully synced log takes seconds, most
+    // of all on a phone). `ready` tells the page when it may mount; the
+    // window's state is managed once the Core is up.
+    let ready = Arc::new(irori_window::ready::Ready::new());
+    let hosted: Arc<Mutex<Option<host::Hosted>>> = Arc::default();
+    let starting: Arc<Mutex<Option<std::thread::JoinHandle<()>>>> = Arc::default();
     let pumps_stop = sys::cancel::Cancel::new();
     let builder = irori_window::builder();
     let invoke = builder.invoke_handler();
@@ -141,44 +123,54 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let app = app
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(core.clone())
-        .manage(window.clone())
+        .manage(ready.clone())
         .manage(probe.clone())
         .invoke_handler(invoke)
-        .register_asynchronous_uri_scheme_protocol(attachments::SCHEME, {
-            let w = window.clone();
-            move |_ctx, req, responder| {
-                let w = w.clone();
-                let r = attachments::Request {
-                    method: req.method().as_str().to_string(),
-                    path: req.uri().path().to_string(),
-                    range: header(&req, "range"),
-                    if_none_match: header(&req, "if-none-match"),
-                };
-                // A fetch from another device can take its time (M5); never
-                // on the webview's thread.
-                std::thread::spawn(move || {
-                    let resp = w.serve_attachment(&r);
-                    let mut b = tauri::http::Response::builder().status(resp.status);
-                    for (k, v) in &resp.headers {
-                        b = b.header(k, v);
-                    }
-                    b = b.header("Access-Control-Allow-Origin", attachments::app_origin());
-                    match b.body(resp.body) {
-                        Ok(r) => responder.respond(r),
-                        Err(e) => irori_core::log(&format!("irori: attachment response: {e}")),
-                    }
-                });
-            }
+        .register_asynchronous_uri_scheme_protocol(attachments::SCHEME, |ctx, req, responder| {
+            // The page asks for attachments only once it has mounted, after
+            // the Core is up; until then there is nothing to serve.
+            let Some(w) = ctx.app_handle().try_state::<Arc<Window>>() else {
+                let resp = tauri::http::Response::builder()
+                    .status(503)
+                    .body(Vec::new());
+                if let Ok(r) = resp {
+                    responder.respond(r);
+                }
+                return;
+            };
+            let w = w.inner().clone();
+            let r = attachments::Request {
+                method: req.method().as_str().to_string(),
+                path: req.uri().path().to_string(),
+                range: header(&req, "range"),
+                if_none_match: header(&req, "if-none-match"),
+            };
+            // A fetch from another device can take its time (M5); never
+            // on the webview's thread.
+            std::thread::spawn(move || {
+                let resp = w.serve_attachment(&r);
+                let mut b = tauri::http::Response::builder().status(resp.status);
+                for (k, v) in &resp.headers {
+                    b = b.header(k, v);
+                }
+                b = b.header("Access-Control-Allow-Origin", attachments::app_origin());
+                match b.body(resp.body) {
+                    Ok(r) => responder.respond(r),
+                    Err(e) => irori_core::log(&format!("irori: attachment response: {e}")),
+                }
+            });
         })
         .on_page_load({
             let probe = probe.clone();
             move |_webview, payload| {
+                if payload.event() != tauri::webview::PageLoadEvent::Finished {
+                    return;
+                }
                 // The probe: which origin the frontend loaded from (the
                 // embedded assets: http://tauri.localhost on Windows,
                 // tauri://localhost on macOS). Scheme and host, not
                 // origin(): a non-special scheme's origin is "null".
-                if probe.on() && payload.event() == tauri::webview::PageLoadEvent::Finished {
+                if probe.on() {
                     let url = payload.url();
                     probe.note(&format!(
                         "page-load {}://{}",
@@ -186,6 +178,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
                         url.host_str().unwrap_or("")
                     ));
                 }
+                irori_core::log(&format!(
+                    "start: page loaded {} ms after launch",
+                    launched.elapsed().as_millis()
+                ));
             }
         })
         .on_window_event(|w, ev| {
@@ -198,58 +194,50 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
         })
         .setup({
-            let core = core.clone();
             let probe = probe.clone();
-            let window = window.clone();
             let pumps_stop = pumps_stop.clone();
             let updater = updater.clone();
+            let ready = ready.clone();
+            let hosted = hosted.clone();
+            let starting = starting.clone();
+            let rt = rt.clone();
             move |app| {
-                let _ = handle.set(app.handle().clone());
                 builder.mount_events(app);
-                wire_window(app.handle(), &window);
-                wire_opener(app.handle(), &notifier);
-                irori_window::events::start(window.clone(), pumps_stop);
                 // The probe never puts a window on screen.
                 main_window(app.handle(), startup || probe.on())?;
-                let mut tray_for_update = None;
-                if !probe.on() {
-                    let tray = Tray::install(app.handle(), version())?;
-                    tray_for_update = Some(tray.clone());
-                    wire_tray(&tray, &core, &window);
-                    let n = core.notifier().clone();
-                    tray.set_held_opener(Arc::new(move || {
-                        n.open(notify::Target {
-                            tab: notify::TAB_HELD.into(),
-                            ref_: String::new(),
-                        })
-                    }));
-                    let n = core.notifier().clone();
-                    tray.set_wind_down_opener(Arc::new(move || {
-                        n.open(notify::Target {
-                            tab: TAB_WIND_DOWN.into(),
-                            ref_: String::new(),
-                        })
-                    }));
-                    app.manage(tray);
-                }
-                update::wire(app.handle(), &updater, tray_for_update, &notifier);
-                if !probe.on() {
-                    // The launch-at-login cutover (surface.md 7.4).
-                    if let Err(e) = login::LoginItem::system().cutover() {
-                        irori_core::log(&format!("irori: launch at login cutover: {e}"));
-                    }
-                    // Go: AutoUpdate on ApplicationStarted (dev builds and
-                    // unsupported platforms return at once).
-                    let u = updater.clone();
-                    tauri::async_runtime::spawn(async move { u.auto_update().await });
-                }
-                // The rehearsal's launch-at-login switch-over against a
-                // scratch Run key (tools/rehearse; probe only).
-                probe.cutover_on_scratch_key();
-                probe.watch_quit(app.handle());
-                probe.note(&format!("version {}", version()));
-                probe.note(&format!("api-port {api_port}"));
-                probe.note("ready");
+                irori_core::log(&format!(
+                    "start: window open {} ms after launch",
+                    launched.elapsed().as_millis()
+                ));
+                let app = app.handle().clone();
+                let h = std::thread::Builder::new()
+                    .name("irori-start".into())
+                    .spawn(move || {
+                        let started = start_core(
+                            &rt,
+                            &app,
+                            data,
+                            Started {
+                                notifier,
+                                updater,
+                                probe,
+                                pumps_stop,
+                                launched,
+                            },
+                        );
+                        match started {
+                            Ok(h) => {
+                                *hosted.lock().unwrap_or_else(|e| e.into_inner()) = Some(h);
+                                ready.set(Ok(()));
+                            }
+                            Err(e) => {
+                                irori_core::log(&format!("irori: {e}"));
+                                ready.set(Err(e));
+                            }
+                        }
+                    })
+                    .map_err(|e| e.to_string())?;
+                *starting.lock().unwrap_or_else(|e| e.into_inner()) = Some(h);
                 Ok(())
             }
         })
@@ -272,13 +260,145 @@ pub fn run(args: &[String]) -> Result<(), String> {
         })
     });
     probe.note("exiting");
+    // A Core still starting finishes first, so it closes cleanly.
+    if let Some(h) = starting.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        let _ = h.join();
+    }
     // Go OnShutdown(InstallOnExit): a ready update installs silently and
     // leaves Irori closed (/NORELAUNCH).
     updater.install_on_exit();
     pumps_stop.cancel();
-    core.set_reviver(None);
-    let closed = hosted.close();
+    let closed = match hosted.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        Some(h) => {
+            h.core.set_reviver(None);
+            h.close()
+        }
+        None => Ok(()),
+    };
     res.map(|_| ()).and(closed)
+}
+
+/// What [`start_core`] wires once the Core is up.
+struct Started {
+    notifier: notify::Notifier,
+    updater: Arc<::update::Updater>,
+    probe: probe::Probe,
+    pumps_stop: sys::cancel::Cancel,
+    launched: std::time::Instant,
+}
+
+/// Card #232: starts the Core and its API (off the main thread), builds the
+/// window's backend on it, manages both, then wires the tray, the opener
+/// and the updater on the main thread.
+fn start_core(
+    rt: &tokio::runtime::Runtime,
+    app: &AppHandle,
+    data: std::path::PathBuf,
+    s: Started,
+) -> Result<host::Hosted, String> {
+    let hosted = match host::start(rt, data.clone(), false, Some(s.notifier.clone())) {
+        Ok(h) => h,
+        Err(e) => return Err(format!("start: {e}")),
+    };
+    let core = hosted.core.clone();
+    let api_port = hosted.port;
+    irori_core::log(&format!(
+        "irori {} desktop app (device {}, data {}), core up {} ms after launch",
+        version(),
+        core.device_id(),
+        data.display(),
+        s.launched.elapsed().as_millis()
+    ));
+
+    // The window's backend (crates/window) with the shell's login item.
+    let mut seams = Window::default_seams(&core);
+    seams.login = Arc::new(ShellLogin(app.clone()));
+    seams.notifier = Arc::new(irori_window::settings::NotifierSeam(s.notifier.clone()));
+    seams.updater = Arc::new(update::WindowUpdater(s.updater.clone()));
+    let claude_dir = match host::claude_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = hosted.close();
+            return Err(e);
+        }
+    };
+    let window = Arc::new(Window::new(
+        core.clone(),
+        seams,
+        Config {
+            claude_dir,
+            downloads: Box::new(attachments::downloads_dir),
+        },
+    ));
+    {
+        let w = Arc::downgrade(&window);
+        core.set_reviver(Some(Arc::new(move |id: &str| match w.upgrade() {
+            Some(w) => w.revive(id),
+            None => Err("Irori is closing".into()),
+        })));
+    }
+    app.manage(core.clone());
+    app.manage(window.clone());
+    wire_window(app, &window);
+    wire_opener(app, &s.notifier);
+    irori_window::events::start(window.clone(), s.pumps_stop);
+
+    // The tray, the launch-at-login cutover and the updater belong on the
+    // main thread.
+    let ui = {
+        let app = app.clone();
+        let probe = s.probe.clone();
+        let updater = s.updater.clone();
+        move || {
+            let mut tray_for_update = None;
+            if !probe.on() {
+                match Tray::install(&app, version()) {
+                    Ok(tray) => {
+                        tray_for_update = Some(tray.clone());
+                        wire_tray(&tray, &core, &window);
+                        let n = core.notifier().clone();
+                        tray.set_held_opener(Arc::new(move || {
+                            n.open(notify::Target {
+                                tab: notify::TAB_HELD.into(),
+                                ref_: String::new(),
+                            })
+                        }));
+                        let n = core.notifier().clone();
+                        tray.set_wind_down_opener(Arc::new(move || {
+                            n.open(notify::Target {
+                                tab: TAB_WIND_DOWN.into(),
+                                ref_: String::new(),
+                            })
+                        }));
+                        app.manage(tray);
+                    }
+                    Err(e) => irori_core::log(&format!("irori: tray: {e}")),
+                }
+            }
+            update::wire(&app, &updater, tray_for_update, &s.notifier);
+            if !probe.on() {
+                // The launch-at-login cutover (surface.md 7.4).
+                if let Err(e) = login::LoginItem::system().cutover() {
+                    irori_core::log(&format!("irori: launch at login cutover: {e}"));
+                }
+                // Go: AutoUpdate on ApplicationStarted (dev builds and
+                // unsupported platforms return at once).
+                let u = updater.clone();
+                tauri::async_runtime::spawn(async move { u.auto_update().await });
+            }
+            // The rehearsal's launch-at-login switch-over against a
+            // scratch Run key (tools/rehearse; probe only).
+            probe.cutover_on_scratch_key();
+            probe.watch_quit(&app);
+            probe.note(&format!("version {}", version()));
+            probe.note(&format!("api-port {api_port}"));
+            probe.note("ready");
+        }
+    };
+    if let Err(e) = app.run_on_main_thread(ui) {
+        irori_core::log(&format!("irori: wiring the tray: {e}"));
+    }
+    Ok(hosted)
 }
 
 /// Go `handOff`: a bare app with the same single-instance id, so the
@@ -296,13 +416,13 @@ fn hand_off() -> Result<(), String> {
 }
 
 /// The window (Go gui.go:136-148): title `Irori` (hidden in the macOS
-/// title bar), 1100×720, background
-/// RGB(233,238,248) so it doesn't flash, URL `/`; hidden at a login launch.
+/// title bar), 1100×720, URL `/`; hidden at a login launch. The background
+/// is the opening screen's (index.html, card #232), so nothing flashes.
 fn main_window(app: &AppHandle, startup: bool) -> tauri::Result<()> {
     let b = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::default())
         .title("Irori")
         .inner_size(1100.0, 720.0)
-        .background_color(tauri::window::Color(233, 238, 248, 255));
+        .background_color(tauri::window::Color(11, 12, 15, 255));
     // A phone's window is the whole screen (card #226).
     #[cfg(desktop)]
     let b = b.center().visible(!startup);
@@ -460,7 +580,7 @@ fn rebuild_tray(app: &AppHandle) {
 /// The window's launch-at-login seam on the Wails registrations. The
 /// window's SettingsService commands announce the live state themselves;
 /// this rebuilds the tray's checkbox after a change.
-struct ShellLogin(Arc<OnceLock<AppHandle>>);
+struct ShellLogin(AppHandle);
 
 impl irori_window::seams::LoginItem for ShellLogin {
     fn enabled(&self) -> Result<bool, String> {
@@ -468,9 +588,7 @@ impl irori_window::seams::LoginItem for ShellLogin {
     }
     fn set_enabled(&self, on: bool) -> Result<(), String> {
         let res = login::LoginItem::system().set(on);
-        if let Some(app) = self.0.get() {
-            rebuild_tray(app);
-        }
+        rebuild_tray(&self.0);
         res
     }
 }

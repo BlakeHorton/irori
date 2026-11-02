@@ -652,7 +652,7 @@ impl Store {
             query_events(
                 c,
                 &format!(
-                    "SELECT {COLS} FROM refused_events WHERE (hlc > ?1 OR (hlc = ?1 AND (device_id > ?2 OR (device_id = ?2 AND seq > ?3)))) ORDER BY hlc, device_id, seq LIMIT ?4"
+                    "SELECT {COLS} FROM refused_events WHERE hlc >= ?1 AND (hlc > ?1 OR (hlc = ?1 AND (device_id > ?2 OR (device_id = ?2 AND seq > ?3)))) ORDER BY hlc, device_id, seq LIMIT ?4"
                 ),
                 &[
                     Value::Integer(h),
@@ -1559,9 +1559,15 @@ impl Inner {
                 return Ok(Vec::new());
             }
             let h = f.after.hlc.as_i64();
+            // `hlc >= ?` is implied by the cursor, but SQLite can't seek on
+            // an OR: without it every page of a replay rescans and re-sorts
+            // all the rows left (card #232: 36 s → 1.2 s for the inbox's
+            // replay of a 92k-row log).
             wh.push(
-                "(hlc > ? OR (hlc = ? AND (device_id > ? OR (device_id = ? AND seq > ?))))".into(),
+                "hlc >= ? AND (hlc > ? OR (hlc = ? AND (device_id > ? OR (device_id = ? AND seq > ?))))"
+                    .into(),
             );
+            args.push(Value::Integer(h));
             args.push(Value::Integer(h));
             args.push(Value::Integer(h));
             args.push(Value::Text(f.after.device_id.clone()));

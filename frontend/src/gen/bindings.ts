@@ -6,6 +6,11 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	/**
+	 *  Card #232: waits until the Core has started (the window opens first and
+	 *  shows the opening screen); an error says why it couldn't start.
+	 */
+	coreReady: () => __TAURI_INVOKE<null>("core_ready"),
 	rosterAgents: () => __TAURI_INVOKE<AgentCard[]>("roster_agents"),
 	rosterDevice: () => __TAURI_INVOKE<Identity>("roster_device"),
 	rosterVersion: () => __TAURI_INVOKE<string>("roster_version"),
