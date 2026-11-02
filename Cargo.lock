@@ -3609,6 +3609,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "irori-voice"
+version = "0.0.0"
+dependencies = [
+ "windows",
+ "windows-collections",
+ "windows-future",
+]
+
+[[package]]
 name = "irori-window"
 version = "0.0.0"
 dependencies = [

@@ -1,0 +1,26 @@
+[package]
+name = "irori-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Irori's voice input (#240): the platform's own speech recognizer, as live partial and final text"
+
+[lib]
+name = "voice"
+
+# Windows: WinRT Windows.Media.SpeechRecognition (continuous dictation).
+# `windows` 0.62.2 is already in Cargo.lock through tauri/webview2-com.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Globalization",
+    "Media",
+    "Media_SpeechRecognition",
+] }
+windows-future = "0.3.2"
+
+# macOS (SFSpeechRecognizer) and Android (SpeechRecognizer) engines are
+# built on those machines (#240, Lead-Mac); until then src/other.rs
+# reports Unsupported there.
