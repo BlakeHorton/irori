@@ -23,3 +23,5 @@ pub(crate) fn start(_model: &Path, _sink: Sink) -> Result<Session, StartError> {
         message: WHY.to_string(),
     })
 }
+
+pub(crate) fn release() {}

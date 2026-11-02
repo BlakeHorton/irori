@@ -30,6 +30,7 @@ fn main() {
         }
         Err(e) => println!("start failed: {:?}: {}", e.code, e.message),
     }
+    voice::release();
 }
 
 /// A 16-bit PCM WAV as 16 kHz mono (nearest-sample resampling; enough here).

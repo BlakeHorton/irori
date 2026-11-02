@@ -164,7 +164,12 @@ pub fn open_settings(code: ErrorCode) -> Result<(), String> {
     {
         win::open_settings(code)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let _ = code;
+        whisper::mac::open_mic_settings()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = code;
         Err("open the system settings to allow the microphone".into())
@@ -189,6 +194,14 @@ pub fn start_with_samples(
 ) -> Result<Session, StartError> {
     whisper::start_from(model, whisper::Source::Samples(samples), sink)
         .map(|inner| Session { inner: Some(inner) })
+}
+
+/// Frees the speech model kept loaded between sessions. Call it before the
+/// process exits: on macOS ggml's Metal backend asserts at exit when a
+/// model still holds GPU memory, and the app would quit with a crash report.
+/// Starting again later loads the model again.
+pub fn release() {
+    engine::release()
 }
 
 /// One listening session. Dropping it stops it.

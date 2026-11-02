@@ -207,6 +207,21 @@ impl Window {
         Ok(())
     }
 
+    /// Ends any session and frees the speech model: the shell calls it as
+    /// the app exits (macOS's Metal backend asserts at exit otherwise).
+    pub fn voice_shutdown(&self) {
+        let current = self
+            .voice
+            .inner
+            .lock()
+            .map(|mut s| s.current.take())
+            .unwrap_or_default();
+        if let Some((_, session)) = current {
+            session.stop();
+        }
+        voice::release();
+    }
+
     /// Opens the OS settings page for an error code from a voice:event or
     /// the status's `fix`.
     pub fn voice_open_settings(&self, code: &str) -> Result<(), String> {

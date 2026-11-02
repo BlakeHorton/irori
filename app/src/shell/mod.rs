@@ -276,6 +276,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // leaves Irori closed (/NORELAUNCH).
     updater.install_on_exit();
     pumps_stop.cancel();
+    // Free the speech model before exit (#240: Metal asserts otherwise).
+    window.voice_shutdown();
     core.set_reviver(None);
     let closed = hosted.close();
     res.map(|_| ()).and(closed)

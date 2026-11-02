@@ -37,9 +37,49 @@ const MAX_PHRASE: Duration = Duration::from_secs(25);
 const MIN_SPEECH: Duration = Duration::from_millis(300);
 
 pub(crate) fn status() -> Status {
+    #[cfg(target_os = "macos")]
+    if mac::mic_denied() {
+        return Status::Denied(mac::MIC_SETTING.into());
+    }
     match cpal::default_host().default_input_device() {
         Some(_) => Status::Ready,
         None => Status::Denied("No microphone was found.".into()),
+    }
+}
+
+/// macOS's microphone privacy switch (#240). When it is off, Core Audio
+/// hands the app silence instead of an error, so the status reads it. A
+/// first use (not determined) is Ready: opening the stream asks, with
+/// NSMicrophoneUsageDescription from the app's Info.plist.
+#[cfg(target_os = "macos")]
+pub(crate) mod mac {
+    use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+
+    pub(crate) const MIC_SETTING: &str = "Allow Irori to use the microphone in System Settings > Privacy & Security > Microphone, then try again.";
+    const MIC_PANE: &str =
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+
+    pub(crate) fn mic_denied() -> bool {
+        let Some(audio) = (unsafe { AVMediaTypeAudio }) else {
+            return false;
+        };
+        let st = unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio) };
+        st == AVAuthorizationStatus::Denied || st == AVAuthorizationStatus::Restricted
+    }
+
+    /// Opens System Settings at Privacy & Security > Microphone.
+    pub(crate) fn open_mic_settings() -> Result<(), String> {
+        std::process::Command::new("/usr/bin/open")
+            .arg(MIC_PANE)
+            .status()
+            .map_err(|e| e.to_string())
+            .and_then(|s| {
+                if s.success() {
+                    Ok(())
+                } else {
+                    Err(format!("open exited with {s}"))
+                }
+            })
     }
 }
 
@@ -110,11 +150,22 @@ pub(crate) fn start_from(model: &Path, source: Source, sink: Sink) -> Result<Ses
 /// The model loaded last, and from where.
 type Loaded = Option<(PathBuf, Arc<WhisperContext>)>;
 
+/// The model kept between sessions (loading takes a moment).
+fn loaded() -> &'static Mutex<Loaded> {
+    static CTX: OnceLock<Mutex<Loaded>> = OnceLock::new();
+    CTX.get_or_init(|| Mutex::new(None))
+}
+
+/// Frees the kept model (see [`crate::release`]). A running session keeps
+/// its own reference until it ends.
+pub(crate) fn release() {
+    let ctx = loaded().lock().unwrap_or_else(|e| e.into_inner()).take();
+    drop(ctx);
+}
+
 /// The loaded model, kept between sessions (loading takes a moment).
 fn context(model: &Path) -> Result<Arc<WhisperContext>, StartError> {
-    static CTX: OnceLock<Mutex<Loaded>> = OnceLock::new();
-    let slot = CTX.get_or_init(|| Mutex::new(None));
-    let mut g = slot.lock().map_err(|e| StartError {
+    let mut g = loaded().lock().map_err(|e| StartError {
         code: ErrorCode::Other,
         message: e.to_string(),
     })?;
