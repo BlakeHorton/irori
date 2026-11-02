@@ -22,6 +22,7 @@ import {
   type Filter,
 } from "@/components/cards/card-grid"
 import { SearchBox } from "@/components/cards/search-box"
+import { ProgressRows } from "@/components/cards/progress-rows"
 import { ThreadsPanel } from "@/components/cards/threads-panel"
 import {
   BoardCanvas,
@@ -157,6 +158,9 @@ export function BoardView({
   nothingDecide,
   threads,
   aside,
+  lead,
+  rows = false,
+  listed,
 }: {
   scope: string
   cards: CardSummary[]
@@ -182,13 +186,27 @@ export function BoardView({
   threads?: ThreadsProps
   // aside is a right column under the Threads panel (a board's People).
   aside?: ReactNode
+  // lead leads the column, above the filters (Home: Needs you, card #261).
+  lead?: ReactNode
+  // rows: the list is compact progress rows instead of the grid (Home,
+  // card #261).
+  rows?: boolean
+  // listed are the cards lead already shows; All leaves them out of the
+  // rows.
+  listed?: ReadonlySet<string>
 }) {
   const mine = cards.filter((c) => inScope(c, scope))
   const chips = deviceChips(mine)
   // Home's board row (card #199); a board page has none.
   const rowBoards = scope === ScopeOwn ? homeBoards(mine) : undefined
   const active = activeFilter(filter, chips, rowBoards)
-  const { shown, context } = shownCards(mine, active, query)
+  const { shown: all, context } = shownCards(mine, active, query)
+  // On All with no search, a card the lead lists (Needs you) isn't
+  // listed again below it.
+  const shown =
+    rows && listed && active === "all" && !query.trim()
+      ? all.filter((c) => !listed.has(c.id))
+      : all
   const hiddenLine = hiddenByFilter(mine, active, query)
   // The Pinned group: pinned cards in their order, each pinned parent with
   // its subtasks (as BoardService.Cards lists them).
@@ -218,6 +236,8 @@ export function BoardView({
     !!threads &&
     !threads.hidden &&
     (threads.list.length > 0 || !!threads.open)
+  // Home asks for the panel (card #261): it starts hidden and opens with
+  // a thread, so it isn't a fixed column.
   const threadsButton =
     !!threads &&
     (narrow
@@ -312,6 +332,7 @@ export function BoardView({
             {threadsBtn && (
               <span className="flex justify-end">{threadsBtn}</span>
             )}
+            {lead}
             {notice}
             {empty}
           </>
@@ -324,6 +345,10 @@ export function BoardView({
       {header}
       {withThreads(
         <>
+          {lead}
+          {rows && (
+            <h2 className="px-1 pt-2 text-base font-semibold">Agent progress</h2>
+          )}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <FilterBar
               filter={active}
@@ -390,6 +415,28 @@ export function BoardView({
             />
           ) : view === "canvas" ? (
             <BoardCanvas cards={shown} onOpen={onOpen} />
+          ) : shown.length && rows ? (
+            <>
+              {pinnedGroup.length > 0 && (
+                <h3 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Pinned
+                </h3>
+              )}
+              {pinnedGroup.length > 0 && (
+                <ProgressRows
+                  label="Pinned cards"
+                  cards={pinnedGroup}
+                  selected={selected}
+                  onOpen={onOpen}
+                />
+              )}
+              <ProgressRows
+                label={pinnedGroup.length ? "Everything else" : "Cards"}
+                cards={shown.filter((c) => !inPinned.has(c.id))}
+                selected={selected}
+                onOpen={onOpen}
+              />
+            </>
           ) : shown.length ? (
             <>
               {pinnedGroup.length > 0 && (
@@ -421,6 +468,8 @@ export function BoardView({
             <p className="px-1 text-[12.5px] text-muted-foreground">
               {query.trim()
                 ? "No cards match."
+                : rows && all.length
+                  ? "Nothing else in motion."
                 : active === "decide" && nothingDecide
                   ? nothingDecide
                   : "Nothing here with this filter."}

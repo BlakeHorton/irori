@@ -17,10 +17,13 @@ import { WindDownDialog } from "@/components/wind-down-dialog"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
+import { NeedsYou } from "@/components/cards/needs-you"
+import { needsOf } from "@/lib/needs"
 import { whyWaiting } from "@/lib/agent-counts"
 import { asFilter, EmptyCards, matches, type Filter } from "@/components/cards/card-grid"
 import {
   BoardView,
+  inScope,
   ScopeOwn,
   homeFilterKey,
   rememberedFilter,
@@ -40,7 +43,7 @@ import { FocusComment } from "@/lib/thread"
 import { useNow, useRoster } from "@/lib/irori"
 import { previewFlag } from "@/lib/preview"
 import { onOpen } from "@/lib/settings"
-import { nameLookup, useGone, useHeld } from "@/lib/talk"
+import { nameLookup, useGone, useHeld, useInbox } from "@/lib/talk"
 import { UpdateBanner } from "@/updater"
 import { useBoardView } from "@/components/canvas/switch"
 import { BoardHeaderBar, BoardPage } from "@/components/boards/board-page"
@@ -164,36 +167,29 @@ export function App() {
   // Wind down all (card #220): the header's button and the tray's item.
   const [windDown, setWindDown] = useState(false)
   const [newBoard, setNewBoard] = useState(false)
-  // Threads (card #116): the panel beside the Board, the thread unfolded
-  // in it, and whether the person hid it (kept across launches).
+  // Threads (card #116): the panel beside the Board and the thread
+  // unfolded in it. It opens when asked for (card #261): a new thread,
+  // a thread's #ref, or the Threads button; hiding it closes the thread.
   const { threads: threadList } = useThreads()
   // ?thread=<id> opens one (the browser preview's way in).
   const [thread, setThread] = useState(
     () => new URLSearchParams(window.location.search).get("thread") ?? ""
   )
-  const [threadsHidden, setThreadsHidden] = useState(() => {
-    try {
-      return localStorage.getItem("irori.threadsHidden") === "1"
-    } catch {
-      return false
-    }
-  })
+  const [threadsHidden, setThreadsHidden] = useState(() => !thread)
   const hideThreads = (hidden: boolean) => {
     setThreadsHidden(hidden)
-    try {
-      localStorage.setItem("irori.threadsHidden", hidden ? "1" : "0")
-    } catch {
-      // A private window keeps it for this run only.
-    }
+    if (hidden) setThread("")
   }
   const startedThread = (id: string) => {
     setThread(id)
     hideThreads(false)
   }
   const held = useHeld(heldOpen && heldTab === "history")
+  // Home's Needs you (card #261): the agents' messages to the person.
+  const inbox = useInbox()
   const name = nameLookup(
     roster.agents.map((a): [string, string] => [a.key, a.name]),
-    [...held.held, ...held.history].map((d): [string, string] => [
+    [...held.held, ...held.history, ...inbox.deliveries].map((d): [string, string] => [
       d.message.from.key,
       d.message.from.name,
     ])
@@ -351,6 +347,20 @@ export function App() {
   // Home is your own cards; a board's live on its page (card #96), and
   // its decisions show on Home as one line per board.
   const boardDecide = cards.filter((c) => c.scope === "board" && c.openBlockers > 0)
+  // Needs you leads Home (card #261): its cards, messages and held ones.
+  const needs = useMemo(
+    () =>
+      needsOf(
+        cards.filter((c) => inScope(c, ScopeOwn)),
+        inbox.deliveries,
+        held.held
+      ),
+    [cards, inbox.deliveries, held.held]
+  )
+  const needCards = useMemo(
+    () => new Set(needs.filter((n) => n.kind === "check" || n.kind === "decision").map((n) => n.id)),
+    [needs]
+  )
   // cardLabel names the card a held message is about: "#28", else "a card"
   // (one not on this board, or not loaded).
   const cardLabel = (ref: string) => {
@@ -592,6 +602,17 @@ export function App() {
             header={
               <AskBox onThread={startedThread} />
             }
+            lead={
+              <NeedsYou
+                needs={needs}
+                now={now}
+                name={name}
+                onOpenCard={openCard}
+                onOpenMessage={setMessage}
+              />
+            }
+            rows
+            listed={needCards}
             notice={<BoardsNeedYou cards={boardDecide.filter((c) => !c.ours)} boards={boards} />}
             empty={<EmptyCards />}
             threads={{

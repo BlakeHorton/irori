@@ -1777,7 +1777,7 @@ function OptionItem({
 
 // byRecommendation puts recommended options first, keeping each one's
 // index: the answer sends the index, so the order on screen is free.
-function byRecommendation(options: CardOption[]): [CardOption, number][] {
+export function byRecommendation(options: CardOption[]): [CardOption, number][] {
   const all = options.map((o, i): [CardOption, number] => [o, i])
   return [
     ...all.filter(([o]) => o.recommended),

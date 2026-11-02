@@ -1,0 +1,130 @@
+// Home's "Needs you" list and its progress rows (card #261, #259's
+// organization A): what waits on the person comes first, answerable on
+// its row, and every other card is one compact row in one of four
+// states. Pure, so the order and the words are tested without a window.
+
+import {
+  askLine,
+  busy,
+  displayName,
+  Holding,
+  openAsk,
+  over,
+  overLabel,
+  TaskState,
+  workLabel,
+  type CardSummary,
+} from "./cards"
+import { parseTime, plainLine } from "./irori"
+import { State, type Delivery } from "./talk"
+
+// RowState is one of the four states a person acts on (finding 05):
+// Needs you (a decision, a done check, a question), Working (an agent is
+// on it right now), Waiting (on an agent, a review, another card, a
+// taker) and Done.
+export type RowState = "needs" | "working" | "waiting" | "done"
+
+export const rowStateLabel: Record<RowState, string> = {
+  needs: "Needs you",
+  working: "Working",
+  waiting: "Waiting",
+  done: "Done",
+}
+
+// needsYou says the card waits on the person: an open blocker or done
+// check, or its question (input required).
+export function needsYou(c: CardSummary): boolean {
+  if (over(c)) return false
+  return c.openBlockers > 0 || !!c.ready || c.state === TaskState.InputRequired
+}
+
+// rowState is the card's state and the line under its title: what it
+// waits on, who is on it, or how it ended. The words are the ones the
+// card's own page uses.
+export function rowState(c: CardSummary): { state: RowState; line: string } {
+  if (over(c)) return { state: "done", line: overLabel(c) }
+  if (needsYou(c)) {
+    if (c.ready && c.openBlockers <= 1)
+      return { state: "needs", line: "Says it's done: is it?" }
+    if (c.openBlockers > 1)
+      return { state: "needs", line: `${c.openBlockers} decisions` }
+    return { state: "needs", line: plainLine(c.blockerQuestion) || "A question for you" }
+  }
+  if (openAsk(c) && c.ask) return { state: "waiting", line: askLine(c.ask) }
+  if (c.paused) return { state: "waiting", line: "Paused" }
+  if (c.state === TaskState.InReview) return { state: "waiting", line: "In review" }
+  if (c.subtaskBlocked) return { state: "waiting", line: "A subtask needs a call" }
+  if (c.waitingOn)
+    return {
+      state: "waiting",
+      line: c.waitOn ? `Waiting on ${plainLine(c.waitOn)}` : "Waiting on something else",
+    }
+  if (c.waiting > 0) return { state: "waiting", line: "Your answer is with the agent" }
+  const who = c.working
+    .filter((w) => !w.assigned)
+    .map(displayName)
+    .slice(0, 2)
+    .join(", ")
+  if (busy(c)) return { state: "working", line: who ? `${who} working` : "Working" }
+  if (!c.working.length || c.holder.state === Holding.HoldNobody)
+    return { state: "waiting", line: "Nobody has it yet" }
+  const w = workLabel(c)
+  if (w === "not picked up" || w === "offered")
+    return { state: "waiting", line: w === "offered" ? "Offered" : "Not picked up" }
+  return { state: "waiting", line: who ? `${who}, not working on it now` : "Held, not working on it now" }
+}
+
+// Need is one item of the Needs you list.
+export type Need =
+  | { kind: "check" | "decision"; id: string; at: number; card: CardSummary }
+  | { kind: "message"; id: string; at: number; delivery: Delivery }
+  | { kind: "held"; id: string; at: number; delivery: Delivery }
+
+// toPerson says the delivery is an agent's message to the person, still
+// unanswered: sent to a user key (the person's, on any of their devices)
+// and neither held nor closed.
+export function toPerson(d: Delivery): boolean {
+  if (!d.to?.startsWith("user:")) return false
+  return (
+    d.state === State.Queued ||
+    d.state === State.Delivered ||
+    d.state === State.Engaged ||
+    d.state === State.Deferred
+  )
+}
+
+const time = (s: string | undefined) => parseTime(s ?? "")?.getTime() ?? 0
+
+// needsOf is the Needs you list, newest first: every card waiting on the
+// person (a done check, else a decision), every agent's message to them
+// and every message Irori held for them. held is the Held list; a held
+// delivery also in deliveries is listed once.
+export function needsOf(
+  cards: CardSummary[],
+  deliveries: Delivery[],
+  held: Delivery[]
+): Need[] {
+  const out: Need[] = []
+  for (const c of cards) {
+    if (!needsYou(c)) continue
+    const check = !!c.ready && c.openBlockers <= 1
+    out.push({
+      kind: check ? "check" : "decision",
+      id: c.id,
+      at: time(c.updatedAt),
+      card: c,
+    })
+  }
+  const seen = new Set<string>()
+  for (const d of held) {
+    if (seen.has(d.id)) continue
+    seen.add(d.id)
+    out.push({ kind: "held", id: d.id, at: time(d.createdAt), delivery: d })
+  }
+  for (const d of deliveries) {
+    if (seen.has(d.id) || !toPerson(d)) continue
+    seen.add(d.id)
+    out.push({ kind: "message", id: d.id, at: time(d.createdAt), delivery: d })
+  }
+  return out.sort((a, b) => b.at - a.at)
+}
