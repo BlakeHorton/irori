@@ -1623,6 +1623,8 @@ function BlockerItem({
         <time dateTime={raised?.toISOString()} title={raised?.toLocaleString()}>
           {relativeTime(raised, now)}
         </time>
+        {/* Another member decides (card #264); anyone can still answer. */}
+        {b.decider && !r && ` · for ${name(b.decider)} to decide`}
         {by && ` · ${by}`}
       </div>
       {b.thread.length > 0 ? (

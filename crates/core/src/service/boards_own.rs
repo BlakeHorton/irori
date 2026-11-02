@@ -1230,6 +1230,16 @@ impl Services {
                 *s = k(s);
             }
         }
+        // Who a question is for (card #264): this person's person:<id> is
+        // the person here, so only another member's stays person:<id>.
+        for b in &mut t.blockers {
+            b.raised_by = k(&b.raised_by);
+            if let Some(on) = b.on.as_mut()
+                && on.kind == coord::BLOCKED_ON_PERSON
+            {
+                on.reference = k(&on.reference);
+            }
+        }
         t
     }
 

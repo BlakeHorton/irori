@@ -212,9 +212,14 @@ function OwnWords({
 }
 
 // waitsOnYou: the blockers of a card the person answers now (the rule
-// cardSummary counts as open_blockers: open, or replied back to them).
+// cardSummary counts as open_blockers: open, or replied back to them, and
+// not another member's question on a shared board, card #264).
 function waitsOnYou(b: CardBlocker): boolean {
-  return answerable(b.state || BlockerState.Open) && b.state !== BlockerState.Answered
+  return (
+    !b.decider &&
+    answerable(b.state || BlockerState.Open) &&
+    b.state !== BlockerState.Answered
+  )
 }
 
 // CardNeed is a card waiting on the person: its done check (Done, or Not

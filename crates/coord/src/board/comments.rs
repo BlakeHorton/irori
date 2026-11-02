@@ -127,7 +127,12 @@ impl Fold {
                 }
             }
             BLOCKED_ON_PERSON => {
-                if !out.reference.is_empty() && !self.is_owner(&out.reference) {
+                // On a shared board a question can be for another member
+                // (card #264): their person:<id>.
+                let member = self.on_board
+                    && out.reference.starts_with(kinds::PERSON_ACTOR_PREFIX)
+                    && !self.person_of(&out.reference).is_empty();
+                if !out.reference.is_empty() && !member && !self.is_owner(&out.reference) {
                     return Err(invalid("blocked on a person needs \"\" or a user: key"));
                 }
             }

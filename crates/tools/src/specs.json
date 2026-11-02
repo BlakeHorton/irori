@@ -743,6 +743,10 @@
           },
           "maxItems": 10,
           "description": "Agents to bring in: each an agent's name or key from the agents tool. Each is woken now and, on a card, becomes a watcher (never a holder). @name in text works too, for an exact, unique name."
+        },
+        "for": {
+          "type": "string",
+          "description": "Optional, on a shared board's card: who decides, by their name as the board shows it (or their person: key). It shows under their Needs a decision and as waiting on them for the board's other people; anyone can still answer. Default: your own person."
         }
       },
       "required": [

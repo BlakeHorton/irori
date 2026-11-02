@@ -504,6 +504,12 @@ export type CardBlocker = {
 	 *  Done, closes the card; own words say why not and go back to them.
 	 */
 	doneCheck?: boolean,
+	/**
+	 *  On a shared board, the other member this question is for (card
+	 *  #264): it waits on them, not on this person, who can still answer.
+	 *  None when it's this person's.
+	 */
+	decider?: AgentRef | null,
 	thread: CardThreadItem[],
 };
 
