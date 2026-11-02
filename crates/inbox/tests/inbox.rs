@@ -598,3 +598,45 @@ fn errors_wrap() {
         "inbox: no agent by that name or key: no agent called \"nobody\"; agents here now: beta, gamma"
     );
 }
+
+/// #243: `Inbox::start` returns before the replay is in. A subscribe
+/// doesn't wait for it; a read waits until the replay and `then` (the
+/// start's catch-up) have both run, and then sees every row.
+#[test]
+fn start_replays_off_the_callers_thread() {
+    let h = Harness::new();
+    h.abc();
+    let (_, d) = h.send(&claude(KEY_A, "alpha"), &to(KEY_B), "fyi");
+    let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let c = h.clk.clone();
+    let ib = inbox::Inbox::start(
+        h.st.clone(),
+        h.ros.clone(),
+        inbox::Options {
+            device_id: h.device.clone(),
+            now: Some(Arc::new(move || c.now())),
+            ..inbox::Options::default()
+        },
+        {
+            let (ran, id) = (ran.clone(), d.id.clone());
+            move |ib| {
+                // Reads on the replay's own thread don't wait for the gate.
+                assert!(ib.get(&id).is_some());
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                ran.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        },
+    );
+    let sub = ib.subscribe();
+    assert!(
+        !ran.load(std::sync::atomic::Ordering::SeqCst),
+        "subscribe waited for the replay"
+    );
+    let got = ib.get(&d.id).expect("the delivery replayed");
+    assert!(
+        ran.load(std::sync::atomic::Ordering::SeqCst),
+        "a read ran before `then`"
+    );
+    assert_eq!(got.to, KEY_B);
+    assert!(sub.is_empty(), "the replay notifies nobody");
+}

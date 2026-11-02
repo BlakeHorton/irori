@@ -263,11 +263,9 @@ async fn run(
             w.ask(&x.id); // waiting asks get their card: it is the only way to them
         }
     }
-    let mut ich = None;
-    if let Some(ib) = w.s.inbox.clone() {
-        ich = Some(ib.subscribe());
-        w.inbox.start(ib.as_ref(), &mut sink(&w.n, &w.presses)); // what waits gets its card
-    }
+    // Subscribed before ready, so nothing is missed; the inbox's first look
+    // comes after, as it can wait for the inbox's replay at a start.
+    let mut ich = w.s.inbox.clone().map(|ib| ib.subscribe());
     let mut cch = None;
     if let Some(b) = w.s.board.clone() {
         cch = Some(b.subscribe());
@@ -275,6 +273,9 @@ async fn run(
     }
 
     let _ = ready.send(());
+    if let Some(ib) = w.s.inbox.clone() {
+        w.inbox.start(ib.as_ref(), &mut sink(&w.n, &w.presses)); // what waits gets its card
+    }
     while ich.is_some() || cch.is_some() || ach.is_some() {
         enum Ev {
             Inbox(Option<inbox::Change>),

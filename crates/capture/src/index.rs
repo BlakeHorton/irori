@@ -31,8 +31,6 @@ const CREATE: &str = "CREATE VIRTUAL TABLE docs USING fts5(
 
 struct State {
     db: Connection,
-    /// Inside a bulk load (replay): puts share one transaction.
-    in_tx: bool,
     /// ref -> rowid.
     rows: HashMap<String, i64>,
     next: i64,
@@ -116,7 +114,6 @@ impl Index {
         Ok(Index {
             st: Mutex::new(State {
                 db,
-                in_tx: false,
                 rows: HashMap::new(),
                 next: 0,
                 pending: None,
@@ -141,7 +138,7 @@ impl Index {
         let Some(p) = s.pending.take() else {
             return Ok(());
         };
-        let tx = !s.in_tx && s.db.execute_batch("BEGIN").is_ok();
+        let tx = s.db.execute_batch("BEGIN").is_ok();
         let mut res = Ok(());
         for d in &p.docs {
             if let Err(e) = Self::write(&mut s, d) {
@@ -160,23 +157,6 @@ impl Index {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
         self.st.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    /// Starts a bulk load; a failed begin leaves puts autocommitting.
-    pub fn begin(&self) {
-        let mut s = self.lock();
-        if !s.in_tx && s.db.execute_batch("BEGIN").is_ok() {
-            s.in_tx = true;
-        }
-    }
-
-    pub fn commit(&self) -> Result<(), String> {
-        let mut s = self.lock();
-        if !s.in_tx {
-            return Ok(());
-        }
-        s.in_tx = false;
-        s.db.execute_batch("COMMIT").map_err(|e| e.to_string())
     }
 
     /// Upserts one doc by its ref (into the pending set while deferred).
