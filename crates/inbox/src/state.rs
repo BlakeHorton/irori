@@ -635,8 +635,7 @@ pub(crate) struct Inner {
     pub appendable: HashMap<String, bool>,
     pub visible_at: HashMap<String, GoTime>,
     pub held_first: HashSet<String>,
-    /// Its own lock, so a subscribe never waits on a replay.
-    pub subs: Arc<Mutex<Vec<Arc<Queue<Change>>>>>,
+    pub subs: Vec<Arc<Queue<Change>>>,
 
     pub replaying: bool,
     pub changes: Vec<Change>,
@@ -646,44 +645,6 @@ pub(crate) struct Inner {
 /// The messaging core. Safe for concurrent use.
 pub struct Inbox {
     pub(crate) inner: Mutex<Inner>,
-    /// Shut while [`Inbox::start`]'s thread replays; every lock waits on it.
-    ready: Gate,
-    subs: Arc<Mutex<Vec<Arc<Queue<Change>>>>>,
-}
-
-/// A one-way latch: shut until the replay is in.
-struct Gate {
-    open: Mutex<bool>,
-    cv: std::sync::Condvar,
-}
-
-impl Gate {
-    fn new(open: bool) -> Gate {
-        Gate {
-            open: Mutex::new(open),
-            cv: std::sync::Condvar::new(),
-        }
-    }
-
-    fn open(&self) {
-        *self.open.lock().unwrap_or_else(|e| e.into_inner()) = true;
-        self.cv.notify_all();
-    }
-
-    fn wait(&self) {
-        if REPLAYER.with(|r| r.get()) {
-            return;
-        }
-        let mut g = self.open.lock().unwrap_or_else(|e| e.into_inner());
-        while !*g {
-            g = self.cv.wait(g).unwrap_or_else(|p| p.into_inner());
-        }
-    }
-}
-
-thread_local! {
-    /// Set on [`Inbox::start`]'s thread: it works past the shut gate.
-    static REPLAYER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// A change stream from [`Inbox::subscribe`]. Dropping it (or
@@ -747,68 +708,6 @@ fn lock(m: &Mutex<Inner>) -> MutexGuard<'_, Inner> {
 impl Inbox {
     /// Replays the log into memory and returns a ready inbox.
     pub fn new(st: Arc<Store>, roster: Arc<dyn Roster>, opts: Options) -> Result<Inbox> {
-        let mut b = Inbox::build(st, roster, opts);
-        b.replay()?;
-        let subs = b.subs.clone();
-        Ok(Inbox {
-            inner: Mutex::new(b),
-            ready: Gate::new(true),
-            subs,
-        })
-    }
-
-    /// Returns at once and replays on a thread; `then` runs on that thread
-    /// once the replay is in (the start's catch-up), and only then does
-    /// anything else get the inbox: every read, write and search waits for
-    /// it. [`Inbox::subscribe`] doesn't wait. A replay error is logged and
-    /// the inbox opens with what folded.
-    pub fn start(
-        st: Arc<Store>,
-        roster: Arc<dyn Roster>,
-        opts: Options,
-        then: impl FnOnce(&Inbox) + Send + 'static,
-    ) -> Arc<Inbox> {
-        let b = Inbox::build(st, roster, opts);
-        let subs = b.subs.clone();
-        let ib = Arc::new(Inbox {
-            inner: Mutex::new(b),
-            ready: Gate::new(false),
-            subs,
-        });
-        let run = {
-            let ib = ib.clone();
-            move || {
-                REPLAYER.with(|r| r.set(true));
-                if let Err(e) = lock(&ib.inner).replay() {
-                    eprintln!("irori: {e}");
-                }
-                then(&ib);
-                REPLAYER.with(|r| r.set(false));
-                ib.ready.open();
-            }
-        };
-        if let Err(e) = std::thread::Builder::new()
-            .name("inbox-replay".into())
-            .spawn(run)
-        {
-            // No thread: replay here, the old way.
-            eprintln!("irori: inbox: replay thread: {e}");
-            REPLAYER.with(|r| r.set(true));
-            if let Err(e) = lock(&ib.inner).replay() {
-                eprintln!("irori: {e}");
-            }
-            REPLAYER.with(|r| r.set(false));
-            ib.ready.open();
-        }
-        ib
-    }
-
-    /// Waits until [`Inbox::start`]'s replay is in.
-    pub fn wait_ready(&self) {
-        self.ready.wait();
-    }
-
-    fn build(st: Arc<Store>, roster: Arc<dyn Roster>, opts: Options) -> Inner {
         let pick = |v: std::time::Duration, def: std::time::Duration| {
             if v.is_zero() { tm::d(def) } else { tm::d(v) }
         };
@@ -816,7 +715,7 @@ impl Inbox {
             let me = format!("user:{}", opts.device_id);
             Arc::new(move |k: &str| k == me)
         });
-        Inner {
+        let mut b = Inner {
             st,
             roster,
             owners: opts.pr_owners,
@@ -865,17 +764,20 @@ impl Inbox {
             appendable: HashMap::new(),
             visible_at: HashMap::new(),
             held_first: HashSet::new(),
-            subs: Arc::new(Mutex::new(vec![])),
+            subs: vec![],
             replaying: false,
             changes: vec![],
             touched: BTreeSet::new(),
-        }
+        };
+        b.replay()?;
+        Ok(Inbox {
+            inner: Mutex::new(b),
+        })
     }
 
     /// Runs a mutation under the lock, then Go's `unlock()`: edges for the
     /// touched agents, then the changes to subscribers.
     pub(crate) fn mutate<R>(&self, f: impl FnOnce(&mut Inner) -> R) -> R {
-        self.ready.wait();
         let mut g = lock(&self.inner);
         let r = f(&mut g);
         g.unlock();
@@ -884,7 +786,6 @@ impl Inbox {
 
     /// A read under the lock (Go `mu.Lock(); defer mu.Unlock()`).
     pub(crate) fn read<R>(&self, f: impl FnOnce(&Inner) -> R) -> R {
-        self.ready.wait();
         let g = lock(&self.inner);
         f(&g)
     }
@@ -899,10 +800,7 @@ impl Inbox {
     /// queue drops the change and the reader should re-read).
     pub fn subscribe(&self) -> Subscription {
         let q = Arc::new(Queue::new(SUB_BUFFER));
-        self.subs
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(q.clone());
+        lock(&self.inner).subs.push(q.clone());
         Subscription { q }
     }
 }
@@ -1339,10 +1237,9 @@ impl Inner {
             }
             self.appendable.insert(agent, app);
         }
-        let mut subs = self.subs.lock().unwrap_or_else(|e| e.into_inner());
-        subs.retain(|q| !q.is_closed());
+        self.subs.retain(|q| !q.is_closed());
         for c in self.changes.drain(..) {
-            for q in subs.iter() {
+            for q in &self.subs {
                 let _ = q.push(c.clone()); // slow reader; it re-reads
             }
         }

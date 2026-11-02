@@ -845,20 +845,10 @@ impl Core {
             reattach_grace: opts.reattach_grace,
             ..Default::default()
         };
-        // The replay runs on its own thread; the inbox's locks wait for it
-        // and the catch-up after it. Other devices' queued deliveries get
-        // this device's own hold decision there, before anything (an attach
-        // stream that could wake them) gets the inbox.
-        let ib = Inbox::start(st.clone(), Arc::new(MeshAgents(roster.clone())), iopts, {
-            let t0 = std::time::Instant::now();
-            move |ib| {
-                ib.catch_up();
-                logf(format_args!(
-                    "start: inbox replayed in {} ms (off the start)",
-                    t0.elapsed().as_millis()
-                ));
-            }
-        });
+        let ib = Arc::new(
+            Inbox::new(st.clone(), Arc::new(MeshAgents(roster.clone())), iopts)
+                .map_err(|e| fail(&st, other("inbox", e)))?,
+        );
         laps.lap("inbox");
 
         let co = Arc::new(
@@ -1143,6 +1133,11 @@ impl Core {
             watch: Mutex::new(None),
             closed: AtomicBool::new(false),
         };
+        // Other devices' queued deliveries get this device's own hold
+        // decision before anything serves an attach stream that could wake
+        // them.
+        s.inbox.catch_up();
+        laps.lap("catch-up");
         let changes = Arc::new(s.presence.subscribe());
         core.start_loops(
             &opts,
