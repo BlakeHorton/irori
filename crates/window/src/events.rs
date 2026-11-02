@@ -163,15 +163,29 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
         {
             let (w, board_q) = (w.clone(), feed.queue().clone());
             let q = w.core.subscribe_boards();
+            // boards:changed is coalesced too (card #233): a board synced
+            // from another device moves once per board.* / member.* row.
+            let moved_q: Arc<Queue<CoreEvent>> = Arc::new(Queue::new(64));
             let reg = {
-                let q = q.clone();
-                stop.on_cancel(move || q.close())
+                let (q, moved_q) = (q.clone(), moved_q.clone());
+                stop.on_cancel(move || {
+                    q.close();
+                    moved_q.close();
+                })
             };
+            {
+                let (w, stop, moved_q) = (w.clone(), stop.clone(), moved_q.clone());
+                out.push(spawn("irori-window-boards-moved", move || {
+                    coalesce(&moved_q, BOARD_EMIT_EVERY, &stop, |_| {
+                        w.emit(EVENT_BOARDS_CHANGED, &Empty {});
+                    });
+                }));
+            }
             out.push(spawn("irori-window-boards", move || {
                 let _reg = reg;
                 while let Some(ch) = q.recv() {
                     if ch.kind.is_empty() && ch.task_id.is_empty() {
-                        w.emit(EVENT_BOARDS_CHANGED, &Empty {});
+                        moved_q.push(CoreEvent::Resync);
                     }
                     board_q.push(CoreEvent::Board(ch));
                 }
@@ -179,7 +193,12 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
         }
         out.push(spawn("irori-window-board", move || {
             let q = feed.queue().clone();
-            coalesce(&q, BOARD_EMIT_EVERY, &stop, |_| {
+            coalesce(&q, BOARD_EMIT_EVERY, &stop, |batch| {
+                // A board's sidebar pin from another of the person's devices
+                // (card #233): the boards list holds the pins.
+                if batch.iter().any(is_board_pin) {
+                    w.emit(EVENT_BOARDS_CHANGED, &Empty {});
+                }
                 w.emit(EVENT_BOARD_CHANGED, &Empty {});
                 w.board_changed();
             });
@@ -210,6 +229,11 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
         }));
     }
     out
+}
+
+/// Whether a Board event is a shared board's sidebar pin moving (card #233).
+fn is_board_pin(ev: &CoreEvent) -> bool {
+    matches!(ev, CoreEvent::Board(ch) if ch.kind == coord::BOARD_PIN_CHANGED)
 }
 
 fn spawn(name: &str, f: impl FnOnce() + Send + 'static) -> JoinHandle<()> {

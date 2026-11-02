@@ -384,6 +384,15 @@ pub(crate) fn each_row(st: &Store, mut f: Filter, mut fun: impl FnMut(&Event)) -
     }
 }
 
+/// Whether a board row changes what the boards list shows (card #233): a
+/// resync, or a board.* / member.* row (name, tag, ready, people, devices).
+/// A board opened from another device's board.joined is empty until its
+/// rows arrive, so the window has to read the list again as they land.
+/// agent.card rows don't change the list and come often, so they don't.
+pub(crate) fn summary_row(ev: &Event) -> bool {
+    ev.seq == 0 || (kinds::is_board_identity_kind(&ev.kind) && ev.kind != kinds::AGENT_CARD)
+}
+
 pub(crate) fn created_task_id(ev: &Event) -> String {
     #[derive(Deserialize, Default)]
     #[serde(default)]
@@ -1263,6 +1272,9 @@ impl Services {
             b.fold_card(ev);
         }
         self.bridge_row(b, ev);
+        if summary_row(ev) {
+            self.boards.moved();
+        }
     }
 
     /// Folds a private board_cards row that reached this device into its

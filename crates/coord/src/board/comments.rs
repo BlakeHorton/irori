@@ -1437,9 +1437,15 @@ impl Fold {
                 let Some(first) = self.first_absent.get(&h).copied() else {
                     continue;
                 };
+                // Only a holder the fold lets this device take off: on a
+                // board an `agent:<card>` key names no device, so
+                // local_key alone holds for every member's agents, and a
+                // task.left for another person's agent folds to nothing
+                // and was written again every sweep (card #242).
                 if !gotime::at_least(now, &first, self.holder_grace)
                     || self.is_owner(&h)
                     || !self.local_key(&h)
+                    || !self.may_write(&h, &self.dev)
                 {
                     continue;
                 }

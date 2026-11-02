@@ -1081,6 +1081,47 @@ fn board_on_own_devices() {
     b.core.close().unwrap();
 }
 
+/// Card #233: a board that reaches another of the person's devices opens
+/// there from board.joined before its rows arrive, nameless and not ready.
+/// The window reads the boards list on each zero Change, so one has to
+/// come after board.created lands, not only when the board opened:
+/// otherwise Boards and the sidebar stay empty until a restart.
+#[test]
+fn a_board_from_another_device_tells_the_window_when_its_rows_land() {
+    let (a, b) = paired();
+    let q = b.core.subscribe_boards();
+    let id = a.core.create_board("MLG", "mlg").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+    let mut seen = Vec::new();
+    loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        assert!(
+            !left.is_zero(),
+            "no boards change after the board was ready on b; lists seen at each change: {seen:?}"
+        );
+        let Ok(Some(ch)) = q.recv_timeout(left.min(std::time::Duration::from_millis(200))) else {
+            continue;
+        };
+        if !(ch.kind.is_empty() && ch.task_id.is_empty()) {
+            continue;
+        }
+        // What the window would read now.
+        let got = b.core.board_list();
+        let ok = got.len() == 1 && got[0].board_id == id && got[0].ready && got[0].name == "MLG";
+        seen.push(
+            got.iter()
+                .map(|s| format!("{}:{}:{}", s.name, s.tag, s.ready))
+                .collect::<Vec<_>>(),
+        );
+        if ok {
+            break;
+        }
+    }
+    q.close();
+    a.core.close().unwrap();
+    b.core.close().unwrap();
+}
+
 /// TestBoardCardsAcrossOwnDevices: a shared card works with agents on any
 /// of the person's devices (§2.4, §5.2). The PC assigns a shared card to
 /// the Mac's agent, which hears it; both devices translate the agent's

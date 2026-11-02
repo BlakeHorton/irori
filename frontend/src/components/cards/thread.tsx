@@ -115,7 +115,7 @@ export function Thread({
             key={it.id}
             id={threadEntryId(it.id)}
             className={cn(
-              "grid scroll-mt-16",
+              "grid grid-cols-[minmax(0,1fr)] scroll-mt-16",
               holds &&
                 it.id === focus &&
                 "-mx-1.5 rounded-sm bg-primary/10 px-1.5 py-0.5 ring-1 ring-primary/40"
@@ -136,10 +136,10 @@ export function Thread({
   )
   if (scroll) {
     return (
-      <div className={cn("grid text-[12.5px]", gap)}>
+      <div className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] text-[12.5px]", gap)}>
         <div
           ref={list}
-          className={cn("grid min-h-0 content-start overflow-y-auto", gap, scroll)}
+          className={cn("grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] content-start overflow-y-auto", gap, scroll)}
         >
           {entries}
         </div>
@@ -154,7 +154,7 @@ export function Thread({
     )
   }
   return (
-    <div className={cn("grid text-[12.5px]", gap)}>
+    <div className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] text-[12.5px]", gap)}>
       {entries}
       {composer}
     </div>
@@ -336,7 +336,7 @@ function ThreadRow({
             <RichText
               text={full.text}
               mentions={item.mentions}
-              className="text-ink-2"
+              className="text-ink-2 [overflow-wrap:anywhere]"
             />
             {full.files.length > 0 && (
               <ul className="grid gap-0.5 text-[11px] text-muted-foreground">
@@ -422,7 +422,7 @@ function ThreadRow({
             <RichText
               text={body}
               mentions={item.mentions}
-              className="text-ink-2"
+              className="text-ink-2 [overflow-wrap:anywhere]"
             />
           )
         )}

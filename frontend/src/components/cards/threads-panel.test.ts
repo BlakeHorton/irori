@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 
+import type { ThreadCard } from "@/gen/models"
 import {
+  ThreadCards,
   openAfterResolve,
   resolvedShown,
   resolvedToggle,
@@ -49,5 +53,27 @@ describe("resolving a thread (card #194, Stephen #200)", () => {
   })
   test("resolving another thread keeps the open one", () => {
     expect(openAfterResolve("live", "done")).toBe("live")
+  })
+})
+
+describe("an open thread stays inside the column (card #215)", () => {
+  // A long card title must truncate, not widen the thread: the chip row
+  // may shrink below its content and the title sits in a truncating span.
+  test("the card chip row can shrink and its title truncates", () => {
+    const html = renderToStaticMarkup(
+      createElement(ThreadCards, {
+        cards: [
+          {
+            id: "c",
+            short: "3",
+            title:
+              "Lobby list: pick Steam or our own relay for the public lobbies before the release",
+            state: "working",
+          } as ThreadCard,
+        ],
+      })
+    )
+    expect(html).toMatch(/^<div class="[^"]*\bmin-w-0\b/)
+    expect(html).toMatch(/<span class="truncate">Lobby list/)
   })
 })

@@ -42,7 +42,7 @@ import {
   type Mention,
   type NewCardInput,
   type Step,
-  type ThreadCard,
+  ThreadCard,
 } from "./models"
 import {
   EventDevicesChanged,
@@ -278,6 +278,15 @@ function sampleThreadSeed(now: Date): CardDetail[] {
           who: sampleAgents.heron,
           text: "#3 is waiting on you: it needs your call on the lobby list (Steam or our relay). #8 is half done; I'll finish it after the build. Where the builds go was settled in #26, and the notes export (#5) is done.",
         }),
+        // A long unbroken line (a path, a log key) must wrap inside the
+        // Threads column, never widen it (card #215).
+        CardThreadItem({
+          id: "sample-thread-1-b",
+          kind: "comment",
+          at: ago(30),
+          who: sampleAgents.heron,
+          text: "The build log is at builds/release/mac-universal/2026-11-01T18-37-38Z/irori-desktop-aarch64-apple-darwin-signed-notarized-stapled.log and the failing key was RELEASE_NOTES_EXPORT_PIPELINE_STAGE_THREE_MISSING_ARTIFACT_MANIFEST.",
+        }),
       ],
       "answered"
     ),
@@ -334,7 +343,20 @@ function sampleThreads(boardId = ""): ThreadSummary[] {
       replies: replies.length,
       lastBy: last?.who,
       lastText: last?.text ?? "",
-      cards: [],
+      // Thread 1 made a card with a long title: its chip truncates
+      // inside the column (card #215).
+      cards:
+        c.id === "sample-thread-1"
+          ? [
+              ThreadCard({
+                id: "sample-card-3",
+                short: "3",
+                title:
+                  "Lobby list: pick Steam or our own relay for the public lobby browser and wire it into the join flow",
+                state: "working",
+              }),
+            ]
+          : [],
       at: c.updatedAt,
       updatedAt: last?.at ?? c.updatedAt,
     })
