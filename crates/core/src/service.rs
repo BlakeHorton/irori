@@ -1271,7 +1271,10 @@ impl Core {
         // followOwnBoards).
         let boards_t = Instant::now();
         s.open_boards();
-        logf(format_args!("start: boards opened in {} ms", boards_t.elapsed().as_millis()));
+        logf(format_args!(
+            "start: boards opened in {} ms",
+            boards_t.elapsed().as_millis()
+        ));
         {
             let sub = Arc::new(s.store.subscribe());
             let reg = self.on_stop(&sub, |s| s.cancel());
