@@ -50,10 +50,6 @@ fn device_person(d: &str) -> String {
     }
 }
 
-fn side(dev: &str, person: &str, owners: &Owners) -> Side {
-    side_with(dev, person, owners, false)
-}
-
 /// side, with the person's done check (card #112) on or off.
 fn side_with(dev: &str, person: &str, owners: &Owners, done_check: bool) -> Side {
     side_opts(dev, person, owners, done_check, None)
@@ -67,6 +63,18 @@ fn side_opts(
     owners: &Owners,
     done_check: bool,
     any: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Side {
+    side_full(dev, person, owners, done_check, any, None)
+}
+
+/// side_opts, with a roster of the agents live on this device.
+fn side_full(
+    dev: &str,
+    person: &str,
+    owners: &Owners,
+    done_check: bool,
+    any: Option<Arc<std::sync::atomic::AtomicBool>>,
+    ros: Option<Arc<TestRoster>>,
 ) -> Side {
     let clk = Clk(Arc::new(Mutex::new(fixed_now())));
     let c2 = clk.clone();
@@ -106,7 +114,7 @@ fn side_opts(
         }),
         ..Options::default()
     };
-    let c = Coord::new(st.clone(), None, o).unwrap();
+    let c = Coord::new(st.clone(), ros.map(|r| r as Arc<dyn Agents>), o).unwrap();
     Side {
         _dir: dir,
         st,
@@ -122,9 +130,17 @@ fn raw(s: &str) -> RawJson {
 /// p1 on dev-a and p2 on dev-b, with p1 the board's owner forever. dev-a
 /// writes board.created and both people's agent cards travel to dev-b.
 fn two_people() -> (Side, Side, Owners) {
+    two_people_with(None, None)
+}
+
+/// two_people, with each device's roster of live agents.
+fn two_people_with(
+    ra: Option<Arc<TestRoster>>,
+    rb: Option<Arc<TestRoster>>,
+) -> (Side, Side, Owners) {
     let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
-    let a = side("dev-a", P1, &owners);
-    let b = side("dev-b", P2, &owners);
+    let a = side_full("dev-a", P1, &owners, false, None, ra);
+    let b = side_full("dev-b", P2, &owners, false, None, rb);
     a.st.append(
         P1,
         kinds::BOARD_CREATED,
@@ -1249,4 +1265,53 @@ fn a_merged_context_pr_beside_an_open_own_pr_is_told_once_without_a_wake() {
     assert_eq!(ns.len(), 1);
     assert!(ns[0].wake);
     assert!(ns[0].text.contains("state=completed"), "{}", ns[0].text);
+}
+
+// ---- a gone holder on a board (card #242) ------------------------------------
+
+/// task.left rows `dev` wrote, as `s` holds them.
+fn lefts_by(s: &Side, dev: &str) -> usize {
+    s.st.missing(&Default::default(), 100_000)
+        .unwrap()
+        .iter()
+        .filter(|e| e.kind == kinds::TASK_LEFT && e.device_id == dev)
+        .count()
+}
+
+#[test]
+fn a_gone_agent_of_another_person_is_left_once_by_its_own_device() {
+    let ra = TestRoster::new(&[CARD1]);
+    let rb = TestRoster::new(&[CARD2]);
+    let (a, b, _) = two_people_with(Some(ra), Some(rb.clone()));
+    let tk = a.c.create_task(P1, nt("p1's card", "")).unwrap();
+    sync(&a, &b);
+    b.c.claim_task(CARD2, &tk.id).unwrap();
+    sync(&a, &b);
+    assert_eq!(a.c.get_task(&tk.id).unwrap().holders, [CARD2]);
+    // p2's agent goes away. dev-a never had it live; dev-b sees it go.
+    rb.set(CARD2, "");
+    for s in [&a, &b] {
+        s.c.sweep().unwrap();
+        s.clk.add(HOLDER_GRACE + Duration::from_secs(1));
+    }
+    // dev-a may not take p2's agent off: its task.left would fold to
+    // nothing, so it writes none, sweep after sweep.
+    for _ in 0..5 {
+        a.c.sweep().unwrap();
+        a.clk.add(Duration::from_secs(5));
+    }
+    assert_eq!(lefts_by(&a, "dev-a"), 0);
+    assert_eq!(a.c.get_task(&tk.id).unwrap().holders, [CARD2]);
+    // dev-b, p2's device, takes it off once, and the card is free on both.
+    for _ in 0..5 {
+        b.c.sweep().unwrap();
+        b.clk.add(Duration::from_secs(5));
+        sync(&a, &b);
+        a.c.sweep().unwrap();
+    }
+    assert_eq!(lefts_by(&b, "dev-b"), 1);
+    assert_eq!(lefts_by(&a, "dev-a"), 0);
+    for s in [&a, &b] {
+        assert!(s.c.get_task(&tk.id).unwrap().holders.is_empty());
+    }
 }
