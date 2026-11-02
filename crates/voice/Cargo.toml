@@ -40,3 +40,10 @@ whisper-rs = { version = "0.16.0", features = ["metal"] }
 # status says so instead (#240).
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat"] }
 objc2-foundation = { workspace = true }
+
+# Android (#240): AAudio capture through cpal; whisper.cpp on the CPU
+# (NEON). Cross-building from macOS needs the [patch] for whisper-rs-sys in
+# the workspace Cargo.toml and the NDK env in docs/android.md.
+[target.'cfg(target_os = "android")'.dependencies]
+cpal = "0.18.2"
+whisper-rs = "0.16.0"

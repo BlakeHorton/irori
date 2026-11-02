@@ -51,7 +51,9 @@ pub const MODEL: Model = Model {
 pub const MIC_SETTING: &str = "Allow microphone access for desktop apps in Windows Settings > Privacy & security > Microphone, then try again.";
 #[cfg(target_os = "macos")]
 pub const MIC_SETTING: &str = "Allow Irori to use the microphone in System Settings > Privacy & Security > Microphone, then try again.";
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(target_os = "android")]
+pub const MIC_SETTING: &str = "Allow Irori to use the microphone in Settings > Apps > Irori > Permissions, then try again.";
+#[cfg(not(any(windows, target_os = "macos", target_os = "android")))]
 pub const MIC_SETTING: &str =
     "Allow Irori to use the microphone in the system settings, then try again.";
 
@@ -136,14 +138,14 @@ impl std::fmt::Display for StartError {
 
 impl std::error::Error for StartError {}
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "android"))]
 mod whisper;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "android"))]
 use whisper as engine;
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "android")))]
 mod other;
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "android")))]
 use other as engine;
 
 #[cfg(windows)]
@@ -186,7 +188,7 @@ pub fn start(model: &Path, sink: Sink) -> Result<Session, StartError> {
 /// real time, then silence) instead of the microphone. For tests and the
 /// listen example.
 #[doc(hidden)]
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "android"))]
 pub fn start_with_samples(
     model: &Path,
     samples: Vec<f32>,
