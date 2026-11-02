@@ -44,7 +44,9 @@ use super::Services;
 use crate::timers::Ticker;
 use crate::{CLOSE_WAIT, logf};
 
-pub use super::boards_own::{BoardSummary, SharePreview, SharedCopy, SubtaskPreview};
+pub use super::boards_own::{
+    BoardSummary, SharePreview, SharedCopy, SubtaskPreview, SummaryMember,
+};
 
 /// Where the board logs live, under the data dir.
 pub const BOARDS_DIR: &str = "boards";
@@ -2091,6 +2093,23 @@ impl super::Core {
     /// `key` as board `board_id` writes it (§2.4).
     pub fn board_key(&self, board_id: &str, key: &str) -> Result<String> {
         self.s.board_key(board_id, key)
+    }
+
+    /// The member a board key (`person:<id>`, `agent:<cardId>`) of board
+    /// `board_id` belongs to, or `""` (card #268: a card's owner).
+    /// An agent the board has no card-of row for yet goes by the person
+    /// its agent card names, as [`Self::board_agents`] does (card #146).
+    pub fn board_key_person(&self, board_id: &str, key: &str) -> String {
+        let Ok(b) = self.s.board(board_id) else {
+            return String::new();
+        };
+        let p = b.verifier.key_person(key);
+        if !p.is_empty() {
+            return p;
+        }
+        key.strip_prefix(AGENT_ACTOR_PREFIX)
+            .and_then(|id| lock(&b.maps).cards.get(id).map(|c| c.person_id.clone()))
+            .unwrap_or_default()
     }
 
     /// A board key as this device knows it.

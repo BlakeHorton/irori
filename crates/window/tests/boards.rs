@@ -693,6 +693,38 @@ fn another_members_agent_shows_on_its_card() {
         d.summary.holder.who.name, "otter",
         "the card's page names it"
     );
+
+    // Card #268: whose each card is, by person id: who made it, never who
+    // holds it (the friend's agent holds the person's card).
+    let mine = w.core.person().id;
+    assert_eq!(s.owner, mine, "the person made it");
+    assert_eq!(d.summary.owner, mine, "the card's page says so too");
+    let theirs = co
+        .create_task(
+            &agent,
+            coord::NewTask {
+                title: "made by their agent".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let s = w
+        .cards()
+        .into_iter()
+        .find(|s| s.id == theirs.id)
+        .expect("their card is in the grid");
+    assert_eq!(s.owner, "friend-person", "their agent's card is theirs");
+    assert_eq!(w.card(&theirs.id).unwrap().summary.owner, "friend-person");
+    let summary = w
+        .boards_list()
+        .into_iter()
+        .find(|b| b.board_id == mlg.board_id)
+        .unwrap();
+    assert!(
+        summary.members.iter().any(|m| m.me && m.person_id == mine),
+        "the board's summary lists the person by id: {:?}",
+        summary.members
+    );
 }
 
 /// Card #177: another member's agent is a mention candidate tagged with its

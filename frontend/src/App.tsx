@@ -125,7 +125,13 @@ export function App() {
     previewFlag("boards") !== null ? { kind: "boards" } : sectionFromHash(window.location.hash)
   )
   // A board page's own tab (All, Needs a decision, Closed).
-  const [boardFilter, setBoardFilter] = useState<Filter>("all")
+  // A board page starts on All; the preview's ?filter=owner:<id> starts it
+  // on one member's cards (card #268).
+  const [boardFilter, setBoardFilter] = useState<Filter>(() =>
+    previewFlag("filter")?.startsWith("owner:")
+      ? asFilter(previewFlag("filter"))
+      : "all"
+  )
   // Closed pages each page's own cards (card #161): Home's, or the board's.
   const doneScope = section.kind === "board" ? section.id : ScopeOwn
   const done = useDoneCards(

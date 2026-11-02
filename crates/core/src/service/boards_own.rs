@@ -124,6 +124,9 @@ pub struct BoardSummary {
     /// The board's current members' names, this person first ("Visible
     /// to: Stephen").
     pub people: Vec<String>,
+    /// The same members with their person ids (card #268): the window
+    /// names a card's owner and its holders' people from them.
+    pub members: Vec<SummaryMember>,
     pub owner: bool,
     /// This person's devices certified on the board.
     pub devices: i64,
@@ -150,6 +153,16 @@ pub struct BoardSummary {
     /// reach any home server for mlg", "Update Irori: …"; §6.3-6.5, §8).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+}
+
+/// One current member of a board, as its summary lists them (card #268).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryMember {
+    pub person_id: String,
+    pub name: String,
+    /// The person at this device.
+    pub me: bool,
 }
 
 /// Where a private card was shared to, when it was: the board and the
@@ -479,6 +492,7 @@ impl Services {
                     owner: m.owner(&me),
                     ready: m.created,
                     people: self.board_people(b),
+                    members: self.board_members(b),
                     leaving: self.board_leaving(b),
                     warnings: self.board_status(b),
                     ..Default::default()
@@ -555,6 +569,11 @@ impl Services {
 
     /// `b`'s current members' names, this person first.
     pub(crate) fn board_people(&self, b: &BoardLog) -> Vec<String> {
+        self.board_members(b).into_iter().map(|m| m.name).collect()
+    }
+
+    /// `b`'s current members, this person first (card #268).
+    pub(crate) fn board_members(&self, b: &BoardLog) -> Vec<SummaryMember> {
         let me = self.person_id();
         let m = b.verifier.membership();
         let name_of = |p: &str| {
@@ -571,11 +590,19 @@ impl Services {
         };
         let mut out = Vec::new();
         if m.active(&me) || !m.created {
-            out.push(name_of(&me));
+            out.push(SummaryMember {
+                name: name_of(&me),
+                person_id: me.clone(),
+                me: true,
+            });
         }
         for p in &m.members {
             if p.person_id != me && p.state == MEMBER_ACTIVE {
-                out.push(name_of(&p.person_id));
+                out.push(SummaryMember {
+                    name: name_of(&p.person_id),
+                    person_id: p.person_id.clone(),
+                    me: false,
+                });
             }
         }
         out

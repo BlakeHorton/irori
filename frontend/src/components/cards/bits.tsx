@@ -1,4 +1,7 @@
+import { UserIcon } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
+import { useBoards } from "@/lib/boards"
 import { cn } from "@/lib/utils"
 import {
   askLine,
@@ -16,6 +19,7 @@ import {
   type CardSummary,
 } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
+import { cardOwner, type OwnerCard } from "@/lib/owners"
 
 // Tone is a card's status colour, shared by its state chip and its progress
 // bar so the two always agree.
@@ -304,6 +308,33 @@ export function ScopeBadge({ card }: { card: CardSummary }) {
   return (
     <Badge variant="outline" className="font-normal text-muted-foreground">
       {plainLine(card.scopeLabel) || "My devices"}
+    </Badge>
+  )
+}
+
+// OwnerChip is whose a shared board's card is (card #268): the member who
+// made it, by themselves or through one of their agents. Nothing shows on a
+// private card or a board that is only the person's.
+export function OwnerChip({ card }: { card: OwnerCard }) {
+  const { boards } = useBoards()
+  const o = cardOwner(card, boards)
+  if (!o) return null
+  const name = plainLine(o.name)
+  return (
+    <Badge
+      variant={o.me ? "info" : "outline"}
+      data-owner={o.personId}
+      className="gap-1 font-normal"
+      title={
+        o.me
+          ? `Yours: you or one of your agents made it`
+          : o.known
+            ? `${name}'s card: they or one of their agents made it`
+            : "Made by someone who is no longer on the board"
+      }
+    >
+      <UserIcon className="size-3" aria-hidden />
+      {name}
     </Badge>
   )
 }

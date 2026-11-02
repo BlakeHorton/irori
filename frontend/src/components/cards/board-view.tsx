@@ -16,6 +16,7 @@ import {
   DeviceBar,
   DoneGrid,
   FilterBar,
+  MemberBar,
   asFilter,
   matches,
   shownCards,
@@ -30,6 +31,7 @@ import {
   type BoardView as View,
 } from "@/components/canvas/switch"
 import { Badge } from "@/components/ui/badge"
+import { useBoards } from "@/lib/boards"
 import { useNarrow } from "@/lib/media"
 import { TaskState } from "@/lib/models"
 import { Button } from "@/components/ui/button"
@@ -78,8 +80,15 @@ export function homeBoards(
 export function activeFilter(
   filter: Filter,
   chips: { id: string }[],
-  boards?: { boardId: string }[]
+  boards?: { boardId: string }[],
+  members?: { personId: string }[]
 ): Filter {
+  // A member chip (card #268) holds only on a board that member is on.
+  if (filter.startsWith("owner:"))
+    return (members ?? []).length > 1 &&
+      members!.some((m) => filter === `owner:${m.personId}`)
+      ? filter
+      : "all"
   if (
     filter.startsWith("device:") &&
     !chips.some((d) => filter === `device:${d.id}`)
@@ -199,7 +208,13 @@ export function BoardView({
   const chips = deviceChips(mine)
   // Home's board row (card #199); a board page has none.
   const rowBoards = scope === ScopeOwn ? homeBoards(mine) : undefined
-  const active = activeFilter(filter, chips, rowBoards)
+  const { boards } = useBoards()
+  // A shared board's page narrows by member (card #268).
+  const members =
+    scope === ScopeOwn
+      ? undefined
+      : (boards.find((b) => b.boardId === scope)?.members ?? undefined)
+  const active = activeFilter(filter, chips, rowBoards, members)
   const { shown: all, context } = shownCards(mine, active, query)
   // On All with no search, a card the lead lists (Needs you) isn't
   // listed again below it.
@@ -358,6 +373,9 @@ export function BoardView({
               only={["all", "decide", "review", "done"]}
             />
             <DeviceBar filter={active} onFilter={onFilter} devices={chips} />
+            {members && (
+              <MemberBar filter={active} onFilter={onFilter} members={members} />
+            )}
             {rowBoards && (
               <BoardBar
                 filter={active}

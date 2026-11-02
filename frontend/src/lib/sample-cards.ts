@@ -1154,13 +1154,14 @@ export function sampleCards(now: Date): CardDetail[] {
         id: "sample-board-mlg",
         name: "MLG",
         tag: "mlg",
-        visibleTo: ["Stephen"],
+        visibleTo: ["Stephen", "Blake"],
         canWithdraw: true,
       }),
       working: [otter],
       // sample-otter is one of your agents: Home shows it (card #199);
       // mlg#2 below, nobody's, stays on MLG's page alone.
       ours: true,
+      owner: "sample-me",
       updatedAt: at(7),
       steps: steps([
         ["Mirror the boat actors", true],
@@ -1187,12 +1188,70 @@ export function sampleCards(now: Date): CardDetail[] {
         id: "sample-board-mlg",
         name: "MLG",
         tag: "mlg",
-        visibleTo: ["Stephen"],
+        visibleTo: ["Stephen", "Blake"],
         canWithdraw: true,
       }),
       state: TaskState.Submitted,
       working: [],
       updatedAt: at(40),
+      // Blake made it (card #268).
+      owner: "sample-person-0",
+    }),
+    // Blake's agent kite works Blake's card (card #268): the owner chip says
+    // Blake.
+    card({
+      id: "sample-board-3",
+      short: "3",
+      title: "Tune the boost pads on the harbour track",
+      goal: "Boost pads feel the same on both clients.",
+      scope: "board",
+      scopeLabel: "MLG",
+      board: "sample-board-mlg",
+      tag: "mlg",
+      onBoard: CardBoard({
+        id: "sample-board-mlg",
+        name: "MLG",
+        tag: "mlg",
+        visibleTo: ["Stephen", "Blake"],
+        canWithdraw: false,
+      }),
+      working: [
+        AgentRef({
+          key: "agent:sample-kite-card",
+          name: "kite",
+          status: "busy",
+          live: true,
+          where: "Blake's agent",
+        }),
+      ],
+      owner: "sample-person-0",
+      updatedAt: at(3),
+      steps: steps([
+        ["Measure the pad impulse on both", true],
+        ["Match the pad timings", false],
+      ]),
+    }),
+    // A card from someone who has since left the board: "Former member".
+    card({
+      id: "sample-board-4",
+      short: "4",
+      title: "Old lap-time leaderboard idea",
+      goal: "A leaderboard of best laps per track.",
+      scope: "board",
+      scopeLabel: "MLG",
+      board: "sample-board-mlg",
+      tag: "mlg",
+      onBoard: CardBoard({
+        id: "sample-board-mlg",
+        name: "MLG",
+        tag: "mlg",
+        visibleTo: ["Stephen", "Blake"],
+        canWithdraw: false,
+      }),
+      state: TaskState.Submitted,
+      working: [],
+      owner: "sample-person-left",
+      updatedAt: at(300),
     }),
     card({
       id: "sample-card-10",

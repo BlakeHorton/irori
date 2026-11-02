@@ -289,6 +289,12 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub search_text: String,
+    /// A shared board's card: the member who made it (they or one of their
+    /// agents), by person id (card #268); empty off a board or when the
+    /// board can't say.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub owner: String,
 }
 
 /// Where a card's work is (card #137), as its holder's device last saw it.
@@ -1516,7 +1522,7 @@ impl Window {
                     let (b, bc) = &boards[i];
                     let refr =
                         |id: &str| bc.get_task(id).map(|x| x.short_ref()).unwrap_or_default();
-                    let pt = self.priv_task(t);
+                    let pt = self.priv_task(t.clone());
                     let mut s = card_summary(&pt, &p);
                     s.ask = card_ask(&pt, &p, Some(&refr));
                     name_wait(&mut s, &refr);
@@ -1524,6 +1530,7 @@ impl Window {
                     s.scope_label = b.name.clone();
                     s.board = b.board_id.clone();
                     s.tag = b.tag.clone();
+                    self.board_owner(&b.board_id, &t, &mut s);
                     s
                 }
             };
@@ -1606,6 +1613,7 @@ impl Window {
                 cs.scope_label = s.name.clone();
                 cs.board = s.board_id.clone();
                 cs.tag = s.tag.clone();
+                self.board_owner(&s.board_id, &t, &mut cs);
                 let mut last = t.updated_at;
                 if let Some(acts) = co.activity(&t.id)
                     && let Some(a) = acts.first()
@@ -1640,6 +1648,7 @@ impl Window {
         };
         let mut comments = co.comments(&t.id).unwrap_or_default();
         let mut acts = co.activity(&t.id).unwrap_or_default();
+        let raw = co.is_board().then(|| t.clone());
         if co.is_board() {
             // A shared card's keys are board keys; the page names them as
             // this device knows them (v0.5 §2.4).
@@ -1659,6 +1668,12 @@ impl Window {
             ..CardDetail::default()
         };
         self.board_detail(&t, &mut d);
+        if let Some(raw) = &raw
+            && !d.summary.board.is_empty()
+        {
+            let board = d.summary.board.clone();
+            self.board_owner(&board, raw, &mut d.summary);
+        }
         family_of(&co, &t, &mut d.summary);
         for kid in &t.subtasks {
             let Some(mut k) = co.get_task(kid) else {

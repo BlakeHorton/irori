@@ -1,4 +1,4 @@
-import { LayersIcon, PinIcon } from "lucide-react"
+import { LayersIcon, PinIcon, UserIcon } from "lucide-react"
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +21,7 @@ import {
 } from "@/lib/cards"
 import { plainLine, relativeTime } from "@/lib/irori"
 import { TaskState } from "@/lib/models"
+import { ownedBy, ownerFilter, type OwnerMember } from "@/lib/owners"
 import { cardMatches, matching } from "@/lib/search"
 import { cn } from "@/lib/utils"
 import {
@@ -28,6 +29,7 @@ import {
   cardTone,
   HolderLine,
   ProgressBar,
+  OwnerChip,
   ScopeBadge,
   ShortRef,
   Spinner,
@@ -53,6 +55,7 @@ export type Filter =
   | "private"
   | `device:${string}`
   | `board:${string}`
+  | `owner:${string}`
 
 export const filters: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
@@ -64,7 +67,7 @@ export const filters: { id: Filter; label: string }[] = [
 
 // asFilter is a filter id from outside (the preview's ?filter=), else all.
 export function asFilter(id: string | null): Filter {
-  if (id?.startsWith("board:")) return id as Filter
+  if (id?.startsWith("board:") || id?.startsWith("owner:")) return id as Filter
   if (id === "private") return "private"
   if (id === "closed") return "done"
   return filters.find((f) => f.id === id)?.id ?? "all"
@@ -101,6 +104,7 @@ export function matches(c: CardSummary, f: Filter): boolean {
   if (f === "private") return c.scope !== "board"
   if (f.startsWith("device:")) return c.devices.includes(f.slice(7))
   if (f.startsWith("board:")) return c.board === f.slice(6)
+  if (f.startsWith("owner:")) return ownedBy(c, f)
   return true
 }
 
@@ -248,6 +252,51 @@ export function BoardBar({
           >
             <LayersIcon aria-hidden className="size-3.5 opacity-70" />
             {plainLine(b.name)}
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
+// MemberBar narrows a shared board's page to one member's cards (card
+// #268): Mine first, then each other member by name. Only a board other
+// people are on has it.
+export function MemberBar({
+  filter,
+  onFilter,
+  members,
+}: {
+  filter: Filter
+  onFilter: (f: Filter) => void
+  members: OwnerMember[]
+}) {
+  if (members.length < 2) return null
+  const ordered = [...members].sort((a, b) => Number(b.me) - Number(a.me))
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1"
+      role="group"
+      aria-label="Filter cards by member"
+    >
+      {ordered.map((m) => {
+        const id = ownerFilter(m.personId)
+        const name = plainLine(m.name) || "Someone"
+        return (
+          <Button
+            key={id}
+            size="sm"
+            aria-pressed={filter === id}
+            variant={filter === id ? "secondary" : "ghost"}
+            onClick={() => onFilter(filter === id ? "all" : id)}
+            title={
+              m.me
+                ? "Your cards: made by you or your agents"
+                : `${name}'s cards: made by them or their agents`
+            }
+          >
+            <UserIcon aria-hidden className="size-3.5 opacity-70" />
+            {m.me ? "Mine" : name}
           </Button>
         )
       })}
@@ -456,6 +505,7 @@ function CardTile({
         {card.parent && <PartOf parent={card.parent} />}
         <StatePill card={card} />
         <ScopeBadge card={card} />
+        <OwnerChip card={card} />
         {card.working.some((w) => w.conflict) && (
           <Badge
             variant="warning"

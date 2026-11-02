@@ -62,6 +62,7 @@ import {
   cardTone,
   HolderLine,
   ProgressBar,
+  OwnerChip,
   ScopeBadge,
   ShortRef,
   Spinner,
@@ -703,6 +704,7 @@ function PageHeader({
         <StatePill card={card} />
         {spinning && <Spinner />}
         <ScopeBadge card={card} />
+        <OwnerChip card={card} />
         {card.repoKey && (
           <span className="font-mono" title={card.repoKey}>
             {shortRepo(card.repoKey)}

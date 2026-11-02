@@ -420,6 +420,11 @@ export type BoardSummary = {
 	name: string,
 	tag: string,
 	people: string[],
+	/**
+	 *  The same members with their person ids, this person first (card
+	 *  #268): a card's owner chip and its holders' people come from them.
+	 */
+	members: SummaryMember[],
 	owner: boolean,
 	devices: number,
 	cards: number,
@@ -731,6 +736,12 @@ export type CardSummary = {
 	 *  name, one per line.
 	 */
 	searchText?: string,
+	/**
+	 *  A shared board's card: the member who made it (they or one of their
+	 *  agents), by person id (card #268); empty off a board or when the
+	 *  board can't say.
+	 */
+	owner?: string,
 };
 
 /**  One entry of a card's thread. */
@@ -1273,6 +1284,14 @@ export type SubtaskPreview = {
 	steps: string[],
 	links: string[],
 	repo: string,
+};
+
+/**  One current member in a board's summary (card #268). */
+export type SummaryMember = {
+	personId: string,
+	name: string,
+	/**  The person at this device. */
+	me: boolean,
 };
 
 /**

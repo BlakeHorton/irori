@@ -126,3 +126,19 @@ describe("hiddenByFilter (card #237)", () => {
     expect(hiddenByFilter([waiting], "decide", "")).toBeNull()
   })
 })
+
+describe("activeFilter's member chips (card #268)", () => {
+  const members = [
+    { personId: "p-me", name: "Stephen", me: true },
+    { personId: "p-blake", name: "Blake", me: false },
+  ]
+  test("a member chip holds on a board that member is on", () => {
+    expect(activeFilter("owner:p-blake", [], undefined, members)).toBe("owner:p-blake")
+  })
+  test("elsewhere it falls back to All", () => {
+    expect(activeFilter("owner:p-gone", [], undefined, members)).toBe("all")
+    expect(activeFilter("owner:p-blake", [], undefined, [members[0]])).toBe("all")
+    expect(activeFilter("owner:p-blake", [])).toBe("all")
+  })
+})
+

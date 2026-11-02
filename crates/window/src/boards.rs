@@ -8,7 +8,7 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::Window;
-use crate::cards::{CardBoard, CardDetail, SharedCopy};
+use crate::cards::{CardBoard, CardDetail, CardSummary, SharedCopy};
 
 /// A card on a shared board; its scope label is the board's name.
 pub const SCOPE_BOARD: &str = "board";
@@ -21,6 +21,9 @@ pub struct BoardSummary {
     pub name: String,
     pub tag: String,
     pub people: Vec<String>,
+    /// The same members with their person ids, this person first (card
+    /// #268): a card's owner chip and its holders' people come from them.
+    pub members: Vec<SummaryMember>,
     pub owner: bool,
     pub devices: i64,
     pub cards: i64,
@@ -54,6 +57,16 @@ pub struct BoardSummary {
     pub pin_rank: f64,
 }
 
+/// One current member in a board's summary (card #268).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryMember {
+    pub person_id: String,
+    pub name: String,
+    /// The person at this device.
+    pub me: bool,
+}
+
 fn is_zero_rank(r: &f64) -> bool {
     *r == 0.0
 }
@@ -71,6 +84,15 @@ impl From<irori_core::BoardSummary> for BoardSummary {
             name: s.name,
             tag: s.tag,
             people: s.people,
+            members: s
+                .members
+                .into_iter()
+                .map(|m| SummaryMember {
+                    person_id: m.person_id,
+                    name: m.name,
+                    me: m.me,
+                })
+                .collect(),
             owner: s.owner,
             devices: s.devices,
             cards: s.cards,
@@ -284,6 +306,13 @@ impl Window {
             a.by = self.core.private_key(&a.by);
         }
         acts
+    }
+
+    /// Card #268: board `board_id`'s card `raw` (its board keys, before
+    /// [`Self::priv_task`]) belongs to the member who made it, by person id:
+    /// they made it or one of their agents did, and they answer for it.
+    pub(crate) fn board_owner(&self, board_id: &str, raw: &Task, cs: &mut CardSummary) {
+        cs.owner = self.core.board_key_person(board_id, &raw.created_by);
     }
 
     /// A card page's board line, or where a private card was shared to

@@ -88,6 +88,7 @@ export type SharedCopy = B.SharedCopy
 export type State = B.State
 export type Step = B.Step
 export type SubtaskPreview = B.SubtaskPreview
+export type SummaryMember = B.SummaryMember
 export type Target = B.Target
 export type Task = B.Task
 export type TaskResult = B.TaskResult
@@ -172,7 +173,7 @@ export function BoardSettings(p: Partial<B.BoardSettings> = {}): B.BoardSettings
 
 /** BoardSummary with Go's zero values for every field left out. */
 export function BoardSummary(p: Partial<B.BoardSummary> = {}): B.BoardSummary {
-  return { "boardId": "", "name": "", "tag": "", "people": [], "owner": false, "devices": 0, "cards": 0, "doneWeek": 0, "ready": false, ...p } as B.BoardSummary
+  return { "boardId": "", "name": "", "tag": "", "people": [], "members": [], "owner": false, "devices": 0, "cards": 0, "doneWeek": 0, "ready": false, ...p } as B.BoardSummary
 }
 
 /** CanvasPos with Go's zero values for every field left out. */
@@ -473,6 +474,11 @@ export function Step(p: Partial<B.Step> = {}): B.Step {
 /** SubtaskPreview with Go's zero values for every field left out. */
 export function SubtaskPreview(p: Partial<B.SubtaskPreview> = {}): B.SubtaskPreview {
   return { "taskId": "", "ref": "", "title": "", "goal": "", "doneWhen": "", "steps": [], "links": [], "repo": "", ...p } as B.SubtaskPreview
+}
+
+/** SummaryMember with Go's zero values for every field left out. */
+export function SummaryMember(p: Partial<B.SummaryMember> = {}): B.SummaryMember {
+  return { "personId": "", "name": "", "me": false, ...p } as B.SummaryMember
 }
 
 /** Target with Go's zero values for every field left out. */

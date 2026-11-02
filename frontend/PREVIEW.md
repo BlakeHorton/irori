@@ -46,6 +46,9 @@ unchanged.
 | `/?boards` | the Boards dialog: two boards of your own (MLG, Website refresh), New board |
 | `/?filter=board:sample-board-mlg` | the grid on the MLG board's chip: mlg#1 and mlg#2 |
 | `/?open=board:task:sample-board-1` | a card on a shared board: `mlg#1`, "Visible to", Withdraw |
+| `/#board/sample-board-mlg` | MLG, shared with Blake (card #268): each card's owner chip (Stephen, Blake, Former member) and the Mine / Blake chips |
+| `/?filter=owner:sample-person-0#board/sample-board-mlg` | MLG on Blake's cards only |
+| `/#card/sample-board-3` | Blake's card that his agent kite works: the owner chip in the header, kite in Who's on it |
 | `/?share=sample-card-10#card/sample-card-10` | Share to board's preview, with a path in the goal taken out |
 | `/?settings` | Settings (card #132): Notifications; `?settings=devices`, `=people`, `=app` open those sections |
 | `/?update=ready` | the update card (`downloading`, `installing` too) |

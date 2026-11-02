@@ -99,3 +99,16 @@ describe("familyGroups (card #97)", () => {
     expect(shape([c("k", "p"), c("p")])).toEqual([["p", "k"]])
   })
 })
+
+describe("the member filter (card #268)", () => {
+  const on = (owner: string) =>
+    CardSummary({ id: owner, state: TaskState.Working, scope: "board", board: "b", owner })
+  test("owner:<personId> keeps that member's open cards", () => {
+    expect(matches(on("p-blake"), "owner:p-blake")).toBe(true)
+    expect(matches(on("p-me"), "owner:p-blake")).toBe(false)
+    expect(matches(on(""), "owner:p-blake")).toBe(false)
+  })
+  test("the preview's ?filter= takes it", () => {
+    expect(asFilter("owner:p-blake")).toBe("owner:p-blake")
+  })
+})
