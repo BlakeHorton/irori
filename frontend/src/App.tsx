@@ -592,7 +592,7 @@ export function App() {
             header={
               <AskBox onThread={startedThread} />
             }
-            notice={<BoardsNeedYou cards={boardDecide} boards={boards} />}
+            notice={<BoardsNeedYou cards={boardDecide.filter((c) => !c.ours)} boards={boards} />}
             empty={<EmptyCards />}
             threads={{
               list: threadList,
@@ -670,7 +670,8 @@ export function App() {
 }
 
 // BoardsNeedYou keeps a board's decisions from hiding off Home: one line
-// per board with cards waiting on the person, opening that board.
+// naming each board with decisions Home doesn't list as cards (card #237:
+// cards you or your agents created or touched are on Home already).
 function BoardsNeedYou({
   cards,
   boards,

@@ -17,6 +17,7 @@ import {
   DoneGrid,
   FilterBar,
   asFilter,
+  matches,
   shownCards,
   type Filter,
 } from "@/components/cards/card-grid"
@@ -58,7 +59,11 @@ export function homeBoards(
 ): { boardId: string; name: string; tag: string }[] {
   const out: { boardId: string; name: string; tag: string }[] = []
   for (const c of cards) {
-    if (c.scope !== "board" || !c.board || out.some((b) => b.boardId === c.board))
+    if (
+      c.scope !== "board" ||
+      !c.board ||
+      out.some((b) => b.boardId === c.board)
+    )
       continue
     out.push({ boardId: c.board, name: c.scopeLabel, tag: c.tag ?? "" })
   }
@@ -84,6 +89,25 @@ export function activeFilter(
     return boards?.some((b) => filter === `board:${b.boardId}`) ? filter : "all"
   if (filter === "mine") return "all"
   return filter
+}
+
+// hiddenByFilter says what a filter or search is hiding (card #237): the
+// open cards that All with no search would show and this view doesn't,
+// and how many of them wait on a decision. Null when nothing is hidden,
+// on All with no search, or on Closed.
+export function hiddenByFilter(
+  cards: CardSummary[],
+  f: Filter,
+  query: string
+): { hidden: number; decide: number } | null {
+  if (f === "done" || (f === "all" && !query.trim())) return null
+  const shown = new Set(shownCards(cards, f, query).shown.map((c) => c.id))
+  const hidden = cards.filter((c) => matches(c, "all") && !shown.has(c.id))
+  if (!hidden.length) return null
+  return {
+    hidden: hidden.length,
+    decide: hidden.filter((c) => c.openBlockers > 0).length,
+  }
 }
 
 // Home remembers its last board pick per viewer (card #199): All, Private
@@ -165,6 +189,7 @@ export function BoardView({
   const rowBoards = scope === ScopeOwn ? homeBoards(mine) : undefined
   const active = activeFilter(filter, chips, rowBoards)
   const { shown, context } = shownCards(mine, active, query)
+  const hiddenLine = hiddenByFilter(mine, active, query)
   // The Pinned group: pinned cards in their order, each pinned parent with
   // its subtasks (as BoardService.Cards lists them).
   const pinnedGroup = shown.filter(
@@ -195,7 +220,9 @@ export function BoardView({
     (threads.list.length > 0 || !!threads.open)
   const threadsButton =
     !!threads &&
-    (narrow ? threads.list.length > 0 || !!threads.open : !showThreads && threads.list.length > 0)
+    (narrow
+      ? threads.list.length > 0 || !!threads.open
+      : !showThreads && threads.list.length > 0)
   // The app is exactly the window's height (card #170): beside the Board
   // the Threads column scrolls on its own; without it the Board does.
   const panel = showThreads && threads && (
@@ -211,7 +238,9 @@ export function BoardView({
   const withThreads = (main: ReactNode) =>
     narrow ? (
       <div className="-mx-1 grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-4 overflow-y-auto px-1 pb-10">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3.5">{main}</div>
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3.5">
+          {main}
+        </div>
         {aside}
         {sheet && threads && (
           <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
@@ -280,7 +309,9 @@ export function BoardView({
               decide={0}
               only={["all", "done"]}
             />
-            {threadsBtn && <span className="flex justify-end">{threadsBtn}</span>}
+            {threadsBtn && (
+              <span className="flex justify-end">{threadsBtn}</span>
+            )}
             {notice}
             {empty}
           </>
@@ -317,6 +348,37 @@ export function BoardView({
             </span>
           </div>
           {notice}
+          {hiddenLine && (
+            <p
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[12.5px] text-foreground"
+              role="status"
+            >
+              <span>
+                {query.trim() ? "A search" : "A filter"} is hiding{" "}
+                {hiddenLine.hidden} {hiddenLine.hidden === 1 ? "card" : "cards"}
+                {hiddenLine.decide > 0 && (
+                  <>
+                    ,{" "}
+                    <b className="text-warning">
+                      {hiddenLine.decide}{" "}
+                      {hiddenLine.decide === 1 ? "needs" : "need"} a decision
+                    </b>
+                  </>
+                )}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[12.5px]"
+                onClick={() => {
+                  onFilter("all")
+                  onQuery("")
+                }}
+              >
+                Show all
+              </Button>
+            </p>
+          )}
           {active === "done" ? (
             <DoneGrid
               done={done}
