@@ -920,8 +920,18 @@ fn boards_pin_to_the_sidebar() {
     let site = w.boards_create("Site", "site").unwrap();
     let card = create(&r, "a private card");
     w.pin(&card.id, true).unwrap();
+    // #238: each pin says boards:changed, so the sidebar's list reads it
+    // without a restart.
+    let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let s = seen.clone();
+    w.set_emitter(move |name, _| {
+        if name == "boards:changed" {
+            s.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
     w.boards_pin(&site.board_id, true).unwrap();
     w.boards_pin(&mlg.board_id, true).unwrap();
+    assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 2);
     let list = w.boards_list();
     let pin = |id: &str| {
         let b = list.iter().find(|b| b.board_id == id).unwrap();

@@ -183,14 +183,18 @@ impl Window {
     }
 
     /// BoardsService.Pin: pins (or unpins) a board to the sidebar (card
-    /// #135), in the person's own log.
+    /// #135), in the person's own log. A board pin is no card, so the log
+    /// notes no change for it: boards:changed is what tells every boards
+    /// list (the sidebar's too) to read the pins again (#238).
     pub fn boards_pin(&self, id: &str, pinned: bool) -> Result<(), String> {
         let id = crate::trim(id);
         self.boards_find(id)?;
         self.core
             .coord()
             .pin_ref(&self.user_key(), &board_pin_key(id), pinned, "", false)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        self.emit(EVENT_BOARDS_CHANGED, &crate::events::Empty {});
+        Ok(())
     }
 
     fn boards_find(&self, id: &str) -> Result<BoardSummary, String> {
