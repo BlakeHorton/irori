@@ -528,6 +528,52 @@ fn test_pins_across_devices() {
     assert_eq!(e.c.ignored_rows(), 1);
 }
 
+/// Card #233: a shared board's sidebar pin ("board:<id>") is no card, but
+/// a pin row for it from another of the person's devices still tells
+/// subscribers, as a board_pin change, or the sidebar never hears it. A
+/// row for an unknown card id says nothing.
+#[test]
+fn test_board_pin_from_another_device_is_a_change() {
+    let base = hlc_at(fixed_now());
+    let two: KeyFn = Arc::new(|k: &str| k == "user:dev-a" || k == "user:dev-b");
+    let e = Env::with("dev-a", Some(two));
+    let q = e.c.subscribe();
+    let pins = [
+        pin_row(
+            "dev-b",
+            1,
+            base + 5,
+            "user",
+            "user:dev-b",
+            "board:abc",
+            true,
+            1.0,
+        ),
+        pin_row(
+            "dev-b",
+            2,
+            base + 6,
+            "user",
+            "user:dev-b",
+            "no-such-card",
+            true,
+            2.0,
+        ),
+    ];
+    for ev in &pins {
+        e.c.handle(ev).unwrap();
+    }
+    let mut got = Vec::new();
+    while let Ok(Some(ch)) = q.recv_timeout(Duration::from_millis(100)) {
+        got.push((ch.kind, ch.task_id));
+    }
+    assert_eq!(
+        got,
+        vec![(BOARD_PIN_CHANGED.to_string(), "board:abc".to_string())]
+    );
+    assert_eq!(e.c.pinned_ranks().get("board:abc"), Some(&1.0));
+}
+
 // ---- owner_test.go ----
 
 #[test]

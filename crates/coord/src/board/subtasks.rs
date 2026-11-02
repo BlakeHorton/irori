@@ -442,6 +442,15 @@ impl Fold {
                 task_id: p.task_id,
                 ..Change::default()
             });
+        } else if p.task_id.starts_with(BOARD_PIN_PREFIX) {
+            // A shared board's pin (card #135) is no card: say so, or a pin
+            // from another of the person's devices never reaches the
+            // sidebar until a restart (card #233).
+            self.note(Change {
+                kind: BOARD_PIN_CHANGED.into(),
+                task_id: p.task_id,
+                ..Change::default()
+            });
         }
     }
 

@@ -574,6 +574,11 @@ pub const LEASE_EXPIRED: &str = "lease_expired";
 pub const LEASE_REFUSED: &str = "lease_refused";
 pub const COMMENT_ADDED: &str = "comment";
 pub const RESYNC: &str = "resync";
+/// A shared board's sidebar pin moved (card #233): the pin row's key, a
+/// [`BOARD_PIN_PREFIX`] id, is in `task_id`. No card changed.
+pub const BOARD_PIN_CHANGED: &str = "board_pin";
+/// The pin-row key prefix of a shared board's sidebar pin (card #135).
+pub const BOARD_PIN_PREFIX: &str = "board:";
 
 /// A notification for transports and the UI.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]

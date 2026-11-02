@@ -191,7 +191,12 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
         }
         out.push(spawn("irori-window-board", move || {
             let q = feed.queue().clone();
-            coalesce(&q, BOARD_EMIT_EVERY, &stop, |_| {
+            coalesce(&q, BOARD_EMIT_EVERY, &stop, |batch| {
+                // A board's sidebar pin from another of the person's devices
+                // (card #233): the boards list holds the pins.
+                if batch.iter().any(is_board_pin) {
+                    w.emit(EVENT_BOARDS_CHANGED, &Empty {});
+                }
                 w.emit(EVENT_BOARD_CHANGED, &Empty {});
                 w.board_changed();
             });
@@ -222,6 +227,11 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
         }));
     }
     out
+}
+
+/// Whether a Board event is a shared board's sidebar pin moving (card #233).
+fn is_board_pin(ev: &CoreEvent) -> bool {
+    matches!(ev, CoreEvent::Board(ch) if ch.kind == coord::BOARD_PIN_CHANGED)
 }
 
 fn spawn(name: &str, f: impl FnOnce() + Send + 'static) -> JoinHandle<()> {
