@@ -79,6 +79,7 @@ irori-mcp = { path = "crates/mcp" }
 irori-mesh = { path = "crates/mesh" }
 irori-tools = { path = "crates/tools" }
 irori-window = { path = "crates/window" }
+irori-voice = { path = "crates/voice" }
 irori-toast = { path = "crates/toast" }
 irori-notify = { path = "crates/notify" }
 irori-update = { path = "crates/update" }

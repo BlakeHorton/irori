@@ -9,6 +9,10 @@ pub(crate) fn status() -> Status {
     Status::Unsupported(WHY.to_string())
 }
 
+pub(crate) fn open_settings(_code: ErrorCode) -> Result<(), String> {
+    Err(WHY.to_string())
+}
+
 pub(crate) struct Session;
 
 impl Session {

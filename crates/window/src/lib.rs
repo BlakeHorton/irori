@@ -61,6 +61,7 @@ pub mod stop;
 pub mod threads;
 pub mod ts;
 pub mod update;
+pub mod voice;
 pub mod wind_down;
 
 use std::path::{Path, PathBuf};
@@ -159,6 +160,8 @@ pub struct Window {
     on_reset: OnceLock<Box<dyn Fn() + Send + Sync>>,
     /// The current Wind down all run (card #220).
     wind_down: wind_down::RunSlot,
+    /// The voice input session (card #240).
+    voice: voice::VoiceSlot,
 }
 
 impl Window {
@@ -177,6 +180,7 @@ impl Window {
             open_file: OnceLock::new(),
             on_reset: OnceLock::new(),
             wind_down: Mutex::default(),
+            voice: voice::VoiceSlot::default(),
         }
     }
 

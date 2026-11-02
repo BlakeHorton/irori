@@ -25,6 +25,7 @@ irori-presence.workspace = true
 irori-store.workspace = true
 irori-sys.workspace = true
 irori-tools.workspace = true
+irori-voice.workspace = true
 base64.workspace = true
 hex.workspace = true
 serde.workspace = true

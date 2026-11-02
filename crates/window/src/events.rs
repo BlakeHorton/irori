@@ -13,6 +13,7 @@
 //! | `settings:launch-at-login` | bool | after every toggle attempt |
 //! | `app:open` | [`Target`] | a card's Open (M6 toast) |
 //! | `update:status` | [`UpdateStatus`] | updater transitions (M8) |
+//! | `voice:event` | `VoiceEvent` | a voice input session's words and end (#240, voice.rs) |
 //!
 //! `roster:changed` follows this device's presence only, as Go's
 //! (`Core.Changes` is `presence.Subscribe`).

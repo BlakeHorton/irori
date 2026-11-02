@@ -41,12 +41,64 @@ pub(crate) const SPEECH_SETTING: &str = "Turn on Online speech recognition in Wi
 pub(crate) const MIC_SETTING: &str = "Allow microphone access for desktop apps in Windows Settings > Privacy & security > Microphone, then try again.";
 
 pub(crate) fn status() -> Status {
-    // The class is there on every Windows 10/11; whether the person allowed
-    // it only shows when a session starts (no API reads the privacy switch
-    // without starting one).
-    match SpeechRecognizer::SystemSpeechLanguage() {
-        Ok(_) => Status::Ready,
-        Err(e) => Status::Unsupported(format!("Windows speech recognition is not available ({e})")),
+    // The class is there on every Windows 10/11. Whether the person allowed
+    // the online service shows in the registry (the Settings page writes
+    // it); it is only a hint: the window still lets a press try, and the
+    // start error is the real answer.
+    if let Err(e) = SpeechRecognizer::SystemSpeechLanguage() {
+        return Status::Unsupported(format!("Windows speech recognition is not available ({e})"));
+    }
+    if online_speech_accepted() == Some(false) {
+        return Status::Denied(SPEECH_SETTING.to_string());
+    }
+    Status::Ready
+}
+
+/// HKCU\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy
+/// `HasAccepted`: Some(true) on, Some(false) off or never set, None when
+/// the read fails for another reason.
+fn online_speech_accepted() -> Option<bool> {
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows::core::w;
+    let mut value: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let rc = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy"),
+            w!("HasAccepted"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut value as *mut u32 as *mut _),
+            Some(&mut size),
+        )
+    };
+    if rc == ERROR_SUCCESS {
+        Some(value == 1)
+    } else if rc == ERROR_FILE_NOT_FOUND {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Opens the Settings page that fixes `code`, when there is one.
+pub(crate) fn open_settings(code: ErrorCode) -> Result<(), String> {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::w;
+    let page = match code {
+        ErrorCode::SpeechDenied => w!("ms-settings:privacy-speech"),
+        ErrorCode::MicDenied | ErrorCode::NoMic => w!("ms-settings:privacy-microphone"),
+        _ => return Err("no settings page for this".into()),
+    };
+    // ShellExecute returns a value above 32 on success.
+    let h = unsafe { ShellExecuteW(None, w!("open"), page, None, None, SW_SHOWNORMAL) };
+    if h.0 as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!("could not open Settings ({})", h.0 as isize))
     }
 }
 

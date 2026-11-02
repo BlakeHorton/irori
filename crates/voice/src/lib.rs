@@ -117,6 +117,12 @@ pub fn status() -> Status {
     engine::status()
 }
 
+/// Opens the OS settings page that fixes `code` (microphone or speech
+/// privacy), where the platform has one.
+pub fn open_settings(code: ErrorCode) -> Result<(), String> {
+    engine::open_settings(code)
+}
+
 /// Starts a listening session. Events go to `sink` until [`Event::Ended`].
 pub fn start(sink: Sink) -> Result<Session, StartError> {
     engine::start(sink).map(|inner| Session { inner: Some(inner) })

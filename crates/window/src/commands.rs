@@ -28,6 +28,7 @@ use crate::roster::{GoneSession, RosterChange};
 use crate::settings::{NotifyOptions, Target};
 use crate::ts::{self, Typed};
 use crate::update::UpdateStatus;
+use crate::voice::{VoiceEvent, VoiceStatus};
 
 type W<'a> = State<'a, Arc<Window>>;
 type R<T> = Result<T, String>;
@@ -1000,6 +1001,36 @@ pub async fn update_restart_to_update(w: W<'_>) -> R<()> {
     w.update_restart()
 }
 
+// ---- Voice input (#240) -----------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn voice_status() -> R<VoiceStatus> {
+    Ok(crate::voice::status())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn voice_start(w: W<'_>) -> R<u32> {
+    // Opening the microphone and compiling the dictation grammar block.
+    let w = w.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || w.voice_start())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn voice_stop(w: W<'_>, session: u32) -> R<()> {
+    blocking(&w, move |w| w.voice_stop(session)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn voice_open_settings(w: W<'_>, code: String) -> R<()> {
+    blocking(&w, move |w| w.voice_open_settings(&code)).await
+}
+
 /// Every command, plus the event payload types the frontend listens for.
 pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
@@ -1122,6 +1153,10 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             update_supported,
             update_check_and_download,
             update_restart_to_update,
+            voice_status,
+            voice_start,
+            voice_stop,
+            voice_open_settings,
         ])
         .typ::<RosterChange>()
         .typ::<CaptureChange>()
@@ -1132,6 +1167,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<ts::State>()
         .typ::<ts::HoldReason>()
         .typ::<crate::cards::Holding>()
+        .typ::<VoiceEvent>()
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .dangerously_cast_bigints_to_number()
         .disable_serde_phases()

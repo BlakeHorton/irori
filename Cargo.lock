@@ -3613,7 +3613,6 @@ name = "irori-voice"
 version = "0.0.0"
 dependencies = [
  "windows",
- "windows-collections",
  "windows-future",
 ]
 
@@ -3642,6 +3641,7 @@ dependencies = [
  "irori-store",
  "irori-sys",
  "irori-tools",
+ "irori-voice",
  "serde",
  "serde_json",
  "specta",
