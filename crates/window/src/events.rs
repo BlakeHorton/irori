@@ -161,15 +161,29 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
         {
             let (w, board_q) = (w.clone(), feed.queue().clone());
             let q = w.core.subscribe_boards();
+            // boards:changed is coalesced too (card #233): a board synced
+            // from another device moves once per board.* / member.* row.
+            let moved_q: Arc<Queue<CoreEvent>> = Arc::new(Queue::new(64));
             let reg = {
-                let q = q.clone();
-                stop.on_cancel(move || q.close())
+                let (q, moved_q) = (q.clone(), moved_q.clone());
+                stop.on_cancel(move || {
+                    q.close();
+                    moved_q.close();
+                })
             };
+            {
+                let (w, stop, moved_q) = (w.clone(), stop.clone(), moved_q.clone());
+                out.push(spawn("irori-window-boards-moved", move || {
+                    coalesce(&moved_q, BOARD_EMIT_EVERY, &stop, |_| {
+                        w.emit(EVENT_BOARDS_CHANGED, &Empty {});
+                    });
+                }));
+            }
             out.push(spawn("irori-window-boards", move || {
                 let _reg = reg;
                 while let Some(ch) = q.recv() {
                     if ch.kind.is_empty() && ch.task_id.is_empty() {
-                        w.emit(EVENT_BOARDS_CHANGED, &Empty {});
+                        moved_q.push(CoreEvent::Resync);
                     }
                     board_q.push(CoreEvent::Board(ch));
                 }

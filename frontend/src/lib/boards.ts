@@ -4,13 +4,13 @@
 // here, never from src/gen. In a plain browser it runs on two sample
 // boards, and sharing moves a sample card onto one.
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 
 import { BoardsService, Events } from "./host"
 import { BoardSettings, BoardSummary, InviteStatus, SharePreview } from "./models"
 import { sampleShare, sampleWithdraw, samplePreview, setSampleBoards } from "./cards"
 import { inWails } from "./irori"
-import { useLatest } from "./talk"
+import { errorText } from "./talk"
 
 export { BoardSettings, BoardSummary, InviteStatus, SharePreview }
 
@@ -437,25 +437,75 @@ export const boards = {
 
 // ---- hooks ------------------------------------------------------------------
 
-// useBoards is the boards on this device, kept current from boards:changed.
+// The boards list is one list for the whole window (card #233): the
+// sidebar's Pinned boards, the Boards page and every other reader share
+// it, so they can never disagree. It loads when its first reader mounts,
+// again on every boards:changed (a board opened, went or was renamed, or
+// a board synced from another device got its rows), and on reload.
+
+export type BoardsList = { boards: BoardSummary[]; error: string | null }
+
+const listState = {
+  value: { boards: [], error: null } as BoardsList,
+  readers: new Set<() => void>(),
+  off: null as (() => void) | null,
+  req: 0,
+}
+
+// onBoardsMoved calls fn whenever the list may have changed: the host's
+// boards:changed, or a sample board moving in a plain browser.
+function onBoardsMoved(fn: () => void): () => void {
+  if (inWails()) return Events.On(EventBoardsChanged, fn)
+  sampleListeners.add(fn)
+  return () => {
+    sampleListeners.delete(fn)
+  }
+}
+
+// reloadBoards reads the list again and hands it to every reader; an older
+// read that finishes after a newer one is dropped.
+export async function reloadBoards(): Promise<void> {
+  const n = ++listState.req
+  let next: BoardsList
+  try {
+    next = { boards: await boards.list(), error: null }
+  } catch (err) {
+    next = { ...listState.value, error: errorText(err) }
+  }
+  if (n !== listState.req) return
+  listState.value = next
+  for (const fn of listState.readers) fn()
+}
+
+// subscribeBoards adds a reader of the shared list; the first one starts
+// following boards:changed and the last one stops it. Every new reader
+// reads the list again, so a page that opens shows it as it is now.
+export function subscribeBoards(reader: () => void): () => void {
+  listState.readers.add(reader)
+  listState.off ??= onBoardsMoved(() => void reloadBoards())
+  void reloadBoards()
+  return () => {
+    listState.readers.delete(reader)
+    if (listState.readers.size === 0) {
+      listState.off?.()
+      listState.off = null
+    }
+  }
+}
+
+// boardsNow is the shared list as last read.
+export function boardsNow(): BoardsList {
+  return listState.value
+}
+
+// useBoards is the boards on this device: the shared list, kept current.
 export function useBoards(): {
   boards: BoardSummary[]
   error: string | null
   reload: () => Promise<void>
 } {
-  const { value, error, reload } = useLatest<BoardSummary[]>(boards.list, [])
-  useEffect(() => {
-    void reload()
-    if (!inWails()) {
-      const fn = () => void reload()
-      sampleListeners.add(fn)
-      return () => {
-        sampleListeners.delete(fn)
-      }
-    }
-    return Events.On(EventBoardsChanged, () => void reload())
-  }, [reload])
-  return { boards: value, error, reload }
+  const { boards: value, error } = useSyncExternalStore(subscribeBoards, boardsNow, boardsNow)
+  return { boards: value, error, reload: reloadBoards }
 }
 
 // useInvite follows the open (or last) invite while active. An invite that
