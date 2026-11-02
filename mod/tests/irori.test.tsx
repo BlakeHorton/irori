@@ -98,6 +98,7 @@ function world(
   const aborted: string[] = []
 
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', () => ({ sessionId: SESSION }) as never)
   // Stop (card #207): the turn the mod cuts.
   on('turn.abort', ($, e) => {
     aborted.push(e.turnId)
@@ -615,6 +616,49 @@ describe('tools', () => {
     await pause(50)
     const again = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
     expect(String((again as { result?: unknown }).result)).toBe('Sent: msg_01 to bob.')
+    expect(posts(w.calls, '/v1/tools/send')[0]!.headers['X-Irori-Attach']).toBe('secret-2')
+  })
+
+  test('a tool call after session.end attaches once again and goes through on the new hello (card #244)', OPTIONS, async ($, on) => {
+    const w = world(on)
+    on('clock.sleep', async ($, e) => {
+      await pause(Math.min(Number((e as { ms?: unknown }).ms ?? 0), 50))
+      return { value: undefined } as never
+    })
+    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
+    await until(() => w.children.length === 1, 'spawn')
+    w.children[0]!.write(line(hello))
+    await until(() => w.registered.length === 2, 'tools registered')
+    await $.session.end({ reason: 'other' } as never)
+    // The session goes on without a session.start (a restart or resume in place).
+    const running = $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
+    await until(() => w.children.length === 2, 'attach after session.end')
+    expect(w.spawned[1]).toEqual(w.spawned[0]!)
+    w.children[1]!.write(line({ ...hello, attachSecret: 'secret-2' }))
+    const ran = await running
+    expect(String((ran as { result?: unknown }).result)).toBe('Sent: msg_01 to bob.')
+    // The dead secret is never sent, and the next call needs no new attach.
+    await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'again' } as never)
+    expect(posts(w.calls, '/v1/tools/send').map(c => c.headers['X-Irori-Attach'])).toEqual(['secret-2', 'secret-2'])
+    expect(w.children.length).toBe(2)
+  })
+
+  test('a main turn after session.end attaches once again (card #244)', OPTIONS, async ($, on) => {
+    const w = world(on)
+    await $.session.start({ cwd: 'C:/work', surface: 'terminal', isInteractive: true })
+    await until(() => w.children.length === 1, 'spawn')
+    w.children[0]!.write(line(hello))
+    await until(() => w.registered.length === 2, 'tools registered')
+    await $.session.end({ reason: 'other' } as never)
+    await $.turn.start({ text: 'carry on', turnId: 'turn-1' })
+    await $.turn.start({ text: 'and more', turnId: 'turn-2' })
+    await until(() => w.children.length === 2, 'attach after session.end')
+    await pause(50)
+    expect(w.children.length).toBe(2)
+    w.children[1]!.write(line({ ...hello, attachSecret: 'secret-2' }))
+    await pause(50)
+    const ran = await $.tool.call({ tool: 'mcp__irori__send', to: 'bob', text: 'hi' } as never)
+    expect(String((ran as { result?: unknown }).result)).toBe('Sent: msg_01 to bob.')
     expect(posts(w.calls, '/v1/tools/send')[0]!.headers['X-Irori-Attach']).toBe('secret-2')
   })
 

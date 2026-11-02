@@ -157,6 +157,20 @@ async function reattach($: EngineInterface, deadSecret: string, why: string) {
   await startAttach($, attachCwd, why)
 }
 
+/**
+ * A tool call or a main turn after session.end: the session went on without
+ * a session.start (a restart or resume in place), so attach it again, once
+ * (card #244). session.end dropped the secret, so nothing sends a dead one.
+ * True when this call started the attach.
+ */
+async function revive($: EngineInterface): Promise<boolean> {
+  if (!ended) return false
+  ended = false
+  if (!iroriPath()) return false
+  await startAttach($, attachCwd, 'the session went on after it ended; reattaching')
+  return true
+}
+
 /** Waits up to `ms` for a hello after a reattach; true once attached. */
 async function attached($: EngineInterface, ms: number): Promise<boolean> {
   for (let waited = 0; waited < ms; waited += 250) {
@@ -581,10 +595,18 @@ async function markEnded($: EngineInterface, turnId: string) {
   }
 }
 
+/** What a tool call says while this session has no attach. */
+async function notAttached($: EngineInterface): Promise<string> {
+  const view = await read($, attachAtom)
+  return `Error: this session isn't attached to Irori (${describeAttach(view)}). It reattaches by itself: try again in a few seconds. If it stays this way, check that the Irori app is running; /irori shows the status.`
+}
+
 async function callTool($: EngineInterface, e: Record<string, unknown>, budgetMs: number): Promise<string> {
   const name = bareToolName(String(e.tool ?? ''))
   if (!name) return 'Error: not an Irori tool.'
   const path = `/v1/tools/${encodeURIComponent(name)}`
+  // After session.end, wait for the new attach's hello before calling.
+  if ((await revive($)) && !(await attached($, Math.min(15_000, budgetMs - 5_000)))) return notAttached($)
   const secret = attachSecret
   let answer = await callCore($, 'POST', path, { args: toolArgs(e) })
   // A refused attach ran nothing: once the reattach says hello, try again.
@@ -594,10 +616,7 @@ async function callTool($: EngineInterface, e: Record<string, unknown>, budgetMs
     answer = await callCore($, 'POST', path, { args: toolArgs(e) })
   }
   if (!answer.ok) {
-    if (!api) {
-      const view = await read($, attachAtom)
-      return `Error: this session isn't attached to Irori (${describeAttach(view)}). It reattaches by itself: try again in a few seconds. If it stays this way, check that the Irori app is running; /irori shows the status.`
-    }
+    if (!api) return notAttached($)
     return `Error: ${answer.error}`
   }
   const text = (answer.body as { text?: unknown } | undefined)?.text
@@ -687,6 +706,10 @@ export const register: Register = (on, options) => {
     ended = true
     restartTimer?.cancel()
     stopChild?.()
+    stopChild = null
+    // The Core forgets this attach with its stream: its secret is dead.
+    api = null
+    attachSecret = ''
     return next(e)
   })
 
@@ -709,6 +732,7 @@ export const register: Register = (on, options) => {
     // Subagent turns can quote a token; only the main loop engages a wake,
     // and only the main loop's turns read appends.
     if (e.agentId === undefined) {
+      void revive($).catch(() => {})
       runningTurn = e.turnId
       void markEngaged($, e.text, e.turnId).catch(() => {})
       void markAppendsEngaged($, e.turnId).catch(() => {})
