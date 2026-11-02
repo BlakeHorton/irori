@@ -1,12 +1,16 @@
 //! Voice input's window face (#240): the mic button on the text boxes.
 //!
-//! `voice_status` says whether to show the mic, `voice_start` opens a
-//! session and returns its id, `voice_stop` ends it, and the session's
-//! words arrive as `voice:event` ([`VoiceEvent`]). One session at a time:
-//! starting a new one ends the old (its `ended` still arrives, with its
-//! own id, so a box only reacts to the session it started). Nothing is
-//! sent anywhere: the box puts the text in and the person edits and sends.
+//! `voice_status` says whether to show the mic (and whether the model still
+//! has to be downloaded), `voice_download_model` fetches it once with
+//! progress as `voice:download`, `voice_start` opens a session and returns
+//! its id, `voice_stop` ends it, and the session's words arrive as
+//! `voice:event` ([`VoiceEvent`]). One session at a time: starting a new
+//! one ends the old (its `ended` still arrives, with its own id, so a box
+//! only reacts to the session it started). Speech is transcribed on this
+//! device (Whisper); nothing is sent anywhere: the box puts the text in and
+//! the person edits and sends it.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Weak};
 
 use serde::Serialize;
@@ -16,19 +20,24 @@ use crate::Window;
 
 /// The voice:event event.
 pub const EVENT_VOICE: &str = "voice:event";
+/// The voice:download event.
+pub const EVENT_VOICE_DOWNLOAD: &str = "voice:download";
 
 /// Whether to show the mic, and why not.
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceStatus {
-    /// ready, denied (a setting is off; pressing still tries) or
+    /// ready; needs-model (the one-time model download comes first);
+    /// denied (no microphone or access off; pressing still tries); or
     /// unsupported (no engine here: the mic is hidden).
     pub state: String,
-    /// What to do about denied or unsupported; empty when ready.
+    /// What to do about it; empty when ready.
     pub reason: String,
-    /// The error code whose Settings page fixes it ("speech-denied",
-    /// "mic-denied"), else empty.
+    /// The error code whose Settings page fixes it ("mic-denied"), else
+    /// empty.
     pub fix: String,
+    /// The model download's size in bytes (for "needs-model").
+    pub model_bytes: u64,
 }
 
 /// One voice:event.
@@ -42,12 +51,20 @@ pub struct VoiceEvent {
     /// (code and text set; ended follows) or ended (always last).
     pub kind: String,
     pub text: String,
-    /// The error code: mic-denied, speech-denied, no-mic, network,
-    /// language, unsupported or other. Empty unless kind is error.
+    /// The error code: mic-denied, no-mic, no-model, unsupported or other.
+    /// Empty unless kind is error.
     pub code: String,
 }
 
-/// The window's one session.
+/// One voice:download: bytes so far of the model download.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceDownload {
+    pub done: u64,
+    pub total: u64,
+}
+
+/// The window's one session, and whether a model download runs.
 #[derive(Default)]
 pub(crate) struct VoiceSlot {
     inner: Mutex<SlotInner>,
@@ -57,48 +74,96 @@ pub(crate) struct VoiceSlot {
 struct SlotInner {
     next: u32,
     current: Option<(u32, voice::Session)>,
+    downloading: bool,
 }
 
-pub(crate) fn status() -> VoiceStatus {
-    match voice::status() {
-        voice::Status::Ready => VoiceStatus {
-            state: "ready".into(),
-            reason: String::new(),
-            fix: String::new(),
-        },
-        voice::Status::Denied(why) => VoiceStatus {
-            state: "denied".into(),
-            reason: why,
-            // The only pre-start denial an engine reports today is the
-            // Windows speech privacy switch.
-            fix: voice::ErrorCode::SpeechDenied.as_str().into(),
-        },
-        voice::Status::Unsupported(why) => VoiceStatus {
-            state: "unsupported".into(),
-            reason: why,
-            fix: String::new(),
-        },
+/// The status for this machine, given whether the model is there.
+pub(crate) fn status_with(engine: voice::Status, model_ready: bool) -> VoiceStatus {
+    let mut s = VoiceStatus {
+        state: "ready".into(),
+        reason: String::new(),
+        fix: String::new(),
+        model_bytes: voice::MODEL.size,
+    };
+    match engine {
+        voice::Status::Unsupported(why) => {
+            s.state = "unsupported".into();
+            s.reason = why;
+        }
+        voice::Status::Denied(why) => {
+            s.state = "denied".into();
+            s.reason = why;
+            s.fix = voice::ErrorCode::MicDenied.as_str().into();
+        }
+        voice::Status::Ready if !model_ready => {
+            s.state = "needs-model".into();
+            s.reason = format!(
+                "Voice input transcribes on this device. It needs a one-time download of the speech model ({} MB).",
+                voice::MODEL.size / 1_000_000
+            );
+        }
+        voice::Status::Ready => {}
     }
+    s
 }
 
 fn code_from(s: &str) -> Option<voice::ErrorCode> {
-    use voice::ErrorCode::*;
-    [
-        MicDenied,
-        SpeechDenied,
-        NoMic,
-        Network,
-        Language,
-        Unsupported,
-        Other,
-    ]
-    .into_iter()
-    .find(|c| c.as_str() == s)
+    voice::ErrorCode::ALL.into_iter().find(|c| c.as_str() == s)
 }
 
 impl Window {
+    fn voice_model(&self) -> PathBuf {
+        voice::model_path(self.core.data_dir(), &voice::MODEL)
+    }
+
+    /// Whether to show the mic and what it needs.
+    pub fn voice_status(&self) -> VoiceStatus {
+        status_with(
+            voice::status(),
+            voice::model_ready(self.core.data_dir(), &voice::MODEL),
+        )
+    }
+
+    /// Downloads the model once (a second call while one runs fails).
+    /// Progress goes out as voice:download.
+    pub async fn voice_download_model(self: &Arc<Window>) -> Result<(), String> {
+        {
+            let mut s = self.voice.inner.lock().map_err(|e| e.to_string())?;
+            if s.downloading {
+                return Err("the speech model is already downloading".into());
+            }
+            s.downloading = true;
+        }
+        let w = Arc::downgrade(self);
+        let last = Mutex::new(0u64);
+        let progress = move |done: u64, total: u64| {
+            // About every 1% (and the end): enough for a bar.
+            let step = (total / 100).max(1);
+            let mut l = last.lock().unwrap_or_else(|e| e.into_inner());
+            if done == total || done >= *l + step || done == 0 {
+                *l = done;
+                if let Some(w) = w.upgrade() {
+                    w.emit(EVENT_VOICE_DOWNLOAD, &VoiceDownload { done, total });
+                }
+            }
+        };
+        let ua = format!("irori/{}", self.version());
+        let r = voice::download_model(
+            self.core.data_dir(),
+            &voice::MODEL,
+            voice::MODEL.url,
+            &ua,
+            &progress,
+        )
+        .await;
+        if let Ok(mut s) = self.voice.inner.lock() {
+            s.downloading = false;
+        }
+        r.map(|_| ())
+    }
+
     /// Starts a session (ending any other) and returns its id. Blocking:
-    /// the engine compiles its grammar and opens the microphone first.
+    /// the engine loads the model and opens the microphone first.
     pub fn voice_start(self: &Arc<Window>) -> Result<u32, String> {
         let old = {
             let mut s = self.voice.inner.lock().map_err(|e| e.to_string())?;
@@ -117,7 +182,7 @@ impl Window {
                 w.emit(EVENT_VOICE, &event(id, e));
             }
         });
-        let session = voice::start(sink).map_err(|e| e.message)?;
+        let session = voice::start(&self.voice_model(), sink).map_err(|e| e.message)?;
         let replaced = {
             let mut s = self.voice.inner.lock().map_err(|e| e.to_string())?;
             s.current.replace((id, session))
@@ -126,7 +191,8 @@ impl Window {
         Ok(id)
     }
 
-    /// Ends `session` if it is still the current one. Blocking.
+    /// Ends `session` if it is still the current one, after it finalizes
+    /// what was said. Blocking.
     pub fn voice_stop(&self, session: u32) -> Result<(), String> {
         let taken = {
             let mut s = self.voice.inner.lock().map_err(|e| e.to_string())?;
@@ -186,37 +252,35 @@ mod tests {
         let e = event(
             4,
             voice::Event::Error {
-                code: voice::ErrorCode::SpeechDenied,
-                message: "turn it on".into(),
+                code: voice::ErrorCode::MicDenied,
+                message: "allow it".into(),
             },
         );
         assert_eq!(
             (e.kind.as_str(), e.code.as_str(), e.text.as_str()),
-            ("error", "speech-denied", "turn it on")
+            ("error", "mic-denied", "allow it")
         );
         assert_eq!(event(4, voice::Event::Ended).kind, "ended");
     }
 
     #[test]
     fn codes_round_trip() {
-        for c in [
-            "mic-denied",
-            "speech-denied",
-            "no-mic",
-            "network",
-            "language",
-            "unsupported",
-            "other",
-        ] {
-            assert_eq!(code_from(c).map(|x| x.as_str()), Some(c));
+        for c in voice::ErrorCode::ALL {
+            assert_eq!(code_from(c.as_str()), Some(c));
         }
         assert_eq!(code_from("nope"), None);
     }
 
     #[test]
-    fn status_has_a_known_state() {
-        let s = status();
-        assert!(["ready", "denied", "unsupported"].contains(&s.state.as_str()));
-        assert_eq!(s.state == "ready", s.reason.is_empty());
+    fn status_states() {
+        assert_eq!(status_with(voice::Status::Ready, true).state, "ready");
+        let s = status_with(voice::Status::Ready, false);
+        assert_eq!(s.state, "needs-model");
+        assert!(s.reason.contains("MB"));
+        assert_eq!(s.model_bytes, voice::MODEL.size);
+        let s = status_with(voice::Status::Denied("no mic".into()), true);
+        assert_eq!((s.state.as_str(), s.fix.as_str()), ("denied", "mic-denied"));
+        let s = status_with(voice::Status::Unsupported("later".into()), false);
+        assert_eq!(s.state, "unsupported");
     }
 }

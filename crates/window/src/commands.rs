@@ -28,7 +28,7 @@ use crate::roster::{GoneSession, RosterChange};
 use crate::settings::{NotifyOptions, Target};
 use crate::ts::{self, Typed};
 use crate::update::UpdateStatus;
-use crate::voice::{VoiceEvent, VoiceStatus};
+use crate::voice::{VoiceDownload, VoiceEvent, VoiceStatus};
 
 type W<'a> = State<'a, Arc<Window>>;
 type R<T> = Result<T, String>;
@@ -1005,8 +1005,15 @@ pub async fn update_restart_to_update(w: W<'_>) -> R<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn voice_status() -> R<VoiceStatus> {
-    Ok(crate::voice::status())
+pub async fn voice_status(w: W<'_>) -> R<VoiceStatus> {
+    Ok(w.voice_status())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn voice_download_model(w: W<'_>) -> R<()> {
+    let w = w.inner().clone();
+    w.voice_download_model().await
 }
 
 #[tauri::command]
@@ -1154,6 +1161,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             update_check_and_download,
             update_restart_to_update,
             voice_status,
+            voice_download_model,
             voice_start,
             voice_stop,
             voice_open_settings,
@@ -1168,6 +1176,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<ts::HoldReason>()
         .typ::<crate::cards::Holding>()
         .typ::<VoiceEvent>()
+        .typ::<VoiceDownload>()
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .dangerously_cast_bigints_to_number()
         .disable_serde_phases()

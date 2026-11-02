@@ -165,3 +165,9 @@ opt-level = 3
 
 [profile.dev.package.pbkdf2]
 opt-level = 3
+
+# whisper-rs-sys with the cross-compile fix (#240, blocker b3): it links
+# ggml-blas by the target OS, not the host, so the Android build from a Mac
+# works. Drop once upstream (codeberg.org/tazz4843/whisper-rs) has it.
+[patch.crates-io]
+whisper-rs-sys = { git = "https://github.com/StephenSHorton/whisper-rs", branch = "fix/cross-compile-target-os" }

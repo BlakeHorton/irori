@@ -99,6 +99,7 @@ export type Trust = B.Trust
 export type UpdateStatus = B.UpdateStatus
 export type UploadFile = B.UploadFile
 export type Value = B.Value
+export type VoiceDownload = B.VoiceDownload
 export type VoiceEvent = B.VoiceEvent
 export type VoiceStatus = B.VoiceStatus
 export type WindDownRow = B.WindDownRow
@@ -514,6 +515,11 @@ export function UploadFile(p: Partial<B.UploadFile> = {}): B.UploadFile {
   return { "name": "", "data": "", ...p } as B.UploadFile
 }
 
+/** VoiceDownload with Go's zero values for every field left out. */
+export function VoiceDownload(p: Partial<B.VoiceDownload> = {}): B.VoiceDownload {
+  return { "done": 0, "total": 0, ...p } as B.VoiceDownload
+}
+
 /** VoiceEvent with Go's zero values for every field left out. */
 export function VoiceEvent(p: Partial<B.VoiceEvent> = {}): B.VoiceEvent {
   return { "session": 0, "kind": "", "text": "", "code": "", ...p } as B.VoiceEvent
@@ -521,7 +527,7 @@ export function VoiceEvent(p: Partial<B.VoiceEvent> = {}): B.VoiceEvent {
 
 /** VoiceStatus with Go's zero values for every field left out. */
 export function VoiceStatus(p: Partial<B.VoiceStatus> = {}): B.VoiceStatus {
-  return { "state": "", "reason": "", "fix": "", ...p } as B.VoiceStatus
+  return { "state": "", "reason": "", "fix": "", "modelBytes": 0, ...p } as B.VoiceStatus
 }
 
 /** WindDownRow with Go's zero values for every field left out. */
