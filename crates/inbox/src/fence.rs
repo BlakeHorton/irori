@@ -8,8 +8,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::attach::safe_name;
+use crate::messages::clip_show;
 use crate::state::APPEND_TOKEN_PREFIX;
-use crate::{Delivery, MAX_WAKE_BYTES, addr, mode};
+use crate::{Delivery, MAX_TEXT, MAX_WAKE_BYTES, addr, mode, trust};
 
 static CLOSE_TAG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)</(irori-message)").expect("close tag regex"));
@@ -185,7 +186,17 @@ pub fn fence(token: &str, reminder: bool, msgs: &[Delivery], overflow: &[String]
             }
         }
         sb.push_str(">\n");
-        sb.push_str(&escape_text(&m.text));
+        // Only the person's message can run past MAX_TEXT (card #265): the
+        // wake carries it clipped, pointing at show for all of it.
+        if m.trust == trust::USER {
+            sb.push_str(&escape_text(&clip_show(
+                &m.text,
+                MAX_TEXT,
+                &format!("msg:{}", m.id),
+            )));
+        } else {
+            sb.push_str(&escape_text(&m.text));
+        }
         sb.push('\n');
         for f in &m.attachments {
             let _ = writeln!(

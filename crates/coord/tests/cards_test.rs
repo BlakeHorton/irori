@@ -855,7 +855,7 @@ fn test_answer() {
             "text too long",
             USER,
             "b2",
-            resolve_text(&"x".repeat(MAX_OWN_ANSWER + 1)),
+            resolve_text(&"x".repeat(MAX_PERSON_TEXT + 1)),
             Some(ErrorKind::Invalid),
             "",
             String::new(),

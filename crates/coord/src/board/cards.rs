@@ -15,7 +15,7 @@ use super::rows::*;
 use super::types::*;
 use super::util::{
     MAX_NOTICE_FIELD, SWEEPER, caller, check_key, check_text, cmp_or, cmp_str, contains, cut,
-    deeper, multiline, new_id, remove_str, runes,
+    cut_show, deeper, multiline, new_id, remove_str, runes,
 };
 use super::{
     DONE_ANSWER, DONE_CONTEXT, DONE_QUESTION, KEEP_RESOLVED, MAX_ANSWER, MAX_ATTACHMENTS,
@@ -1373,9 +1373,7 @@ impl Fold {
         };
         let (mut opt, mut rec_by, mut rec, mut note) = (-1i64, String::new(), false, String::new());
         if let Some(last) = last.as_ref().filter(|_| a.pick == 0) {
-            let mut limit = MAX_OWN_ANSWER;
             if !self.is_owner(&by) {
-                limit = MAX_ANSWER;
                 if text.is_empty() {
                     return Err(invalid(
                         "the person already answered; give note: one line on what you will do now",
@@ -1385,7 +1383,11 @@ impl Fold {
                     return Err(invalid("the note is one line"));
                 }
             }
-            check_text("the note", &text, 0, limit)?;
+            if self.is_owner(&by) {
+                super::comments::check_person_text("the note", &text, 0)?;
+            } else {
+                check_text("the note", &text, 0, MAX_ANSWER)?;
+            }
             note = text;
             text = last.text.clone();
             opt = last.pick - 1;
@@ -1409,6 +1411,8 @@ impl Fold {
             text = o.answer.clone();
             rec_by = o.by.clone();
             rec = o.recommended;
+        } else if self.is_owner(&by) {
+            super::comments::check_person_text("the answer", &text, 1)?;
         } else {
             check_text("the answer", &text, 1, MAX_OWN_ANSWER)?;
         }
@@ -1460,7 +1464,7 @@ impl Fold {
                 t.refs(),
                 b.id,
                 b.question,
-                cut(&text, MAX_NOTICE_FIELD)
+                cut_show(&text, MAX_NOTICE_FIELD, &format!("task:{id}"))
             );
             s.push_str(&picked_line(opt, &rec_by, rec));
             if opt < 0 && !b.options.is_empty() {
@@ -1518,7 +1522,7 @@ impl Fold {
             s.push_str(&format!(
                 "\nQuestion: {}\nThe person's answer: {}",
                 b.question,
-                cut(&text, MAX_NOTICE_FIELD)
+                cut_show(&text, MAX_NOTICE_FIELD, &format!("task:{id}"))
             ));
         } else {
             s.push_str(&format!(
@@ -1528,7 +1532,7 @@ impl Fold {
                 t.refs(),
                 b.id,
                 b.question,
-                cut(&text, MAX_NOTICE_FIELD)
+                cut_show(&text, MAX_NOTICE_FIELD, &format!("task:{id}"))
             ));
             s.push_str(&picked_line(opt, &rec_by, rec));
         }

@@ -20,8 +20,8 @@ use super::util::{
     multiline, new_id, runes,
 };
 use super::{
-    DEFAULT_DONE_CARD, MAX_ATTACHMENTS, MAX_COMMENT, MAX_DONE_CARD, MAX_HANDOFF_NOTE, MAX_REASON,
-    MAX_REF, REOPEN_COMMENT_NOTE,
+    DEFAULT_DONE_CARD, MAX_ATTACHMENTS, MAX_COMMENT, MAX_DONE_CARD, MAX_HANDOFF_NOTE,
+    MAX_PERSON_TEXT, MAX_REASON, MAX_REF, REOPEN_COMMENT_NOTE,
 };
 use crate::gotime;
 use crate::names::trim_space;
@@ -37,14 +37,37 @@ pub(crate) fn check_reason(s: &str, required: bool) -> Result<()> {
     Ok(())
 }
 
-/// Trims and checks a comment's caller, text and files.
-pub(crate) fn check_comment(by: &str, text: &str, files: &[FileRef]) -> Result<(String, String)> {
+/// Checks text the person typed: at most [`MAX_PERSON_TEXT`] bytes.
+pub(crate) fn check_person_text(what: &str, s: &str, min: usize) -> Result<()> {
+    if runes(s) < min {
+        return Err(invalid(format!("{what} is empty")));
+    }
+    if s.len() > MAX_PERSON_TEXT {
+        return Err(invalid(format!(
+            "{what} longer than {} KiB",
+            MAX_PERSON_TEXT >> 10
+        )));
+    }
+    Ok(())
+}
+
+/// Trims and checks a comment's caller, text and files. The person's
+/// comment may be up to [`MAX_PERSON_TEXT`] bytes; an agent's stays at
+/// [`MAX_COMMENT`] characters.
+pub(crate) fn check_comment(
+    by: &str,
+    text: &str,
+    files: &[FileRef],
+    person: bool,
+) -> Result<(String, String)> {
     let by = caller(by)?;
     let text = trim_space(text).to_string();
     if text.is_empty() {
         return Err(invalid("an empty comment"));
     }
-    if runes(&text) > MAX_COMMENT {
+    if person {
+        check_person_text("comment", &text, 1)?;
+    } else if runes(&text) > MAX_COMMENT {
         return Err(invalid(format!(
             "comment longer than {MAX_COMMENT} characters"
         )));
@@ -521,7 +544,7 @@ impl Fold {
         to: &str,
         mentions: &[Mention],
     ) -> Result<(Comment, Notice)> {
-        let (by, text) = check_comment(by, text, &files)?;
+        let (by, text) = check_comment(by, text, &files, self.is_owner(trim_space(by)))?;
         let t = self.any_task(id)?.clone();
         let at = self.stamp();
         let cid = new_id(&at);
@@ -641,7 +664,7 @@ impl Fold {
         files: &[FileRef],
         around: Option<&dyn Fn(&str) -> bool>,
     ) -> Result<(Comment, Vec<Notice>)> {
-        let (by, text) = check_comment(by, text, files)?;
+        let (by, text) = check_comment(by, text, files, self.is_owner(trim_space(by)))?;
         if !self.is_owner(&by) {
             return Err(invalid("only the person comments from the app"));
         }
@@ -793,6 +816,8 @@ impl Fold {
         let held = m.held && !m.fill;
         if held {
             text.clear();
+        } else if self.is_owner(&from) && text.len() <= MAX_PERSON_TEXT {
+            // The person's own message goes on the thread whole (card #265).
         } else if runes(&text) > MAX_COMMENT {
             let full = format!("… (full: msg:{})", m.msg_id);
             let keep = MAX_COMMENT - runes(&full);

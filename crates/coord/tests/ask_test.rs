@@ -854,3 +854,14 @@ fn test_ask_line() {
         .unwrap();
     assert_eq!(t.ask_line(), "closed (answered): v1");
 }
+
+/// Card #265: the person's ask may be far longer than a comment cap, and
+/// its objective keeps all of it.
+#[test]
+fn test_long_ask() {
+    let e = Env::new();
+    let long = format!("look at this log:\n{}", "line of log\n".repeat(2000));
+    let (t, _) = post_ask(&e, &long);
+    assert_eq!(t.objective, long.trim());
+    assert!(t.objective.chars().count() > 20_000);
+}

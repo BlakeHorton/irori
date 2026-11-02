@@ -26,6 +26,15 @@ pub fn cut(s: &str, n: usize) -> String {
     out
 }
 
+/// [`cut`], pointing the reader at `show <ref>` for all of it when the
+/// text was cut (card #265).
+pub fn cut_show(s: &str, n: usize, reference: &str) -> String {
+    if runes(s) <= n {
+        return s.to_string();
+    }
+    format!("{} (clipped; show {reference} for all of it)", cut(s, n))
+}
+
 pub fn cmp_str(s: &str, def: &str) -> String {
     if s.is_empty() { def } else { s }.to_string()
 }

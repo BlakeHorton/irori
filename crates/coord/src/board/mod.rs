@@ -90,6 +90,11 @@ pub const GONE_GRACE: Duration = Duration::from_secs(3 * 60);
 pub const HOLDER_GRACE: Duration = Duration::from_secs(10 * 60);
 
 pub const MAX_COMMENT: usize = 4000;
+/// What the person types (a comment, an ask, a blocker answer) is held to
+/// this many bytes, not to an agent's character caps (card #265): a pasted
+/// log fits, and a row stays well inside the mesh's 8 MiB message cap even
+/// JSON-escaped. Agents still hear it clipped, with a show pointer.
+pub const MAX_PERSON_TEXT: usize = 512 << 10;
 pub const MAX_ATTACHMENTS: usize = 10;
 pub const MAX_REASON: usize = 500;
 pub const MAX_REF: usize = 300;

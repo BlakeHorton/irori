@@ -1304,3 +1304,21 @@ fn test_own_words_set_options_aside() {
         assert!(!b.options_aside && b.options.is_empty(), "{b:?}");
     }
 }
+
+/// Card #265: the person's blocker answer is held to MAX_PERSON_TEXT
+/// bytes, not to an agent's cap, and is stored whole.
+#[test]
+fn test_person_answer_long() {
+    let e = Env::new();
+    let task = raised_on(&e);
+    let long = "a".repeat(20_000);
+    e.c.answer(USER, &task.id, "b1", text(&long)).unwrap();
+    let cs = e.c.comments(&task.id).unwrap();
+    assert!(cs.iter().any(|c| c.text == long), "answer stored whole");
+    let e = Env::new();
+    let task = raised_on(&e);
+    want_err(
+        e.c.answer(USER, &task.id, "b1", text(&"a".repeat(MAX_PERSON_TEXT + 1))),
+        ErrorKind::Invalid,
+    );
+}

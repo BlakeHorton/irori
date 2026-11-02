@@ -90,11 +90,9 @@ export { Holding, LinkKind, NoteItem, TaskState }
 // every card change.
 export const EventBoardChanged = "board:changed"
 
-// MaxAnswer mirrors coord's limit on a blocker answer.
-export const MaxAnswer = 500
-
-// MaxComment mirrors coord's limit on a comment.
-export const MaxComment = 4000
+// The person's comments, asks and blocker answers have no box limit: coord
+// holds them to MAX_PERSON_TEXT (512 KiB) and agents hear them clipped with
+// a show pointer (card #265).
 
 // BlockerState mirrors the Go constants on CardBlocker.state: open (no
 // answer yet), answered (the person answered; it waits on the raiser,

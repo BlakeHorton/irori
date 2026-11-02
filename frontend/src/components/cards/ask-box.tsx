@@ -9,7 +9,7 @@ import {
 import { MentionTextarea } from "@/components/common/mention-textarea"
 import { Button } from "@/components/ui/button"
 import { useBoards } from "@/lib/boards"
-import { MaxComment, threads } from "@/lib/cards"
+import { threads } from "@/lib/cards"
 import { useDraft, useMentionsDraft } from "@/lib/drafts"
 import { composing, MentionBoard } from "@/lib/mentions"
 import { errorText } from "@/lib/talk"
@@ -107,7 +107,6 @@ export function AskBox({
             rows={1}
             value={text}
             mentions={mentions}
-            maxLength={MaxComment}
             onChange={(v, ms) => {
               setText(v)
               setMentions(ms)

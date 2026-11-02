@@ -732,7 +732,12 @@ impl Fold {
         input: NewAsk,
         agents: &[AgentCard],
     ) -> Result<(Task, Notice)> {
-        let (by, text) = super::comments::check_comment(by, &input.text, &input.files)?;
+        let (by, text) = super::comments::check_comment(
+            by,
+            &input.text,
+            &input.files,
+            self.is_owner(trim_space(by)),
+        )?;
         if !self.is_owner(&by) {
             return Err(not_allowed("only the person asks the room"));
         }

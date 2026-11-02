@@ -649,3 +649,27 @@ fn watch_held_board_row_shows_the_other_person() {
         (st::QUEUED, mode::WAKE)
     );
 }
+
+/// Card #265: a notice carrying the person's long text reaches the agent
+/// clipped to MAX_TEXT, with a pointer to show for all of it.
+#[test]
+fn route_notice_clips_long_text_with_show() {
+    let h = Harness::new();
+    h.abc();
+    let n = Notice {
+        to: vec![KEY_A.into()],
+        kind: "comment".into(),
+        text: format!("Stephen commented:\n{}", "p".repeat(20_000)),
+        ref_: "comment:C1".into(),
+        ..Notice::default()
+    };
+    let rs = route_notice(&h.ib, &system_sender(), &n, |_, _| None);
+    assert!(rs[0].err.is_none(), "{:?}", rs[0].err);
+    let text = &rs[0].delivery.message.text;
+    assert!(text.chars().count() <= inbox::MAX_TEXT);
+    assert!(text.starts_with("Stephen commented:\npppp"));
+    assert!(
+        text.ends_with("(clipped; show comment:C1 for all of it)"),
+        "{text:?}"
+    );
+}

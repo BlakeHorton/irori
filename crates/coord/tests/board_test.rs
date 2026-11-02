@@ -950,11 +950,12 @@ fn test_comments() {
     let e = Env::new();
     let task = e.c.create_task(ALICE, nt("t")).unwrap();
     e.c.claim_task(BOB, &task.id).unwrap();
-    for (name, text) in [
-        ("empty", " \n ".to_string()),
-        ("too long", "c".repeat(MAX_COMMENT + 1)),
+    for (name, by, text) in [
+        ("empty", USER, " \n ".to_string()),
+        ("agent too long", BOB, "c".repeat(MAX_COMMENT + 1)),
+        ("person too long", USER, "c".repeat(MAX_PERSON_TEXT + 1)),
     ] {
-        let r = e.c.add_comment(USER, &task.id, &text, false);
+        let r = e.c.add_comment(by, &task.id, &text, false);
         assert!(
             r.as_ref().is_err_and(|x| x.is(ErrorKind::Invalid)),
             "{name}"
@@ -1081,6 +1082,11 @@ fn test_record_message() {
         .unwrap();
     assert_eq!(long.text.chars().count(), MAX_COMMENT);
     assert!(long.text.ends_with("… (full: msg:msg_2)"));
+    // The person's own message goes on the thread whole (card #265).
+    let mine =
+        e.c.record_message(msg(&task.id, "msg_4", USER, BOB, &"p".repeat(20_000)))
+            .unwrap();
+    assert_eq!(mine.text.len(), 20_000);
     let mut h = msg(&task.id, "msg_3", ALICE, BOB, "secret");
     h.held = true;
     let held = e.c.record_message(h).unwrap();
@@ -2173,4 +2179,19 @@ fn test_search_show() {
         }
     }
     assert_eq!(e.c.search_kinds(), vec![Kind::Task, Kind::Comment]);
+}
+
+/// Card #265: the person's 20,000-character paste is stored whole; the
+/// notice carries it (the inbox clips it for the agent's wake).
+#[test]
+fn test_person_comment_long() {
+    let e = Env::new();
+    let task = e.c.create_task(ALICE, nt("t")).unwrap();
+    e.c.claim_task(BOB, &task.id).unwrap();
+    let paste = "p".repeat(20_000);
+    let (big, n) = e.c.add_comment(USER, &task.id, &paste, false).unwrap();
+    assert_eq!(big.text, paste);
+    assert!(n.text.contains(&paste) && n.reference == format!("comment:{}", big.id));
+    let cs = e.c.comments(&task.id).unwrap();
+    assert_eq!(cs[0].text, paste);
 }

@@ -7,7 +7,8 @@ use std::sync::Arc;
 use common::*;
 use inbox::{
     Address, DIRECT_LIMIT, DIRECT_WINDOW, Delivery, ErrorKind, MAX_ALIAS_LEN, MAX_ALIASES,
-    MAX_DEFER, MAX_NOTE, MAX_TEXT, Message, Sender, addr, fence_prompt, path, st, trust,
+    MAX_DEFER, MAX_NOTE, MAX_PERSON_TEXT, MAX_TEXT, Message, Sender, addr, fence_prompt, path, st,
+    trust,
 };
 
 fn fenced(id: &str, name: &str, key: &str, text: &str, tr: &str) -> Delivery {
@@ -357,6 +358,26 @@ fn text_limits() {
         &format!("  {}  ", "é".repeat(MAX_TEXT)),
     );
     assert_eq!(d.state, st::QUEUED);
+}
+
+/// Card #265: the person's own message is stored whole up to
+/// MAX_PERSON_TEXT bytes, and the agent's wake carries it clipped with a
+/// show pointer.
+#[test]
+fn person_long_message() {
+    let h = Harness::new();
+    h.abc();
+    let long = "p".repeat(20_000);
+    let (m, d) = h.send(&person(), &to("beta"), &long);
+    assert_eq!(m.text, long);
+    assert_eq!(d.message.text, long);
+    want_err(
+        h.ib.send(&person(), &to("beta"), &"p".repeat(MAX_PERSON_TEXT + 1), ""),
+        ErrorKind::TooLong,
+    );
+    let p = fence_prompt("[irori-wake:wake_01TEST]", false, &[d]);
+    assert!(p.contains(&format!("(clipped; show msg:{} for all of it)", m.id)));
+    assert!(!p.contains(&long));
 }
 
 #[test]

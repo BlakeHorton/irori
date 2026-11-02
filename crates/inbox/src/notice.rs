@@ -67,6 +67,9 @@ pub fn route_notice(
         if n.kind == NOTICE_WATCHED && md == mode::NEXT_TURN {
             (text, earlier) = merge_watched(ib, from, to, n, &merge);
         }
+        // The person's text in a notice may be far longer than a wake
+        // carries: clip it with a pointer to the whole (card #265).
+        let text = crate::clip_show(&text, crate::MAX_TEXT, &n.ref_);
         let o = SendOptions {
             mode: md.into(),
             ref_: n.ref_.clone(),

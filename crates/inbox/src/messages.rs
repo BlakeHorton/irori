@@ -8,8 +8,8 @@ use crate::policy::placed;
 use crate::state::{AliasRow, DeliveryRow, Drec, Inner, norm_alias, pair_key, trim};
 use crate::{
     Address, DEFAULT_INBOX_LIST, DIRECT_LIMIT, DIRECT_WINDOW, Delivery, Error, ErrorKind, Inbox,
-    MAX_ATTACHMENTS, MAX_DEFER, MAX_NOTE, MAX_REF, MAX_TEXT, Mention, Message, REASON_MENTIONED,
-    Result, SendOptions, Sender, addr, choice, kinds, mode, path, st, tm, trust,
+    MAX_ATTACHMENTS, MAX_DEFER, MAX_NOTE, MAX_PERSON_TEXT, MAX_REF, MAX_TEXT, Mention, Message,
+    REASON_MENTIONED, Result, SendOptions, Sender, addr, choice, kinds, mode, path, st, tm, trust,
 };
 
 /// Trims, then cuts to n runes (no ellipsis).
@@ -19,6 +19,25 @@ pub(crate) fn clip(s: &str, n: usize) -> String {
         return s.to_string();
     }
     s.chars().take(n).collect()
+}
+
+/// Cuts s to at most n characters for an agent's wake, ending it with a
+/// pointer to `show` for all of it (card #265). Text within n is returned
+/// trimmed and whole; with no ref it is cut plain.
+pub fn clip_show(s: &str, n: usize, ref_: &str) -> String {
+    let s = trim(s);
+    if s.chars().count() <= n {
+        return s.to_string();
+    }
+    let ref_ = trim(ref_);
+    if ref_.is_empty() {
+        return s.chars().take(n).collect();
+    }
+    let tail = format!("\n… (clipped; show {ref_} for all of it)");
+    let keep = n.saturating_sub(tail.chars().count());
+    let mut out: String = s.chars().take(keep).collect();
+    out.push_str(&tail);
+    out
 }
 
 pub(crate) fn bad_state(d: &Drec, what: &str) -> Error {
@@ -51,7 +70,16 @@ impl Inner {
             return Err(Error::sentinel(ErrorKind::Empty));
         }
         let n = text.chars().count();
-        if n > MAX_TEXT {
+        if n > MAX_TEXT && self.is_owner(&from.key) {
+            // The person's own message is stored whole and clipped for the
+            // agent's wake (fence) with a show pointer.
+            if text.len() > MAX_PERSON_TEXT {
+                return Err(Error::wrap(
+                    ErrorKind::TooLong,
+                    format!("{} bytes; at most {MAX_PERSON_TEXT}", text.len()),
+                ));
+            }
+        } else if n > MAX_TEXT {
             return Err(Error::wrap(
                 ErrorKind::TooLong,
                 format!("{n} characters; at most {MAX_TEXT}"),

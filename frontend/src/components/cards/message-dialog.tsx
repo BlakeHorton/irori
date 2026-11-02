@@ -21,7 +21,6 @@ import { notDelivered, type Mention } from "@/lib/mentions"
 import {
   errorText,
   holdText,
-  MaxText,
   State,
   talk,
   type Delivery,
@@ -180,7 +179,6 @@ export function MessageDialog({
               <MentionTextarea
                 value={reply}
                 mentions={mentions}
-                maxLength={MaxText}
                 onChange={(v, ms) => {
                   setReply(v)
                   setMentions(ms)

@@ -15,6 +15,7 @@ use super::error::{Result, invalid, not_allowed, not_found};
 use super::fold::Fold;
 use super::rows::*;
 use super::types::{COMMENT_ADDED, Change, Comment};
+use crate::names::trim_space;
 
 impl Fold {
     /// The comment `by` may edit: their own, on a private card, not a
@@ -47,7 +48,7 @@ impl Fold {
         comment_id: &str,
         text: &str,
     ) -> Result<Comment> {
-        let (by, text) = check_comment(by, text, &[])?;
+        let (by, text) = check_comment(by, text, &[], self.is_owner(trim_space(by)))?;
         let cm = self.comment_editable(&by, comment_id)?;
         if cm.text == text {
             return Ok(cm);

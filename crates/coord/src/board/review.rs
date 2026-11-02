@@ -474,7 +474,8 @@ impl Fold {
                 "a verdict is its own comment, not a reply on a blocker",
             ));
         }
-        let (by, text) = check_comment(by, &input.text, &input.files)?;
+        let (by, text) =
+            check_comment(by, &input.text, &input.files, self.is_owner(trim_space(by)))?;
         let t = self.any_task(id)?.clone();
         let askers: Vec<String> = self
             .reviews

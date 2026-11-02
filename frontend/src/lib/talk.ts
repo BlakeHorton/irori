@@ -31,8 +31,8 @@ const EventRosterChanged = "roster:changed"
 // InboxLimit is how many deliveries the Inbox tab asks for.
 export const InboxLimit = 200
 
-// MaxText mirrors inbox.MaxText.
-export const MaxText = 8000
+// The person's message has no box limit: inbox holds it to MAX_PERSON_TEXT
+// (512 KiB) and the agent's wake clips it with a show pointer (card #265).
 
 // HeldHistoryLimit is how many past held messages the Held list's History
 // asks for.

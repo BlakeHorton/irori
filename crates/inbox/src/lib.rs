@@ -54,6 +54,7 @@ pub use bridge::{
 pub use edit::{EditState, editing};
 pub use fence::{batch, fence, fence_prompt};
 pub use ids::IdGen;
+pub use messages::clip_show;
 pub use pr::normalize_pr;
 pub use state::{Inbox, Subscription};
 
@@ -166,6 +167,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub const NOTE_RECIPIENT_GONE: &str = "recipient gone";
 
 pub const MAX_TEXT: usize = 8000;
+/// The person's own message may run to this many bytes (card #265); it
+/// reaches an agent clipped to [`MAX_TEXT`] characters with a show pointer.
+pub const MAX_PERSON_TEXT: usize = 512 << 10;
 pub const MAX_WAKE_BYTES: usize = 16 << 10;
 pub const DIRECT_LIMIT: usize = 8;
 pub const DIRECT_WINDOW: Duration = Duration::from_secs(10 * 60);

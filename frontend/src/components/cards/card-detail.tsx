@@ -28,8 +28,6 @@ import {
   cards,
   openAsk,
   displayName,
-  MaxAnswer,
-  MaxComment,
   LinkKind,
   NoteItem,
   over,
@@ -1209,7 +1207,6 @@ export function CommentBox({
         voice
         value={text}
         mentions={mentions}
-        maxLength={MaxComment}
         onChange={(v, ms) => {
           setText(v)
           setMentions(ms)
@@ -1472,7 +1469,6 @@ function BlockerItem({
           rows={1}
           value={text}
           mentions={mentions}
-          maxLength={MaxAnswer}
           onChange={(v, ms) => {
             setText(v)
             setMentions(ms)
@@ -1664,7 +1660,6 @@ function BlockerItem({
             rows={1}
             value={note}
             mentions={noteMentions}
-            maxLength={MaxAnswer}
             onChange={(v, ms) => {
               setNote(v)
               setNoteMentions(ms)

@@ -505,7 +505,7 @@ impl Inner {
                 id: format!("msg_{}", self.ids.next(&now)),
                 from: from.clone(),
                 to: Address::new(addr::AGENT, to),
-                text: clip(text, MAX_TEXT),
+                text: crate::clip_show(text, MAX_TEXT, &r.ref_),
                 reason: reason.into(),
                 hop: r.hop.max(0),
                 trust: trust::UNTRUSTED.into(),
