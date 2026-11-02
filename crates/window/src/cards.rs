@@ -1183,17 +1183,33 @@ fn open_ask_summary(s: &CardSummary) -> bool {
     s.ask.as_ref().is_some_and(|a| a.state != ASK_CLOSED)
 }
 
-/// Whether one of the person's own agents holds or watches board card `t`
-/// (card #199), by its board keys: an agent's board key (`agent:<card>`)
-/// that `private` maps to a session key is one of this person's agents
-/// (§2.4); another person's stays as it was. The person's own `person:`
-/// key is not an agent. Watchers count (drop `t.watchers` to leave
-/// watch-only cards off Home).
-pub(crate) fn ours(t: &Task, private: impl Fn(&str) -> String) -> bool {
+/// Whether board card `t` is the person's (cards #199, #237): the person or
+/// one of their own agents created it, holds or co-holds it, was assigned
+/// it, watches it, last changed it, raised one of its blockers, or
+/// `commenters` (the card's comment authors) include them. Keys are board
+/// keys: an `agent:<card>` or `person:<card>` key that `private` maps to a
+/// local key is this person's (§2.4); another person's stays as it was.
+/// Home lists every such card beside the private ones.
+pub(crate) fn ours<'c>(
+    t: &Task,
+    commenters: impl IntoIterator<Item = &'c str>,
+    private: impl Fn(&str) -> String,
+) -> bool {
+    let mine = |k: &str| {
+        (k.starts_with(store::kinds::AGENT_ACTOR_PREFIX)
+            || k.starts_with(store::kinds::PERSON_ACTOR_PREFIX))
+            && private(k) != k
+    };
     t.holders
         .iter()
-        .chain(t.watchers.iter())
-        .any(|k| k.starts_with(store::kinds::AGENT_ACTOR_PREFIX) && private(k) != *k)
+        .chain(&t.co_holders)
+        .chain(&t.assigned)
+        .chain(&t.watchers)
+        .map(String::as_str)
+        .chain([t.created_by.as_str(), t.updated_by.as_str()])
+        .chain(t.blockers.iter().map(|b| b.raised_by.as_str()))
+        .any(&mine)
+        || commenters.into_iter().any(&mine)
 }
 
 /// Go `time.Time.After` on the cards' order: newest first, then id.
@@ -1544,7 +1560,19 @@ impl Window {
                 }
                 let pt = self.priv_task(t.clone());
                 let mut cs = card_summary(&pt, p);
-                cs.ours = ours(&t, |k| self.core.private_key(k));
+                let private = |k: &str| self.core.private_key(k);
+                // Comments are read only when nothing cheaper already said so.
+                cs.ours = ours(&t, [], private)
+                    || (t.comments > 0
+                        && ours(
+                            &t,
+                            co.comments(&t.id)
+                                .unwrap_or_default()
+                                .iter()
+                                .map(|c| c.by.as_str())
+                                .collect::<Vec<_>>(),
+                            private,
+                        ));
                 cs.pos = pos_of(&placed, &pt.id);
                 cs.scope = crate::boards::SCOPE_BOARD.into();
                 cs.scope_label = s.name.clone();
@@ -2158,7 +2186,7 @@ mod tests {
     // holds or watches it; the map stands in for private_key (this
     // person's agent:<card> keys map to a session, anyone else's stay).
     #[test]
-    fn ours_is_an_own_agent_holding_or_watching() {
+    fn ours_is_the_persons_or_their_agents() {
         let private = |k: &str| match k {
             "agent:mine1" => "dev/sess-1".to_string(),
             "agent:mine2" => "dev/sess-2".to_string(),
@@ -2170,20 +2198,53 @@ mod tests {
             watchers: watchers.iter().map(|s| s.to_string()).collect(),
             ..Task::default()
         };
-        assert!(ours(&t(&["agent:mine1"], &[]), private), "own holder");
+        let none: [&str; 0] = [];
+        assert!(ours(&t(&["agent:mine1"], &[]), none, private), "own holder");
         assert!(
-            ours(&t(&["agent:other"], &["agent:mine2"]), private),
+            ours(&t(&["agent:other"], &["agent:mine2"]), none, private),
             "own watcher"
         );
         assert!(
-            !ours(&t(&["agent:other"], &["agent:other2"]), private),
+            !ours(&t(&["agent:other"], &["agent:other2"]), none, private),
             "another person's agents"
         );
         assert!(
-            !ours(&t(&["person:me"], &[]), private),
-            "the person is not an agent"
+            ours(&t(&["person:me"], &[]), none, private),
+            "the person holds it"
         );
-        assert!(!ours(&t(&[], &[]), private), "nobody on it");
+        assert!(!ours(&t(&[], &[]), none, private), "nobody on it");
+        let created = Task {
+            created_by: "agent:mine1".into(),
+            holders: vec!["agent:other".into()],
+            ..Task::default()
+        };
+        assert!(ours(&created, none, private), "own agent created it");
+        let co = Task {
+            co_holders: vec!["agent:mine2".into()],
+            ..Task::default()
+        };
+        assert!(ours(&co, none, private), "own agent owns a step");
+        let raised = Task {
+            blockers: vec![{
+                let mut b = coord::Blocker::default();
+                b.raised_by = "agent:mine1".into();
+                b
+            }],
+            ..Task::default()
+        };
+        assert!(ours(&raised, none, private), "own agent raised a blocker");
+        assert!(
+            ours(
+                &t(&["agent:other"], &[]),
+                ["agent:other2", "person:me"],
+                private
+            ),
+            "the person commented"
+        );
+        assert!(
+            !ours(&t(&["agent:other"], &[]), ["agent:other2"], private),
+            "only others commented"
+        );
     }
 
     #[test]

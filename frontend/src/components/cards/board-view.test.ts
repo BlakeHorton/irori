@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
-import { CardSummary } from "@/lib/models"
+import { CardSummary, TaskState } from "@/lib/models"
 import { asFilter, matches } from "./card-grid"
 import {
   ScopeOwn,
   activeFilter,
+  hiddenByFilter,
   homeBoards,
   inScope,
   rememberedFilter,
@@ -89,5 +90,39 @@ describe("Home's board filter (card #199)", () => {
     expect(savedHomeFilter("private")).toBe("private")
     expect(savedHomeFilter("done")).toBe("all")
     expect(savedHomeFilter("nonsense")).toBe("all")
+  })
+})
+
+describe("hiddenByFilter (card #237)", () => {
+  const waiting = CardSummary({ id: "w", scope: "mine", openBlockers: 1 })
+  const review = CardSummary({
+    id: "r",
+    scope: "mine",
+    state: TaskState.InReview,
+  })
+  const plain = CardSummary({ id: "x", scope: "mine", title: "plain card" })
+  const cards = [waiting, review, plain]
+
+  test("nothing on All with no search, or on Closed", () => {
+    expect(hiddenByFilter(cards, "all", "")).toBeNull()
+    expect(hiddenByFilter(cards, "done", "")).toBeNull()
+  })
+
+  test("a filter that hides cards says how many, and how many need a decision", () => {
+    expect(hiddenByFilter(cards, "review", "")).toEqual({
+      hidden: 2,
+      decide: 1,
+    })
+  })
+
+  test("a search hides too", () => {
+    expect(hiddenByFilter(cards, "all", "plain")).toEqual({
+      hidden: 2,
+      decide: 1,
+    })
+  })
+
+  test("nothing hidden when the filter keeps everything open", () => {
+    expect(hiddenByFilter([waiting], "decide", "")).toBeNull()
   })
 })
