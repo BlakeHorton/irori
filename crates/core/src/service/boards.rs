@@ -512,10 +512,10 @@ impl Boards {
             return Ok(b);
         }
         // It may be one of the boards still opening after the start.
-        if self.wait_opened() {
-            if let Some(b) = get() {
-                return Ok(b);
-            }
+        if self.wait_opened()
+            && let Some(b) = get()
+        {
+            return Ok(b);
         }
         Err(Error::no_board(id))
     }

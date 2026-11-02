@@ -849,12 +849,16 @@ impl Core {
         // and the catch-up after it. Other devices' queued deliveries get
         // this device's own hold decision there, before anything (an attach
         // stream that could wake them) gets the inbox.
-        let ib = Inbox::start(
-            st.clone(),
-            Arc::new(MeshAgents(roster.clone())),
-            iopts,
-            |ib| ib.catch_up(),
-        );
+        let ib = Inbox::start(st.clone(), Arc::new(MeshAgents(roster.clone())), iopts, {
+            let t0 = std::time::Instant::now();
+            move |ib| {
+                ib.catch_up();
+                logf(format_args!(
+                    "start: inbox replayed in {} ms (off the start)",
+                    t0.elapsed().as_millis()
+                ));
+            }
+        });
         laps.lap("inbox");
 
         let co = Arc::new(

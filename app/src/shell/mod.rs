@@ -533,8 +533,13 @@ fn wire_opener(app: &AppHandle, n: &notify::Notifier) {
 /// own scan, never a snapshot the pump hasn't refreshed yet.
 fn wire_tray(tray: &Arc<Tray>, core: &Arc<irori_core::Core>, window: &Arc<Window>) {
     {
-        let t = tray.clone();
-        window.on_inbox_counts(Arc::new(move |c| t.set_inbox(tray_counts(c))));
+        // The first count reads the inbox, which waits for its replay at a
+        // start (#243): off the main thread, so the window isn't held up.
+        let (t, w) = (tray.clone(), window.clone());
+        std::thread::spawn(move || {
+            let tt = t.clone();
+            w.on_inbox_counts(Arc::new(move |c| tt.set_inbox(tray_counts(c))));
+        });
         let t = tray.clone();
         window.on_decide_count(Arc::new(move |n| t.set_decide(n)));
     }
