@@ -25,6 +25,10 @@ GGML_F16C = "ON"
 # (one pass ~40 s instead of well under a second). cl.exe also reads options
 # from the CL variable, which cmake-rs doesn't touch; other compilers ignore it.
 CL = "/O2"
+# ...and _CL_ is appended after cl's command line: /MT there wins over the /MD
+# that CMake's default release flags carry into whisper.cpp's debug-profile
+# builds (whisper-rs-sys switches build types), matching +crt-static below.
+_CL_ = "/MT"
 
 # Windows: the C and C++ runtimes linked into irori.exe (#245). Tauri links
 # vcruntime statically already, but whisper.cpp (voice, #240) is C++ and
