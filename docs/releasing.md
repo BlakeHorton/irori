@@ -8,6 +8,22 @@ and ask before they restart (crates/update; Go `internal/update`, whose
 rules it keeps). The first Rust release is `v0.6.0` (architecture.md D11):
 the Go updater takes it because `0.6.0` is newer than `0.5.x`.
 
+## Build tools
+
+Voice input (#240) builds whisper.cpp from source (`whisper-rs-sys`), so
+every machine that builds Irori needs **cmake** and **libclang** (bindgen
+generates the bindings; the bundled ones are Linux-only) besides the C/C++
+compiler. When they are not on PATH, point the build at them:
+
+- PC: `python -m pip install --user cmake libclang`, then
+  `export CMAKE="$HOME/AppData/Roaming/Python/Python312/Scripts/cmake.exe"` and
+  `export LIBCLANG_PATH="$(python -c "import clang,os;print(os.path.join(os.path.dirname(clang.__file__),'native'))")"`
+  before `scripts/check.sh` or a release build. `.cargo/config.toml` sets
+  the portable AVX2 CPU flags and `CL=/O2` (cmake-rs drops /O2 under MSVC;
+  without it Whisper is ~40x slower).
+- Mac: `brew install cmake` (Xcode's clang provides libclang).
+- Android: docs/android.md.
+
 ## Cut a release
 
 1. Run `sh scripts/check.sh` on the PC (and on the Mac when macOS code
