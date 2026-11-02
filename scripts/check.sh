@@ -25,4 +25,34 @@ cargo xtask bindings --check
 # Timing-sensitive, as in Go: capture's tests once more on one thread.
 cargo test -p irori-capture -- --test-threads=1
 sh scripts/no-third-party.sh
+
+# The phone build (docs/android.md): desktop-only calls must stay behind
+# #[cfg(desktop)], which only an Android build catches (#220 broke it, #234).
+# Runs when an NDK and the aarch64-linux-android target are installed;
+# otherwise it is skipped so machines without them still pass.
+ndk="${NDK_HOME:-}"
+if [ -z "$ndk" ] || [ ! -d "$ndk" ]; then
+  ndk=""
+  for d in "${ANDROID_HOME:-/nonexistent}"/ndk/*; do
+    [ -d "$d" ] && ndk="$d"   # glob order: the last one is the newest
+  done
+fi
+android_bin=""
+if [ -n "$ndk" ]; then
+  for d in "$ndk"/toolchains/llvm/prebuilt/*/bin; do
+    [ -d "$d" ] && android_bin="$d"
+  done
+fi
+if [ -n "$android_bin" ] && [ -e "$android_bin/aarch64-linux-android24-clang" ] &&
+  rustup target list --installed | grep -qx aarch64-linux-android; then
+  echo "android: cargo check (NDK $ndk)"
+  CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$android_bin/aarch64-linux-android24-clang" \
+    CC_aarch64_linux_android="$android_bin/aarch64-linux-android24-clang" \
+    CXX_aarch64_linux_android="$android_bin/aarch64-linux-android24-clang++" \
+    AR_aarch64_linux_android="$android_bin/llvm-ar" \
+    cargo check --target aarch64-linux-android -p irori-app --lib
+else
+  echo "android: skipped (no NDK)"
+fi
+
 echo "check: all passed"
