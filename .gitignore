@@ -1,5 +1,8 @@
 /target
 /testdata/private/
 # tauri-build output
-/app/gen/
+# Tauri writes app/gen/schemas on every build; app/gen/android is the Android
+# project (cargo tauri android init), kept so its manifest edits stay (#240).
+/app/gen/*
+!/app/gen/android/
 /dist

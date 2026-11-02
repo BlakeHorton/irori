@@ -185,6 +185,11 @@ export const commands = {
 	updateSupported: () => __TAURI_INVOKE<boolean>("update_supported"),
 	updateCheckAndDownload: () => __TAURI_INVOKE<UpdateStatus>("update_check_and_download"),
 	updateRestartToUpdate: () => __TAURI_INVOKE<null>("update_restart_to_update"),
+	voiceStatus: () => __TAURI_INVOKE<VoiceStatus>("voice_status"),
+	voiceDownloadModel: () => __TAURI_INVOKE<null>("voice_download_model"),
+	voiceStart: () => __TAURI_INVOKE<number>("voice_start"),
+	voiceStop: (session: number) => __TAURI_INVOKE<null>("voice_stop", { session }),
+	voiceOpenSettings: (code: string) => __TAURI_INVOKE<null>("voice_open_settings", { code }),
 };
 
 /* Types */
@@ -1396,6 +1401,49 @@ export type UploadFile = {
 };
 
 export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
+
+/**  One voice:download: bytes so far of the model download. */
+export type VoiceDownload = {
+	done: number,
+	total: number,
+};
+
+/**  One voice:event. */
+export type VoiceEvent = {
+	/**  The session this belongs to (voice_start's answer). */
+	session: number,
+	/**
+	 *  partial (the phrase so far, replacing the last partial), final (a
+	 *  settled phrase; may be empty when it was not understood), error
+	 *  (code and text set; ended follows) or ended (always last).
+	 */
+	kind: string,
+	text: string,
+	/**
+	 *  The error code: mic-denied, no-mic, no-model, unsupported or other.
+	 *  Empty unless kind is error.
+	 */
+	code: string,
+};
+
+/**  Whether to show the mic, and why not. */
+export type VoiceStatus = {
+	/**
+	 *  ready; needs-model (the one-time model download comes first);
+	 *  denied (no microphone or access off; pressing still tries); or
+	 *  unsupported (no engine here: the mic is hidden).
+	 */
+	state: string,
+	/**  What to do about it; empty when ready. */
+	reason: string,
+	/**
+	 *  The error code whose Settings page fixes it ("mic-denied"), else
+	 *  empty.
+	 */
+	fix: string,
+	/**  The model download's size in bytes (for "needs-model"). */
+	modelBytes: number,
+};
 
 /**  One agent in a run. */
 export type WindDownRow = {

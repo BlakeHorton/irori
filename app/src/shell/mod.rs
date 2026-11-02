@@ -103,7 +103,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // of all on a phone). `ready` tells the page when it may mount; the
     // window's state is managed once the Core is up.
     let ready = Arc::new(irori_window::ready::Ready::new());
-    let hosted: Arc<Mutex<Option<host::Hosted>>> = Arc::default();
+    let hosted: Arc<Mutex<Option<(host::Hosted, Arc<Window>)>>> = Arc::default();
     let starting: Arc<Mutex<Option<std::thread::JoinHandle<()>>>> = Arc::default();
     let pumps_stop = sys::cancel::Cancel::new();
     let builder = irori_window::builder();
@@ -269,7 +269,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     updater.install_on_exit();
     pumps_stop.cancel();
     let closed = match hosted.lock().unwrap_or_else(|e| e.into_inner()).take() {
-        Some(h) => {
+        Some((h, window)) => {
+            // Free the speech model before exit (#240: Metal asserts otherwise).
+            window.voice_shutdown();
             h.core.set_reviver(None);
             h.close()
         }
@@ -295,7 +297,7 @@ fn start_core(
     app: &AppHandle,
     data: std::path::PathBuf,
     s: Started,
-) -> Result<host::Hosted, String> {
+) -> Result<(host::Hosted, Arc<Window>), String> {
     let hosted = match host::start(rt, data.clone(), false, Some(s.notifier.clone())) {
         Ok(h) => h,
         Err(e) => return Err(format!("start: {e}")),
@@ -347,6 +349,7 @@ fn start_core(
     // main thread.
     let ui = {
         let app = app.clone();
+        let window = window.clone();
         let probe = s.probe.clone();
         let updater = s.updater.clone();
         let launched = s.launched;
@@ -411,7 +414,7 @@ fn start_core(
         "start: window backend ready {} ms after launch",
         s.launched.elapsed().as_millis()
     ));
-    Ok(hosted)
+    Ok((hosted, window))
 }
 
 /// Go `handOff`: a bare app with the same single-instance id, so the

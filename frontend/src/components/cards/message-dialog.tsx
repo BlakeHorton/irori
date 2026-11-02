@@ -186,6 +186,7 @@ export function MessageDialog({
                   setMentions(ms)
                 }}
                 onPaste={(e) => void attach.onPaste(e)}
+                voice
                 placeholder={`Reply to ${from}`}
                 aria-label={`Your reply to ${from}`}
                 autoSize

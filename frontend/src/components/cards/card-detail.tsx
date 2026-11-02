@@ -1203,8 +1203,10 @@ export function CommentBox({
       onSubmit={(e) => void submit(e)}
       {...attach.drop}
     >
+      <div className="flex items-start gap-1.5">
       <MentionTextarea
         autoSize
+        voice
         value={text}
         mentions={mentions}
         maxLength={MaxComment}
@@ -1230,9 +1232,10 @@ export function CommentBox({
             : "Comment on the card…"
         }
         aria-label={reply ? "Your reply" : "Your comment on the card"}
-        className="max-h-48 min-h-10 bg-card"
+        className="max-h-48 min-h-10 min-w-0 flex-1 bg-card"
         disabled={busy}
       />
+      </div>
       <PendingFiles
         attach={attach}
         disabled={busy}
@@ -1465,6 +1468,7 @@ function BlockerItem({
       >
         <MentionTextarea
           autoSize
+          voice
           rows={1}
           value={text}
           mentions={mentions}
@@ -1656,6 +1660,7 @@ function BlockerItem({
         <form className="flex gap-1.5" onSubmit={markResolved}>
           <MentionTextarea
             autoSize
+            voice
             rows={1}
             value={note}
             mentions={noteMentions}

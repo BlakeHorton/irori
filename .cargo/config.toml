@@ -9,3 +9,19 @@ rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
 
 [target.x86_64-linux-android]
 rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+
+[env]
+# whisper.cpp (#240): a portable x86-64 CPU build (AVX2/FMA/F16C, the x86-64-v3
+# baseline) instead of GGML_NATIVE, which detects nothing under MSVC and would
+# tie a release build to the build machine. The x86 flags are ignored on ARM.
+GGML_NATIVE = "OFF"
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"
+# cmake-rs replaces CMAKE_<LANG>_FLAGS_RELEASE with the cc crate's flags and
+# strips /O2 from them under MSVC, so whisper.cpp built with no optimization
+# (one pass ~40 s instead of well under a second). cl.exe also reads options
+# from the CL variable, which cmake-rs doesn't touch; other compilers ignore it.
+CL = "/O2"

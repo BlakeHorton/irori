@@ -1,0 +1,49 @@
+[package]
+name = "irori-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Irori's voice input (#240): Whisper (whisper.cpp) on this device, as live partial and final text"
+
+[lib]
+name = "voice"
+
+# The model download (src/model.rs), as the updater does it: reqwest with
+# rustls, ring and the platform verifier.
+[dependencies]
+hex.workspace = true
+sha2.workspace = true
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
+rustls-platform-verifier = "0.7.1"
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "net", "io-util"] }
+
+# Building whisper.cpp needs cmake on PATH (or CMAKE=<path to cmake>) and a
+# C/C++ compiler; the bundled bindings are used (WHISPER_DONT_GENERATE_BINDINGS
+# in .cargo/config.toml), so no libclang.
+[target.'cfg(windows)'.dependencies]
+cpal = "0.18.2"
+whisper-rs = "0.16.0"
+windows = { version = "0.62.2", features = [
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cpal = "0.18.2"
+whisper-rs = { version = "0.16.0", features = ["metal"] }
+# The microphone's privacy switch: denied, cpal records silence, so the
+# status says so instead (#240).
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat"] }
+objc2-foundation = { workspace = true }
+
+# Android (#240): AAudio capture through cpal; whisper.cpp on the CPU
+# (NEON). Cross-building from macOS needs the [patch] for whisper-rs-sys in
+# the workspace Cargo.toml and the NDK env in docs/android.md.
+[target.'cfg(target_os = "android")'.dependencies]
+cpal = "0.18.2"
+whisper-rs = "0.16.0"

@@ -27,6 +27,7 @@ import { plainLine } from "@/lib/irori"
 import { go } from "@/lib/nav"
 import { corners, useSettings, useYourName } from "@/lib/settings"
 import { UpdateStatusLine } from "@/updater"
+import { VoiceNote } from "@/components/settings/voice-note"
 
 export type SettingsSection =
   "notifications" | "devices" | "people" | "maintenance" | "app"
@@ -65,7 +66,7 @@ export const settingsSections: {
     id: "app",
     label: "App",
     icon: InfoIcon,
-    hint: "Starting Irori, updates and the version.",
+    hint: "Starting Irori, voice input, updates and the version.",
   },
 ]
 
@@ -296,6 +297,7 @@ function AppPane({ open, version }: { open: boolean; version?: string }) {
         disabled={s.launchAtLogin === null}
         onChange={(v) => void s.setLaunchAtLogin(v)}
       />
+      <VoiceNote open={open} />
       <div className="grid gap-1 border-t border-border pt-3">
         <span className="font-medium text-ink">Updates</span>
         <UpdateStatusLine />

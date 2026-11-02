@@ -270,3 +270,13 @@ export const UpdateService = {
   CheckAndDownload: () => call(commands.updateCheckAndDownload()),
   RestartToUpdate: () => done(commands.updateRestartToUpdate()),
 }
+
+// Voice input (card #240): Whisper on this device; words arrive as
+// voice:event, the one-time model download as voice:download.
+export const VoiceService = {
+  Status: () => call(commands.voiceStatus()),
+  DownloadModel: () => done(commands.voiceDownloadModel()),
+  Start: () => call(commands.voiceStart()),
+  Stop: (session: number) => done(commands.voiceStop(session)),
+  OpenSettings: (code: string) => done(commands.voiceOpenSettings(code)),
+}

@@ -12,6 +12,7 @@ import {
 import { flushSync } from "react-dom"
 
 import { AgentCards } from "@/components/cards/agent-hover"
+import { MicButton } from "@/components/common/mic-button"
 import { Face } from "@/components/cards/faces"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
@@ -52,6 +53,9 @@ type Props = Omit<ComponentProps<typeof Textarea>, "value" | "onChange"> & {
   candidates?: MentionCandidate[]
   // Set: no picker, and the reason is the box's title.
   disabledMentions?: string
+  // Voice input (card #240): a mic button right after the box (a sibling,
+  // so the site lays it out in its row). Hidden where there's no engine.
+  voice?: boolean
 }
 
 // MentionTextarea is a Textarea with the @ picker (card #77,
@@ -69,6 +73,7 @@ export function MentionTextarea({
   onChange,
   candidates: given,
   disabledMentions,
+  voice,
   onKeyDown,
   onBlur,
   onFocus,
@@ -413,6 +418,19 @@ export function MentionTextarea({
           )}
         </PopoverContent>
       </Popover>
+      {voice && (
+        <MicButton
+          target={el}
+          value={value}
+          disabled={!!rest.disabled || !!rest.readOnly}
+          onText={(text, at) => {
+            // Words, not names: mentions whose "@name" went are dropped.
+            pendingCaret.current = at
+            setCaret(at)
+            onChange(text, keepMentions(mentions, text))
+          }}
+        />
+      )}
     </>
   )
 }

@@ -15,12 +15,28 @@ export NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018
 rustup target add aarch64-linux-android   # in the repo, so the pinned toolchain gets it
 ```
 
+## Voice input (whisper.cpp, #240)
+
+The voice crate builds whisper.cpp with CMake for the phone. It needs, beside the env above:
+
+```sh
+P=$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64
+export CXX_aarch64_linux_android=$P/bin/aarch64-linux-android26-clang++
+export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$P/sysroot --target=aarch64-linux-android26"
+export CMAKE_TOOLCHAIN_FILE_aarch64_linux_android=$PWD/scripts/android/arm64.toolchain.cmake   # from the repo root
+```
+
+- The toolchain wrapper sets arm64-v8a and API 26; the NDK's own file alone builds 32-bit ARM, which fails to link.
+- whisper-rs-sys comes from the StephenSHorton/whisper-rs fork (the `[patch]` in Cargo.toml) until upstream takes its cross-compile fix.
+- The minimum Android is 8 (API 26): cpal records with AAudio. The mic permission (RECORD_AUDIO) is in app/gen/android's manifest, which is committed; Android asks at the first mic press.
+
 ## Build and install
 
 ```sh
 (cd frontend && bun run build)
 cd app
-cargo tauri android init --ci            # once; writes app/gen/android (git-ignored)
+# app/gen/android is committed (its manifest carries the mic permission); run
+# `cargo tauri android init --ci` only if it's missing
 CARGO_PROFILE_DEV_OPT_LEVEL=3 CARGO_PROFILE_DEV_DEBUG=0 \
   cargo tauri android build --debug --target aarch64 --apk --ci
 $ANDROID_HOME/platform-tools/adb install -r gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
