@@ -247,6 +247,40 @@ export function AppSidebar({
         )}
       </nav>
 
+      {!folded && (
+        <section aria-label="Agents" className="shrink-0 px-2 pb-3">
+          <h2 className="px-2.5 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            Agents
+          </h2>
+          <div
+            className="flex flex-wrap gap-1 px-2.5"
+            title={[
+              `${n.total} ${n.total === 1 ? "agent" : "agents"}`,
+              `${n.working} working${n.running ? ` (${n.running} waiting on a command they started)` : ""}`,
+              `${n.free} free: idle, so a thread or card can go to them`,
+              n.silent && `${n.silent} idle but not answering`,
+              n.offline && `${n.offline} on an offline device`,
+            ]
+              .filter(Boolean)
+              .join("\n")}
+          >
+            {n.working > 0 && (
+              <Badge variant="info" className="tabular-nums normal-case">
+                {n.working} working
+              </Badge>
+            )}
+            <Badge variant="slate" className="tabular-nums normal-case">
+              {n.free} free
+            </Badge>
+            {n.silent > 0 && (
+              <Badge variant="warning" className="tabular-nums normal-case">
+                {n.silent} not answering
+              </Badge>
+            )}
+          </div>
+        </section>
+      )}
+
       <div
         className={cn(
           "flex shrink-0 items-center gap-2 border-t border-border py-3",
@@ -254,39 +288,13 @@ export function AppSidebar({
         )}
       >
         {!folded && (
-          <div className="grid min-w-0 flex-1 gap-0.5 text-xs">
+          <div className="grid min-w-0 flex-1 text-xs">
             <span
               className="truncate font-medium text-ink-2"
               title={device?.id}
             >
               {device?.name || "this device"}
             </span>
-            <div
-              className="flex flex-wrap gap-1"
-              title={[
-                `${n.total} ${n.total === 1 ? "agent" : "agents"}`,
-                `${n.working} working${n.running ? ` (${n.running} waiting on a command they started)` : ""}`,
-                `${n.free} free: idle, so a thread or card can go to them`,
-                n.silent && `${n.silent} idle but not answering`,
-                n.offline && `${n.offline} on an offline device`,
-              ]
-                .filter(Boolean)
-                .join("\n")}
-            >
-              {n.working > 0 && (
-                <Badge variant="info" className="tabular-nums normal-case">
-                  {n.working} working
-                </Badge>
-              )}
-              <Badge variant="slate" className="tabular-nums normal-case">
-                {n.free} free
-              </Badge>
-              {n.silent > 0 && (
-                <Badge variant="warning" className="tabular-nums normal-case">
-                  {n.silent} not answering
-                </Badge>
-              )}
-            </div>
           </div>
         )}
         <SettingsMenu version={version} />
