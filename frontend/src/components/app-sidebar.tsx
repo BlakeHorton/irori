@@ -119,7 +119,7 @@ export function AppSidebar({
     {narrow && drawer && (
       <div
         aria-hidden
-        className="fixed inset-0 z-40 bg-black/50"
+        className="fixed inset-0 z-40 bg-black/70"
         onClick={() => onDrawer?.(false)}
       />
     )}
@@ -129,8 +129,10 @@ export function AppSidebar({
         "flex h-svh shrink-0 flex-col border-r border-border transition-[width]",
         narrow
           ? cn(
-              // Clear Android's status and gesture bars (edge to edge, card #227).
-              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl transition-transform",
+              // Opaque (the theme's --sidebar is translucent glass, which let the page
+              // show through on a phone) and clear of Android's status and
+              // gesture bars (edge to edge, card #227).
+              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl transition-transform",
               !drawer && "invisible -translate-x-full"
             )
           : "bg-sidebar/60",
