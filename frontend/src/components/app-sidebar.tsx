@@ -261,9 +261,10 @@ export function AppSidebar({
             >
               {device?.name || "this device"}
             </span>
-            <span
-              className="truncate text-muted-foreground tabular-nums"
+            <div
+              className="flex flex-wrap gap-1"
               title={[
+                `${n.total} ${n.total === 1 ? "agent" : "agents"}`,
                 `${n.working} working${n.running ? ` (${n.running} waiting on a command they started)` : ""}`,
                 `${n.free} free: idle, so a thread or card can go to them`,
                 n.silent && `${n.silent} idle but not answering`,
@@ -272,27 +273,20 @@ export function AppSidebar({
                 .filter(Boolean)
                 .join("\n")}
             >
-              {n.total} {n.total === 1 ? "agent" : "agents"}
               {n.working > 0 && (
-                <span className="text-primary"> · {n.working} working</span>
+                <Badge variant="info" className="tabular-nums normal-case">
+                  {n.working} working
+                </Badge>
               )}
-              {" · "}
-              {n.free} free
+              <Badge variant="slate" className="tabular-nums normal-case">
+                {n.free} free
+              </Badge>
               {n.silent > 0 && (
-                <span className="text-warning">
-                  {" "}
-                  · {n.silent} not answering
-                </span>
+                <Badge variant="warning" className="tabular-nums normal-case">
+                  {n.silent} not answering
+                </Badge>
               )}
-              {version && (
-                <span className="font-mono">
-                  {" · "}
-                  {version === "dev" || version === "sample"
-                    ? version
-                    : `v${version.replace(/^v/, "")}`}
-                </span>
-              )}
-            </span>
+            </div>
           </div>
         )}
         <SettingsMenu version={version} />
