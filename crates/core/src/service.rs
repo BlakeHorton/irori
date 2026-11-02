@@ -1268,19 +1268,23 @@ impl Core {
 
         // The shared boards on this device, and the person's board.joined
         // and board.forgot rows from every device (Go openBoards,
-        // followOwnBoards).
-        let boards_t = Instant::now();
-        s.open_boards();
-        logf(format_args!(
-            "start: boards opened in {} ms",
-            boards_t.elapsed().as_millis()
-        ));
+        // followOwnBoards). Card #232: the boards open on this thread, not
+        // in the start, so the window shows the private cards first and
+        // each board fills in as it opens (a big board takes seconds on a
+        // phone). The subscription is taken first, so no row is missed.
+        s.boards.opening_pending();
         {
             let sub = Arc::new(s.store.subscribe());
             let reg = self.on_stop(&sub, |s| s.cancel());
             let s = s.clone();
             self.spawn("boards", move || {
                 let _reg = reg;
+                let t = Instant::now();
+                s.open_boards();
+                logf(format_args!(
+                    "start: boards opened in {} ms",
+                    t.elapsed().as_millis()
+                ));
                 s.follow_own_boards(&sub);
             });
         }
@@ -2808,20 +2812,21 @@ impl StartLaps {
         self.last = now;
     }
 
-    fn line(&self) -> String {
+    /// "N ms (part a, part b, ...)".
+    fn summary(&self) -> String {
         let parts: Vec<String> = self
             .parts
             .iter()
             .map(|(w, d)| format!("{w} {}", d.as_millis()))
             .collect();
         format!(
-            "start: core ready in {} ms ({})",
+            "{} ms ({})",
             (self.last - self.t0).as_millis(),
             parts.join(", ")
         )
     }
 
     fn report(&self) {
-        logf(format_args!("{}", self.line()));
+        logf(format_args!("start: core ready in {}", self.summary()));
     }
 }

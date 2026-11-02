@@ -426,7 +426,44 @@ pub(crate) struct Boards {
     /// sending that maker's secret on board.secret: they count as makers
     /// before the board's rows certify them here.
     pub(crate) vouched: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
+    /// Card #232: the boards on disk open after the start, on the boards
+    /// thread. A lookup that misses waits for that first pass.
+    opening: Opening,
 }
+
+/// Whether the first open of the boards on disk is still running, and on
+/// which thread (that thread never waits on itself).
+#[derive(Default)]
+struct Opening {
+    state: Mutex<OpeningState>,
+    done: std::sync::Condvar,
+}
+
+#[derive(Default)]
+struct OpeningState {
+    /// Set when the start hands the first open to the boards thread; a
+    /// Boards that never opens any (tests) never waits.
+    pending: bool,
+    finished: bool,
+    thread: Option<std::thread::ThreadId>,
+}
+
+/// Ends the first open pass when dropped, however [`Services::open_boards`]
+/// returns.
+struct OpenedOnDrop<'a>(&'a Opening);
+
+impl Drop for OpenedOnDrop<'_> {
+    fn drop(&mut self) {
+        let mut st = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.finished = true;
+        st.thread = None;
+        self.0.done.notify_all();
+    }
+}
+
+/// How long a lookup waits for the boards to open before it answers
+/// without them.
+const OPENING_WAIT: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
 pub(crate) struct BoardsInner {
@@ -465,11 +502,57 @@ impl Boards {
     }
 
     pub(crate) fn get(&self, id: &str) -> Result<Arc<BoardLog>> {
-        lock(&self.inner)
-            .logs
-            .get(id)
-            .cloned()
-            .ok_or_else(|| Error::no_board(id))
+        let get = || lock(&self.inner).logs.get(id).cloned();
+        if let Some(b) = get() {
+            return Ok(b);
+        }
+        // It may be one of the boards still opening after the start.
+        if self.wait_opened() {
+            if let Some(b) = get() {
+                return Ok(b);
+            }
+        }
+        Err(Error::no_board(id))
+    }
+
+    /// Marks the first open pass as coming (before its thread runs), so a
+    /// lookup made meanwhile waits for it.
+    pub(crate) fn opening_pending(&self) {
+        let mut st = lock(&self.opening.state);
+        if !st.finished {
+            st.pending = true;
+        }
+    }
+
+    /// Starts the first open pass on this thread; the guard ends it.
+    fn begin_opening(&self) -> OpenedOnDrop<'_> {
+        let mut st = lock(&self.opening.state);
+        st.thread = Some(std::thread::current().id());
+        OpenedOnDrop(&self.opening)
+    }
+
+    /// Waits until the first open of the boards on disk has finished (at
+    /// most [`OPENING_WAIT`]). False when it had already finished, so there
+    /// is nothing new to look at, or when this is the opening thread.
+    pub(crate) fn wait_opened(&self) -> bool {
+        let mut st = lock(&self.opening.state);
+        if !st.pending || st.finished || st.thread == Some(std::thread::current().id()) {
+            return false;
+        }
+        let deadline = Instant::now() + OPENING_WAIT;
+        while !st.finished {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            st = self
+                .opening
+                .done
+                .wait_timeout(st, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+        true
     }
 
     pub(crate) fn subscribe(&self) -> Arc<Queue<Change>> {
@@ -658,6 +741,7 @@ impl Services {
     /// Opens every board log in the data dir. A board that fails to open
     /// is logged and left out: the private board keeps working.
     pub(crate) fn open_boards(self: &Arc<Self>) {
+        let _opened = self.boards.begin_opening();
         let ents = match std::fs::read_dir(self.boards_dir()) {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
@@ -679,8 +763,15 @@ impl Services {
             .collect();
         ids.sort();
         for id in ids {
-            if let Err(e) = self.open_board(&id, false, None) {
-                logf(format_args!("board {id}: {e}"));
+            // The boards open after the start (card #232): a Core closing
+            // meanwhile opens no more.
+            if self.boards.stop.get().is_some_and(|c| c.is_canceled()) {
+                return;
+            }
+            match self.open_board(&id, false, None) {
+                // The window lists it now.
+                Ok(_) => self.boards.moved(),
+                Err(e) => logf(format_args!("board {id}: {e}")),
             }
         }
     }
@@ -967,6 +1058,8 @@ impl Services {
         if let Some(b) = inner.logs.get(id) {
             return Ok(b.clone());
         }
+        // Card #232: where a board's open goes, in one log line.
+        let mut laps = super::StartLaps::new();
         let dir = self.boards_dir();
         let secrets = Arc::new(
             BoardSecrets::open(
@@ -976,6 +1069,7 @@ impl Services {
             )
             .map_err(|e| Error::other(format!("board secrets: {e}")))?,
         );
+        laps.lap("secrets");
         let v = Arc::new(BoardVerifier::new_for(id, &[]));
         let now = self.now.clone();
         let wall = move || now().to_system();
@@ -994,6 +1088,7 @@ impl Services {
             )
             .map_err(|e| Error::other(format!("open board log: {e}")))?,
         );
+        laps.lap("store");
         {
             let v = v.clone();
             // A maker counts once the board certifies it, or, before the
@@ -1040,9 +1135,11 @@ impl Services {
         if let Err(e) = self.pin_board(&b, create, pin) {
             return close(e);
         }
+        laps.lap("pin");
         if let Err(e) = b.load(&self.store) {
             return close(e);
         }
+        laps.lap("load");
         if let Err(e) = self.keep_current(&b) {
             // The board still opens: its rows verify as far as they can,
             // and the next identity change retries.
@@ -1051,6 +1148,7 @@ impl Services {
         if let Err(e) = self.rotate_secret(&b) {
             logf(format_args!("board {id}: secret: {e}"));
         }
+        laps.lap("identity+secret");
         let me = self.person_actor();
         let co = {
             let (ch, v1, v2, v3, v4, v5, v6) = (
@@ -1132,6 +1230,7 @@ impl Services {
             Err(e) => return close(Error::other(format!("board coord: {e}"))),
         };
         let _ = b.coord.set(co);
+        laps.lap("coord");
         let tasks = match b.task_ids() {
             Ok(t) => t,
             Err(e) => return close(e),
@@ -1139,6 +1238,7 @@ impl Services {
         for t in tasks {
             inner.task_of.insert(t, id.into());
         }
+        laps.lap("tasks");
         inner.logs.insert(id.into(), b.clone());
         drop(inner);
         self.start_board(&b);
@@ -1147,6 +1247,8 @@ impl Services {
             .get_or_init(|| self.start_follow_identity());
         self.open_board_net(&b);
         self.boards.kick();
+        laps.lap("start+net");
+        logf(format_args!("board {id}: opened in {}", laps.summary()));
         Ok(b)
     }
 
@@ -1314,6 +1416,11 @@ impl Services {
         if let Some((id, co)) = hit {
             inner.task_of.insert(task_id.into(), id.clone());
             return Ok((id, co));
+        }
+        drop(inner);
+        // A card on a board still opening after the start (card #232).
+        if self.boards.wait_opened() {
+            return self.route(task_id);
         }
         Err(coord::Error::new(
             CK::NotFound,

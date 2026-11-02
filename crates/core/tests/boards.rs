@@ -127,9 +127,10 @@ fn board_routing() {
         assert_eq!(created_ids(&st), vec![want.clone()]);
     }
 
-    // After a restart the boards are found on disk and the index comes back.
+    // After a restart the boards are found on disk and the index comes back
+    // (they open just after the start, card #232).
     let (c2, _r) = restart(r);
-    assert_eq!(c2.boards().len(), 2, "boards after restart");
+    wait_for(10, "boards after restart", || c2.boards().len() == 2);
     check(&c2);
     c2.close().unwrap();
 }
