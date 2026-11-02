@@ -52,7 +52,8 @@ pub const MIC_SETTING: &str = "Allow microphone access for desktop apps in Windo
 #[cfg(target_os = "macos")]
 pub const MIC_SETTING: &str = "Allow Irori to use the microphone in System Settings > Privacy & Security > Microphone, then try again.";
 #[cfg(target_os = "android")]
-pub const MIC_SETTING: &str = "Allow Irori to use the microphone in Settings > Apps > Irori > Permissions, then try again.";
+pub const MIC_SETTING: &str =
+    "Allow Irori to use the microphone in Settings > Apps > Irori > Permissions, then try again.";
 #[cfg(not(any(windows, target_os = "macos", target_os = "android")))]
 pub const MIC_SETTING: &str =
     "Allow Irori to use the microphone in the system settings, then try again.";
