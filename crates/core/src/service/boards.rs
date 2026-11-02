@@ -429,6 +429,11 @@ pub(crate) struct Boards {
     /// Card #232: the boards on disk open after the start, on the boards
     /// thread. A lookup that misses waits for that first pass.
     opening: Opening,
+    /// One open (or close) of a board log at a time, so two callers can't
+    /// open one file twice. Held across the open; `inner` is taken only
+    /// briefly, so lookups and the window don't wait out a slow open
+    /// (card #232). Order: `open_mu`, then `inner`.
+    pub(crate) open_mu: Mutex<()>,
 }
 
 /// Whether the first open of the boards on disk is still running, and on
@@ -591,6 +596,7 @@ impl Boards {
                 let _ = h.join();
             }
         }
+        let _one = lock(&self.open_mu);
         let logs: Vec<_> = std::mem::take(&mut lock(&self.inner).logs)
             .into_values()
             .collect();
@@ -1054,8 +1060,8 @@ impl Services {
             )));
         }
         // One open at a time, so two callers can't open one file twice.
-        let mut inner = lock(&self.boards.inner);
-        if let Some(b) = inner.logs.get(id) {
+        let _one = lock(&self.boards.open_mu);
+        if let Some(b) = lock(&self.boards.inner).logs.get(id) {
             return Ok(b.clone());
         }
         // Card #232: where a board's open goes, in one log line.
@@ -1235,12 +1241,14 @@ impl Services {
             Ok(t) => t,
             Err(e) => return close(e),
         };
-        for t in tasks {
-            inner.task_of.insert(t, id.into());
+        {
+            let mut inner = lock(&self.boards.inner);
+            for t in tasks {
+                inner.task_of.insert(t, id.into());
+            }
+            inner.logs.insert(id.into(), b.clone());
         }
         laps.lap("tasks");
-        inner.logs.insert(id.into(), b.clone());
-        drop(inner);
         self.start_board(&b);
         self.boards
             .follow

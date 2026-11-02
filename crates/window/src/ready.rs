@@ -4,18 +4,35 @@
 //! the frontend's `core_ready` command waits on it before the app mounts.
 
 use std::sync::{Condvar, Mutex};
+use std::time::Instant;
 
 /// Whether the Core is up: unset while it starts, then `Ok` or the reason
 /// it couldn't start.
-#[derive(Default)]
 pub struct Ready {
     state: Mutex<Option<Result<(), String>>>,
     changed: Condvar,
+    /// When the app made it (at launch), for the start log.
+    created: Instant,
+}
+
+impl Default for Ready {
+    fn default() -> Self {
+        Ready {
+            state: Mutex::new(None),
+            changed: Condvar::new(),
+            created: Instant::now(),
+        }
+    }
 }
 
 impl Ready {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Milliseconds since the app made it.
+    pub fn elapsed_ms(&self) -> u128 {
+        self.created.elapsed().as_millis()
     }
 
     /// Records how the start ended and wakes every waiter. The first call

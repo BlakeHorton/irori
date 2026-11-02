@@ -447,6 +447,11 @@ impl Services {
     /// Closes board `id`'s log and takes it out of the Core.
     fn drop_board(&self, id: &str) {
         let b = {
+            let _one = self
+                .boards
+                .open_mu
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let mut inner = self.boards.inner.lock().unwrap_or_else(|e| e.into_inner());
             inner.task_of.retain(|_, on| on != id);
             inner.logs.remove(id)

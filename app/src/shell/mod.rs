@@ -349,7 +349,12 @@ fn start_core(
         let app = app.clone();
         let probe = s.probe.clone();
         let updater = s.updater.clone();
+        let launched = s.launched;
         move || {
+            irori_core::log(&format!(
+                "start: main-thread wiring begins {} ms after launch",
+                launched.elapsed().as_millis()
+            ));
             let mut tray_for_update = None;
             if !probe.on() {
                 match Tray::install(&app, version()) {
@@ -393,11 +398,19 @@ fn start_core(
             probe.note(&format!("version {}", version()));
             probe.note(&format!("api-port {api_port}"));
             probe.note("ready");
+            irori_core::log(&format!(
+                "start: main-thread wiring done {} ms after launch",
+                launched.elapsed().as_millis()
+            ));
         }
     };
     if let Err(e) = app.run_on_main_thread(ui) {
         irori_core::log(&format!("irori: wiring the tray: {e}"));
     }
+    irori_core::log(&format!(
+        "start: window backend ready {} ms after launch",
+        s.launched.elapsed().as_millis()
+    ));
     Ok(hosted)
 }
 

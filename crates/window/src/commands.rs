@@ -1006,9 +1006,16 @@ pub async fn update_restart_to_update(w: W<'_>) -> R<()> {
 #[specta::specta]
 pub async fn core_ready(r: State<'_, Arc<crate::ready::Ready>>) -> R<()> {
     let r = r.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || r.wait())
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let res = r.wait();
+        irori_core::log(&format!(
+            "start: core_ready answered {} ms after launch",
+            r.elapsed_ms()
+        ));
+        res
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Every command, plus the event payload types the frontend listens for.
