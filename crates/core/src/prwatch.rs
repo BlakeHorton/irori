@@ -71,7 +71,15 @@ fn gh_path() -> Option<PathBuf> {
 }
 
 fn run_gh(gh: &PathBuf, url: &str) -> Result<serde_json::Value, String> {
-    let mut child = Command::new(gh)
+    let mut cmd = Command::new(gh);
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW: Irori is a GUI app, so without it every PR check
+        // flashes a console (a Windows Terminal window) on the desktop.
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let mut child = cmd
         .args(["pr", "view", url, "--json", "state,mergedAt,reviewDecision"])
         .env("GH_PROMPT_DISABLED", "1")
         .env("NO_COLOR", "1")
