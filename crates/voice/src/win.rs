@@ -252,10 +252,9 @@ fn open(
                 let st = args.Status()?;
                 if st != SpeechRecognitionResultStatus::Success
                     && st != SpeechRecognitionResultStatus::UserCanceled
+                    && let Ok(mut f) = failure.lock()
                 {
-                    if let Ok(mut f) = failure.lock() {
-                        *f = Some(status_error(st));
-                    }
+                    *f = Some(status_error(st));
                 }
             }
             let _ = done.send(());
