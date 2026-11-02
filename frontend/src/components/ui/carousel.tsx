@@ -93,6 +93,8 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // Read the carousel's initial scroll state once it exists (shadcn's code).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
