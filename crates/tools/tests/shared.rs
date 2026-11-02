@@ -77,6 +77,15 @@ impl Fake {
                     person: ME.into(),
                     is_owner: Some(Arc::new(|k: &str| k == ME)),
                     tag: Some(Arc::new(|| "mlg".to_string())),
+                    // Whose a board key is (card #264: who decides).
+                    key_person: Some(Arc::new(|k: &str| match k {
+                        ME => "pStephen".into(),
+                        "person:pBlake" | "agent:cb1" | "agent:cb2" | "agent:cb3" => {
+                            "pBlake".into()
+                        }
+                        k if k.starts_with("agent:c") => "pStephen".into(),
+                        _ => String::new(),
+                    })),
                     ..coord::Options::default()
                 },
             )
@@ -747,5 +756,62 @@ fn show_opens_a_shared_card_and_its_comments() {
     has(
         &r.h.okj(&call_a(), "show", json!({"ref": format!("task:{p}")})),
         &["mine only"],
+    );
+}
+
+/// Card #264: board_block's for names who decides a shared card's question
+/// (a member's name or person: key); without it the question is for the
+/// raiser's own person. A private card takes no for.
+#[test]
+fn a_question_is_for_whoever_for_names() {
+    let r = rig();
+    let id = created_id(&r.h.okj(
+        &call_a(),
+        "board_create",
+        json!({"title": "Loader", "board": "mlg"}),
+    ));
+    let on = |bid: &str| {
+        r.fake
+            .co
+            .get_task(&id)
+            .unwrap()
+            .blockers
+            .into_iter()
+            .find(|b| b.id == bid)
+            .and_then(|b| b.on)
+            .map(|o| o.reference)
+            .unwrap_or_default()
+    };
+    let out = r.h.okj(
+        &call_a(),
+        "board_block",
+        json!({"task_id": id, "question": "Rename the loader?", "for": "blake"}),
+    );
+    has(&out, &["a question for Blake", "anyone can still answer"]);
+    assert_eq!(on("b1"), "person:pBlake");
+    r.h.okj(
+        &call_a(),
+        "board_block",
+        json!({"task_id": id, "question": "Ship it?"}),
+    );
+    assert_eq!(on("b2"), ME, "default: the raiser's own person");
+    r.h.failsj(
+        &call_a(),
+        "board_block",
+        json!({"task_id": id, "question": "Who?", "for": "Nobody"}),
+        &["nobody on MLG farming is named \"Nobody\"", "\"Blake\""],
+    );
+    r.h.failsj(
+        &call_a(),
+        "board_block",
+        json!({"task_id": id, "question": "Wait?", "for": "Blake", "on": "external CI"}),
+        &["for names the person who decides"],
+    );
+    let pid = created_id(&r.h.okj(&call_a(), "board_create", json!({"title": "Mine"})));
+    r.h.failsj(
+        &call_a(),
+        "board_block",
+        json!({"task_id": pid, "question": "Mine?", "for": "Blake"}),
+        &["leave for out"],
     );
 }

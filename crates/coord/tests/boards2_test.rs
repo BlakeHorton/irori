@@ -1315,3 +1315,83 @@ fn a_gone_agent_of_another_person_is_left_once_by_its_own_device() {
         assert!(s.c.get_task(&tk.id).unwrap().holders.is_empty());
     }
 }
+
+// ---- who decides (card #264) ------------------------------------------------
+
+fn ask(s: &Side, by: &str, id: &str, q: &str, on: Option<BlockedBy>) -> Result<(Task, Blocker)> {
+    s.c.raise(
+        by,
+        id,
+        NewBlocker {
+            question: q.into(),
+            blocked_by: on,
+            ..NewBlocker::default()
+        },
+    )
+}
+
+fn for_person(key: &str) -> Option<BlockedBy> {
+    Some(BlockedBy {
+        kind: BLOCKED_ON_PERSON.into(),
+        reference: key.into(),
+    })
+}
+
+fn needs(s: &Side, viewer: &str) -> Vec<String> {
+    s.c.board(&BoardFilter {
+        viewer: viewer.into(),
+        done_limit: 1,
+        ..BoardFilter::default()
+    })
+    .needs_you
+    .into_iter()
+    .map(|c| c.task.id)
+    .collect()
+}
+
+#[test]
+fn a_question_on_a_board_is_for_the_raisers_person_by_default() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    // p2's agent asks without saying who decides: it is for p2.
+    let (_, item) = ask(&b, CARD2, &t.id, "Which colour?", None).unwrap();
+    assert_eq!(item.on, for_person(P2));
+    sync(&a, &b);
+    let on_a = a.c.get_task(&t.id).unwrap();
+    assert_eq!(
+        on_a.open_blockers()[0].on,
+        for_person(P2),
+        "both folds agree"
+    );
+    assert_eq!(needs(&b, P2), vec![t.id.clone()], "it needs p2");
+    assert!(needs(&a, P1).is_empty(), "and not p1");
+    // An explicit "person" with no one named is the raiser's person too.
+    let (_, item) = ask(&a, CARD1, &t.id, "Ship it?", for_person("")).unwrap();
+    assert_eq!(item.on, for_person(P1));
+}
+
+#[test]
+fn a_question_can_be_for_another_member() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let (_, item) = ask(&a, CARD1, &t.id, "Blake: OK to rename?", for_person(P2)).unwrap();
+    assert_eq!(item.on, for_person(P2));
+    sync(&a, &b);
+    assert_eq!(needs(&b, P2), vec![t.id.clone()]);
+    assert!(needs(&a, P1).is_empty(), "p1's agent asked, but p2 decides");
+    // Anyone can still answer: p1 resolves p2's question.
+    a.c.answer(
+        P1,
+        &t.id,
+        &item.id,
+        BlockerAnswer {
+            text: "yes".into(),
+            resolve: true,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    // Nobody who isn't on the board can be asked.
+    let e = ask(&a, CARD1, &t.id, "Who?", for_person("person:p9")).unwrap_err();
+    assert!(e.is(ErrorKind::Invalid), "{e}");
+}

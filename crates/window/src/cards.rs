@@ -899,6 +899,14 @@ fn waits_by_itself(kind: &str) -> bool {
     )
 }
 
+/// A person blocker for another member of a shared board (card #264). The
+/// board's keys come here as this device knows them, so this person's own
+/// questions are "" or a user: key and only someone else's stay person:.
+fn for_another(kind: &str, reference: &str) -> bool {
+    kind == coord::BLOCKED_ON_PERSON
+        && reference.starts_with(irori_identity::kinds::PERSON_ACTOR_PREFIX)
+}
+
 /// Names the card a summary's first wait is on ("#12"); a card this
 /// device can't see stays "a card".
 pub(crate) fn name_wait(s: &mut CardSummary, refr: &dyn Fn(&str) -> String) {
@@ -969,6 +977,20 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
                         coord::BLOCKED_ON_AGENT => s.wait_on = p.ref_(&on.reference).name,
                         _ => s.wait_on = on.reference.clone(),
                     }
+                }
+                continue;
+            }
+            if let Some(on) = bl
+                .on
+                .as_ref()
+                .filter(|on| for_another(&on.kind, &on.reference))
+            {
+                // Another member's question on a shared board (card #264):
+                // it waits on them, not on this person.
+                s.waiting_on += 1;
+                if s.waiting_on == 1 {
+                    s.wait_question = bl.question.clone();
+                    s.wait_on = p.ref_(&on.reference).name;
                 }
                 continue;
             }
@@ -1633,7 +1655,12 @@ impl Window {
         self.board_detail(&t, &mut d);
         family_of(&co, &t, &mut d.summary);
         for kid in &t.subtasks {
-            let Some(k) = co.get_task(kid) else { continue };
+            let Some(mut k) = co.get_task(kid) else {
+                continue;
+            };
+            if co.is_board() {
+                k = self.priv_task(k); // whose questions are whose (#264)
+            }
             let ks = card_summary(&k, &p);
             d.subtask_list.push(CardSubtask {
                 id: k.id.clone(),
@@ -2351,5 +2378,60 @@ mod tests {
             (notice("d/g", coord::NOTICE_COMMENT, st::QUEUED), false),
         ];
         assert_eq!(pending_lines(&both, &t, &p, never), ["garnet read it"]);
+    }
+
+    // Card #264: on a shared board a question counts under Needs a decision
+    // only for the person it's for (keys as private_task leaves them: this
+    // person's "" or user:, another member's person:<id>); everyone else's
+    // tile says who it waits on.
+    #[test]
+    fn a_question_needs_only_the_person_it_is_for() {
+        let mut p = People::default();
+        p.persons.insert(
+            "person:blake".into(),
+            irori_core::BoardMember {
+                key: "person:blake".into(),
+                name: "Blake".into(),
+                board_id: "b".into(),
+            },
+        );
+        let q = |id: &str, question: &str, reference: &str| {
+            let mut b = coord::Blocker::default();
+            b.id = id.into();
+            b.question = question.into();
+            b.on = Some(coord::BlockedBy {
+                kind: coord::BLOCKED_ON_PERSON.into(),
+                reference: reference.into(),
+            });
+            b
+        };
+        let t = |bs: Vec<coord::Blocker>| Task {
+            state: coord::BLOCKED.into(),
+            blockers: bs,
+            ..Task::default()
+        };
+
+        let blakes = card_summary(&t(vec![q("b1", "Rename it?", "person:blake")]), &p);
+        assert_eq!(blakes.open_blockers, 0, "not in my Needs a decision");
+        assert_eq!(blakes.waiting_on, 1);
+        assert_eq!(blakes.wait_on, "Blake", "the tile says Waiting on Blake");
+        assert_eq!(blakes.wait_question, "Rename it?");
+
+        for mine in ["", "user:dev"] {
+            let s = card_summary(&t(vec![q("b1", "Ship it?", mine)]), &p);
+            assert_eq!(s.open_blockers, 1, "{mine:?} is mine, as before");
+            assert_eq!(s.waiting_on, 0);
+            assert_eq!(s.blocker_question, "Ship it?");
+        }
+
+        let both = card_summary(
+            &t(vec![
+                q("b1", "Rename it?", "person:blake"),
+                q("b2", "Ship it?", ""),
+            ]),
+            &p,
+        );
+        assert_eq!((both.open_blockers, both.waiting_on), (1, 1));
+        assert_eq!(both.blocker_question, "Ship it?");
     }
 }

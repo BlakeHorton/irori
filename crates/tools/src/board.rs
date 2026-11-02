@@ -1003,6 +1003,7 @@ const BLOCK_ARGS: &[(&str, Ty)] = &[
     ("attach", Ty::Strs),
     ("blocker_id", Ty::Str),
     ("mention", Ty::Strs),
+    ("for", Ty::Str),
 ];
 
 fn link_labels(ls: &[Link]) -> String {
@@ -1027,6 +1028,58 @@ fn many_questions(text: &str) -> bool {
 const ONE_ASK_EACH: &str = "Raise each question with its own board_block (question, context for a newcomer, options when there are real choices, and recommended: true on the one you recommend), so the person can answer them one by one.";
 
 impl Inner {
+    /// board_block's for (card #264): the person who decides a question on
+    /// shared card `id`, as that board writes them (person:<id>). It takes
+    /// another member's name as the board shows it, or their person: key;
+    /// this person (a user: key of theirs) is `None`, the default.
+    fn decider(&self, id: &str, v: &str) -> Result<Option<(String, String)>, String> {
+        let v = trim(v);
+        if v.is_empty() || self.is_owner(v) {
+            return Ok(None);
+        }
+        let board = self.b.shared_boards().and_then(|sb| {
+            let b = sb.board_of(id)?;
+            Some((b.clone(), sb.board_mentionables(&b.board_id)))
+        });
+        let Some((b, cards)) = board else {
+            return Err(err_text(
+                "for names who decides on a shared board's card; a private card's questions are for your person, so leave for out.",
+            ));
+        };
+        let people: Vec<_> = cards
+            .iter()
+            .filter(|c| c.key.starts_with(store::kinds::PERSON_ACTOR_PREFIX))
+            .collect();
+        if let Some(p) = people.iter().find(|p| p.key == v) {
+            return Ok(Some((p.key.clone(), p.name.clone())));
+        }
+        let named: Vec<_> = people
+            .iter()
+            .filter(|p| p.name.eq_ignore_ascii_case(v))
+            .collect();
+        match named.as_slice() {
+            [one] => Ok(Some((one.key.clone(), one.name.clone()))),
+            [] => {
+                let names: Vec<String> = people.iter().map(|p| q(&one_line(&p.name, 40))).collect();
+                Err(err_text(&format!(
+                    "for: nobody on {} is named {}; {}. Leave for out when the question is for your own person.",
+                    one_line(&b.name, 60),
+                    q(&one_line(v, 40)),
+                    if names.is_empty() {
+                        "it has no other members".to_string()
+                    } else {
+                        format!("its other members are {}", names.join(", "))
+                    }
+                )))
+            }
+            _ => Err(err_text(&format!(
+                "for: more than one member of {} is named {}; give their person: key.",
+                one_line(&b.name, 60),
+                q(&one_line(v, 40))
+            ))),
+        }
+    }
+
     /// board_block's on: "<kind> <ref>" or "<kind>:<ref>".
     fn parse_on(&self, v: &str) -> Result<Option<BlockedBy>, String> {
         let v = trim(v);
@@ -1117,11 +1170,12 @@ fn block_options(options: &[Args]) -> Vec<BlockerOption> {
 fn revise_blocker(s: &Inner, c: &Caller, a: &Args, id: &str, bid: &str) -> String {
     if !trim(a.str("reason")).is_empty()
         || !trim(a.str("on")).is_empty()
+        || !trim(a.str("for")).is_empty()
         || !a.strs("links").is_empty()
         || !a.strs("attach").is_empty()
     {
         return err_text(
-            "with blocker_id, board_block revises that blocker: give question, context and options only (reason, on, links and attach stay as they are).",
+            "with blocker_id, board_block revises that blocker: give question, context and options only (reason, on, for, links and attach stay as they are).",
         );
     }
     let options = a.structs("options");
@@ -1201,6 +1255,29 @@ pub(crate) fn board_block(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(m) => return m,
     };
+    let mut for_name = String::new();
+    match s.decider(&id, a.str("for")) {
+        Err(m) => return m,
+        Ok(None) => {}
+        Ok(Some((who, name))) => match bb.as_mut() {
+            None => {
+                for_name = name;
+                bb = Some(BlockedBy {
+                    kind: coord::BLOCKED_ON_PERSON.into(),
+                    reference: who,
+                })
+            }
+            Some(b) if b.kind == coord::BLOCKED_ON_PERSON && b.reference.is_empty() => {
+                for_name = name;
+                b.reference = who
+            }
+            Some(_) => {
+                return err_text(
+                    "for names the person who decides; it goes with on = person (or no on), not with a lease, task, agent or external wait.",
+                );
+            }
+        },
+    }
     let links = a.strs("links");
     if links.len() > coord::MAX_BLOCKER_LINKS {
         return err_text(&format!(
@@ -1284,6 +1361,12 @@ pub(crate) fn board_block(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     let mut out = format!("Blocked {}", t.short_ref());
     if !item.id.is_empty() {
         out += &format!(" on blocker {}", item.id);
+    }
+    if !for_name.is_empty() {
+        out += &format!(
+            ", a question for {}: it shows under their Needs a decision, and as waiting on them for everyone else (anyone can still answer)",
+            one_line(&for_name, 60)
+        );
     }
     out += &attached_line(&files);
     if !item.links.is_empty() {
