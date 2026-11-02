@@ -1188,3 +1188,65 @@ fn a_merged_pr_on_a_board_card_tells_the_holder_once() {
     let (_, ns) = b.c.record_pr_state(&t.id, merged()).unwrap();
     assert!(ns.is_empty(), "a merged PR is told once");
 }
+
+/// #230: a board card in review links a merged PR as context and its own
+/// PR, still open. The context PR's merge is told once, without a wake
+/// and without asking for completed; heard again it says nothing; the own
+/// PR's merge then asks for completed.
+#[test]
+fn a_merged_context_pr_beside_an_open_own_pr_is_told_once_without_a_wake() {
+    const CONTEXT: &str = "https://github.com/a/b/pull/271";
+    const OWN: &str = "https://github.com/a/b/pull/273";
+    let (a, b, _) = two_people();
+    let t = a.c.create_task(P1, nt("aimed shots", "")).unwrap();
+    sync(&a, &b);
+    b.c.claim_task(CARD2, &t.id).unwrap();
+    b.c.add_link(CARD2, &t.id, CONTEXT).unwrap();
+    b.c.add_link(CARD2, &t.id, OWN).unwrap();
+    sync(&a, &b);
+    let heard = |pr: &str, state: &str| PrCheck {
+        pr: pr.into(),
+        state: state.into(),
+        ..PrCheck::default()
+    };
+
+    b.clk.add(Duration::from_secs(60));
+    let (_, ns) = b.c.record_pr_state(&t.id, heard(OWN, PR_OPEN)).unwrap();
+    assert!(ns.is_empty());
+    b.c.set_task_state(CARD2, &t.id, IN_REVIEW, "PR open")
+        .unwrap();
+
+    b.clk.add(Duration::from_secs(60));
+    let (_, ns) =
+        b.c.record_pr_state(&t.id, heard(CONTEXT, PR_MERGED))
+            .unwrap();
+    assert_eq!(ns.len(), 1);
+    assert!(!ns[0].wake, "a context PR's merge wakes nobody");
+    assert!(ns[0].text.contains("was merged"), "{}", ns[0].text);
+    assert!(ns[0].text.contains(OWN), "{}", ns[0].text);
+    assert!(!ns[0].text.contains("state=completed"), "{}", ns[0].text);
+    sync(&a, &b);
+
+    // Every later poll: the row stuck, so nothing new on either side.
+    for _ in 0..5 {
+        b.clk.add(Duration::from_secs(180));
+        let (_, ns) =
+            b.c.record_pr_state(&t.id, heard(CONTEXT, PR_MERGED))
+                .unwrap();
+        assert!(ns.is_empty(), "told once");
+        let (_, ns) = b.c.record_pr_state(&t.id, heard(OWN, PR_OPEN)).unwrap();
+        assert!(ns.is_empty());
+        sync(&a, &b);
+    }
+    for s in [&a, &b] {
+        let st = s.c.pr_states(&t.id);
+        assert!(st.iter().any(|p| p.pr == CONTEXT && p.state == PR_MERGED));
+    }
+
+    // The card's own PR merges: now the holder is woken to complete.
+    b.clk.add(Duration::from_secs(180));
+    let (_, ns) = b.c.record_pr_state(&t.id, heard(OWN, PR_MERGED)).unwrap();
+    assert_eq!(ns.len(), 1);
+    assert!(ns[0].wake);
+    assert!(ns[0].text.contains("state=completed"), "{}", ns[0].text);
+}

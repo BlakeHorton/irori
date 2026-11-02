@@ -5,7 +5,8 @@
 //! changes. coord never shells out: the Core's poller does, and hands what
 //! it heard to [`Fold::record_pr_state`], which writes the row and acts on
 //! it:
-//! - merged: the holders are woken to complete the card with proof;
+//! - merged: the holders are woken to complete the card with proof, or,
+//!   while another PR the card links isn't merged yet, told without a wake;
 //! - closed without a merge: the holders hear it;
 //! - changes requested on GitHub: a card in review goes back to working
 //!   and its holders are woken, as a reviewer's changes verdict does;
@@ -212,15 +213,33 @@ impl Fold {
         let mut ns = Vec::new();
         let newly = |s: &str| c.state == s && old.state != s;
         if newly(PR_MERGED) {
-            ns.push(self.pr_notice(
-                &t,
-                &c.pr,
-                "was merged",
-                format!(
-                    "Check the work landed, then set it completed with proof: board_status task_id={} state=completed proof=\"…\".",
-                    t.id
-                ),
-            ));
+            // Another linked PR still open (the card's own, with the merged
+            // one linked as context, #230): say it merged, but don't ask
+            // for completed and don't wake anyone over it.
+            let waiting = self.unfinished_prs_besides(&t, &c.pr);
+            if waiting.is_empty() {
+                ns.push(self.pr_notice(
+                    &t,
+                    &c.pr,
+                    "was merged",
+                    format!(
+                        "Check the work landed, then set it completed with proof: board_status task_id={} state=completed proof=\"…\".",
+                        t.id
+                    ),
+                ));
+            } else {
+                let mut n = self.pr_notice(
+                    &t,
+                    &c.pr,
+                    "was merged",
+                    format!(
+                        "The card also links {}, not merged yet: keep it as it is; Irori tells you when that merges.",
+                        waiting.join(", ")
+                    ),
+                );
+                n.wake = false;
+                ns.push(n);
+            }
         } else if newly(PR_CLOSED) {
             ns.push(self.pr_notice(
                 &t,
@@ -253,6 +272,22 @@ impl Fold {
         }
         ns.retain(|n| !n.to.is_empty());
         Ok((self.tasks[id].clone(), ns))
+    }
+
+    /// The PRs `t` links, other than `pr`, that aren't known to be merged
+    /// or closed (open, or not heard of yet), in link order.
+    fn unfinished_prs_besides(&self, t: &Task, pr: &str) -> Vec<String> {
+        let heard = self.pr_states.get(&t.id);
+        t.links
+            .iter()
+            .filter(|l| pr_link(l).is_some() && l.reference != pr)
+            .filter(|l| {
+                !heard
+                    .and_then(|m| m.get(&l.reference))
+                    .is_some_and(|p| p.state == PR_MERGED || p.state == PR_CLOSED)
+            })
+            .map(|l| l.reference.clone())
+            .collect()
     }
 
     fn pr_notice(&self, t: &Task, pr: &str, what: &str, next: String) -> Notice {
