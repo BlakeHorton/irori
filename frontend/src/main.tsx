@@ -1,4 +1,4 @@
-import { StrictMode } from "react"
+import { StrictMode, Suspense, lazy } from "react"
 import { createRoot } from "react-dom/client"
 
 import "./index.css"
@@ -16,7 +16,22 @@ async function mount() {
     if (inHost()) await commands.coreReady()
   } catch (err) {
     const text = document.getElementById("irori-opening-text")
-    if (text) text.textContent = `Irori couldn't open: ${err instanceof Error ? err.message : String(err)}`
+    if (text)
+      text.textContent = `Irori couldn't open: ${err instanceof Error ? err.message : String(err)}`
+    return
+  }
+  // Card #259: the design-system gallery, browser preview only (?gallery).
+  if (!inHost() && new URLSearchParams(window.location.search).has("gallery")) {
+    const Gallery = lazy(() => import("./design/gallery"))
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <TooltipProvider delay={300}>
+          <Suspense fallback={null}>
+            <Gallery />
+          </Suspense>
+        </TooltipProvider>
+      </StrictMode>
+    )
     return
   }
   createRoot(document.getElementById("root")!).render(
