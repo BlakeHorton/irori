@@ -43,13 +43,19 @@ if [ -n "$ndk" ]; then
     [ -d "$d" ] && android_bin="$d"
   done
 fi
-if [ -n "$android_bin" ] && [ -e "$android_bin/aarch64-linux-android24-clang" ] &&
+if [ -n "$android_bin" ] && [ -e "$android_bin/aarch64-linux-android26-clang" ] &&
   rustup target list --installed | grep -qx aarch64-linux-android; then
   echo "android: cargo check (NDK $ndk)"
-  CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$android_bin/aarch64-linux-android24-clang" \
-    CC_aarch64_linux_android="$android_bin/aarch64-linux-android24-clang" \
-    CXX_aarch64_linux_android="$android_bin/aarch64-linux-android24-clang++" \
+  # API 26 is the app's minimum (AAudio). Voice builds whisper.cpp with
+  # CMake and bindgen, which need the toolchain wrapper and the sysroot
+  # (docs/android.md, #240).
+  NDK_HOME="$ndk" \
+    CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$android_bin/aarch64-linux-android26-clang" \
+    CC_aarch64_linux_android="$android_bin/aarch64-linux-android26-clang" \
+    CXX_aarch64_linux_android="$android_bin/aarch64-linux-android26-clang++" \
     AR_aarch64_linux_android="$android_bin/llvm-ar" \
+    BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$android_bin/../sysroot --target=aarch64-linux-android26" \
+    CMAKE_TOOLCHAIN_FILE_aarch64_linux_android="$PWD/scripts/android/arm64.toolchain.cmake" \
     cargo check --target aarch64-linux-android -p irori-app --lib
 else
   echo "android: skipped (no NDK)"
