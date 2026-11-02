@@ -2,6 +2,13 @@
 //! private in-memory SQLite database (capture.md §2.7). Nothing is on
 //! disk: the index is rebuilt from the fold at [`crate::Capture::new`].
 //!
+//! The rebuild is deferred (card #243): during the replay [`Index::defer`]
+//! collects the docs in memory, the latest per ref, and [`Index::flush`]
+//! writes them to FTS5 in one transaction, off the start path. Puts made
+//! before the flush land in the same pending set, so a newer doc for a ref
+//! can never be overwritten by an older one; a search before the flush
+//! flushes first.
+//!
 //! Every `:memory:` connection is its own database, so the index holds one
 //! connection for its whole life. Writes are upserts by ref: a map
 //! remembers each ref's rowid, so an upsert deletes by rowid and inserts
@@ -12,6 +19,8 @@ use std::sync::Mutex;
 
 use gocompat::time::GoTime;
 use rusqlite::{Connection, params_from_iter, types::Value};
+#[cfg(test)]
+use search::KINDS;
 use search::{Doc, Hit, Kind, MAX_SNIPPET, MAX_TITLE, Query};
 
 use crate::handle::clip_runes;
@@ -27,6 +36,15 @@ struct State {
     /// ref -> rowid.
     rows: HashMap<String, i64>,
     next: i64,
+    /// Docs waiting for the flush, in first-put order (rowid ties keep the
+    /// same order as before), with each ref's slot. None once flushed.
+    pending: Option<Pending>,
+}
+
+#[derive(Default)]
+struct Pending {
+    docs: Vec<Doc>,
+    slot: HashMap<String, usize>,
 }
 
 /// The FTS5 index. Safe for concurrent use.
@@ -101,8 +119,43 @@ impl Index {
                 in_tx: false,
                 rows: HashMap::new(),
                 next: 0,
+                pending: None,
             }),
         })
+    }
+
+    /// Starts collecting puts in memory instead of writing them (the
+    /// replay); [`Index::flush`] writes them.
+    pub fn defer(&self) {
+        let mut s = self.lock();
+        if s.pending.is_none() {
+            s.pending = Some(Pending::default());
+        }
+    }
+
+    /// Writes the deferred docs in one transaction. A no-op when nothing is
+    /// deferred. Holds the index for the whole write, so a search or put
+    /// meanwhile waits and then sees the full index.
+    pub fn flush(&self) -> Result<(), String> {
+        let mut s = self.lock();
+        let Some(p) = s.pending.take() else {
+            return Ok(());
+        };
+        let tx = !s.in_tx && s.db.execute_batch("BEGIN").is_ok();
+        let mut res = Ok(());
+        for d in &p.docs {
+            if let Err(e) = Self::write(&mut s, d) {
+                res = Err(e);
+                break;
+            }
+        }
+        if tx {
+            let end = if res.is_ok() { "COMMIT" } else { "ROLLBACK" };
+            if let Err(e) = s.db.execute_batch(end) {
+                res = res.and(Err(e.to_string()));
+            }
+        }
+        res
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
@@ -126,9 +179,23 @@ impl Index {
         s.db.execute_batch("COMMIT").map_err(|e| e.to_string())
     }
 
-    /// Upserts one doc by its ref.
+    /// Upserts one doc by its ref (into the pending set while deferred).
     pub fn put(&self, d: &Doc) -> Result<(), String> {
         let mut s = self.lock();
+        if let Some(p) = s.pending.as_mut() {
+            match p.slot.get(&d.r#ref) {
+                Some(&i) => p.docs[i] = d.clone(),
+                None => {
+                    p.slot.insert(d.r#ref.clone(), p.docs.len());
+                    p.docs.push(d.clone());
+                }
+            }
+            return Ok(());
+        }
+        Self::write(&mut s, d)
+    }
+
+    fn write(s: &mut State, d: &Doc) -> Result<(), String> {
         let rid = match s.rows.get(&d.r#ref) {
             Some(&rid) => {
                 s.db.execute("DELETE FROM docs WHERE rowid = ?", [rid])
@@ -162,13 +229,21 @@ impl Index {
 
     /// How many docs the index holds.
     pub fn size(&self) -> usize {
-        self.lock().rows.len()
+        let s = self.lock();
+        let waiting = s.pending.as_ref().map_or(0, |p| {
+            p.docs
+                .iter()
+                .filter(|d| !s.rows.contains_key(&d.r#ref))
+                .count()
+        });
+        s.rows.len() + waiting
     }
 
     /// Runs `q` (limit already clamped). The order is total (rowid breaks
     /// ties), so offset pages without skipping or repeating a hit. Text that
     /// leaves no words after cleaning matches nothing.
     pub fn search(&self, q: &Query) -> Result<Vec<Hit>, String> {
+        self.flush()?;
         let (m, has_text) = match_expr(&q.text);
         if has_text && m.is_empty() {
             return Ok(Vec::new());
@@ -285,6 +360,45 @@ mod tests {
             (r.as_str(), snip.as_str()),
             ("task:1", "the lease was [refused]")
         );
+    }
+
+    /// Card #243: while deferred, puts collect in memory (the latest per
+    /// ref wins), a search flushes first, and puts after the flush write
+    /// straight through.
+    #[test]
+    fn deferred_puts_flush_latest_per_ref() {
+        let doc = |r: &str, body: &str| Doc {
+            r#ref: r.into(),
+            kind: KINDS[0],
+            at: GoTime::ZERO,
+            updated: GoTime::ZERO,
+            title: r.into(),
+            body: body.into(),
+            agent: String::new(),
+            repo_key: String::new(),
+            readers: Vec::new(),
+        };
+        let q = |text: &str| Query {
+            text: text.into(),
+            limit: 10,
+            ..Query::default()
+        };
+        let idx = Index::open().unwrap();
+        idx.defer();
+        idx.put(&doc("edit:a", "old words")).unwrap();
+        idx.put(&doc("edit:b", "other words")).unwrap();
+        idx.put(&doc("edit:a", "newer words")).unwrap();
+        assert_eq!(idx.size(), 2, "two refs waiting");
+        // A search before the flush flushes, and sees only a's newer doc.
+        assert!(idx.search(&q("old")).unwrap().is_empty());
+        let hits = idx.search(&q("newer")).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].r#ref, "edit:a");
+        // After the flush puts write through, and a second flush is a no-op.
+        idx.put(&doc("edit:c", "late words")).unwrap();
+        idx.flush().unwrap();
+        assert_eq!(idx.search(&q("late")).unwrap().len(), 1);
+        assert_eq!(idx.size(), 3);
     }
 
     /// TestMatchExpr.

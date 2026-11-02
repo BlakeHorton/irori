@@ -488,20 +488,30 @@ impl Capture {
             inner: Arc::new(inner),
         };
         c.replay()?;
+        // The search index fills off the start path (card #243): a search
+        // before it's done waits for it.
+        let inner = Arc::downgrade(&c.inner);
+        std::thread::Builder::new()
+            .name("capture-index".into())
+            .spawn(move || {
+                if let Some(inner) = inner.upgrade()
+                    && let Err(e) = inner.idx.flush()
+                {
+                    inner.write().last_err = format!("capture: search index: {e}");
+                }
+            })
+            .map_err(|e| format!("capture: search index thread: {e}"))?;
         Ok(c)
     }
 
     /// Folds every capture row, oldest first, paging past the list cap by
-    /// the `(hlc, device, seq)` cursor.
+    /// the `(hlc, device, seq)` cursor. The search docs wait in memory for
+    /// the index's flush.
     fn replay(&self) -> Result<(), String> {
         let inner = &self.inner;
         let mut f = inner.write();
-        inner.idx.begin();
-        let res = Self::replay_rows(inner, &mut f);
-        if let Err(e) = inner.idx.commit() {
-            f.last_err = format!("capture: search index: {e}");
-        }
-        res
+        inner.idx.defer();
+        Self::replay_rows(inner, &mut f)
     }
 
     fn replay_rows(inner: &Inner, f: &mut Fold) -> Result<(), String> {
