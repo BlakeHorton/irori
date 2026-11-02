@@ -33,7 +33,7 @@ sh scripts/no-third-party.sh
 ndk="${NDK_HOME:-}"
 if [ -z "$ndk" ] || [ ! -d "$ndk" ]; then
   ndk=""
-  for d in "${ANDROID_HOME:-/nonexistent}"/ndk/*; do
+  for d in "${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"/ndk/*; do   # ANDROID_HOME default: docs/android.md (Homebrew)
     [ -d "$d" ] && ndk="$d"   # glob order: the last one is the newest
   done
 fi
