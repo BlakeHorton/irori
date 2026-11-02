@@ -103,7 +103,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // of all on a phone). `ready` tells the page when it may mount; the
     // window's state is managed once the Core is up.
     let ready = Arc::new(irori_window::ready::Ready::new());
-    let hosted: Arc<Mutex<Option<(host::Hosted, Arc<Window>)>>> = Arc::default();
+    let hosted: Arc<Mutex<Option<Running>>> = Arc::default();
     let starting: Arc<Mutex<Option<std::thread::JoinHandle<()>>>> = Arc::default();
     let pumps_stop = sys::cancel::Cancel::new();
     let builder = irori_window::builder();
@@ -280,6 +280,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     res.map(|_| ()).and(closed)
 }
 
+/// The started Core with its API, and the window's backend on it (card
+/// #232: made on the start thread, closed after the app exits).
+type Running = (host::Hosted, Arc<Window>);
+
 /// What [`start_core`] wires once the Core is up.
 struct Started {
     notifier: notify::Notifier,
@@ -297,7 +301,7 @@ fn start_core(
     app: &AppHandle,
     data: std::path::PathBuf,
     s: Started,
-) -> Result<(host::Hosted, Arc<Window>), String> {
+) -> Result<Running, String> {
     let hosted = match host::start(rt, data.clone(), false, Some(s.notifier.clone())) {
         Ok(h) => h,
         Err(e) => return Err(format!("start: {e}")),
