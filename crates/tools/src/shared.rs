@@ -388,6 +388,7 @@ pub(crate) fn create_on_board(
     board: &str,
     repo: String,
     assign_to: String,
+    waits: Option<(String, coord::BlockedBy)>,
 ) -> String {
     let b = match s.find_board(board) {
         Ok(b) => b,
@@ -404,6 +405,8 @@ pub(crate) fn create_on_board(
         shared: a.bool("shared"),
         links: a.strs("links"),
         steps: steps_of(&a.steps("steps")),
+        block_reason: waits.as_ref().map(|w| w.0.clone()).unwrap_or_default(),
+        blocked_by: waits.map(|w| w.1),
         ..NewTask::default()
     };
     let mut texts: Vec<&str> = vec![&task.title, &task.objective, &task.done_criteria];

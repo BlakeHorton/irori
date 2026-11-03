@@ -2247,3 +2247,106 @@ fn test_board_join_hands_over_where_and_left_off() {
         ],
     );
 }
+
+/// Card #400: board_create with waits_on makes the card blocked from the
+/// start, so Irori never hands it out until the work it waits on is done;
+/// then it goes out once.
+#[test]
+fn test_board_create_waits_on_a_card() {
+    let h = new_harness();
+    let (a, b) = (call_a(), call_b());
+    let co = h.b.co.clone();
+    let agents = || -> Vec<coord::roster::AgentCard> {
+        h.b.roster
+            .cards()
+            .into_iter()
+            .map(|c| coord::roster::AgentCard {
+                key: c.key,
+                device_id: c.device_id,
+                status: c.status,
+                repo_key: c.repo_key,
+                ..Default::default()
+            })
+            .collect()
+    };
+    h.b.roster.set_status(KEY_G, "working");
+    let first = created_id(&h.okj(&a, "board_create", json!({"title": "the lexer"})));
+    h.okj(&b, "board_join", json!({"task_id": first}));
+    let r = h.short(&first);
+
+    h.failsj(
+        &a,
+        "board_create",
+        json!({"title": "x", "waits_on": "#999"}),
+        &["no card"],
+    );
+    h.failsj(
+        &a,
+        "board_create",
+        json!({"title": "x", "waits_on": "person"}),
+        &["waits_on takes a card"],
+    );
+    let out = h.okj(
+        &a,
+        "board_create",
+        json!({"title": "the parser", "waits_on": r}),
+    );
+    has(
+        &out,
+        &[
+            "It starts blocked (Waits on",
+            &r,
+            "once that is done",
+            "[blocked]",
+        ],
+    );
+    has_not(&out, &["Irori handed it"]);
+    let id = created_id(&out);
+    let t = co.get_task(&id).unwrap();
+    assert_eq!(t.state, coord::BLOCKED);
+    assert!(t.offer.is_none(), "no task.offered row: {:?}", t.offer);
+    let bl = t.open_blockers();
+    assert!(
+        bl.len() == 1
+            && bl[0]
+                .on
+                .as_ref()
+                .is_some_and(|o| o.kind == coord::BLOCKED_ON_TASK && o.reference == first),
+        "{bl:?}"
+    );
+    // "task #N" works too.
+    let out = h.okj(
+        &a,
+        "board_create",
+        json!({"title": "the printer", "waits_on": format!("task {r}")}),
+    );
+    has(&out, &["It starts blocked"]);
+
+    // Sweeps while the lexer is open hand out nothing.
+    co.sweep_notices().unwrap();
+    co.sweep_asks(&agents()).unwrap();
+    assert!(co.get_task(&id).unwrap().offer.is_none());
+
+    // The lexer is done: the parser unblocks and goes out once.
+    h.okj(
+        &b,
+        "board_status",
+        json!({"task_id": first, "state": "completed", "proof": "done"}),
+    );
+    co.sweep_notices().unwrap();
+    let t = co.get_task(&id).unwrap();
+    assert_ne!(t.state, coord::BLOCKED, "{t:?}");
+    h.b.roster.set_status(KEY_G, "idle");
+    let ns = co.sweep_asks(&agents()).unwrap();
+    let offers: Vec<_> = ns
+        .iter()
+        .filter(|n| n.kind == coord::NOTICE_OFFER && n.task_id == id)
+        .collect();
+    assert_eq!(offers.len(), 1, "{ns:?}");
+    let ns = co.sweep_asks(&agents()).unwrap();
+    assert!(
+        !ns.iter()
+            .any(|n| n.kind == coord::NOTICE_OFFER && n.task_id == id),
+        "handed out twice: {ns:?}"
+    );
+}

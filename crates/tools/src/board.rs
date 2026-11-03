@@ -705,7 +705,37 @@ const CREATE_ARGS: &[(&str, Ty)] = &[
     ("steps", Ty::Steps),
     ("parent", Ty::Str),
     ("from", Ty::Str),
+    ("waits_on", Ty::Str),
 ];
+
+/// board_create's waits_on (card #400): a task (#12, or task #12) or a
+/// lease (lease <resource>) the new card waits on, as the blocker it is
+/// created with. The card starts blocked, so Irori hands it out only once
+/// that work is done.
+pub(crate) fn waits_on(s: &Inner, v: &str) -> Result<Option<(String, BlockedBy)>, String> {
+    let v = trim(v);
+    if v.is_empty() {
+        return Ok(None);
+    }
+    let on = if v.starts_with('#') || v.starts_with("task:") && !v.starts_with("task: ") {
+        format!("task {v}")
+    } else {
+        v.to_string()
+    };
+    let Some(bb) = s.parse_on(&on)? else {
+        return Ok(None);
+    };
+    let reason = match bb.kind.as_str() {
+        coord::BLOCKED_ON_TASK => format!("Waits on {}", s.short_of(&bb.reference)),
+        coord::BLOCKED_ON_LEASE => format!("Waits on the lease {}", bb.reference),
+        _ => {
+            return Err(err_text(
+                "waits_on takes a card (#12) or a lease (lease <resource>); for a question, create the card and raise it with board_block.",
+            ));
+        }
+    };
+    Ok(Some((reason, bb)))
+}
 
 /// Step arguments as coord's steps.
 pub(crate) fn steps_of(v: &[StepArg]) -> Vec<Step> {
@@ -740,9 +770,13 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             Err(e) => return map_err(e),
         }
     }
+    let waits = match waits_on(s, a.str("waits_on")) {
+        Ok(w) => w,
+        Err(m) => return m,
+    };
     let board = trim(a.str("board"));
     if !board.is_empty() {
-        return crate::shared::create_on_board(s, c, &a, board, repo, to);
+        return crate::shared::create_on_board(s, c, &a, board, repo, to, waits);
     }
     // A subtask goes in its parent's log, with the caller and assignee as
     // that log knows them.
@@ -772,6 +806,8 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             steps: steps_of(&a.steps("steps")),
             parent,
             from: trim(a.str("from")).into(),
+            block_reason: waits.as_ref().map(|w| w.0.clone()).unwrap_or_default(),
+            blocked_by: waits.as_ref().map(|w| w.1.clone()),
             ..NewTask::default()
         },
     ) {
@@ -821,6 +857,12 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
                 );
             }
         }
+    } else if let Some((reason, _)) = waits.as_ref().filter(|_| private && !t.shared) {
+        // Blocked from the start (card #400): nobody is handed it until the
+        // work it waits on is done; then it goes out like a new card.
+        out += &format!(
+            " It starts blocked ({reason}): Irori hands it to a free agent once that is done."
+        );
     } else if private && !t.shared {
         // Pull, not push (#82): Irori hands it to one free agent at a time;
         // the poster doesn't pick.
