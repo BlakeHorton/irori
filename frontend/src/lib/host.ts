@@ -143,6 +143,7 @@ export const WindDownService = {
 
 export const BoardService = {
   Cards: () => call(commands.boardCards()),
+  IdleReport: () => call(commands.boardIdleReport()),
   Card: (id: string) => call(commands.boardCard(id)),
   DoneCards: (limit: number, before: string) => call(commands.boardDoneCards(limit, before)),
   DoneCardsIn: (limit: number, before: string, scope: string) =>

@@ -403,3 +403,79 @@ fn a_card_with_no_machine_signal_still_goes_to_the_one_idle_longest() {
     let n = post_new(&e, nt("Anywhere work"), &two_machines());
     assert_eq!(n.to, [PC_FREE]);
 }
+
+/// Card #341: idle agents and no open work reads as a shortage, not a
+/// dispatch gap.
+#[test]
+fn idle_report_idle_agents_and_no_open_work() {
+    let e = Env::new();
+    let r = e.c.idle_report(&room());
+    assert_eq!(r.idle, 4, "{r:?}");
+    assert!(r.unoffered.is_empty(), "{r:?}");
+    // A held card is work in hand, not open work.
+    let h = e.c.create_task(ALICE, nt("held")).unwrap();
+    e.c.claim_task(ALICE, &h.id).unwrap();
+    let r = e.c.idle_report(&room());
+    assert!(r.idle == 3 && r.unoffered.is_empty(), "{r:?}");
+}
+
+/// Card #341, today's case: cards sat unheld while agents were around. A
+/// card posted while nobody is free shows as not handed out, with why;
+/// once an agent is idle the periodic sweep hands it out and it leaves the
+/// report.
+#[test]
+fn idle_report_lists_unoffered_until_the_sweep_hands_it_out() {
+    let e = Env::new();
+    let later = plus(fixed_now(), mins(1));
+    let busy: Vec<AgentCard> = vec![card(BOB, "busy", later, later)];
+    let (t, n) = post(&e, "Port the parser", &busy);
+    assert!(n.to.is_empty(), "{n:?}");
+    let r = e.c.idle_report(&busy);
+    assert_eq!(r.idle, 0);
+    assert!(
+        r.unoffered.len() == 1
+            && r.unoffered[0].task_id == t.id
+            && r.unoffered[0].why == "no agent is free",
+        "{r:?}"
+    );
+    // BOB goes idle: the report says the next sweep hands it out, and the
+    // sweep does.
+    let free = vec![idle(BOB, 50)];
+    let r = e.c.idle_report(&free);
+    assert!(
+        r.idle == 1 && r.unoffered[0].why.contains("next sweep"),
+        "{r:?}"
+    );
+    let ns = e.c.sweep_asks(&free).unwrap();
+    assert!(ns.len() == 1 && ns[0].to == [BOB] && ns[0].wake, "{ns:?}");
+    let r = e.c.idle_report(&free);
+    assert!(r.unoffered.is_empty(), "handed to BOB: {r:?}");
+}
+
+/// Card #341: idle agents but none can take it says why.
+#[test]
+fn idle_report_says_no_free_agent_works_in_the_repo() {
+    let e = Env::new();
+    let t =
+        e.c.create_task(
+            ALICE,
+            NewTask {
+                repo_key: REPO_A.into(),
+                ..nt("Port the parser")
+            },
+        )
+        .unwrap();
+    let mut other = idle(DAVE, 30);
+    other.repo_key = REPO_B.into();
+    let n =
+        e.c.offer_card(ALICE, &t.id, std::slice::from_ref(&other))
+            .unwrap();
+    assert!(n.to.is_empty(), "{n:?}");
+    let r = e.c.idle_report(&[other]);
+    assert!(
+        r.idle == 1
+            && r.unoffered.len() == 1
+            && r.unoffered[0].why == format!("no free agent works in {REPO_A}"),
+        "{r:?}"
+    );
+}

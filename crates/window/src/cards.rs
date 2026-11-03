@@ -643,6 +643,28 @@ pub struct CardWait {
     pub on_this: bool,
 }
 
+/// Home's idle line (card #341): idle agents and the open cards nobody
+/// has been handed yet, so a work shortage reads differently from a
+/// dispatch gap.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct IdleReport {
+    /// Agents idle on an online device with no working card in hand.
+    pub idle: u32,
+    /// Unheld cards nobody has been handed yet, the oldest first.
+    pub unoffered: Vec<UnofferedCard>,
+}
+
+/// An unheld card nobody has been handed, and why.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UnofferedCard {
+    pub id: String,
+    pub short: String,
+    pub title: String,
+    pub why: String,
+}
+
 /// One page of the Done tab.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
 pub struct DonePage {
@@ -1275,6 +1297,24 @@ impl Window {
     }
 
     /// BoardService.Cards: every live card for the grid.
+    /// Home's idle line (card #341).
+    pub fn idle_report(&self) -> IdleReport {
+        let r = self.core.idle_report();
+        IdleReport {
+            idle: u32::try_from(r.idle).unwrap_or(u32::MAX),
+            unoffered: r
+                .unoffered
+                .into_iter()
+                .map(|u| UnofferedCard {
+                    id: u.task_id,
+                    short: u.short,
+                    title: u.title,
+                    why: u.why,
+                })
+                .collect(),
+        }
+    }
+
     pub fn cards(&self) -> Vec<CardSummary> {
         self.cards_in(SCOPE_ALL)
     }

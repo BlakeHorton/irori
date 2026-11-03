@@ -37,6 +37,26 @@ pub const OFFER_PASSED: &str = "passed";
 /// Nobody is free: it waits for the next agent to go idle.
 pub const OFFER_WAITING: &str = "waiting";
 
+/// Idle agents and the open work nobody has been handed (card #341), for
+/// Home's line: a work shortage reads differently from a dispatch gap.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IdleReport {
+    /// Agents idle on an online device with no working card in hand.
+    pub idle: usize,
+    /// Unheld cards this device hands out that went to nobody yet, the
+    /// oldest first.
+    pub unoffered: Vec<Unoffered>,
+}
+
+/// One unheld card nobody has been handed, and why.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Unoffered {
+    pub task_id: String,
+    pub short: String,
+    pub title: String,
+    pub why: String,
+}
+
 /// Whether card t is one Irori hands out now: open, unheld, unassigned,
 /// private, not an ask and not a parent.
 pub(crate) fn offerable(t: &Task) -> bool {
@@ -180,6 +200,71 @@ impl Fold {
                 .then_with(|| x.cmp(y))
         });
         out
+    }
+
+    /// What Home says about idle agents and open work (card #341): how
+    /// many agents are idle with nothing in hand, and each unheld card
+    /// Irori hands out that nobody has been handed yet, with why. Read
+    /// only: the hand-out stays [`Fold::sweep_offers`]'s.
+    pub(crate) fn idle_report(&self, agents: &[AgentCard]) -> IdleReport {
+        let idle: Vec<&AgentCard> = agents
+            .iter()
+            .filter(|a| {
+                !a.key.is_empty()
+                    && a.key != SWEEPER
+                    && !self.is_owner(&a.key)
+                    && a.status == "idle"
+                    && a.device_state != crate::roster::OFFLINE
+                    && self.busy_with(&a.key, "").is_none()
+            })
+            .collect();
+        let mut cards: Vec<&Task> = self
+            .tasks
+            .values()
+            .filter(|t| offerable(t) && self.hands_out(t))
+            .filter(|t| t.offer.as_ref().is_none_or(|o| o.to.is_empty()))
+            .collect();
+        cards.sort_by(|a, b| {
+            gotime::cmp(&a.created_at, &b.created_at).then_with(|| a.id.cmp(&b.id))
+        });
+        let unoffered = cards
+            .into_iter()
+            .map(|t| {
+                let heard = t
+                    .offer
+                    .as_ref()
+                    .map(|o| o.heard.clone())
+                    .unwrap_or_default();
+                let mut skip = heard.clone();
+                skip.push(t.created_by.clone());
+                let pool = self.offer_pool(t, agents);
+                let why = if idle.is_empty() {
+                    "no agent is free".to_string()
+                } else if !self.free_for(t, &pool, &skip).is_empty() {
+                    "a free agent is there: the next sweep hands it out".to_string()
+                } else if !t.repo_key.is_empty()
+                    && idle
+                        .iter()
+                        .all(|a| !a.repo_key.is_empty() && a.repo_key != t.repo_key)
+                {
+                    format!("no free agent works in {}", t.repo_key)
+                } else if idle.iter().all(|a| heard.contains(&a.key)) {
+                    "every free agent passed it".to_string()
+                } else {
+                    "the free agents were handed other work".to_string()
+                };
+                Unoffered {
+                    task_id: t.id.clone(),
+                    short: t.short_ref(),
+                    title: t.title.clone(),
+                    why,
+                }
+            })
+            .collect();
+        IdleReport {
+            idle: idle.len(),
+            unoffered,
+        }
     }
 
     /// `by` puts its new card `id` up for a free agent: Irori hands it to

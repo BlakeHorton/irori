@@ -28,7 +28,7 @@ mod offers;
 mod placed;
 mod prstate;
 mod threads;
-pub use offers::{OFFER_HANDED, OFFER_PASSED, OFFER_WAITING};
+pub use offers::{IdleReport, OFFER_HANDED, OFFER_PASSED, OFFER_WAITING, Unoffered};
 mod resource;
 mod review;
 pub mod rows;
@@ -966,6 +966,11 @@ impl Coord {
         let (more, r) = f.sweep_offers(agents);
         out.extend(more);
         (out, r)
+    }
+    /// Idle agents and the unheld cards nobody has been handed yet, with
+    /// why (card #341): Home's "N agents idle, no open work" line.
+    pub fn idle_report(&self, agents: &[AgentCard]) -> IdleReport {
+        self.lock().idle_report(agents)
     }
     /// The inbox's Stale hook for a card Irori handed out (card #82): the
     /// note to close a hand-out notice to `to` with once the card went to

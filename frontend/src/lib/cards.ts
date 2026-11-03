@@ -20,6 +20,8 @@ import {
   CommentResult,
   DonePage,
   Holding,
+  IdleReport,
+  UnofferedCard,
   MentionCandidate,
   Told,
   TaskResult,
@@ -1734,6 +1736,40 @@ export function useCards(): CardsState {
   )
   useFresh(reload, error)
   return { cards: value, loading, error }
+}
+
+// useIdleReport is Home's idle line (card #341): BoardService.IdleReport,
+// re-read on every card change and whenever the roster's statuses change
+// (an agent going idle or busy changes it without any card changing). The
+// sample has no hand-out: its idle agents and no unhanded cards.
+export function useIdleReport(agents: { status: string; deviceState?: string | null }[]) {
+  const sampleIdle = agents.filter((a) => a.status === "idle" && a.deviceState !== "offline").length
+  const load = useCallback(
+    async (): Promise<IdleReport> =>
+      inWails() ? BoardService.IdleReport() : sampleIdleReport(sampleIdle),
+    [sampleIdle]
+  )
+  const { value, error, reload } = useLatest<IdleReport>(load, IdleReport())
+  useFresh(reload, error)
+  const statuses = agents.map((a) => `${a.status}/${a.deviceState ?? ""}`).join(",")
+  useEffect(() => {
+    void reload()
+  }, [statuses, reload])
+  return value
+}
+
+// sampleIdleReport: the sample's idle agents and nothing to hand out, or
+// with ?idle=gap two cards nobody was handed (PREVIEW.md).
+function sampleIdleReport(idle: number): IdleReport {
+  if (new URLSearchParams(window.location.search).get("idle") !== "gap")
+    return IdleReport({ idle })
+  return IdleReport({
+    idle,
+    unoffered: [
+      UnofferedCard({ id: "sample-gap-1", short: "wind#87", title: "Slot 1 rig", why: "nobody on this board is free" }),
+      UnofferedCard({ id: "sample-gap-2", short: "#41", title: "Parser", why: "no free agent works in irori" }),
+    ],
+  })
 }
 
 // DonePageSize is how many closed cards the Done tab loads at a time.

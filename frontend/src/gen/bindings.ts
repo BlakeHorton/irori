@@ -39,6 +39,11 @@ export const commands = {
 	 *  ones, or a board id.
 	 */
 	boardCardsIn: (scope: string) => __TAURI_INVOKE<CardSummary[]>("board_cards_in", { scope }),
+	/**
+	 *  Home's idle line (card #341): idle agents and the open cards nobody
+	 *  has been handed yet, with why.
+	 */
+	boardIdleReport: () => __TAURI_INVOKE<IdleReport>("board_idle_report"),
 	/**  One page of one scope's closed cards (card #161). */
 	boardDoneCardsIn: (limit: number, before: string, scope: string) => __TAURI_INVOKE<DonePage>("board_done_cards_in", { limit, before, scope }),
 	boardClearDoneCount: (olderThanSecs: number, scope: string) => __TAURI_INVOKE<number>("board_clear_done_count", { olderThanSecs, scope }),
@@ -991,6 +996,18 @@ export type Identity = {
 	devicePub?: string,
 };
 
+/**
+ *  Home's idle line (card #341): idle agents and the open cards nobody
+ *  has been handed yet, so a work shortage reads differently from a
+ *  dispatch gap.
+ */
+export type IdleReport = {
+	/**  Agents idle on an online device with no working card in hand. */
+	idle: number,
+	/**  Unheld cards nobody has been handed yet, the oldest first. */
+	unoffered: UnofferedCard[],
+};
+
 /**  The inbox:changed payload and the tray's numbers. */
 export type InboxCounts = {
 	unread: number,
@@ -1438,6 +1455,14 @@ export type Told = {
 
 /**  inbox.Trust. */
 export type Trust = "untrusted" | "user";
+
+/**  An unheld card nobody has been handed, and why. */
+export type UnofferedCard = {
+	id: string,
+	short: string,
+	title: string,
+	why: string,
+};
 
 /**  The update:status payload (Go `update.Status`). */
 export type UpdateStatus = {

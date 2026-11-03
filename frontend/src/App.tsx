@@ -19,7 +19,7 @@ import { AgentCards } from "@/components/cards/agent-hover"
 import { AskBox } from "@/components/cards/ask-box"
 import { NeedsYou } from "@/components/cards/needs-you"
 import { needsOf } from "@/lib/needs"
-import { whyWaiting } from "@/lib/agent-counts"
+import { idleLine, whyWaiting } from "@/lib/agent-counts"
 import { asFilter, EmptyCards, matches, type Filter } from "@/components/cards/card-grid"
 import {
   BoardView,
@@ -36,6 +36,7 @@ import {
   useCard,
   useCards,
   useDoneCards,
+  useIdleReport,
   useThreads,
 } from "@/lib/cards"
 import { useBoards } from "@/lib/boards"
@@ -99,6 +100,8 @@ export function App() {
   )
   const { gone } = useGone()
   const { cards, loading, error } = useCards()
+  // Home's idle line (card #341): a work shortage or a dispatch gap.
+  const idle = useIdleReport(roster.agents)
   const { boards } = useBoards()
   const now = useNow()
   // ?filter=done in the browser preview starts on that filter; otherwise
@@ -614,7 +617,10 @@ export function App() {
             onOpen={openCard}
             now={now}
             header={
-              <AskBox onThread={startedThread} />
+              <>
+                <AskBox onThread={startedThread} />
+                <IdleLine text={idleLine(idle)} />
+              </>
             }
             lead={
               <NeedsYou
@@ -733,6 +739,14 @@ function BoardsNeedYou({
       ))}
     </p>
   )
+}
+
+// IdleLine says whether idle agents mean there is no open work or that
+// cards aren't reaching them (card #341), so a shortage isn't mistaken for
+// a dispatch failure.
+function IdleLine({ text }: { text: string }) {
+  if (!text) return null
+  return <p className="px-1 text-[12.5px] text-muted-foreground">{text}</p>
 }
 
 export default App

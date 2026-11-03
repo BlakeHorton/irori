@@ -58,6 +58,7 @@ export type HoldReason = B.HoldReason
 export type Holding = B.Holding
 export type HomeServerView = B.HomeServerView
 export type Identity = B.Identity
+export type IdleReport = B.IdleReport
 export type InboxCounts = B.InboxCounts
 export type InviteStatus = B.InviteStatus
 export type Link = B.Link
@@ -97,6 +98,7 @@ export type ThreadCard = B.ThreadCard
 export type ThreadSummary = B.ThreadSummary
 export type Told = B.Told
 export type Trust = B.Trust
+export type UnofferedCard = B.UnofferedCard
 export type UpdateStatus = B.UpdateStatus
 export type UploadFile = B.UploadFile
 export type Value = B.Value
@@ -341,6 +343,11 @@ export function Identity(p: Partial<B.Identity> = {}): B.Identity {
   return { "id": "", "name": "", "os": "", ...p } as B.Identity
 }
 
+/** IdleReport with Go's zero values for every field left out. */
+export function IdleReport(p: Partial<B.IdleReport> = {}): B.IdleReport {
+  return { "idle": 0, "unoffered": [], ...p } as B.IdleReport
+}
+
 /** InboxCounts with Go's zero values for every field left out. */
 export function InboxCounts(p: Partial<B.InboxCounts> = {}): B.InboxCounts {
   return { "unread": 0, "held": 0, "paused": false, ...p } as B.InboxCounts
@@ -509,6 +516,11 @@ export function ThreadSummary(p: Partial<B.ThreadSummary> = {}): B.ThreadSummary
 /** Told with Go's zero values for every field left out. */
 export function Told(p: Partial<B.Told> = {}): B.Told {
   return { "to": [], ...p } as B.Told
+}
+
+/** UnofferedCard with Go's zero values for every field left out. */
+export function UnofferedCard(p: Partial<B.UnofferedCard> = {}): B.UnofferedCard {
+  return { "id": "", "short": "", "title": "", "why": "", ...p } as B.UnofferedCard
 }
 
 /** UpdateStatus with Go's zero values for every field left out. */

@@ -18,7 +18,7 @@ use crate::Window;
 use crate::attachments::AttachmentInfo;
 use crate::board::{AnswerResult, AskRepo, CommentResult, TaskResult, UploadFile};
 use crate::boards::{BoardSettings, BoardSummary, SharePreview};
-use crate::cards::{CardDetail, CardMessage, CardSummary, DonePage};
+use crate::cards::{CardDetail, CardMessage, CardSummary, DonePage, IdleReport};
 use crate::devices::{DeviceView, HomeServerView, PairStatus, RelayView};
 use crate::events::{CaptureChange, Empty};
 use crate::inbox::{InboxCounts, SendResult};
@@ -241,6 +241,14 @@ pub async fn board_card(w: W<'_>, id: String) -> R<CardDetail> {
 #[specta::specta]
 pub async fn board_done_cards(w: W<'_>, limit: i64, before: String) -> R<DonePage> {
     w.done_cards(limit, &before)
+}
+
+/// Home's idle line (card #341): idle agents and the open cards nobody
+/// has been handed yet, with why.
+#[tauri::command]
+#[specta::specta]
+pub async fn board_idle_report(w: W<'_>) -> R<IdleReport> {
+    Ok(w.idle_report())
 }
 
 /// One scope's live cards (card #161): "" every card, "own" the private
@@ -1091,6 +1099,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_card,
             board_done_cards,
             board_cards_in,
+            board_idle_report,
             board_done_cards_in,
             board_clear_done_count,
             board_clear_done,

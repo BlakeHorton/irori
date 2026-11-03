@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { agentCounts, freeIn, whyWaiting } from "./agent-counts"
+import { agentCounts, freeIn, idleLine, whyWaiting } from "./agent-counts"
 
 const a = (status: string, extra: { deviceState?: string; repoKey?: string } = {}) => ({
   status,
@@ -55,5 +55,36 @@ describe("whyWaiting (card #172)", () => {
   })
   test("no agents", () => {
     expect(whyWaiting([a("gone")])).toBe("No agents are running.")
+  })
+})
+
+describe("idleLine (card #341)", () => {
+  const u = (short: string, why: string) => ({ id: short, short, title: short, why })
+  test("idle agents and nothing to hand out: a work shortage", () => {
+    expect(idleLine({ idle: 20, unoffered: [] })).toBe("20 agents idle, no open work.")
+    expect(idleLine({ idle: 1, unoffered: [] })).toBe("1 agent idle, no open work.")
+  })
+  test("nobody idle and nothing waiting says nothing", () => {
+    expect(idleLine({ idle: 0, unoffered: [] })).toBe("")
+  })
+  test("idle agents and cards nobody was handed: a dispatch gap, with why", () => {
+    expect(
+      idleLine({
+        idle: 20,
+        unoffered: [
+          u("wind#87", "nobody on this board is free"),
+          u("wind#88", "nobody on this board is free"),
+          u("#12", "no free agent works in irori"),
+          u("#13", "every free agent passed it"),
+        ],
+      })
+    ).toBe(
+      "20 agents idle, 4 cards not handed out yet: wind#87 (nobody on this board is free), wind#88 (nobody on this board is free), #12 (no free agent works in irori), and 1 more."
+    )
+  })
+  test("cards waiting with nobody idle", () => {
+    expect(idleLine({ idle: 0, unoffered: [u("#5", "no agent is free")] })).toBe(
+      "No agent is free, 1 card not handed out yet: #5 (no agent is free)."
+    )
   })
 })

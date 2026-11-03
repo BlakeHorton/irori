@@ -2222,6 +2222,26 @@ impl super::Core {
 }
 
 impl super::Core {
+    /// Home's idle line (card #341): the private board's idle agents, and
+    /// the unheld cards nobody has been handed yet on the private board
+    /// and every shown shared board, with why. A board card waiting
+    /// because nobody in the board's pool is free says so (wind#87-91 on
+    /// 2026-11-03).
+    pub fn idle_report(&self) -> coord::IdleReport {
+        let s = &self.s;
+        let mut r = s.coord.idle_report(&s.ask_agents());
+        for b in s.shown_boards() {
+            let br = b.coord().idle_report(&s.board_ask_agents(&b));
+            for mut u in br.unoffered {
+                if br.idle == 0 {
+                    u.why = "nobody on this board is free".into();
+                }
+                r.unoffered.push(u);
+            }
+        }
+        r
+    }
+
     /// Every agent card on the boards this device holds, keyed as the
     /// boards write them (agent:<cardId>), with the person it belongs to
     /// (card #146): the window names another member's agents from it, so a
