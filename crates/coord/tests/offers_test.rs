@@ -393,7 +393,7 @@ fn needs_pc_goes_to_the_pc_and_needs_mac_to_the_mac() {
         },
         &room,
     );
-    // BOB, on the Mac, idle longest of the Mac agents (PC_FREE has a card).
+    // BOB: the Mac agent idle longest.
     assert_eq!(n.to, [BOB]);
 }
 
