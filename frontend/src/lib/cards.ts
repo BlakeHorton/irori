@@ -49,6 +49,7 @@ import {
   EventRosterChanged,
   inHost,
   inWails,
+  parseTime,
   plainLine,
 } from "./irori"
 import { safeHref } from "./rich"
@@ -1857,6 +1858,32 @@ export function over(c: { state: string }): boolean {
 // as its spinner: "working" only while busy says so; "offered" or "not
 // picked up" before anyone took it up; nothing once the card is over;
 // else "on it" (held, but not working on it right now).
+// IDLE_UNNAMED_MS is how long a held card's holders may sit idle, with
+// nothing named that it waits on, before it stops reading as calm Waiting
+// (card #305). Irori nudges the holder when its turn ends; this is what the
+// person sees if the nudge didn't help.
+export const IDLE_UNNAMED_MS = 10 * 60_000
+
+// idleUnnamed says a working card is held, but every holder is idle (live,
+// online, taken up) and has been, like the card itself, for at least
+// IDLE_UNNAMED_MS, with no blocker, review, ask, pause or wait saying why:
+// "Idle, no reason given". Busy, gone, offline and offered holders are
+// other states.
+export function idleUnnamed(
+  c: CardSummary,
+  now: number = Date.now()
+): boolean {
+  if (over(c) || c.state !== TaskState.Working) return false
+  if (c.openBlockers > 0 || c.waitingOn || c.waiting > 0 || c.paused) return false
+  if (c.subtaskBlocked || (openAsk(c) && c.ask)) return false
+  const held = c.working.filter((w) => !w.assigned)
+  if (!held.length) return false
+  if (!held.every((w) => w.status === "idle" && w.live && !w.offline)) return false
+  const t = (s: string | null | undefined) => parseTime(s ?? "")?.getTime() ?? 0
+  const since = Math.max(t(c.updatedAt), ...held.map((w) => t(w.idleSince)))
+  return since > 0 && now - since >= IDLE_UNNAMED_MS
+}
+
 export function workLabel(c: {
   state: string
   openBlockers: number

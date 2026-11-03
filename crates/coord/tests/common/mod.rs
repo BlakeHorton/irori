@@ -64,6 +64,9 @@ impl Clk {
 pub struct TestRoster(
     pub Mutex<BTreeMap<String, String>>,
     pub Mutex<BTreeMap<String, String>>,
+    /// Key -> when its status and transcript last changed (card #305);
+    /// zero when never set.
+    pub Mutex<BTreeMap<String, GoTime>>,
 );
 
 impl TestRoster {
@@ -76,6 +79,12 @@ impl TestRoster {
     }
     pub fn set_name(&self, key: &str, name: &str) {
         self.1.lock().unwrap().insert(key.into(), name.into());
+    }
+    /// `set` with the card's status and activity stamped `at`: an agent
+    /// whose turn ended then (card #305).
+    pub fn set_at(&self, key: &str, status: &str, at: GoTime) {
+        self.set(key, status);
+        self.2.lock().unwrap().insert(key.into(), at);
     }
     pub fn set(&self, key: &str, status: &str) {
         let mut m = self.0.lock().unwrap();
@@ -93,11 +102,16 @@ impl Agents for TestRoster {
             .lock()
             .unwrap()
             .iter()
-            .map(|(k, s)| AgentCard {
-                key: k.clone(),
-                status: s.clone(),
-                name: self.1.lock().unwrap().get(k).cloned().unwrap_or_default(),
-                ..AgentCard::default()
+            .map(|(k, s)| {
+                let at = self.2.lock().unwrap().get(k).copied().unwrap_or_default();
+                AgentCard {
+                    key: k.clone(),
+                    status: s.clone(),
+                    name: self.1.lock().unwrap().get(k).cloned().unwrap_or_default(),
+                    updated_at: at,
+                    last_activity: at,
+                    ..AgentCard::default()
+                }
             })
             .collect()
     }

@@ -256,6 +256,12 @@ export type AgentRef = {
 	color?: string,
 	offline?: boolean,
 	conflict?: string,
+	/**
+	 *  While it's idle: its last transcript activity, about when its turn
+	 *  ended (card #305: a held card with an idle holder and no blocker
+	 *  turns to "Idle, no reason given" after a while).
+	 */
+	idleSince?: string | null,
 };
 
 /**  Answer's reply: the card after the answer, and who heard. */

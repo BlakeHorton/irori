@@ -214,8 +214,46 @@ export function sampleCards(now: Date): CardDetail[] {
     ]),
   })
 
+  // Card #305: held, its holder idle half an hour with nothing named
+  // (Home: Idle, no reason given), and the same wait named as a blocker on
+  // another agent (Home: Waiting on sample-kestrel).
+  const idleHolder = AgentRef({
+    ...heron,
+    idleSince: at(30),
+  })
+  const idleUnnamed = card({
+    id: "sample-card-idle",
+    short: "52",
+    title: "Tabs, command palette and settings",
+    goal: "Port Go suzuri's tabs, palette and settings.",
+    working: [idleHolder],
+    updatedAt: at(30),
+    steps: steps([
+      ["Tabs", true],
+      ["Palette", true],
+      ["Check on the PC", false],
+    ]),
+  })
+  const namedWait = card({
+    id: "sample-card-named",
+    short: "53",
+    title: "Themes and fonts",
+    goal: "Go suzuri's 16 themes and font choices.",
+    working: [idleHolder],
+    waitingOn: 1,
+    waitOn: "agent sample-kestrel",
+    waitQuestion: "The PC check of themes and fonts",
+    updatedAt: at(30),
+    steps: steps([
+      ["Themes", true],
+      ["Check on the PC", false, true],
+    ]),
+  })
+
   return [
     longWait,
+    idleUnnamed,
+    namedWait,
     // Asks (board.md "Asks"): the person's prompts to the room. One the
     // agents heard and nobody took yet, one sample-heron took and is
     // talking through.

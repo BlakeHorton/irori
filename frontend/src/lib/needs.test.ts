@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { TaskState, type CardSummary } from "./cards"
-import { needsOf, needsYou, rowState, toPerson } from "./needs"
+import { IDLE_LINE, needsOf, needsYou, rowState, toPerson } from "./needs"
 import { State, type Delivery } from "./talk"
 
 const card = (c: Partial<CardSummary>): CardSummary =>
@@ -45,6 +45,51 @@ const delivery = (d: Partial<Delivery> & { text?: string }): Delivery =>
     },
     ...d,
   }) as Delivery
+
+// Card #305: a held card whose holder sits idle with nothing named.
+describe("idle with no reason given", () => {
+  const at = (iso: string) => Date.parse(iso)
+  const holder = (w: Record<string, unknown> = {}) => ({
+    key: "dev/s1",
+    name: "orca",
+    status: "idle",
+    live: true,
+    where: "This PC",
+    idleSince: "2026-11-02T10:05:00Z",
+    ...w,
+  })
+  const held = (c: Partial<CardSummary> = {}, w: Record<string, unknown> = {}) =>
+    card({
+      working: [holder(w)] as CardSummary["working"],
+      holder: { state: "idle", who: holder(w), others: 0 } as CardSummary["holder"],
+      ...c,
+    })
+
+  test("calm Waiting at first, Idle after ten minutes", () => {
+    expect(rowState(held(), at("2026-11-02T10:10:00Z")).state).toBe("waiting")
+    expect(rowState(held(), at("2026-11-02T10:15:00Z"))).toEqual({
+      state: "idle",
+      line: `${IDLE_LINE} (orca)`,
+    })
+  })
+  test("counts from the later of the card's change and the holder's idle", () => {
+    const c = held({ updatedAt: "2026-11-02T10:12:00Z" })
+    expect(rowState(c, at("2026-11-02T10:16:00Z")).state).toBe("waiting")
+    expect(rowState(c, at("2026-11-02T10:22:00Z")).state).toBe("idle")
+  })
+  test("a named wait, a busy, gone or offline holder is not idle-unnamed", () => {
+    const late = at("2026-11-02T11:00:00Z")
+    expect(rowState(held({ waitingOn: 1, waitOn: "kestrel" }), late)).toEqual({
+      state: "waiting",
+      line: "Waiting on kestrel",
+    })
+    expect(rowState(held({ openBlockers: 1, blockerQuestion: "Which?" }), late).state).toBe("needs")
+    expect(rowState(held({}, { status: "busy" }), late).state).toBe("working")
+    expect(rowState(held({}, { status: "gone", live: false }), late).state).toBe("waiting")
+    expect(rowState(held({}, { offline: true }), late).state).toBe("waiting")
+    expect(rowState(held({ state: TaskState.InReview }), late).state).toBe("waiting")
+  })
+})
 
 describe("rowState", () => {
   test("the four states", () => {

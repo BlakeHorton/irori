@@ -691,6 +691,9 @@ pub const NOTICE_TAKEN: &str = "taken";
 pub const NOTICE_ASK_COMMENT: &str = "ask_comment";
 /// An unheld card offered to the free agents (card #82).
 pub const NOTICE_OFFER: &str = "offer";
+/// A holder ended its turn on a working card with no blocker and no change
+/// (card #305): name what it waits on, or keep going.
+pub const NOTICE_IDLE: &str = "idle";
 
 /// Something coord wants agents to hear; the caller routes it once per
 /// recipient (coord.md §1.1).

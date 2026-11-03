@@ -8,6 +8,7 @@ import {
   busy,
   displayName,
   Holding,
+  idleUnnamed,
   openAsk,
   over,
   overLabel,
@@ -18,18 +19,23 @@ import {
 import { parseTime, plainLine } from "./irori"
 import { State, type Delivery } from "./talk"
 
-// RowState is one of the four states a person acts on (finding 05):
-// Needs you (a decision, a done check, a question), Working (an agent is
-// on it right now), Waiting (on an agent, a review, another card, a
-// taker) and Done.
-export type RowState = "needs" | "working" | "waiting" | "done"
+// RowState is one of the states a person acts on (finding 05): Needs you
+// (a decision, a done check, a question), Working (an agent is on it right
+// now), Waiting (on an agent, a review, another card, a taker), Idle (held,
+// its holders idle a while with nothing named it waits on: card #305) and
+// Done.
+export type RowState = "needs" | "working" | "waiting" | "idle" | "done"
 
 export const rowStateLabel: Record<RowState, string> = {
   needs: "Needs you",
   working: "Working",
   waiting: "Waiting",
+  idle: "Idle",
   done: "Done",
 }
+
+// IDLE_LINE is the row's and the card's words for idleUnnamed (card #305).
+export const IDLE_LINE = "Idle, no reason given"
 
 // needsYou says the card waits on the person: an open blocker or done
 // check, or its question (input required).
@@ -41,7 +47,10 @@ export function needsYou(c: CardSummary): boolean {
 // rowState is the card's state and the line under its title: what it
 // waits on, who is on it, or how it ended. The words are the ones the
 // card's own page uses.
-export function rowState(c: CardSummary): { state: RowState; line: string } {
+export function rowState(
+  c: CardSummary,
+  now: number = Date.now()
+): { state: RowState; line: string } {
   if (over(c)) return { state: "done", line: overLabel(c) }
   if (needsYou(c)) {
     if (c.ready && c.openBlockers <= 1)
@@ -71,6 +80,7 @@ export function rowState(c: CardSummary): { state: RowState; line: string } {
   const w = workLabel(c)
   if (w === "not picked up" || w === "offered")
     return { state: "waiting", line: w === "offered" ? "Offered" : "Not picked up" }
+  if (idleUnnamed(c, now)) return { state: "idle", line: who ? `${IDLE_LINE} (${who})` : IDLE_LINE }
   return { state: "waiting", line: who ? `${who}, not working on it now` : "Held, not working on it now" }
 }
 

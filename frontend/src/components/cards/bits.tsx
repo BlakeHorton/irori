@@ -8,6 +8,7 @@ import {
   AskState,
   displayName,
   Holding,
+  idleUnnamed,
   openAsk,
   over,
   overLabel,
@@ -185,6 +186,18 @@ export function StatePill({ card }: { card: CardSummary }) {
     return (
       <Badge variant="slate" className="rounded-full">
         Offered
+      </Badge>
+    )
+  // Held, its holders idle a while, and nothing named that it waits on
+  // (card #305): not calm Waiting, so the person can tell.
+  if (idleUnnamed(card))
+    return (
+      <Badge
+        variant="warning"
+        className="rounded-full"
+        title="Its holder ended its turn without saying what the card waits on. Irori asked it to name the wait (a blocker) or keep going."
+      >
+        Idle, no reason given
       </Badge>
     )
   return <Badge variant="info">In progress</Badge>

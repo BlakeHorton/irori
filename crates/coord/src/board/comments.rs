@@ -1288,6 +1288,7 @@ impl Fold {
         let now = *now;
         self.return_gone(&now, out)?;
         self.tell_not_answering(out)?;
+        self.tell_idle_holders(out);
         let todo: Vec<String> = self
             .tasks
             .values()

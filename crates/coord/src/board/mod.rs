@@ -20,6 +20,7 @@ mod comment_edit;
 mod comments;
 mod error;
 mod fold;
+mod idle;
 mod links;
 mod mention;
 mod mirror;

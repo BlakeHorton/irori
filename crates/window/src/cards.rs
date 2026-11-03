@@ -80,6 +80,12 @@ pub struct AgentRef {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub conflict: String,
+    /// While it's idle: its last transcript activity, about when its turn
+    /// ended (card #305: a held card with an idle holder and no blocker
+    /// turns to "Idle, no reason given" after a while).
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    #[specta(type = Option<ts::Time>, optional)]
+    pub idle_since: GoTime,
 }
 
 /// Done steps over all steps; total 0 means no bar.
@@ -858,6 +864,9 @@ impl People {
             r.status = a.status.clone();
             r.live = a.status != "gone";
             r.offline = a.device_state == "offline";
+            if a.status == "idle" {
+                r.idle_since = a.last_activity;
+            }
             if !a.device_id.is_empty() {
                 dev = a.device_id.clone();
             }

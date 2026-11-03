@@ -232,6 +232,10 @@ pub struct Fold {
     /// (agent, card) pairs already told that the agent isn't answering
     /// (card #110), while it still isn't.
     pub(crate) mute_told: HashSet<(String, String)>,
+    /// (agent, card) pairs nudged to name what the card waits on (card
+    /// #305), with the card's updated_at then: told again only after the
+    /// card changed.
+    pub(crate) idle_told: HashMap<(String, String), GoTime>,
     pub(crate) comments: HashMap<String, Comment>,
     pub(crate) by_task: HashMap<String, Vec<String>>,
     pub(crate) refusals: Vec<RefusalRec>,
@@ -363,6 +367,7 @@ impl Fold {
             first_absent: HashMap::new(),
             gone_rows: HashMap::new(),
             mute_told: HashSet::new(),
+            idle_told: HashMap::new(),
             comments: HashMap::new(),
             by_task: HashMap::new(),
             refusals: Vec::new(),

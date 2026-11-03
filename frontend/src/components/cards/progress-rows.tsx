@@ -10,10 +10,11 @@ import { plainLine } from "@/lib/irori"
 import { rowState, rowStateLabel, type RowState } from "@/lib/needs"
 import { cn } from "@/lib/utils"
 
-const stateVariant: Record<RowState, "destructive" | "info" | "slate" | "success"> = {
+const stateVariant: Record<RowState, "destructive" | "info" | "slate" | "warning" | "success"> = {
   needs: "destructive",
   working: "info",
   waiting: "slate",
+  idle: "warning",
   done: "success",
 }
 
@@ -21,6 +22,7 @@ const barTone: Record<RowState, string> = {
   needs: "bg-destructive",
   working: "bg-info",
   waiting: "bg-muted-foreground",
+  idle: "bg-warning",
   done: "bg-success",
 }
 
@@ -81,7 +83,7 @@ function ProgressRow({
       </span>
       <span className="col-span-3 col-start-2 row-start-2 flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground sm:col-span-1 sm:col-start-3 sm:row-start-1">
         {state === "working" && <Spinner className="size-3" />}
-        <span className="truncate" title={line}>
+        <span className={cn("truncate", state === "idle" && "text-warning")} title={line}>
           {line}
         </span>
       </span>
