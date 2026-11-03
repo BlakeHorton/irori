@@ -150,3 +150,43 @@ describe("needsOf", () => {
     expect(toPerson(delivery({ to: "dev/agent" }))).toBe(false)
   })
 })
+
+// Card #347: "Waiting" that is really the person's says so and sits under
+// Needs you. Today's board: #330 and #334 in review on PR #96, #329
+// waiting on #334, #290's question filed on an external wait.
+describe("what waits on the person (card #347)", () => {
+  const pr = { repo: "StephenSHorton/suzuri", number: 96, url: "https://github.com/StephenSHorton/suzuri/pull/96" }
+  test("a card in review on the person's PR reads Review PR #N", () => {
+    expect(rowState(card({ state: TaskState.InReview, reviewPr: pr }))).toEqual({
+      state: "needs",
+      line: "Review PR #96",
+    })
+    // An agent's review (no reviewPr) still reads In review.
+    expect(rowState(card({ state: TaskState.InReview })).state).toBe("waiting")
+  })
+  test("a wait whose chain ends at the person names it", () => {
+    const c = card({
+      state: TaskState.Blocked,
+      waitingOn: 1,
+      waitOn: "#334",
+      waitYou: "your review of PR #96 (#334)",
+    })
+    expect(rowState(c)).toEqual({ state: "needs", line: "Waits on your review of PR #96 (#334)" })
+    // A chain that ends at an agent stays Waiting on #N.
+    expect(rowState({ ...c, waitYou: undefined })).toEqual({ state: "waiting", line: "Waiting on #334" })
+  })
+  test("one Review PR #N for every card on it, beside a decision", () => {
+    const cs = [
+      card({ id: "330", state: TaskState.InReview, reviewPr: pr, updatedAt: "2026-11-03T17:12:00Z" }),
+      card({ id: "334", state: TaskState.InReview, reviewPr: pr, updatedAt: "2026-11-03T18:36:00Z" }),
+      card({ id: "290", state: TaskState.Blocked, openBlockers: 1, updatedAt: "2026-11-03T15:14:00Z" }),
+      card({ id: "329", state: TaskState.Blocked, waitingOn: 1, waitYou: "your review of PR #96 (#334)" }),
+      card({ id: "old", state: TaskState.Completed, reviewPr: pr }),
+    ]
+    const got = needsOf(cs, [], [])
+    expect(got.map((n) => `${n.kind}:${n.id}`)).toEqual([`review:${pr.url}`, "decision:290"])
+    const r = got[0]
+    expect(r.kind === "review" && r.cards.map((c) => c.id)).toEqual(["330", "334"])
+    expect(r.at).toBe(Date.parse("2026-11-03T18:36:00Z"))
+  })
+})

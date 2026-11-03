@@ -711,6 +711,16 @@ export type CardSummary = {
 	 */
 	waitOn?: string,
 	waitQuestion?: string,
+	/**
+	 *  Where the first wait's chain of cards ends at the person (card
+	 *  #347): "your review of PR #96 (#334)" or "your answer on #12".
+	 */
+	waitYou?: string,
+	/**
+	 *  An in-review card waiting on the person's review of a PR it links
+	 *  (card #347): no agent was asked to review it.
+	 */
+	reviewPr?: ReviewPr | null,
 	working: AgentRef[],
 	watching: AgentRef[],
 	holder: CardHolder,
@@ -1246,6 +1256,13 @@ export type Returned = {
 	at: string,
 	row?: string,
 	person?: boolean,
+};
+
+/**  A PR an in-review card waits on the person to review (card #347). */
+export type ReviewPr = {
+	repo: string,
+	number: number,
+	url: string,
 };
 
 /**  One of this person's live agents, to pick a reviewer from. */

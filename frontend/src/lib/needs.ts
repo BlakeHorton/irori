@@ -15,6 +15,7 @@ import {
   TaskState,
   workLabel,
   type CardSummary,
+  type ReviewPr,
 } from "./cards"
 import { parseTime, plainLine } from "./irori"
 import { State, type Delivery } from "./talk"
@@ -61,8 +62,12 @@ export function rowState(
   }
   if (openAsk(c) && c.ask) return { state: "waiting", line: askLine(c.ask) }
   if (c.paused) return { state: "waiting", line: "Paused" }
+  // Card #347: the person's review of the PR it's on, or what its wait
+  // on another card comes down to for them.
+  if (c.reviewPr) return { state: "needs", line: `Review PR #${c.reviewPr.number}` }
   if (c.state === TaskState.InReview) return { state: "waiting", line: "In review" }
   if (c.subtaskBlocked) return { state: "waiting", line: "A subtask needs a call" }
+  if (c.waitingOn && c.waitYou) return { state: "needs", line: `Waits on ${c.waitYou}` }
   if (c.waitingOn)
     return {
       state: "waiting",
@@ -87,6 +92,7 @@ export function rowState(
 // Need is one item of the Needs you list.
 export type Need =
   | { kind: "check" | "decision"; id: string; at: number; card: CardSummary }
+  | { kind: "review"; id: string; at: number; pr: ReviewPr; cards: CardSummary[] }
   | { kind: "message"; id: string; at: number; delivery: Delivery }
   | { kind: "held"; id: string; at: number; delivery: Delivery }
 
@@ -106,7 +112,8 @@ export function toPerson(d: Delivery): boolean {
 const time = (s: string | undefined) => parseTime(s ?? "")?.getTime() ?? 0
 
 // needsOf is the Needs you list, newest first: every card waiting on the
-// person (a done check, else a decision), every agent's message to them
+// person (a done check, else a decision), each PR waiting on their review
+// once with every card on it (card #347), every agent's message to them
 // and every message Irori held for them. held is the Held list; a held
 // delivery also in deliveries is listed once.
 export function needsOf(
@@ -125,6 +132,25 @@ export function needsOf(
       card: c,
     })
   }
+  const reviews = new Map<string, Extract<Need, { kind: "review" }>>()
+  for (const c of cards) {
+    if (!c.reviewPr || over(c) || needsYou(c)) continue
+    const r = reviews.get(c.reviewPr.url)
+    const at = time(c.updatedAt)
+    if (r) {
+      r.cards.push(c)
+      r.at = Math.max(r.at, at)
+      continue
+    }
+    reviews.set(c.reviewPr.url, {
+      kind: "review",
+      id: c.reviewPr.url,
+      at,
+      pr: c.reviewPr,
+      cards: [c],
+    })
+  }
+  out.push(...reviews.values())
   const seen = new Set<string>()
   for (const d of held) {
     if (seen.has(d.id)) continue

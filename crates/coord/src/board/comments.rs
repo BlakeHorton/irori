@@ -131,11 +131,8 @@ impl Fold {
                         quote(&out.reference)
                     )));
                 };
-                if is_terminal(&o.state) {
-                    return Err(invalid(format!(
-                        "task {} is already {}",
-                        out.reference, o.state
-                    )));
+                if let Some(w) = work_done(o) {
+                    return Err(invalid(format!("{} is already {w}", o.short_ref())));
                 }
             }
             BLOCKED_ON_PERSON => {
@@ -1188,10 +1185,10 @@ impl Fold {
                 }
                 BLOCKED_ON_TASK => {
                     if let Some(o) = self.tasks.get(&on.reference)
-                        && is_terminal(&o.state)
+                        && let Some(w) = work_done(o)
                     {
                         ids.push(b.id.clone());
-                        why.push(format!("task {}", o.state));
+                        why.push(w);
                     }
                 }
                 BLOCKED_ON_EXTERNAL if self.outside_wait_gone(&t.id, b) => {
@@ -1728,4 +1725,21 @@ pub(crate) fn names_lease(text: &str, name: &str) -> bool {
         };
         after(&r[hi_len..]) && n.is_some_and(|n| lo <= n && n <= hi)
     })
+}
+
+/// Whether a card another waits on has finished its work (card #347): it
+/// ended, it's in review, or an agent said it's done and it waits on the
+/// person's Done. A wait on it is over; what's left is the person's.
+/// Says how, for the closing note.
+fn work_done(o: &Task) -> Option<String> {
+    if is_terminal(&o.state) {
+        return Some(format!("task {}", o.state));
+    }
+    if o.state == IN_REVIEW {
+        return Some("task in review".into());
+    }
+    o.blockers
+        .iter()
+        .any(|b| b.open() && b.done_check)
+        .then(|| "task done, waiting on Done".into())
 }

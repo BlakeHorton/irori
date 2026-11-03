@@ -79,6 +79,7 @@ export type RefTarget = B.RefTarget
 export type RelayView = B.RelayView
 export type Resolution = B.Resolution
 export type Returned = B.Returned
+export type ReviewPr = B.ReviewPr
 export type ReviewerChoice = B.ReviewerChoice
 export type Rollup = B.Rollup
 export type RosterChange = B.RosterChange
@@ -441,6 +442,11 @@ export function Returned(p: Partial<B.Returned> = {}): B.Returned {
 /** ReviewerChoice with Go's zero values for every field left out. */
 export function ReviewerChoice(p: Partial<B.ReviewerChoice> = {}): B.ReviewerChoice {
   return { "agent": "", "name": "", "repo": "", ...p } as B.ReviewerChoice
+}
+
+/** ReviewPr with Go's zero values for every field left out. */
+export function ReviewPr(p: Partial<B.ReviewPr> = {}): B.ReviewPr {
+  return { "repo": "", "number": 0, "url": "", ...p } as B.ReviewPr
 }
 
 /** Rollup with Go's zero values for every field left out. */

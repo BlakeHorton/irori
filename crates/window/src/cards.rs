@@ -229,6 +229,16 @@ pub struct CardSummary {
     #[serde(skip)]
     #[specta(skip)]
     pub wait_task: String,
+    /// Where the first wait's chain of cards ends at the person (card
+    /// #347): "your review of PR #96 (#334)" or "your answer on #12".
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub wait_you: String,
+    /// An in-review card waiting on the person's review of a PR it links
+    /// (card #347): no agent was asked to review it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub review_pr: Option<ReviewPr>,
     pub working: Vec<AgentRef>,
     pub watching: Vec<AgentRef>,
     pub holder: CardHolder,
@@ -301,6 +311,15 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub owner: String,
+}
+
+/// A PR an in-review card waits on the person to review (card #347).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPr {
+    pub repo: String,
+    pub number: i64,
+    pub url: String,
 }
 
 /// Where a card's work is (card #137), as its holder's device last saw it.
@@ -1016,7 +1035,17 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
                 s.waiting += 1;
                 continue;
             }
-            if let Some(on) = bl.on.as_ref().filter(|on| waits_by_itself(&on.kind)) {
+            // A question with options is the person's to decide, whatever
+            // it is filed on (card #347), unless it's another member's.
+            let theirs = bl
+                .on
+                .as_ref()
+                .is_some_and(|on| for_another(&on.kind, &on.reference));
+            if let Some(on) = bl
+                .on
+                .as_ref()
+                .filter(|on| waits_by_itself(&on.kind) && bl.options.is_empty())
+            {
                 s.waiting_on += 1;
                 if s.waiting_on == 1 {
                     s.wait_question = bl.question.clone();
@@ -1028,11 +1057,7 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
                 }
                 continue;
             }
-            if let Some(on) = bl
-                .on
-                .as_ref()
-                .filter(|on| for_another(&on.kind, &on.reference))
-            {
+            if let Some(on) = bl.on.as_ref().filter(|_| theirs) {
                 // Another member's question on a shared board (card #264):
                 // it waits on them, not on this person.
                 s.waiting_on += 1;
@@ -2257,10 +2282,86 @@ fn heard_by(ds: &[(Delivery, bool)]) -> Vec<String> {
     out
 }
 
+/// The PR an in-review card waits on the person to review (card #347):
+/// a linked PR GitHub last called open, or that this device hasn't heard
+/// (the poller runs on the holder's device), while no agent was asked to
+/// review the card.
+fn review_pr(co: &coord::Coord, t: &Task) -> Option<ReviewPr> {
+    if t.state != coord::IN_REVIEW {
+        return None;
+    }
+    if co
+        .reviews_of(&t.id)
+        .iter()
+        .any(|r| r.state == coord::REVIEW_REQUESTED)
+    {
+        return None;
+    }
+    let heard = co.pr_states(&t.id);
+    t.links.iter().find_map(|l| {
+        let (repo, number) = coord::pr_link(l)?;
+        let st = heard
+            .iter()
+            .find(|h| h.pr == l.reference)
+            .map(|h| h.state.as_str())
+            .unwrap_or_default();
+        (st.is_empty() || st == coord::PR_OPEN).then(|| ReviewPr {
+            repo,
+            number,
+            url: l.reference.clone(),
+        })
+    })
+}
+
+/// How many cards a wait chain follows before it stops looking.
+const CHAIN_DEPTH: usize = 8;
+
+/// Follows a card's wait on another card to where it stops (card #347):
+/// "your review of PR #96 (#334)" when that card waits on the person's
+/// review, "your answer on #12" when it waits on their decision, else
+/// empty (it waits on an agent, a lease or something outside).
+fn wait_you(co: &coord::Coord, first: &str) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut id = first.to_string();
+    for _ in 0..CHAIN_DEPTH {
+        if id.is_empty() || !seen.insert(id.clone()) {
+            break;
+        }
+        let Some(k) = co.get_task(&id) else { break };
+        if coord::is_terminal(&k.state) {
+            break;
+        }
+        if let Some(pr) = review_pr(co, &k) {
+            return format!("your review of PR #{} ({})", pr.number, k.short_ref());
+        }
+        let open = k.open_blockers();
+        let asks_person = open.iter().any(|b| {
+            b.status != coord::BLOCKER_ANSWERED
+                && match &b.on {
+                    Some(on) if for_another(&on.kind, &on.reference) => false,
+                    Some(on) if waits_by_itself(&on.kind) => !b.options.is_empty(),
+                    _ => true,
+                }
+        });
+        if asks_person || k.state == coord::INPUT_REQUIRED {
+            return format!("your answer on {}", k.short_ref());
+        }
+        id = open
+            .iter()
+            .filter_map(|b| b.on.as_ref())
+            .find(|on| on.kind == coord::BLOCKED_ON_TASK)
+            .map(|on| on.reference.clone())
+            .unwrap_or_default();
+    }
+    String::new()
+}
+
 /// A card summary's family fields (its parent, the subtask a decision
 /// waits on), from the log the card lives in (card #161: a board's for a
 /// board card).
 fn family_of(co: &coord::Coord, t: &Task, s: &mut CardSummary) {
+    s.review_pr = review_pr(co, t);
+    s.wait_you = wait_you(co, &s.wait_task);
     name_wait(s, &|id: &str| {
         co.get_task(id).map(|x| x.short_ref()).unwrap_or_default()
     });

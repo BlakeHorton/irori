@@ -221,3 +221,74 @@ fn a_parents_rollup_is_in_review_when_every_open_subtask_is() {
         ErrorKind::Invalid,
     );
 }
+
+/// Card #347: a wait on another card ends once that card's work is done:
+/// it's in review, or an agent completed it and it waits on the person's
+/// Done. What's left is the person's, so the wait no longer hides it.
+#[test]
+fn a_wait_on_a_card_ends_when_it_goes_in_review_or_waits_on_done() {
+    let mut e = Env::new();
+    e.c = e.reopen_with(Options {
+        done_check: true,
+        ..e.opts()
+    });
+    let a = held_card(&e);
+    let b =
+        e.c.create_task(
+            ALICE,
+            NewTask {
+                title: "the other".into(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    e.c.claim_task(BOB, &b.id).unwrap();
+    let wait = |on: &Task| {
+        e.c.create_task(
+            CAROL,
+            NewTask {
+                title: format!("after {}", on.title),
+                block_reason: "after it".into(),
+                blocked_by: Some(BlockedBy {
+                    kind: BLOCKED_ON_TASK.into(),
+                    reference: on.id.clone(),
+                }),
+                ..NewTask::default()
+            },
+        )
+        .unwrap()
+    };
+    let (wa, wb) = (wait(&a), wait(&b));
+    assert!(e.c.sweep_notices().unwrap().is_empty());
+
+    e.clk.add(secs(5));
+    e.c.request_review(ALICE, &a.id, "", BOB).unwrap();
+    assert_eq!(state(&e, &a.id), IN_REVIEW);
+    let got = e.c.set_task_state(BOB, &b.id, COMPLETED, "done").unwrap();
+    assert!(got.blockers.iter().any(|x| x.open() && x.done_check));
+
+    let ns = e.c.sweep_notices().unwrap();
+    let text = |id: &str| ns.iter().find(|n| n.task_id == id).unwrap().text.clone();
+    assert!(text(&wa.id).contains("task in review"), "{ns:?}");
+    assert!(text(&wb.id).contains("waiting on Done"), "{ns:?}");
+    for w in [&wa, &wb] {
+        assert_ne!(state(&e, &w.id), BLOCKED);
+    }
+
+    // A new wait on either is refused: it would close at the next sweep.
+    for on in [&a, &b] {
+        let r = e.c.create_task(
+            CAROL,
+            NewTask {
+                title: "late".into(),
+                block_reason: "after it".into(),
+                blocked_by: Some(BlockedBy {
+                    kind: BLOCKED_ON_TASK.into(),
+                    reference: on.id.clone(),
+                }),
+                ..NewTask::default()
+            },
+        );
+        assert!(r.as_ref().is_err_and(|e| e.is(ErrorKind::Invalid)), "{r:?}");
+    }
+}

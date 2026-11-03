@@ -1038,6 +1038,103 @@ fn a_wait_on_another_card_is_no_decision() {
     assert_eq!(r.w.decide_count(), 1);
 }
 
+/// Card #347: what waits on the person says so. A question with options is
+/// a decision whatever it's filed on (#290 was "on external"); a card in
+/// review on an open PR nobody else reviews waits on the person's review
+/// (#334); a card waiting on such a card names it (#329), and so does one
+/// waiting on a card with the person's question.
+#[test]
+fn what_waits_on_the_person_says_so() {
+    const PR: &str = "https://github.com/a/suzuri/pull/96";
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let summary = |id: &str| r.w.cards().into_iter().find(|c| c.id == id).unwrap();
+    let wait_on = |by: &str, id: &str, on: &str| {
+        co.raise(
+            by,
+            id,
+            coord::NewBlocker {
+                question: "after it".into(),
+                blocked_by: Some(coord::BlockedBy {
+                    kind: coord::BLOCKED_ON_TASK.into(),
+                    reference: on.into(),
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+    let take = |by: &str, title: &str| {
+        let t = co
+            .create_task(
+                &me(&r),
+                coord::NewTask {
+                    title: title.into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        co.assign(&me(&r), &t.id, by).unwrap();
+        co.claim_task(by, &t.id).unwrap()
+    };
+
+    // #290: options on an external wait.
+    let ext = held_task(&r);
+    co.raise(
+        &r.key_a,
+        &ext.id,
+        coord::NewBlocker {
+            question: "Park until stable, or swap now?".into(),
+            options: ["Park", "Swap now"]
+                .iter()
+                .map(|a| coord::BlockerOption {
+                    answer: (*a).into(),
+                    ..Default::default()
+                })
+                .collect(),
+            blocked_by: Some(coord::BlockedBy {
+                kind: coord::BLOCKED_ON_EXTERNAL.into(),
+                reference: "https://github.com/ghostty-org/ghostty".into(),
+            }),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let s = summary(&ext.id);
+    assert_eq!((s.open_blockers, s.waiting_on), (1, 0));
+    assert_eq!(s.blocker_question, "Park until stable, or swap now?");
+    assert_eq!(r.w.decide_count(), 1);
+
+    // #334 and #329: a card waits on one that then goes in review.
+    let pr = take(&r.key_b, "installers");
+    let after = take(&r.key_a, "move it");
+    wait_on(&r.key_a, &after.id, &pr.id);
+    co.add_link(&r.key_b, &pr.id, PR).unwrap();
+    co.set_task_state(&r.key_b, &pr.id, coord::IN_REVIEW, "")
+        .unwrap();
+    let s = summary(&pr.id);
+    let rp = s.review_pr.expect("waits on the person's review");
+    assert_eq!((rp.number, rp.url.as_str()), (96, PR));
+    let s = summary(&after.id);
+    assert_eq!(
+        s.wait_you,
+        format!("your review of PR #96 ({})", pr.short_ref())
+    );
+
+    // A card waiting on #290's question names the person's answer.
+    let on_ext = take(&r.key_b, "after the swap");
+    wait_on(&r.key_b, &on_ext.id, &ext.id);
+    assert_eq!(
+        summary(&on_ext.id).wait_you,
+        format!("your answer on {}", ext.short_ref())
+    );
+
+    // An agent asked to review it: that's the agent's review, not theirs.
+    co.request_review(&r.key_b, &pr.id, PR, &r.key_a).unwrap();
+    assert!(summary(&pr.id).review_pr.is_none());
+    assert_eq!(summary(&after.id).wait_you, "");
+}
+
 /// Card #138: clearing done cards takes them out of Closed (by id, by age
 /// or all); they stay in the log, and a reopened one is back on the grid.
 #[test]
