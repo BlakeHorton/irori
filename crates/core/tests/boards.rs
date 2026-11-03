@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use common::{Rig, wait_for};
 use coord::ErrorKind as CK;
-use irori_core::{BOARDS_DIR, BoardError, Core, valid_board_id};
+use irori_core::{BoardError, Core, SPACES_DIR as BOARDS_DIR, valid_board_id};
 use store::Filter;
 use store::kinds::{self, AGENT_ACTOR_PREFIX, PERSON_ACTOR_PREFIX};
 
@@ -344,6 +344,198 @@ fn board_logs_skip_junk() {
     let c = Core::start(common::options(d.path(), cl.path())).unwrap();
     assert!(c.boards().is_empty(), "boards {:?}", c.boards());
     c.close().unwrap();
+}
+
+/// Card #392: a v0.10 data dir keeps its board logs in boards/. The next
+/// start moves each one to spaces/ and opens it as the same space: same id,
+/// every card and member, nothing rewritten. A move cut short by a crash
+/// (the sidecars moved, the .db not yet) finishes at the start after.
+#[test]
+fn board_logs_move_to_spaces() {
+    let r = Rig::new();
+    let id = r
+        .core
+        .create_board("Wind Waker Multiplayer", "wind")
+        .unwrap();
+    let co = r.core.board_coord(&id).unwrap();
+    let by = r.core.board_key(&id, &r.key_a).unwrap();
+    let t = co.create_task(&by, new_task("sync the boats")).unwrap();
+    co.comment_on(
+        &by,
+        &t.id,
+        coord::CommentInput {
+            text: "first pass works".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let before = created_ids(&r.core.board_store(&id).unwrap());
+    let vector = r.core.board_store(&id).unwrap().vector().unwrap();
+    r.core.close().unwrap();
+
+    // Lay the files out as v0.10 did, then cut the move short: the
+    // sidecars are in spaces/, the .db is still in boards/.
+    let (spaces, boards) = (
+        r.data.join(irori_core::SPACES_DIR),
+        r.data.join(irori_core::BOARDS_DIR),
+    );
+    std::fs::rename(&spaces, &boards).unwrap();
+    std::fs::create_dir_all(&spaces).unwrap();
+    std::fs::rename(
+        boards.join(format!("{id}.secrets")),
+        spaces.join(format!("{id}.secrets")),
+    )
+    .unwrap();
+
+    let c = Core::start(common::options(&r.data, &r.claude)).unwrap();
+    assert!(spaces.join(format!("{id}.db")).exists(), "the .db moved");
+    assert!(!boards.exists(), "the emptied boards/ is gone");
+    // board_store waits for the boards still opening after the start.
+    let st = c.board_store(&id).unwrap();
+    assert_eq!(c.boards().len(), 1, "boards {:?}", c.boards());
+    assert_eq!(created_ids(&st), before, "the same cards");
+    assert_eq!(st.vector().unwrap(), vector, "the same rows");
+    let co = c.board_coord(&id).unwrap();
+    assert!(co.get_task(&t.id).is_some(), "the card folds");
+    // A start with nothing left to move moves nothing.
+    assert_eq!(irori_core::migrate_board_files(&r.data).unwrap(), 0);
+    c.close().unwrap();
+}
+
+/// Card #392: a space holds more boards. A lone device adds one at once;
+/// with two devices the add waits until the other has said, in its board
+/// hello, that it reads space rows (an older Irori would stall on them),
+/// and then the new board reaches it.
+#[test]
+fn a_second_board_in_a_space_reaches_the_other_device() {
+    let (a, b) = paired();
+    let id = a
+        .core
+        .create_board("Wind Waker Multiplayer", "wind")
+        .unwrap();
+    // b is a member device (a wrote its cert) but hasn't even opened the
+    // space yet, so it can't have said it reads space rows: refused.
+    let e = a
+        .core
+        .create_space_board(&id, "Too soon", "soon")
+        .unwrap_err();
+    assert!(e.to_string().contains("waiting on"), "{e}");
+    assert_eq!(a.core.space_boards(&id).unwrap().len(), 1);
+    wait_for(45, "b opens the space", || b.core.board_coord(&id).is_ok());
+    let bv = b.core.board_verifier(&id).unwrap();
+    wait_for(45, "b's cert arrives", || {
+        bv.membership().created && bv.cert(b.core.device_id()).is_some()
+    });
+    // Until b's hello lands a refuses, naming what it waits on.
+    wait_for(45, "a hears b read spaces", || {
+        a.core.space_not_ready(&id).unwrap().is_empty()
+    });
+    let sub = a.core.create_space_board(&id, "Netcode", "net").unwrap();
+    assert_ne!(sub, id);
+    let names = |c: &Core| -> Vec<String> {
+        c.space_boards(&id)
+            .unwrap()
+            .into_iter()
+            .map(|x| format!("{}:{}", x.tag, x.name))
+            .collect()
+    };
+    assert_eq!(
+        names(&a.core),
+        ["wind:Wind Waker Multiplayer", "net:Netcode"]
+    );
+    wait_for(45, "b gets the second board", || names(&b.core).len() == 2);
+    assert_eq!(names(&b.core), names(&a.core));
+    // A card on the new board shows its tag; the space numbers its boards'
+    // cards in one run, and a ref finds it by either device.
+    let co = a.core.board_coord(&id).unwrap();
+    let by = a.core.board_key(&id, &a.user()).unwrap();
+    let on_wind = co.create_task(&by, new_task("boats")).unwrap();
+    let on_net = co
+        .create_task(
+            &by,
+            coord::NewTask {
+                title: "rollback".into(),
+                board: sub.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(on_wind.short_ref(), "wind#1");
+    assert_eq!(on_net.short_ref(), "net#2");
+    assert_eq!(on_net.board, sub);
+    assert_eq!(a.core.task_ref("net#2").unwrap(), on_net.id);
+    assert!(a.core.task_ref("wind#2").is_err(), "#2 is on net");
+    let bco = b.core.board_coord(&id).unwrap();
+    wait_for(45, "b gets the card on net", || {
+        bco.get_task(&on_net.id)
+            .is_some_and(|t| t.short_ref() == "net#2")
+    });
+    assert_eq!(b.core.task_ref("net#2").unwrap(), on_net.id);
+    // A board the space doesn't hold is refused.
+    let e = co
+        .create_task(
+            &by,
+            coord::NewTask {
+                title: "x".into(),
+                board: "nope".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("no board"), "{e}");
+    // A tag in use, here or in a space, is refused.
+    for tag in ["wind", "net"] {
+        assert!(a.core.create_space_board(&id, "x", tag).is_err(), "{tag}");
+    }
+}
+
+/// Card #392: a member device not yet heard to read space rows (an older
+/// Irori, or one not seen since this start) holds back every space-only
+/// row, and the refusal names it.
+#[test]
+fn a_space_waits_for_devices_that_dont_read_spaces() {
+    let r = Rig::new();
+    let id = r.core.create_board("Lemmings Decomp", "lemmings").unwrap();
+    // Alone in its space: nothing to wait on.
+    assert!(r.core.space_not_ready(&id).unwrap().is_empty());
+    let levels = r.core.create_space_board(&id, "Levels", "levels").unwrap();
+    assert_eq!(r.core.space_boards(&id).unwrap().len(), 2);
+    // An agent names the board inside the space by its tag; the card
+    // lands on it, in the space's log.
+    let caller = tools::Caller {
+        sender: inbox::Sender::new(&r.key_a, "alpha", "claude"),
+        path: String::new(),
+    };
+    let out = r
+        .core
+        .tools()
+        .call(
+            &caller,
+            "board_create",
+            &serde_json::to_vec(&serde_json::json!({"title": "level 3 crash", "board": "levels"}))
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(out.contains("levels#1"), "board_create on levels: {out}");
+    let t = r.core.task_ref("levels#1").unwrap();
+    let co = r.core.board_coord(&id).unwrap();
+    assert_eq!(co.get_task(&t).unwrap().board, levels);
+    // The space's own board still takes cards by its own tag.
+    let out = r
+        .core
+        .tools()
+        .call(
+            &caller,
+            "board_create",
+            &serde_json::to_vec(&serde_json::json!({"title": "decomp", "board": "lemmings"}))
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(
+        out.contains("lemmings#2"),
+        "board_create on lemmings: {out}"
+    );
+    r.core.close().unwrap();
 }
 
 /// TestBoardIdentityKeptCurrent: a board this device creates pins this

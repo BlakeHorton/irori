@@ -63,6 +63,7 @@ pub mod boards_status;
 mod bridge;
 mod mirror;
 pub mod notes;
+pub mod spaces;
 pub use mirror::BoardReviewer;
 pub mod invites;
 mod talk;
@@ -1309,6 +1310,11 @@ impl Core {
         // in the start, so the window shows the private cards first and
         // each board fills in as it opens (a big board takes seconds on a
         // phone). The subscription is taken first, so no row is missed.
+        // Card #392: v0.10's boards/ becomes spaces/ before anything can
+        // open, create or join one (renames only: quick even on a phone).
+        if let Err(e) = boards::migrate_board_files(&s.data_dir) {
+            logf(format_args!("spaces: moving the board logs: {e}"));
+        }
         s.boards.opening_pending();
         {
             let sub = Arc::new(s.store.subscribe());
