@@ -446,11 +446,12 @@ fn hand_off() -> Result<(), String> {
 fn main_window(app: &AppHandle, startup: bool) -> tauri::Result<()> {
     let b = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::default())
         .title("Irori")
-        .inner_size(1100.0, 720.0)
         .background_color(tauri::window::Color(11, 12, 15, 255));
-    // A phone's window is the whole screen (card #226).
+    // A phone's window is the whole screen (card #226). Desktop only: iOS
+    // applies inner_size to its WKWebView (Android ignores it), which drew
+    // the desktop layout cut off on an iPhone (#269).
     #[cfg(desktop)]
-    let b = b.center().visible(!startup);
+    let b = b.inner_size(1100.0, 720.0).center().visible(!startup);
     #[cfg(mobile)]
     let _ = startup;
     // macOS draws the title in the title bar, where it is hard to read and
