@@ -222,7 +222,6 @@ fn test_reopen_keeps_holders() {
     want_err(e.c.reopen(USER, &tk.id), ErrorKind::BadState);
     e.c.set_task_state(ALICE, &tk.id, COMPLETED, "done")
         .unwrap();
-    want_err(e.c.reopen(BOB, &tk.id), ErrorKind::NotAllowed);
     let (got, n) = e.c.reopen(USER, &tk.id).unwrap();
     assert!(got.state == WORKING && got.note == REOPEN_NOTE && got.holders == [ALICE]);
     assert!(n.kind == NOTICE_REOPENED && n.to == [ALICE] && n.text.contains("with you on it"));
@@ -584,10 +583,9 @@ fn test_owner_keys_and_made_up_keys() {
     let e = Env::with("dev-a", Some(owner));
     let tk = e.c.create_task(ALICE, nt("t")).unwrap();
     e.c.claim_task(ALICE, &tk.id).unwrap();
-    assert!(
-        e.c.set_task_state(fake, &tk.id, CANCELED, "mine now")
-            .is_err()
-    );
+    // A made-up key is an agent, and any agent may change any card (#320).
+    e.c.set_task_state(fake, &tk.id, INPUT_REQUIRED, "mine now")
+        .unwrap();
     e.c.set_task_state(
         other,
         &tk.id,

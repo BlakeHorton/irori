@@ -387,12 +387,6 @@ fn test_board_block_unblock_status() {
         json!({"task_id": id, "state": "done"}),
         &["give state"],
     );
-    h.failsj(
-        &c,
-        "board_status",
-        json!({"task_id": id, "state": "completed"}),
-        &["holder"],
-    );
     has(
         &h.okj(&b, "board_leave", json!({"task_id": id})),
         &[&format!("You left {r};")],
@@ -485,11 +479,14 @@ fn test_board_edit() {
         json!({"task_id": id, "title": "  "}),
         &["needs a title"],
     );
-    h.failsj(
-        &b,
-        "board_edit",
-        json!({"task_id": id, "title": "mine now"}),
-        &["only its holder"],
+    // Any agent may edit any card (card #320).
+    has(
+        &h.okj(
+            &b,
+            "board_edit",
+            json!({"task_id": id, "title": "mine now"}),
+        ),
+        &[&format!("Edited {r}")],
     );
     has(
         &h.okj(
@@ -603,12 +600,6 @@ fn test_board_cards() {
         &["only one step"],
     );
     h.failsj(
-        &c,
-        "board_steps",
-        json!({"task_id": id, "steps": ["x"]}),
-        &["holder"],
-    );
-    h.failsj(
         &a,
         "board_step",
         json!({"task_id": id, "step_id": "s2"}),
@@ -666,12 +657,6 @@ fn test_board_cards() {
             json!({"task_id": id, "blocker_id": "b1", "answer": "Ship now, mark experimental", "why": "fixes today"}),
         ),
         &["Recommended on blocker b1", r#"2. "Ship now, mark experimental" (beta)"#],
-    );
-    h.failsj(
-        &c,
-        "board_recommend",
-        json!({"task_id": id, "blocker_id": "b1", "answer": "x"}),
-        &["watch it first"],
     );
     h.failsj(
         &b,
@@ -1724,7 +1709,7 @@ fn test_tools_use_the_owner_rule() {
 #[test]
 fn test_board_block_revises() {
     let h = new_harness();
-    let (a, b, c) = (call_a(), call_b(), call_c());
+    let a = call_a();
     let id = h.new_card(&a, json!({"title": "VPN adapter", "shared": true}));
     h.okj(&a, "board_join", json!({"task_id": id}));
     h.okj(
@@ -1763,19 +1748,6 @@ fn test_board_block_revises() {
         json!({"task_id": id, "blocker_id": "b1",
             "options": [{"answer": "Wintun"}, {"answer": "TAP-Windows"}]}),
         &["same question with the same options", "board_unblock"],
-    );
-    // Only the raiser, a holder or the person.
-    h.failsj(
-        &c,
-        "board_block",
-        json!({"task_id": id, "blocker_id": "b1", "question": "Ship Wintun?"}),
-        &["may revise it"],
-    );
-    h.failsj(
-        &b,
-        "board_block",
-        json!({"task_id": id, "blocker_id": "b1", "question": "Ship Wintun?"}),
-        &["may revise it"],
     );
     h.failsj(
         &a,
@@ -1858,7 +1830,7 @@ fn test_blocker_tool_descriptions() {
             .unwrap(),
         &[
             "revise this open blocker",
-            "Only its raiser, a holder or the person",
+            "Any agent may; the card's holders hear it",
         ],
     );
     let comment = spec("board_comment");
@@ -1957,13 +1929,7 @@ fn test_step_owners() {
         &h.ok(&a, "board", "{}"),
         &["with beta (dev1/bbbbbbbb-2222-4222-8222-222222222222) (s2) on steps"],
     );
-    // beta ticks its own step, not someone else's.
-    h.failsj(
-        &b,
-        "board_step",
-        json!({"task_id": id, "step_id": "s1", "done": true}),
-        &["tick a step"],
-    );
+    // beta ticks its own step.
     h.okj(
         &b,
         "board_step",
@@ -2105,15 +2071,14 @@ fn test_board_status_completed_attaches_proof_files() {
                "attach": ["shots/narrow.png", "shots/wide.png"]}),
     );
     has(&out, &["done check b1 with narrow.png", "wide.png"]);
-    // Someone who may not change the card hears that, not "needs proof".
+    // Any agent may change the card (card #320), and needs proof too.
     let other = h.new_card(&a, json!({"title": "not b's"}));
     let out = h.callj(
         &call_b(),
         "board_status",
         json!({"task_id": other, "state": "completed"}),
     );
-    has_not(&out, &["needs proof"]);
-    assert!(out.starts_with("Error: "), "{out}");
+    has(&out, &["needs proof"]);
     let check = &h.b.co.get_task(&id).unwrap().open_blockers()[0];
     let names: Vec<&str> = check.attachments.iter().map(|f| f.name.as_str()).collect();
     assert!(

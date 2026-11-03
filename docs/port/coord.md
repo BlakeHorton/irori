@@ -244,7 +244,7 @@ checkSteps (cards_impl.go:894-919): ≤20, each trimmed 1..200 runes, one line, 
 Activity (cards_impl.go:500-532): line inserted by log position; keep top 500 by position. `watch` lines queue (outside replay) for watchers + `also`; a subtask's line is also queued on its non-terminal parent as `"<sub ShortRef> (part of <parent ShortRef>): "+what` with also = parent holders. Queue cap 32 per task, overflow counted in `dropped`.
 watchNotices (cards_impl.go:1122-1186), drained each SweepNotices: per task id sorted; recipients = watchers then `also` keys, only keys whose device is this device or none, not owner/irori, unique; each recipient's lines = lines not by itself where it is a watcher or in that line's also; text via `watchText`; identical texts share one Notice. Format (cards_impl.go:1188-1275), byte-exact so `MergeWatch` interoperates:
 ```
-Update on "<title %q>" (<Refs>), a card you watch or raised a blocker on:\n
+Update on "<title %q>" (<Refs>), a card you hold, watch or raised a blocker on:\n
 [- (<N> earlier changes)\n]            N = hidden + dropped
 - <actor> <what, cut 600>\n            ≤8 newest; actor "irori" shown as "Irori"
 Now: <EffectiveState>[, subtasks d/t done | , steps d/n][, K open blockers].\nshow task:<id> for the card, its comments and links.

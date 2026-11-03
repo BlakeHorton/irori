@@ -285,12 +285,12 @@ fn proof_is_required_after_other_refusals() {
             .to_string();
     assert!(err.contains(NEEDS_PROOF), "{err}");
     assert_eq!(e.c.get_task(&t.id).unwrap().state, WORKING);
-    // Someone who may not change it hears that, not "needs proof".
+    // Any agent may change it (card #320), and needs proof the same way.
     let err =
         e.c.set_task_state_with(CAROL, &t.id, COMPLETED, "", Vec::new(), true)
             .unwrap_err()
             .to_string();
-    assert!(!err.contains("needs proof"), "{err}");
+    assert!(err.contains(NEEDS_PROOF), "{err}");
     // The person's completed needs none.
     let got =
         e.c.set_task_state_with(USER, &t.id, COMPLETED, "", Vec::new(), true)

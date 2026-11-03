@@ -501,7 +501,7 @@ At the end of the sweep every agent with open work is touched, so time-based gat
 **MergeWatch** markers:
 
 - head `Update on `
-- head end `, a card you watch or raised a blocker on:\n`
+- head end `, a card you hold, watch or raised a blocker on:\n`
 - foot `\nNow: `
 - the earlier-changes line `- (%d earlier changes)\n`
 - at most 8 lines (the rest are counted)

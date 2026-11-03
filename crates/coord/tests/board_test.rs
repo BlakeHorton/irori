@@ -119,12 +119,10 @@ fn test_holder_filter_and_permissions_use_holders() {
     assert_eq!(ids(&got), std::slice::from_ref(&task.id));
     e.c.set_task_state(BOB, &task.id, INPUT_REQUIRED, "?")
         .unwrap();
-    want_err(
-        e.c.set_task_state(CAROL, &task.id, WORKING, ""),
-        ErrorKind::NotAllowed,
-    );
+    // Any agent may change any card (card #320).
+    e.c.set_task_state(CAROL, &task.id, WORKING, "").unwrap();
     e.c.block(BOB, &task.id, "waiting", None).unwrap();
-    want_err(e.c.block(CAROL, &task.id, "x", None), ErrorKind::NotAllowed);
+    e.c.block(CAROL, &task.id, "x", None).unwrap();
 }
 
 #[test]
@@ -288,15 +286,8 @@ fn test_assign_permissions_and_notice() {
         ("stranger assigns itself", "", CAROL, CAROL, None, vec![], 1),
         ("holder hands off", BOB, BOB, CAROL, None, vec![CAROL], 1),
         ("person", BOB, USER, CAROL, None, vec![CAROL], 1),
-        (
-            "stranger while held",
-            BOB,
-            CAROL,
-            DAVE,
-            Some(ErrorKind::NotAllowed),
-            vec![],
-            0,
-        ),
+        // Any agent may hand any card on (card #320).
+        ("stranger while held", BOB, CAROL, DAVE, None, vec![DAVE], 1),
         (
             "to a person: no recipients",
             "",
@@ -403,14 +394,12 @@ fn test_assign_notice_cuts_long_fields() {
 }
 
 #[test]
-fn test_assign_task_keeps_v02_rule() {
+fn test_assign_task_any_agent() {
+    // Card #320: AssignTask no longer keeps v0.2's holder-only rule.
     let e = Env::new();
     let task = e.c.create_task(ALICE, nt("t")).unwrap();
-    want_err(
-        e.c.assign_task(CAROL, &task.id, CAROL),
-        ErrorKind::NotAllowed,
-    );
-    e.c.assign(CAROL, &task.id, CAROL).unwrap();
+    e.c.assign_task(CAROL, &task.id, CAROL).unwrap();
+    e.c.assign(CAROL, &task.id, BOB).unwrap();
 }
 
 #[test]
@@ -531,11 +520,12 @@ fn test_join_leave_share() {
             WORKING,
         ),
         (
-            "stranger can't share",
-            Box::new(|| c.set_shared(DAVE, &s, false)),
-            Some(ErrorKind::NotAllowed),
-            vec![],
-            "",
+            // Any agent may share any card (card #320); already shared.
+            "stranger shares",
+            Box::new(|| c.set_shared(DAVE, &s, true)),
+            None,
+            vec![CAROL],
+            WORKING,
         ),
         (
             "holder unshares",
@@ -627,14 +617,7 @@ fn test_block_validation() {
             None,
             None,
         ),
-        (
-            "stranger",
-            CAROL,
-            "r".into(),
-            None,
-            Some(ErrorKind::NotAllowed),
-            None,
-        ),
+        ("stranger (card #320)", CAROL, "r".into(), None, None, None),
         (
             "lease normalized",
             ALICE,
@@ -1182,10 +1165,6 @@ fn test_links() {
     want_err(
         e.c.add_link(CAROL, &task.id, "docs/full.md"),
         ErrorKind::Invalid,
-    );
-    want_err(
-        e.c.remove_link(CAROL, &task.id, "docs/b.md"),
-        ErrorKind::NotAllowed,
     );
     want_err(
         e.c.remove_link(ALICE, &task.id, "docs/zz.md"),

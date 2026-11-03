@@ -172,6 +172,9 @@ pub(crate) struct Touch {
     pub parent: String,
     pub has_watchers: bool,
     pub short_ref: String,
+    /// Who works the card (holders and co-holders): they hear another
+    /// agent's change to it (card #320).
+    pub holders: Vec<String>,
 }
 
 impl Touch {
@@ -181,6 +184,7 @@ impl Touch {
             parent: t.parent.clone(),
             has_watchers: !t.watchers.is_empty(),
             short_ref: t.short_ref(),
+            holders: t.holders.iter().chain(&t.co_holders).cloned().collect(),
         }
     }
 }
@@ -622,7 +626,11 @@ impl Fold {
                 sync_holder(&mut t);
                 t.updated_at = at(p.at);
                 t.updated_by = p.by.clone();
-                let ti = Touch::of(&t);
+                // The one it went to hears the hand-off notice instead.
+                let ti = Touch {
+                    holders: Vec::new(),
+                    ..Touch::of(&t)
+                };
                 let when = t.updated_at;
                 self.tasks.insert(p.task_id.clone(), t);
                 self.touch(
@@ -1170,7 +1178,19 @@ impl Fold {
         let wake = person_blocker
             || p.state == FAILED && was != FAILED
             || is_terminal(&p.state) && !is_terminal(&was) && self.last_subtask(&p.task_id);
-        self.touch_parent(&ti, line, wake);
+        // Another agent's blocker or state change wakes the card's holders;
+        // a reopen has its own notice.
+        let reopened = is_terminal(&was) && !is_terminal(&p.state);
+        let wake_holders = !raised.is_empty() || was != p.state;
+        let ti = if reopened {
+            Touch {
+                holders: Vec::new(),
+                ..ti
+            }
+        } else {
+            ti
+        };
+        self.touch_parent(&ti, line, wake, wake_holders);
         self.waits_on_status(&p.task_id, &was, &p.state);
         self.note(Change {
             kind: TASK_CHANGED.into(),

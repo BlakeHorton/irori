@@ -724,9 +724,10 @@ fn test_edits_need_the_taker() {
             at: fixed_now(),
             ..TaskEditedRow::default()
         },
+        // Any agent may edit a card that isn't an open ask (card #320).
         TaskEditedRow {
             task_id: other.id.clone(),
-            title: Some(bad.into()),
+            title: Some("Ship the docs".into()),
             by: CAROL.into(),
             at: fixed_now(),
             ..TaskEditedRow::default()
@@ -738,8 +739,9 @@ fn test_edits_need_the_taker() {
         let got = e.c.get_task(id).unwrap();
         assert!(got.title != bad && got.objective != bad, "{got:?}");
     }
+    assert_eq!(e.c.get_task(&other.id).unwrap().title, "Ship the docs");
     let got = e.reopen().get_task(&other.id).unwrap();
-    assert!(got.objective != bad && got.title != bad);
+    assert!(got.objective != bad && got.title == "Ship the docs");
     let (open, _) = post_ask(&e, "another ask");
     want_err(
         e.c.ask_close(

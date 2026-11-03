@@ -163,7 +163,7 @@ impl Fold {
     ) -> Result<(Task, Notice)> {
         let note = trim_space(note).to_string();
         check_text("the hand-off note", &note, 0, MAX_HANDOFF_NOTE)?;
-        let (t, wrote) = self.assign(by, id, to, true, &note)?;
+        let (t, wrote) = self.assign(by, id, to, &note)?;
         if !wrote {
             return Ok((t, Notice::default()));
         }
@@ -370,9 +370,6 @@ impl Fold {
     pub(crate) fn set_shared(&mut self, by: &str, id: &str, shared: bool) -> Result<Task> {
         let by = caller(by)?;
         let t = self.open_task(id)?;
-        if !self.may_manage(t, &by) {
-            return Err(not_allowed(format!("share task {id}")));
-        }
         if t.shared == shared {
             return Ok(t.clone());
         }
@@ -409,9 +406,6 @@ impl Fold {
         let reason = trim_space(reason).to_string();
         check_reason(&reason, true)?;
         let t = self.open_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("block task {id}")));
-        }
         let (q, cx) = super::cards::block_question(&reason);
         let now = self.stamp();
         let (out, _) = self.raise_locked(
@@ -944,9 +938,6 @@ impl Fold {
         let by = caller(by)?;
         let r = trim_space(r).to_string();
         let t = self.any_task(id)?;
-        if !self.may_manage(t, &by) {
-            return Err(not_allowed(format!("remove a link from task {id}")));
-        }
         let mut i = t.links.iter().position(|l| l.reference == r);
         if i.is_none()
             && !r.is_empty()

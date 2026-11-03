@@ -170,13 +170,12 @@ fn test_concurrent_claims_one_wins() {
 fn test_assign() {
     let e = Env::new();
     let task = e.c.create_task(ALICE, new_task("t")).unwrap();
-    want_err(e.c.assign_task(BOB, &task.id, BOB), ErrorKind::NotAllowed);
     let got = e.c.assign_task(ALICE, &task.id, BOB).unwrap();
     assert_eq!((got.holder.as_str(), got.state.as_str()), (BOB, SUBMITTED));
     let got = e.c.assign_task(BOB, &task.id, CAROL).unwrap();
     assert_eq!(got.holder, CAROL);
-    want_err(e.c.assign_task(BOB, &task.id, BOB), ErrorKind::NotAllowed);
-    let got = e.c.assign_task(USER, &task.id, BOB).unwrap();
+    // Any agent may hand any card on (card #320).
+    let got = e.c.assign_task(BOB, &task.id, BOB).unwrap();
     assert_eq!(got.holder, BOB);
     e.c.assign_task(USER, &task.id, BOB).unwrap();
     assert_eq!(e.rows(kinds::TASK_ASSIGNED).len(), 3);
@@ -189,10 +188,6 @@ fn test_set_task_state() {
     let e = Env::new();
     let task = e.c.create_task(ALICE, new_task("t")).unwrap();
     e.c.claim_task(BOB, &task.id).unwrap();
-    want_err(
-        e.c.set_task_state(CAROL, &task.id, INPUT_REQUIRED, ""),
-        ErrorKind::NotAllowed,
-    );
     want_err(
         e.c.set_task_state(BOB, &task.id, "done", ""),
         ErrorKind::BadState,

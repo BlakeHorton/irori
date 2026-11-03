@@ -32,7 +32,7 @@ impl ErrorKind {
             }
             ErrorKind::BadState => "coord: not a task state",
             ErrorKind::Unimplemented => "coord: not implemented yet",
-            ErrorKind::NotAllowed => "coord: only the holder, the creator or a person may do that",
+            ErrorKind::NotAllowed => "coord: not allowed",
             ErrorKind::Invalid => "coord: invalid argument",
             ErrorKind::Subtask => "coord: invalid argument: subtasks",
             ErrorKind::Store => "coord",

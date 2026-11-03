@@ -127,13 +127,10 @@ fn test_split_and_rollup() {
         )
         .is_err()
     );
-    want_err(
-        e.c.split(BOB, &big.id, vec![sub("a", &["s2", "s3", "s4"])], vec![]),
-        ErrorKind::NotAllowed,
-    );
+    // Any agent may split any card (card #320): BOB doesn't hold it.
     let (p, kids) =
         e.c.split(
-            ALICE,
+            BOB,
             &big.id,
             vec![
                 sub("backend", &["s2", "extra test"]),

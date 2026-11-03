@@ -266,14 +266,13 @@ impl Fold {
         Ok(self.tasks[id].clone())
     }
 
-    /// AssignTask (wide false) and Assign (wide: also anyone while the
-    /// task has no holder). The bool reports whether a row was written.
+    /// AssignTask and Assign: any agent may hand any card on (card #320).
+    /// The bool reports whether a row was written.
     pub(crate) fn assign(
         &mut self,
         by: &str,
         id: &str,
         to: &str,
-        wide: bool,
         note: &str,
     ) -> Result<(Task, bool)> {
         let (by, to) = (trim_space(by).to_string(), trim_space(to).to_string());
@@ -284,9 +283,6 @@ impl Fold {
         let t = self.open_task(id)?.clone();
         if t.open_ask().is_some() {
             return Err(super::asks::ask_refusal(&t, "nobody is assigned one"));
-        }
-        if !self.may_manage(&t, &by) && !(wide && t.holders.is_empty()) {
-            return Err(not_allowed(format!("assign task {id}")));
         }
         if is_holder(&t, &to) {
             return Ok((t, false));
@@ -373,9 +369,6 @@ impl Fold {
             )?;
             return Ok(self.tasks[id].clone());
         }
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("change task {id}")));
-        }
         if s == IN_REVIEW {
             self.review_refusal(&t)?;
         }
@@ -444,9 +437,6 @@ impl Fold {
     pub(crate) fn reopen(&mut self, by: &str, id: &str, note: &str) -> Result<(Task, Notice)> {
         let by = caller(by)?;
         let t = self.any_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("reopen task {id}")));
-        }
         let was = t.state.clone();
         self.reopen_locked(&by, id, note)?;
         let t = self.tasks[id].clone();

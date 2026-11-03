@@ -53,7 +53,7 @@
   "kind": "watched",
   "to": "dev-a/carol-session",
   "wake": false,
-  "text": "Update on \"Fix \\\"it\\\" <now>\" (#1, task:01M5W19VG0QRM302EPRQ06D00R), a card you watch or raised a blocker on:\n- dev-a/bob-session set the steps: “x” (0/1 done)\nNow: working, steps 0/1.\nshow task:01M5W19VG0QRM302EPRQ06D00R for the card, its comments and links."
+  "text": "Update on \"Fix \\\"it\\\" <now>\" (#1, task:01M5W19VG0QRM302EPRQ06D00R), a card you hold, watch or raised a blocker on:\n- dev-a/bob-session set the steps: “x” (0/1 done)\nNow: working, steps 0/1.\nshow task:01M5W19VG0QRM302EPRQ06D00R for the card, its comments and links."
  },
  {
   "step": "ask",

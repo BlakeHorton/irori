@@ -14,9 +14,7 @@ use super::fold::{Fold, Touch, sync_holder};
 use super::resource::check_repo_key;
 use super::rows::*;
 use super::types::*;
-use super::util::{
-    SWEEPER, caller, check_text, collapse_space, contains, cut, deeper, new_id, runes,
-};
+use super::util::{SWEEPER, caller, check_text, collapse_space, cut, deeper, new_id, runes};
 use super::{MAX_OBJECTIVE, MAX_TITLE};
 use crate::gotime;
 use crate::names::trim_space;
@@ -707,11 +705,10 @@ impl Fold {
             let Some(t) = self.tasks.get(&p.task_id) else {
                 return (false, String::new());
             };
-            let manages = p.by == t.created_by || contains(&t.holders, &p.by);
-            // A card that was an ask edits like any card once the ask is
-            // closed (board_edit), so a later holder may rename it too.
-            if t.ask.is_none() || (manages && t.open_ask().is_none()) {
-                return (manages, String::new());
+            // Any agent may edit any card (card #320). A card that was an
+            // ask edits like any card once the ask is closed (board_edit).
+            if t.open_ask().is_none() {
+                return (true, String::new());
             }
             ask = t.id.clone();
         }

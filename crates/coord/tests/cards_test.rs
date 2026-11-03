@@ -105,13 +105,8 @@ fn test_set_steps() {
         ),
         ("person may", USER, vec![step("a")], None, vec!["s1"]),
         ("creator may", ALICE, vec![step("a")], None, vec!["s1"]),
-        (
-            "stranger may not",
-            CAROL,
-            vec![step("a")],
-            Some(ErrorKind::NotAllowed),
-            vec![],
-        ),
+        // Any agent may change any card (card #320).
+        ("stranger may", CAROL, vec![step("a")], None, vec!["s1"]),
         (
             "empty text",
             ALICE,
@@ -331,12 +326,16 @@ fn test_set_step() {
             ]),
         ),
         (
-            "stranger may not",
+            "stranger may (card #320)",
             CAROL,
             "s1",
             done(true),
-            Some(ErrorKind::NotAllowed),
             None,
+            Some(vec![
+                st("s1", "a", true, false),
+                st("s2", "b", false, true),
+                st("s3", "c", false, false),
+            ]),
         ),
         (
             "unknown step",
@@ -418,7 +417,7 @@ fn test_raise_validation() {
             None,
         ),
         ("person", USER, q("q"), None),
-        ("stranger", CAROL, q("q"), Some(ErrorKind::NotAllowed)),
+        ("stranger (card #320)", CAROL, q("q"), None),
         ("no question", ALICE, q(" "), Some(ErrorKind::Invalid)),
         (
             "question too long",
@@ -564,15 +563,8 @@ fn test_recommend() {
             2,
         ),
         ("person", USER, None, "b1", "Wait", None, 2),
-        (
-            "stranger must watch first",
-            CAROL,
-            None,
-            "b1",
-            "Wait",
-            Some(ErrorKind::NotAllowed),
-            1,
-        ),
+        // Any agent may recommend (card #320), watching or not.
+        ("stranger", CAROL, None, "b1", "Wait", None, 2),
         (
             "same answer is a no-op",
             ALICE,
@@ -1420,7 +1412,7 @@ fn test_watch_digest_text() {
     assert_eq!(
         ns[0].text,
         format!(
-            "Update on \"ship it\" (#1, task:{id}), a card you watch or raised a blocker on:\n- {ALICE} set the steps: “build” (0/1 done)\nNow: working, steps 0/1.\nshow task:{id} for the card, its comments and links.",
+            "Update on \"ship it\" (#1, task:{id}), a card you hold, watch or raised a blocker on:\n- {ALICE} set the steps: “build” (0/1 done)\nNow: working, steps 0/1.\nshow task:{id} for the card, its comments and links.",
             id = task.id
         )
     );

@@ -1062,11 +1062,10 @@ fn test_revise_who_and_what() {
         err.is(ErrorKind::Invalid) && err.to_string().contains("board_unblock"),
         "{err}"
     );
-    // Only the raiser, a holder or a person.
-    want_err(
-        e.c.revise(BOB, &task.id, "b1", revision("Other?", vec![])),
-        ErrorKind::NotAllowed,
-    );
+    // Any agent may revise it (card #320), and becomes its raiser.
+    e.c.revise(BOB, &task.id, "b1", revision("Other?", vec![]))
+        .unwrap();
+    assert_eq!(blocker_of(&e.c, &task.id, "b1").1.raised_by, BOB);
     want_err(
         e.c.revise(ALICE, &task.id, "b9", revision("Other?", vec![])),
         ErrorKind::NotFound,

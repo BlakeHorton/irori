@@ -74,11 +74,11 @@ fn test_new_owner_busy_hears_next_turn_and_repeat_is_quiet() {
 }
 
 #[test]
-fn test_owner_ticks_own_step_not_others_and_cant_reset_steps() {
+fn test_owner_ticks_own_step_and_others() {
+    // Card #320: any agent may tick any step, a step owner included.
     let e = Env::new();
     let (t, _) = card(&e);
-    assert!(e.c.set_step(BOB, &t.id, "s1", tick()).is_err());
-    assert!(e.c.set_steps(BOB, &t.id, vec![step("mine", "")]).is_err());
+    e.c.set_step(BOB, &t.id, "s1", tick()).unwrap();
     e.c.set_step(BOB, &t.id, "s2", tick()).unwrap();
     let t = get(&e.c, &t.id);
     assert!(t.steps[1].done);
@@ -103,8 +103,8 @@ fn test_set_step_owner_and_clear() {
     let (t3, ns) = e.c.set_step_owner(ALICE, &t.id, "s3", "").unwrap();
     assert!(ns.is_empty());
     assert_eq!(t3.co_holders, vec![BOB.to_string()]);
-    // Only who may manage the card gives steps out.
-    assert!(e.c.set_step_owner(BOB, &t.id, "s1", BOB).is_err());
+    // Any agent may give steps out (card #320).
+    e.c.set_step_owner(BOB, &t.id, "s1", BOB).unwrap();
 }
 
 #[test]

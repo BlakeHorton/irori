@@ -30,7 +30,7 @@ const MAX_WATCH_PENDING: usize = 32;
 const MAX_ACTIVITY: usize = super::MAX_ACTIVITY;
 
 const WATCH_HEAD: &str = "Update on ";
-const WATCH_HEAD_END: &str = ", a card you watch or raised a blocker on:\n";
+const WATCH_HEAD_END: &str = ", a card you hold, watch or raised a blocker on:\n";
 const WATCH_FOOT: &str = "\nNow: ";
 
 fn earlier_line(n: usize) -> String {
@@ -428,13 +428,14 @@ impl Fold {
     /// The line goes in at its row's position; past MAX_ACTIVITY the
     /// lowest positions drop.
     pub(crate) fn touch_line(&mut self, t: &Touch, a: Activity, watch: bool, also: Vec<String>) {
-        self.touch_line_wake(t, a, watch, also, false);
+        self.touch_line_wake(t, a, watch, also, false, false);
     }
 
     /// A state row's line: always watched, and `wake` wakes the parent's
-    /// holders (card #89).
-    pub(crate) fn touch_parent(&mut self, t: &Touch, a: Activity, wake: bool) {
-        self.touch_line_wake(t, a, true, Vec::new(), wake);
+    /// holders (card #89). `wake_holders` wakes the card's own holders when
+    /// another agent changed its state or raised a blocker on it (card #320).
+    pub(crate) fn touch_parent(&mut self, t: &Touch, a: Activity, wake: bool, wake_holders: bool) {
+        self.touch_line_wake(t, a, true, Vec::new(), wake, wake_holders);
     }
 
     /// Whether every subtask of `id`'s parent has ended, now that `id` has.
@@ -448,14 +449,18 @@ impl Fold {
     }
 
     /// The line goes on t's activity and, when watched, on t's digest and
-    /// its open parent's digest; `wake` wakes the parent's holders.
+    /// its open parent's digest; `wake` wakes the parent's holders. A watched
+    /// line by an agent that doesn't work the card also goes to the ones who
+    /// do, woken when `wake_holders` (card #320: any agent may change any
+    /// card, and its holders hear who changed what).
     fn touch_line_wake(
         &mut self,
         t: &Touch,
         a: Activity,
         watch: bool,
-        also: Vec<String>,
+        mut also: Vec<String>,
         wake: bool,
+        wake_holders: bool,
     ) {
         if a.what.is_empty() {
             return;
@@ -470,7 +475,18 @@ impl Fold {
             acts.drain(..n);
         }
         if watch {
-            self.queue_watch(&t.id, t.has_watchers, &by, &what, also);
+            let mut woken = Vec::new();
+            if self.is_agent_key(&by) && !contains(&t.holders, &by) {
+                for h in &t.holders {
+                    if !contains(&also, h) {
+                        also.push(h.clone());
+                    }
+                }
+                if wake_holders {
+                    woken = t.holders.clone();
+                }
+            }
+            self.queue_watch_wake(&t.id, t.has_watchers, &by, &what, also, woken);
             if let Some(p) = self.tasks.get(&t.parent)
                 && !is_terminal(&p.state)
             {
@@ -973,9 +989,6 @@ impl Fold {
         let opts = clean_options(&nb.options, &by, now)?;
         let links = clean_blocker_links(&nb.links, &nb.files)?;
         let t = self.open_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("raise a blocker on task {id}")));
-        }
         let bb = nb.blocked_by.clone();
         self.raise_locked(
             &by, &t, &q, &q, &cx, opts, bb, false, now, links, nb.files, false,
@@ -1250,11 +1263,6 @@ impl Fold {
         if !b.open() {
             return Err(bad_state(format!("blocker {bid} is already resolved")));
         }
-        if b.raised_by != by && !contains(&t.holders, &by) && !self.is_owner(&by) {
-            return Err(not_allowed(format!(
-                "only the agent that raised blocker {bid}, a holder of task {id} or a person may revise it"
-            )));
-        }
         let mut q = trim_space(&r.question).to_string();
         if q.is_empty() {
             q = b.question.clone();
@@ -1312,10 +1320,6 @@ impl Fold {
         Ok((nt, out))
     }
 
-    fn may_recommend(&self, t: &Task, b: &Blocker, by: &str) -> bool {
-        self.may_manage(t, by) || contains(&t.watchers, by) || b.raised_by == by
-    }
-
     pub(crate) fn recommend(
         &mut self,
         by: &str,
@@ -1339,11 +1343,6 @@ impl Fold {
         let b = &t.blockers[i];
         if !b.open() {
             return Err(bad_state(format!("blocker {} is already resolved", b.id)));
-        }
-        if !self.may_recommend(&t, b, &by) {
-            return Err(not_allowed(format!(
-                "only its holders, watchers, the raiser, the creator or a person may recommend on task {id}; watch it first"
-            )));
         }
         match option_index(&b.options, &answer) {
             Some(j) if b.options[j].recommended => return Ok(t),
@@ -1750,9 +1749,6 @@ impl Fold {
         let by = caller(by)?;
         check_steps(&mut input)?;
         let t = self.open_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("set the steps of task {id}")));
-        }
         if !t.subtasks.is_empty() {
             return Err(subtask(format!(
                 "{} is a parent: its work lives in its subtasks (board_create parent={} adds one)",
@@ -1863,10 +1859,6 @@ impl Fold {
         let Some(i) = t.steps.iter().position(|s| s.id == sid) else {
             return Err(not_found(format!("task {id} has no step {}", quote(sid))));
         };
-        // A step's owner may tick its own step (card #86).
-        if !self.may_manage(&t, &by) && t.steps[i].owner != by {
-            return Err(not_allowed(format!("tick a step of task {id}")));
-        }
         let new_left_off =
             !left_off.is_empty() && t.left_off.as_ref().is_none_or(|l| l.text != left_off);
         if apply_step(&t.steps, i, u) == t.steps && !new_left_off {
@@ -1917,9 +1909,6 @@ impl Fold {
         let sid = trim_space(sid);
         let owner = self.check_owner(owner)?;
         let t = self.open_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("give a step of task {id} to someone")));
-        }
         let Some(s) = t.steps.iter().find(|s| s.id == sid) else {
             return Err(not_found(format!("task {id} has no step {}", quote(sid))));
         };
@@ -2103,12 +2092,6 @@ impl Fold {
             )));
         }
         let t = self.open_task(id)?.clone();
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!(
-                "edit {}: only its holder, its creator or the person may",
-                t.short_ref()
-            )));
-        }
         if t.open_ask().is_some() {
             return Err(bad_state(format!(
                 "{} is an open ask: ask_close it with outcome card and the title it should have",
@@ -2155,10 +2138,6 @@ impl Fold {
             ));
         }
         Ok(now.clone())
-    }
-
-    pub(crate) fn may_manage(&self, t: &Task, by: &str) -> bool {
-        by == t.created_by || contains(&t.holders, by) || self.is_owner(by)
     }
 }
 

@@ -354,6 +354,7 @@ impl Harness {
         out
     }
 
+    #[track_caller]
     pub fn fails(&self, c: &Caller, name: &str, args: &str, want: &[&str]) -> String {
         let out = self.call(c, name, args);
         assert!(
@@ -370,12 +371,14 @@ impl Harness {
     }
 }
 
+#[track_caller]
 pub fn has(out: &str, want: &[&str]) {
     for w in want {
         assert!(out.contains(w), "output should contain {w:?}:\n{out}");
     }
 }
 
+#[track_caller]
 pub fn has_not(out: &str, bad: &[&str]) {
     for w in bad {
         assert!(!out.contains(w), "output must not contain {w:?}:\n{out}");
@@ -405,6 +408,7 @@ impl Harness {
     pub fn okj(&self, c: &Caller, name: &str, args: J) -> String {
         self.ok(c, name, &args.to_string())
     }
+    #[track_caller]
     pub fn failsj(&self, c: &Caller, name: &str, args: J, want: &[&str]) -> String {
         self.fails(c, name, &args.to_string(), want)
     }

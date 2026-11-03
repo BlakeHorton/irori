@@ -302,9 +302,6 @@ impl Fold {
         }
         let t = self.open_task(id)?.clone();
         self.check_parent(id, "")?;
-        if !self.may_manage(&t, &by) {
-            return Err(not_allowed(format!("split task {}", t.short_ref())));
-        }
         let mut placed: Vec<String> = Vec::new();
         let mut made = Vec::with_capacity(subs.len());
         for s in &subs {
@@ -363,10 +360,6 @@ impl Fold {
         for a in &adopt {
             let k = self.task_ref_locked(a)?;
             self.check_parent(id, &k)?;
-            let kt = self.tasks[&k].clone();
-            if !self.may_manage(&kt, &by) && !self.may_manage(&t, &by) {
-                return Err(not_allowed(format!("adopt {}", kt.short_ref())));
-            }
             if !adopt_ids.contains(&k) {
                 adopt_ids.push(k);
             }

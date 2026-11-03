@@ -326,9 +326,9 @@ impl Coord {
     }
     /// The v0.2 assign (the creator, a holder or a person).
     pub fn assign_task(&self, by: &str, id: &str, to: &str) -> Result<Task> {
-        self.lock().assign(by, id, to, false, "").map(|(t, _)| t)
+        self.lock().assign(by, id, to, "").map(|(t, _)| t)
     }
-    /// Assign with the wide rule, and the notice for `to`.
+    /// Assign, and the notice for `to`.
     pub fn assign(&self, by: &str, id: &str, to: &str) -> Result<(Task, Notice)> {
         self.lock().assign_notice(by, id, to, "")
     }
