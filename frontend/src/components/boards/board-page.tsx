@@ -1,12 +1,13 @@
 // BoardPage is one board as its own page (card #96): the board's cards
 // (List or Canvas, with Needs a decision and Closed) on the left, and on
-// the right who is on it, Invite someone (owners), and the board's
-// settings. Rename, Leave and Forget sit by its name. The box over the
+// the right who is on it and Invite someone (owners). Rename, the board's
+// settings (a cog opening a dialog, card #312), Leave and Forget sit by
+// its name. The box over the
 // cards starts a thread on this board (card #134), listed in the board's
 // own Threads panel above who is on it.
 
 import { useState, type FormEvent } from "react"
-import { ArrowLeftIcon, EllipsisIcon, PinIcon, PinOffIcon } from "lucide-react"
+import { ArrowLeftIcon, EllipsisIcon, PinIcon, PinOffIcon, SettingsIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
 import { useCommands } from "@/lib/commands"
@@ -15,6 +16,13 @@ import type { Filter } from "@/components/cards/card-grid"
 import type { BoardView as View } from "@/components/canvas/switch"
 import { ConfirmDialog, type ConfirmAsk } from "@/components/common/confirm-button"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -243,6 +251,7 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
           {b.pinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
           <span className="hidden sm:inline">{b.pinned ? "Unpin" : "Pin"}</span>
         </Button>
+        {b.ready && <BoardSettingsButton board={b} reload={reload} />}
         {b.owner && !renaming && (
           <Button
             variant="ghost"
@@ -271,6 +280,47 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
         />
       </span>
     </div>
+  )
+}
+
+// BoardSettingsButton is the header's cog (card #312): the board's
+// settings (members, what reaches your agents, what they may do, threads)
+// in a dialog rather than always open beside the cards. Closing it reloads
+// the board so a changed member list shows.
+function BoardSettingsButton({ board: b, reload }: { board: BoardSummary; reload: () => Promise<unknown> }) {
+  const [open, setOpen] = useState(false)
+  const changed = async () => {
+    await reload()
+  }
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Board settings"
+        title="Board settings"
+        onClick={() => setOpen(true)}
+      >
+        <SettingsIcon aria-hidden />
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          if (!o) void changed()
+        }}
+      >
+        <DialogContent className="max-h-[85vh] gap-3 overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Board settings</DialogTitle>
+            <DialogDescription>
+              {plainLine(b.name) || "(unnamed)"}: who is on it, what reaches your agents and what they may do here.
+            </DialogDescription>
+          </DialogHeader>
+          {open && <BoardSettingsPanel boardId={b.boardId} onChanged={changed} />}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -396,9 +446,9 @@ function inviteError(err: unknown): string {
 
 // PeoplePanel is who is on the board and how to get more people on it:
 // Invite someone (an owner, once the board is ready) with how an invite
-// works, else why there is no Invite; then the members and the board's
-// settings. An open invite stands in for the Invite button until it
-// ends; the settings stay (card #103).
+// works, else why there is no Invite. An open invite stands in for the
+// Invite button until it ends (card #103). The board's settings live
+// behind the header's cog (card #312).
 function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: () => Promise<void> }) {
   const { invite, setInvite } = useInvite(true)
   const reach = useInviteReach(true)
@@ -407,6 +457,13 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
   return (
     <aside className="glass-panel grid grid-cols-[minmax(0,1fr)] gap-3 p-4 text-[13px]" aria-label="People on this board">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">People</h2>
+      {b.people.length > 0 && (
+        <ul className="grid gap-0.5 text-xs text-ink">
+          {b.people.map((p, i) => (
+            <li key={i}>{plainLine(p) || "someone"}</li>
+          ))}
+        </ul>
+      )}
       {inviting ? (
         <InvitePanel
           s={invite}
@@ -447,11 +504,6 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
           )}
           {error && <p className="text-xs text-destructive">{error}</p>}
         </>
-      )}
-      {b.ready && (
-        <div className="border-t border-border pt-3">
-          <BoardSettingsPanel boardId={b.boardId} onChanged={onChanged} />
-        </div>
       )}
     </aside>
   )
