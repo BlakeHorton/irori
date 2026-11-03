@@ -73,27 +73,31 @@ pub(crate) fn offerable(t: &Task) -> bool {
         && !waits_on_work(t)
 }
 
-/// Whether t has an open blocker on another task or a lease (card #397):
-/// nobody can start it until that work is done, so Irori doesn't hand it
-/// out. The blocker closes by itself when the work is done, and the card
-/// then goes out once, as if just posted.
+/// Whether t has an open blocker on other work: another task, a lease, an
+/// agent or something outside (cards #397, #423). Nobody can start it
+/// until that is done, so Irori doesn't hand it out (an open ask can't be
+/// blocked). A task or lease blocker closes by itself when the work is
+/// done, the others when someone resolves them, and the card then goes out
+/// once, as if just posted.
 fn waits_on_work(t: &Task) -> bool {
-    t.blockers.iter().any(|b| {
-        b.open()
-            && b.on
-                .as_ref()
-                .is_some_and(|on| on.kind == BLOCKED_ON_TASK || on.kind == BLOCKED_ON_LEASE)
-    })
+    t.blockers
+        .iter()
+        .any(|b| b.open() && b.on.as_ref().is_some_and(|on| on_work(&on.kind)))
 }
 
-/// When t's last task or lease blocker was resolved, if it has one.
+/// Whether a blocker of this kind waits on work rather than a person.
+fn on_work(kind: &str) -> bool {
+    matches!(
+        kind,
+        BLOCKED_ON_TASK | BLOCKED_ON_LEASE | BLOCKED_ON_AGENT | BLOCKED_ON_EXTERNAL
+    )
+}
+
+/// When t's last blocker on other work was resolved, if it has one.
 fn work_unblocked_at(t: &Task) -> Option<GoTime> {
     t.blockers
         .iter()
-        .filter(|b| {
-            b.on.as_ref()
-                .is_some_and(|on| on.kind == BLOCKED_ON_TASK || on.kind == BLOCKED_ON_LEASE)
-        })
+        .filter(|b| b.on.as_ref().is_some_and(|on| on_work(&on.kind)))
         .filter_map(|b| b.resolved.as_ref().map(|r| r.at))
         .max_by(gotime::cmp)
 }

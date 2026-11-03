@@ -578,3 +578,60 @@ fn no_busy_elsewhere_hook_changes_nothing() {
     let (_, n) = post(&e, "Port the parser", &room());
     assert_eq!(n.to, [CAROL], "{n:?}");
 }
+
+/// Card #423: a card waiting on something outside or on another agent is
+/// held back the way one waiting on a task is (#397): a hand-out from
+/// before the wait is stale, nobody is handed it while it waits, and once
+/// the wait is resolved it goes out once, fresh, as if just posted.
+#[test]
+fn a_card_waiting_on_an_agent_or_outside_goes_out_fresh_once_resolved() {
+    for (kind, reference) in [
+        (BLOCKED_ON_EXTERNAL, "upstream release"),
+        (BLOCKED_ON_AGENT, BOB),
+    ] {
+        let e = Env::new();
+        let room = vec![idle(ALICE, 5), idle(CAROL, 10), idle(DAVE, 30)];
+        let (t, n) = post(&e, &format!("waits on {kind}"), &room);
+        assert_eq!(n.to, [CAROL], "{kind}: handed out before it was blocked");
+        e.c.block(
+            ALICE,
+            &t.id,
+            &format!("waits on {reference}"),
+            Some(BlockedBy {
+                kind: kind.into(),
+                reference: reference.into(),
+            }),
+        )
+        .unwrap();
+        assert!(
+            !e.c.stale_offer(&format!("task:{}", t.id), CAROL).is_empty(),
+            "{kind}: CAROL's hand-out should go stale once the card waits"
+        );
+        let ended = vec![idle(ALICE, 5), turn_ended(CAROL), idle(DAVE, 30)];
+        for _ in 0..3 {
+            let ns = e.c.sweep_asks(&ended).unwrap();
+            assert!(ns.iter().all(|n| n.kind != NOTICE_OFFER), "{kind}: {ns:?}");
+            e.c.sweep_notices().unwrap();
+        }
+        e.clk.add(mins(5));
+        e.c.unblock(ALICE, &t.id, "it's in").unwrap();
+        let ns = e.c.sweep_asks(&ended).unwrap();
+        let offers: Vec<_> = ns.iter().filter(|n| n.kind == NOTICE_OFFER).collect();
+        assert!(
+            offers.len() == 1 && offers[0].to == [DAVE],
+            "{kind}: {ns:?}"
+        );
+        let o = offer_of(&e.c, &t.id);
+        assert!(
+            o.to == DAVE && o.heard == [DAVE],
+            "{kind}: a fresh hand-out: {o:?}"
+        );
+        assert!(
+            e.c.sweep_asks(&ended)
+                .unwrap()
+                .iter()
+                .all(|n| n.kind != NOTICE_OFFER),
+            "{kind}"
+        );
+    }
+}

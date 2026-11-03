@@ -281,3 +281,34 @@ fn one_ask_per_agent_and_same_repo_only() {
         .unwrap();
     assert_eq!(ask_of(&e.c, &t3.id).taker, CAROL);
 }
+
+/// Card #423: an ask can't wait on other work, so hand-out never has one
+/// blocked on a task to skip: blocking an open ask is refused (it becomes
+/// a card first, and a card waiting on a task isn't handed out, #397).
+#[test]
+fn an_open_ask_cannot_be_blocked_on_a_task() {
+    let e = Env::new();
+    let first =
+        e.c.create_task(
+            CAROL,
+            NewTask {
+                title: "Fix the runner".into(),
+                objective: "CI needs it".into(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    let (tk, _) = post(&e, "Why is CI red?", &three());
+    want_err(
+        e.c.block(
+            ALICE,
+            &tk.id,
+            "waits on the runner fix",
+            Some(BlockedBy {
+                kind: BLOCKED_ON_TASK.into(),
+                reference: first.id.clone(),
+            }),
+        ),
+        ErrorKind::NotAllowed,
+    );
+}
