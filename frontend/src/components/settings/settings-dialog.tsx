@@ -3,6 +3,7 @@ import {
   BellIcon,
   InfoIcon,
   LaptopIcon,
+  PaletteIcon,
   Trash2Icon,
   UsersIcon,
   type LucideIcon,
@@ -11,6 +12,7 @@ import {
 import { InvitePanel, JoinInvite } from "@/components/boards/parts"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { DevicesPanel } from "@/components/settings/devices-panel"
+import { AppearancePane } from "@/components/settings/appearance-pane"
 import { MaintenancePane } from "@/components/settings/maintenance-pane"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,7 +32,12 @@ import { UpdateStatusLine } from "@/updater"
 import { VoiceNote } from "@/components/settings/voice-note"
 
 export type SettingsSection =
-  "notifications" | "devices" | "people" | "maintenance" | "app"
+  | "notifications"
+  | "appearance"
+  | "devices"
+  | "people"
+  | "maintenance"
+  | "app"
 
 export const settingsSections: {
   id: SettingsSection
@@ -43,6 +50,12 @@ export const settingsSections: {
     label: "Notifications",
     icon: BellIcon,
     hint: "What Irori tells you about, and how.",
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    icon: PaletteIcon,
+    hint: "The theme, your own colours, light or dark, and the glass.",
   },
   {
     id: "devices",
@@ -130,6 +143,7 @@ export function SettingsDialog({
             <DialogDescription>{here.hint}</DialogDescription>
           </div>
           {here.id === "notifications" && <NotificationsPane open={open} />}
+          {here.id === "appearance" && <AppearancePane />}
           {here.id === "devices" && <DevicesPanel open={open} />}
           {here.id === "people" && (
             <PeoplePane onOpenBoard={() => onOpenChange(false)} />

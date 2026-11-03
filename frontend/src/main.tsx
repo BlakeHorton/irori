@@ -6,6 +6,7 @@ import App from "./App.tsx"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { commands } from "./gen/bindings"
 import { inHost } from "./lib/irori"
+import { applyAppearance, clean, loadAppearance } from "./lib/appearance"
 import { previewFlag } from "./lib/preview"
 
 // Card #232: index.html shows the opening screen while the Core starts on
@@ -35,16 +36,23 @@ async function mount() {
     )
     return
   }
-  // Card #266: dark is the app's default (index.html class="dark"); the
-  // browser preview shows the light hearth palette with ?mode=light.
-  if (previewFlag("mode") === "light") {
-    document.documentElement.classList.remove("dark")
-    document.documentElement.style.colorScheme = "light"
-  }
+  // Card #275: index.html applied the saved appearance before the first
+  // paint; apply it again from this build's code (a custom theme's CSS is
+  // made afresh). The browser preview can try one without saving it:
+  // ?theme=<id>, ?mode=light|dark|system, ?glass=<style>.
+  const saved = loadAppearance()
+  applyAppearance(
+    clean({
+      ...saved,
+      theme: previewFlag("theme") ?? saved.theme,
+      mode: (previewFlag("mode") as typeof saved.mode | null) ?? saved.mode,
+      glass: previewFlag("glass") ?? saved.glass,
+    })
+  )
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      {/* Dark by default: index.html carries class="dark". There is no
-          theme provider or light/dark toggle in the app yet. */}
+      {/* The look is set on <html> (lib/appearance.ts); Settings >
+          Appearance changes it. */}
       <TooltipProvider delay={300}>
         <App />
       </TooltipProvider>

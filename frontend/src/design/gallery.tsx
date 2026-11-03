@@ -55,15 +55,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { glassStyles } from "@/lib/appearance"
 
-export const GLASS_STYLES = [
-  { id: "frost", name: "Frost", note: "Even frost, soft hairline rim" },
-  { id: "clear", name: "Clear", note: "Barely frosted; the backdrop shows" },
-  { id: "milk", name: "Milk", note: "Heavy frost, almost paper" },
-  { id: "rim", name: "Rim", note: "Lit edges and a top sheen" },
-  { id: "ember", name: "Ember", note: "Glass tinted by the hearth" },
-  { id: "liquid", name: "Liquid", note: "Clear, saturated, thick bright rims" },
-] as const
+export const GLASS_STYLES = glassStyles
 
 function readParams() {
   const p = new URLSearchParams(window.location.search)

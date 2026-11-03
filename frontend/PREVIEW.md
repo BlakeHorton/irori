@@ -54,7 +54,10 @@ unchanged.
 | `/?update=ready` | the update card (`downloading`, `installing` too) |
 | `/?android&update=available` | the phone's update bar (card #270): Update downloads, checks SHA256SUMS and opens Android's install screen; `update=ready` says Install, `update=error` Try again |
 | `/?empty` | no cards yet |
-| `/?mode=light` | the light hearth palette (the app is dark by default, card #266); add it to any row above |
+| `/?theme=hearth` | a theme without saving it (`blue`, the default, `hearth`, `midnight`, `forest`, `sakura`, `mono`; card #275); add it to any row above |
+| `/?mode=light` | light (or `dark`, `system`) without saving it (dark is the default); add it to any row above |
+| `/?glass=milk` | a glass style without saving it (`frost`, the default, `clear`, `milk`, `rim`, `ember`, `liquid`) |
+| `/?settings=appearance` | Settings > Appearance: themes, your colours, light/dark/system, glass |
 | `/?from=sample-card-4` | the grid as a card's Back leaves it (that card marked and focused) |
 | `/?open=board:task:sample-ask-2` | an ask (the person's prompt to the room) an agent took: status line, Close, the thread |
 | `/?open=board:task:sample-ask-1` | an ask the agents heard and nobody has taken yet |

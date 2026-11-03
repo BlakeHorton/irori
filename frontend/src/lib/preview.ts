@@ -2,8 +2,8 @@
 // bun run dev, in a plain browser; frontend/PREVIEW.md). Like ?empty and
 // ?open=, they only exist outside the app: inside Wails they read nothing.
 //
-//   ?settings[=<s>] opens Settings at a section: notifications, devices,
-//                   people or app
+//   ?settings[=<s>] opens Settings at a section: notifications, appearance,
+//                   devices, people, maintenance or app
 //   ?devices        opens Settings at Devices and connections
 //   ?boards         opens the Boards dialog
 //   ?share=<card>   opens Share to board on that card's page
@@ -11,7 +11,10 @@
 //   ?voice=ready    shows the mic on the text boxes (also needs-model, denied)
 //   ?from=<card>    the grid as that card's Back leaves it (App.tsx)
 //   ?filter=done    the grid on that filter tab (App.tsx)
-//   ?mode=light     the light hearth palette (main.tsx; the app is dark)
+//   ?theme=<id>     a theme without saving it: blue, hearth, midnight,
+//                   forest, sakura, mono (main.tsx, lib/appearance.ts)
+//   ?mode=light     light (also dark, system) without saving it
+//   ?glass=<style>  a glass style without saving it (frost, clear, ...)
 
 import { inWails } from "./irori"
 

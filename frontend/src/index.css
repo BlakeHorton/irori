@@ -2,9 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "./mokei/preset.css";
-/* Irori's own design system (#266): the hearth palette and Frost glass.
-   One token source: design/irori-ds.css (index.html sets data-ds/data-glass). */
+/* Irori's own design system (#266) with themes (#275): design/irori-ds.css
+   for structure and glass, design/themes.css for each theme's colours.
+   index.html sets data-ds/data-theme/data-glass before the first paint. */
 @import "./design/irori-ds.css";
+/* The themes' colours (#275), generated: bun scripts/gen-themes.ts. */
+@import "./design/themes.css";
 
 @custom-variant dark (&:is(.dark *));
 

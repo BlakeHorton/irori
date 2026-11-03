@@ -4,46 +4,32 @@
  * class="dark"; the preview gallery (?gallery) switches the glass styles
  * and light/dark to compare them.
  *
- * Palette "hearth": warm ash and charcoal neutrals (hue ~50-70), one ember
- * accent. Glass styles live under data-glass; each sets the same five knobs
- * (tint alpha, blur, saturation, rim, shadow) plus an optional sheen.
+ * The colours come from the theme (data-theme, card #275): design/themes.css,
+ * generated from src/lib/appearance.ts, and a custom theme's <style> from
+ * the same code. This file keeps what themes share: the status hues, the
+ * glass styles under data-glass (each sets the same five knobs: tint alpha,
+ * blur, saturation, rim, shadow, plus an optional sheen) and where glass
+ * applies.
  */
 
 html[data-ds="irori"] {
   color-scheme: light;
   --radius: 0.875rem;
 
-  --background: oklch(0.955 0.008 70);
-  --foreground: oklch(0.22 0.012 50);
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
-  --primary: oklch(0.56 0.17 38);
-  --primary-foreground: oklch(0.99 0.005 70);
-  --secondary: oklch(0.22 0.012 50 / 0.06);
   --secondary-foreground: var(--foreground);
-  --muted-surface: oklch(0.22 0.012 50 / 0.06);
-  --muted: oklch(0.22 0.012 50 / 0.06);
-  --muted-foreground: oklch(0.46 0.016 55);
-  --accent: oklch(0.56 0.17 38 / 0.1);
-  --accent-foreground: oklch(0.42 0.14 38);
   --destructive: oklch(0.55 0.2 27);
   --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.22 0.012 50 / 0.12);
-  --input: oklch(0.22 0.012 50 / 0.16);
-  --ring: oklch(0.56 0.17 38);
   --success: oklch(0.5 0.13 150);
   --success-foreground: oklch(0.5 0.13 150 / 0.13);
   --warning: oklch(0.52 0.12 70);
   --warning-foreground: oklch(0.75 0.15 75 / 0.22);
-  --info: oklch(0.5 0.13 250);
-  --info-foreground: oklch(0.5 0.13 250 / 0.12);
-  --chart-1: oklch(0.56 0.17 38);
   --chart-2: oklch(0.6 0.12 180);
   --chart-3: oklch(0.72 0.14 80);
   --chart-4: oklch(0.5 0.12 300);
   --chart-5: oklch(0.55 0.02 60);
 
-  --glass-tint: oklch(0.995 0.004 70);
   --glass-alpha: 62%;
   --glass-blur: 24px;
   --glass-saturate: 1.4;
@@ -65,13 +51,10 @@ html[data-ds="irori"] {
 
   /* Irori's own names (were Toru's), onto the hearth ramp */
   --ink: var(--foreground);
-  --ink-2: oklch(0.36 0.014 52);
   --hair: var(--border);
   --blue: var(--primary);
-  --blue-deep: oklch(0.5 0.17 36);
-  /* The person's face: violet, clear of the ember accent and the status hues */
-  --person: oklch(0.5 0.15 300);
-  --person-surface: oklch(0.5 0.15 300 / 0.12);
+  /* The person's face (--person, --person-surface) comes from the theme:
+     violet, unless the accent is near it. */
 
   --topbar-bg: var(--glass-bg);
   --topbar-border: var(--glass-border);
@@ -85,56 +68,26 @@ html[data-ds="irori"] {
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 
-  /* The backdrop the glass shows: warm light from the hearth, smoke, and a
-     cool ember-blue in the far corner. Fixed, so it stays put on scroll. */
-  --backdrop:
-    radial-gradient(56rem 44rem at 8% -12%, oklch(0.8 0.12 55 / 0.55), transparent 62%),
-    radial-gradient(44rem 40rem at 100% 30%, oklch(0.78 0.09 340 / 0.35), transparent 60%),
-    radial-gradient(50rem 42rem at 40% 118%, oklch(0.8 0.07 195 / 0.35), transparent 62%);
+  /* --backdrop, the light the glass shows, comes from the theme. */
 }
 
 html[data-ds="irori"].dark {
   color-scheme: dark;
-  --background: oklch(0.17 0.012 45);
-  --foreground: oklch(0.96 0.006 70);
-  --primary: oklch(0.75 0.15 52);
-  --primary-foreground: oklch(0.2 0.03 40);
-  --secondary: oklch(1 0 0 / 0.07);
-  --muted-surface: oklch(1 0 0 / 0.07);
-  --muted: oklch(1 0 0 / 0.07);
-  --muted-foreground: oklch(0.76 0.014 60);
-  --accent: oklch(0.75 0.15 52 / 0.14);
-  --accent-foreground: oklch(0.84 0.12 60);
   --destructive: oklch(0.68 0.19 27);
-  --border: oklch(1 0 0 / 0.11);
-  --input: oklch(1 0 0 / 0.14);
-  --ring: oklch(0.75 0.15 52);
   --success: oklch(0.78 0.14 150);
   --success-foreground: oklch(0.78 0.14 150 / 0.15);
   --warning: oklch(0.84 0.13 80);
   --warning-foreground: oklch(0.84 0.13 80 / 0.15);
-  --info: oklch(0.76 0.12 250);
-  --info-foreground: oklch(0.76 0.12 250 / 0.15);
-  --chart-1: oklch(0.75 0.15 52);
 
-  --glass-tint: oklch(0.23 0.014 48);
   --glass-border: oklch(1 0 0 / 0.12);
   --glass-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 16px 40px oklch(0 0 0 / 0.42);
 
-  --ink-2: oklch(0.86 0.01 65);
-  --blue-deep: oklch(0.68 0.16 48);
-  --person: oklch(0.76 0.12 300);
-  --person-surface: oklch(0.76 0.12 300 / 0.16);
   --topbar-shadow: 0 8px 30px oklch(0 0 0 / 0.35);
   --chart-2: oklch(0.74 0.11 180);
   --chart-3: oklch(0.84 0.13 80);
   --chart-4: oklch(0.72 0.12 300);
   --chart-5: oklch(0.7 0.02 60);
 
-  --backdrop:
-    radial-gradient(56rem 44rem at 8% -12%, oklch(0.5 0.14 45 / 0.4), transparent 62%),
-    radial-gradient(44rem 40rem at 100% 30%, oklch(0.42 0.12 330 / 0.28), transparent 60%),
-    radial-gradient(50rem 42rem at 40% 118%, oklch(0.44 0.08 195 / 0.3), transparent 62%);
 }
 
 /* ---- the glass styles -------------------------------------------------- */
@@ -189,11 +142,10 @@ html[data-ds="irori"].dark[data-glass="rim"] {
 
 /* Ember: glass tinted with the accent, like light from the hearth. */
 html[data-ds="irori"][data-glass="ember"] {
-  --glass-tint: oklch(0.97 0.035 60);
+  --glass-tint: var(--glass-ember-tint);
   --glass-alpha: 64%;
 }
 html[data-ds="irori"].dark[data-glass="ember"] {
-  --glass-tint: oklch(0.27 0.06 42);
   --glass-alpha: 60%;
 }
 
