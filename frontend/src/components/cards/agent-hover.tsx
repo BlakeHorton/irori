@@ -28,7 +28,7 @@ import { errorText, talk } from "@/lib/talk"
 export const AgentCards = createContext<{
   cards: CardSummary[]
   onOpen: (id: string) => void
-  threads?: readonly { id: string; short: string; title: string }[]
+  threads?: readonly { id: string; short: string; title: string; state?: string }[]
   onOpenThread?: (id: string) => void
 } | null>(null)
 

@@ -461,7 +461,10 @@ export type RefHit = { kind: "card" | "thread"; id: string; title: string } | nu
 
 // localRef resolves r against the live cards, then the threads (own board,
 // so only an untagged ref). More than one live card leaves it to the
-// lookup, which says ambiguous (and the ref stays text).
+// lookup, which says ambiguous (and the ref stays text). A bare ref whose
+// only live card is on a shared board goes to the lookup too (card #343):
+// the backend reads "#4" across every board, done cards included, so a
+// done #4 of your own and a live mlg#4 is ambiguous, not mlg#4.
 export function localRef(
   r: CardRef,
   cards: readonly { id: string; short: string; title: string; tag?: string }[],
@@ -470,8 +473,9 @@ export function localRef(
   const c = cards.filter(
     (x) => x.short === r.n && (r.tag === null || (x.tag ?? "") === r.tag)
   )
-  if (c.length === 1) return { kind: "card", id: c[0].id, title: c[0].title }
-  if (c.length > 1 || r.tag !== null) return null
+  if (c.length === 1 && (r.tag !== null || !c[0].tag))
+    return { kind: "card", id: c[0].id, title: c[0].title }
+  if (c.length > 0 || r.tag !== null) return null
   const t = threads.filter((x) => x.short === r.n)
   if (t.length === 1) return { kind: "thread", id: t[0].id, title: t[0].title }
   return null
@@ -507,10 +511,10 @@ export type CardCandidate = { id: string; ref: string; short: string; title: str
 // filterCards are the # picker's rows for query: a number matches the
 // cards whose number starts with it, words match titles. Number matches
 // first, then title starts, then the rest in the list's order.
-export function filterCards(
-  cards: readonly CardCandidate[],
+export function filterCards<C extends CardCandidate>(
+  cards: readonly C[],
   query: string
-): CardCandidate[] {
+): C[] {
   const q = bare(query).toLowerCase().trim()
   if (!q) return cards.slice(0, MaxRows)
   const rank = (c: CardCandidate) =>

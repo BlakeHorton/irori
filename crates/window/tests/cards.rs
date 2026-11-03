@@ -956,6 +956,47 @@ fn card_ref_finds_done_cards_and_threads() {
     assert!(r.w.card_ref("not a ref").is_none());
 }
 
+/// Card #343: a ref's chip shows the card's state live: working, then
+/// blocked on the person, then done, with its steps' progress.
+#[test]
+fn card_ref_carries_state_blocked_and_steps() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let t = held_task(&r);
+    co.set_steps(
+        &r.key_a,
+        &t.id,
+        vec![
+            coord::Step {
+                text: "one".into(),
+                done: true,
+                ..Default::default()
+            },
+            coord::Step {
+                text: "two".into(),
+                ..Default::default()
+            },
+        ],
+    )
+    .unwrap();
+    let at = format!("#{}", t.short);
+    let got = r.w.card_ref(&at).unwrap();
+    assert_eq!(
+        (
+            got.state.as_str(),
+            got.blocked,
+            got.progress.done,
+            got.progress.total
+        ),
+        ("working", false, 1, 2)
+    );
+    co.block(&r.key_a, &t.id, "Which DB?", None).unwrap();
+    assert!(r.w.card_ref(&at).unwrap().blocked, "blocked on the person");
+    r.w.close_card(&t.id, "completed", "").unwrap();
+    let got = r.w.card_ref(&at).unwrap();
+    assert_eq!((got.state.as_str(), got.done), ("completed", true));
+}
+
 /// Card #158: a blocker on another card waits by itself: it is a wait
 /// ("Waiting on #N"), not a question for the person, and the tray leaves
 /// it out; a question for the person still counts.

@@ -6,10 +6,13 @@ import { Face } from "@/components/cards/faces"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   cards,
+  cardStatus,
   deviceVar,
   LinkKind,
+  refStatus,
   type CardMention,
   type Link,
+  type RefStatus,
 } from "@/lib/cards"
 import { copyText } from "@/lib/clipboard"
 import { plainLine } from "@/lib/irori"
@@ -127,9 +130,10 @@ function Pieces({
 }
 
 // CardRefs is text with each card ref ("#12", "mlg#12", card #114) made a
-// link: a live card or a thread the window holds at once, a done card or
-// an old thread once the backend has looked it up (card #144). A ref
-// nothing has, or text outside the app's context, stays text.
+// chip (card #343): a live card or a thread the window holds at once, a
+// done card or an old thread once the backend has looked it up (card
+// #144). Each shows its state and moves with the card. A ref nothing
+// has, or text outside the app's context, stays text.
 function CardRefs({ text, interactive }: { text: string; interactive: boolean }) {
   const ctx = useContext(AgentCards)
   if (!ctx || !text.includes("#")) return text
@@ -141,39 +145,58 @@ function CardRefs({ text, interactive }: { text: string; interactive: boolean })
     out.push(text.slice(last, r.start))
     const label = text.slice(r.start, r.end)
     const hit = localRef(r, ctx.cards, ctx.threads ?? [])
-    out.push(
-      hit ? (
-        <RefLink
+    if (hit?.kind === "card") {
+      const c = ctx.cards.find((x) => x.id === hit.id)
+      out.push(
+        <RefChip
           key={r.start}
           label={label}
           title={hit.title}
+          status={c ? cardStatus(c) : null}
           interactive={interactive}
-          onOpen={() =>
-            hit.kind === "thread" && ctx.onOpenThread
-              ? ctx.onOpenThread(hit.id)
-              : ctx.onOpen(hit.id)
-          }
+          onOpen={() => ctx.onOpen(hit.id)}
         />
-      ) : (
+      )
+    } else if (hit) {
+      const t = ctx.threads?.find((x) => x.id === hit.id)
+      out.push(
+        <RefChip
+          key={r.start}
+          label={label}
+          title={hit.title}
+          status={refStatus({
+            thread: true,
+            done: t?.state === "resolved",
+            state: "",
+            blocked: false,
+          })}
+          interactive={interactive}
+          onOpen={() => (ctx.onOpenThread ? ctx.onOpenThread(hit.id) : ctx.onOpen(hit.id))}
+        />
+      )
+    } else {
+      out.push(
         <LookedUpRef key={r.start} r={refText(r)} label={label} interactive={interactive} />
       )
-    )
+    }
     last = r.end
   }
   out.push(text.slice(last))
   return <>{out}</>
 }
 
-// LookedUpRef is a ref the window doesn't hold: a done card or a thread
-// past the panel's list. Text until (and unless) the backend finds it.
+// LookedUpRef is a ref the window doesn't hold: a done card, a card on
+// a board it isn't showing, or a thread past the panel's list. Text until
+// (and unless) the backend finds it; fresh on every board change.
 function LookedUpRef({ r, label, interactive }: { r: string; label: string; interactive: boolean }) {
   const ctx = useContext(AgentCards)
   const t = useCardRef(r)
   if (!ctx || !t) return label
   return (
-    <RefLink
+    <RefChip
       label={label}
-      title={t.done ? `${t.title} (${t.thread ? "resolved" : "done"})` : t.title}
+      title={t.title}
+      status={refStatus(t)}
       interactive={interactive}
       onOpen={() =>
         t.thread && ctx.onOpenThread ? ctx.onOpenThread(t.id) : ctx.onOpen(t.id)
@@ -182,34 +205,90 @@ function LookedUpRef({ r, label, interactive }: { r: string; label: string; inte
   )
 }
 
-function RefLink({
+const dotTone: Record<RefStatus["tone"], string> = {
+  info: "bg-info",
+  destructive: "bg-destructive",
+  success: "bg-success",
+  warning: "bg-warning",
+  slate: "bg-muted-foreground",
+}
+
+const closedTone = new Set(["Done", "Failed", "Canceled", "Resolved"])
+
+// RefDot is a card's state as a dot in its status colour (card #343).
+export function RefDot({ status, className }: { status: RefStatus; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("inline-block size-1.5 shrink-0 rounded-full", dotTone[status.tone], className)}
+    />
+  )
+}
+
+// RefChip is a card ref in text (card #343): the ref, a dot in the card's
+// status colour, its title cut short and its steps, so a thread reads
+// what each #12 is and how far along without opening it. The whole
+// title, the state and the steps are in its tooltip. It sits in the line
+// as a word does (inline-flex, baseline), and inside a button
+// (interactive false) it only looks the part.
+function RefChip({
   label,
   title,
+  status,
   interactive,
   onOpen,
 }: {
   label: string
   title: string
+  status: RefStatus | null
   interactive: boolean
   onOpen: () => void
 }) {
+  const name = plainLine(title)
+  const steps = status?.progress ? `${status.progress.done}/${status.progress.total}` : ""
+  const tip = [name, status?.label, steps && `${steps} steps`].filter(Boolean).join(" · ")
+  const body = (
+    <>
+      {status && <RefDot status={status} className="self-center" />}
+      <span className="shrink-0 font-medium text-primary">{label}</span>
+      {name && (
+        <span
+          className={cn(
+            "max-w-[22ch] min-w-0 truncate",
+            // A closed card's title steps back, so done reads at a glance
+            // beside the dot, not by colour alone.
+            status && closedTone.has(status.label) ? "text-muted-foreground" : "text-ink/85"
+          )}
+        >
+          {name}
+        </span>
+      )}
+      {steps && (
+        <span className="shrink-0 text-[0.85em] text-muted-foreground tabular-nums">{steps}</span>
+      )}
+    </>
+  )
+  const chip =
+    "inline-flex max-w-full items-baseline gap-1 rounded-sm bg-primary/10 px-1 align-baseline leading-tight"
   if (!interactive)
     return (
-      <span className="font-medium text-primary" title={plainLine(title)}>
-        {label}
+      <span className={chip} title={tip} data-ref-state={status?.label}>
+        {body}
       </span>
     )
   return (
     <button
       type="button"
-      className="rounded-sm bg-primary/10 px-0.5 font-medium text-primary hover:underline"
-      title={plainLine(title)}
+      className={cn(chip, "cursor-pointer hover:bg-primary/20")}
+      title={tip}
+      aria-label={`${label} ${tip}`}
+      data-ref-state={status?.label}
       onClick={(e) => {
         e.stopPropagation()
         onOpen()
       }}
     >
-      {label}
+      {body}
     </button>
   )
 }

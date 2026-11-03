@@ -1187,6 +1187,23 @@ export type RefTarget = {
 	thread: boolean,
 	/**  Done, failed or canceled (a thread: resolved). */
 	done: boolean,
+	/**
+	 *  The card's state as its page shows it (card #343): the ref's chip
+	 *  takes its dot from it. A thread's is its task's, so read done.
+	 */
+	state: string,
+	/**
+	 *  Open blockers that wait on the person (or input required): the
+	 *  chip says blocked, as the card's red pill does.
+	 */
+	blocked: boolean,
+	/**
+	 *  An agent says it's done and only your Done waits (card #112): the
+	 *  chip says Ready, as the card's green pill does.
+	 */
+	ready: boolean,
+	/**  Done steps over all (a parent's, its subtasks' rollup). */
+	progress: CardProgress,
 };
 
 /**  The advanced relay line (D4: no iroh meaning, always "none"). */

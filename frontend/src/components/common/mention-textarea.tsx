@@ -16,7 +16,8 @@ import { MicButton } from "@/components/common/mic-button"
 import { Face } from "@/components/cards/faces"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import { deviceVar, useMentionCandidates } from "@/lib/cards"
+import { RefDot } from "@/components/common/rich-text"
+import { cardStatus, deviceVar, useMentionCandidates, type RefStatus } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 import {
   addMention,
@@ -101,7 +102,7 @@ export function MentionTextarea({
 
   // The # picker (card #114): the window's live cards. An "@" token wins.
   const ctx = useContext(AgentCards)
-  const cardCands = useMemo<CardCandidate[]>(
+  const cardCands = useMemo<(CardCandidate & { status: RefStatus })[]>(
     () =>
       (ctx?.cards ?? [])
         .filter((c) => c.short)
@@ -110,6 +111,8 @@ export function MentionTextarea({
           short: c.short,
           ref: `${c.tag ?? ""}#${c.short}`,
           title: plainLine(c.title),
+          // Its state as the chip it becomes shows it (card #343).
+          status: cardStatus(c),
         })),
     [ctx?.cards]
   )
@@ -377,8 +380,14 @@ export function MentionTextarea({
                     i !== shown && "hover:bg-muted/40"
                   )}
                 >
+                  <RefDot status={c.status} />
                   <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.ref}</span>
                   <span className="min-w-0 truncate text-ink">{c.title}</span>
+                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                    {c.status.label}
+                    {c.status.progress &&
+                      ` · ${c.status.progress.done}/${c.status.progress.total}`}
+                  </span>
                 </div>
               ))
             )}

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { AgentRef, CardAsk } from "./models"
 import { TaskState } from "./models"
-import { askLine, busy, namesLine, withLive, workingNow, sampleCardRef, cardFromHash, cardHash, openTarget, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
+import { refStatus, askLine, busy, namesLine, withLive, workingNow, sampleCardRef, cardFromHash, cardHash, openTarget, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
 
 const agent = (status: string, more: Partial<AgentRef> = {}) =>
   AgentRef({ key: "d/s", name: "a", status, live: status !== "gone", where: "This PC", ...more })
@@ -208,5 +208,37 @@ describe("openTarget", () => {
     expect(openTarget("msg:x")).toBeNull()
     expect(openTarget("task:")).toBeNull()
     expect(openTarget("")).toBeNull()
+  })
+})
+
+// Card #343: a #ref's chip says what its card's page pill would.
+describe("refStatus", () => {
+  const c = (state: string, blocked = false, more = {}) =>
+    refStatus({ thread: false, done: false, state, blocked, ...more })
+  test("each state reads as its word and colour", () => {
+    expect(c(TaskState.Submitted)).toMatchObject({ label: "Open", tone: "slate" })
+    expect(c(TaskState.Working)).toMatchObject({ label: "Working", tone: "info" })
+    expect(c(TaskState.Working, false, { working: false }).label).toBe("Open")
+    expect(c(TaskState.Working, true)).toMatchObject({ label: "Blocked", tone: "destructive" })
+    expect(c(TaskState.InputRequired).label).toBe("Blocked")
+    expect(c(TaskState.InReview)).toMatchObject({ label: "In review", tone: "warning" })
+    expect(c(TaskState.Completed)).toMatchObject({ label: "Done", tone: "success" })
+    expect(c(TaskState.Failed).label).toBe("Failed")
+    expect(c(TaskState.Canceled).label).toBe("Canceled")
+  })
+  test("done but for your word reads Ready, not blocked (card #112)", () => {
+    expect(c(TaskState.Working, false, { ready: true })).toMatchObject({ label: "Ready", tone: "success" })
+  })
+  test("done wins over a blocker left open", () => {
+    expect(c(TaskState.Completed, true).label).toBe("Done")
+  })
+  test("steps only when it has some", () => {
+    expect(c(TaskState.Working, false, { progress: { done: 2, total: 5 } }).progress).toEqual({ done: 2, total: 5 })
+    expect(c(TaskState.Working, false, { progress: { done: 0, total: 0 } }).progress).toBeNull()
+  })
+  test("a thread is open or resolved", () => {
+    const t = (done: boolean) => refStatus({ thread: true, done, state: "working", blocked: false })
+    expect(t(false).label).toBe("Open thread")
+    expect(t(true).label).toBe("Resolved")
   })
 })

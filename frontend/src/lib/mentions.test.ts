@@ -411,6 +411,9 @@ describe("localRef (card #144)", () => {
     expect(localRef(ref("#7"), cards, threads)).toBeNull()
     expect(localRef(ref("#99"), cards, threads)).toBeNull()
   })
+  test("a bare ref only a shared board's live card has: left to the lookup (card #343)", () => {
+    expect(localRef(ref("#1"), cards, threads)).toBeNull()
+  })
   test("refText is what the backend reads", () => {
     expect(refText(ref("in #136"))).toBe("#136")
     expect(refText(ref("mlg#12"))).toBe("mlg#12")

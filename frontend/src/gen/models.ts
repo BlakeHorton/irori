@@ -413,7 +413,7 @@ export function PolicyInput(p: Partial<B.PolicyInput> = {}): B.PolicyInput {
 
 /** RefTarget with Go's zero values for every field left out. */
 export function RefTarget(p: Partial<B.RefTarget> = {}): B.RefTarget {
-  return { "id": "", "short": "", "title": "", "thread": false, "done": false, ...p } as B.RefTarget
+  return { "id": "", "short": "", "title": "", "thread": false, "done": false, "state": "", "blocked": false, "ready": false, "progress": CardProgress(), ...p } as B.RefTarget
 }
 
 /** RelayView with Go's zero values for every field left out. */

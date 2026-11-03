@@ -473,20 +473,54 @@ export function sampleCardRef(r: string): RefTarget | null {
       : c.state === TaskState.Completed ||
         c.state === TaskState.Failed ||
         c.state === TaskState.Canceled,
+    state: c.state,
+    blocked:
+      (c.openBlockers > 0 && !(c.ready && c.openBlockers === 1)) ||
+      c.state === TaskState.InputRequired,
+    ready: !!c.ready && c.openBlockers === 1,
+    progress: c.progress,
   }
 }
 
-// refCache keeps each looked-up ref for a while, so a long thread full of
-// "#12" asks once; a card made or deleted since shows within a minute.
+// refCache keeps each looked-up ref until the board changes, so a long
+// thread full of "#12" asks once per change; a minute at most, as a net.
 const refCache = new Map<string, { at: number; v: Promise<RefTarget | null> }>()
 const RefTTL = 60_000
 
-// useCardRef is cardRef(r) for a component: undefined while it loads, then
-// the target or null. Off (r "") it asks nothing.
+// refGen counts board changes while some chip watches (card #343): each
+// one drops the cache, and every useCardRef asks again, so a looked-up
+// card's chip moves with the card, no reload. One subscription for all.
+let refGen = 0
+const refWatchers = new Set<() => void>()
+let refOff: (() => void) | null = null
+function watchRefs(fn: () => void): () => void {
+  refWatchers.add(fn)
+  refOff ??= subscribe(() => {
+    refCache.clear()
+    refGen++
+    for (const w of refWatchers) w()
+  })
+  return () => {
+    refWatchers.delete(fn)
+    if (!refWatchers.size && refOff) {
+      refOff()
+      refOff = null
+    }
+  }
+}
+
+// useCardRef is cardRef(r) for a component: undefined while it first
+// loads, then the target or null, fresh on every board change (the last
+// answer stays while the next loads). Off (r "") it asks nothing.
 export function useCardRef(r: string): RefTarget | null | undefined {
   const [got, setGot] = useState<{ r: string; v: RefTarget | null } | null>(
     null
   )
+  const [gen, setGen] = useState(refGen)
+  useEffect(() => {
+    if (!r) return
+    return watchRefs(() => setGen(refGen))
+  }, [r])
   useEffect(() => {
     if (!r) return
     let live = true
@@ -499,8 +533,60 @@ export function useCardRef(r: string): RefTarget | null | undefined {
     return () => {
       live = false
     }
-  }, [r])
+  }, [r, gen])
   return got && got.r === r ? got.v : undefined
+}
+
+// RefStatus is what a #ref's chip says of its card (card #343): a word
+// and a dot in the card's status colour, and its steps when it has any.
+export type RefTone = "info" | "destructive" | "success" | "warning" | "slate"
+export type RefStatus = {
+  label: string
+  tone: RefTone
+  progress: { done: number; total: number } | null
+}
+
+// refStatus reads a card (live or looked up) or a thread as its chip:
+// a thread open or resolved; a card blocked on the person, in review,
+// done, failed, canceled, working or open, as its page's pill would.
+export function refStatus(x: {
+  thread: boolean
+  done: boolean
+  state: string
+  blocked: boolean
+  ready?: boolean
+  working?: boolean
+  progress?: { done: number; total: number }
+}): RefStatus {
+  const progress =
+    !x.thread && x.progress && x.progress.total > 0 ? x.progress : null
+  const s = (label: string, tone: RefTone): RefStatus => ({ label, tone, progress })
+  if (x.thread) return x.done ? s("Resolved", "slate") : s("Open thread", "info")
+  if (x.state === TaskState.Completed) return s("Done", "success")
+  if (x.state === TaskState.Failed) return s("Failed", "warning")
+  if (x.state === TaskState.Canceled) return s("Canceled", "slate")
+  // Done but for your word (card #112): green, as its pill.
+  if (x.ready) return s("Ready", "success")
+  if (x.blocked || x.state === TaskState.InputRequired || x.state === TaskState.Blocked)
+    return s("Blocked", "destructive")
+  if (x.state === TaskState.InReview) return s("In review", "warning")
+  if (x.state === TaskState.Working && x.working !== false) return s("Working", "info")
+  return s("Open", "slate")
+}
+
+// cardStatus is refStatus for a card the window holds.
+export function cardStatus(c: CardSummary): RefStatus {
+  return refStatus({
+    thread: false,
+    done: over(c),
+    state: c.state,
+    blocked:
+      (c.openBlockers > 0 && !(c.ready && c.openBlockers === 1)) ||
+      c.state === TaskState.InputRequired,
+    ready: !!c.ready && c.openBlockers === 1,
+    working: c.working.length > 0,
+    progress: c.progress,
+  })
 }
 
 // useThreads is the Threads panel's rows, fresh on every card change.

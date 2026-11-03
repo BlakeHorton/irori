@@ -78,6 +78,17 @@ pub struct RefTarget {
     pub thread: bool,
     /// Done, failed or canceled (a thread: resolved).
     pub done: bool,
+    /// The card's state as its page shows it (card #343): the ref's chip
+    /// takes its dot from it. A thread's is its task's, so read done.
+    pub state: String,
+    /// Open blockers that wait on the person (or input required): the
+    /// chip says blocked, as the card's red pill does.
+    pub blocked: bool,
+    /// An agent says it's done and only your Done waits (card #112): the
+    /// chip says Ready, as the card's green pill does.
+    pub ready: bool,
+    /// Done steps over all (a parent's, its subtasks' rollup).
+    pub progress: crate::cards::CardProgress,
 }
 
 /// A card made or changed from a thread, as its chip shows it.
@@ -97,6 +108,7 @@ impl Window {
     pub fn card_ref(&self, r: &str) -> Option<RefTarget> {
         let id = self.core.task_ref(crate::trim(r)).ok()?;
         let t = self.read(&id).get_task(&id)?;
+        let s = crate::cards::card_summary(&t, &self.people());
         Some(RefTarget {
             id: t.id.clone(),
             short: t.short.clone(),
@@ -104,6 +116,10 @@ impl Window {
             thread: is_thread(&t),
             done: coord::is_terminal(&t.state)
                 || (is_thread(&t) && t.ask.as_ref().is_some_and(|a| a.outcome.is_some())),
+            state: s.state,
+            blocked: s.open_blockers > 0 && !(s.ready && s.open_blockers == 1),
+            ready: s.ready && s.open_blockers == 1,
+            progress: s.progress,
         })
     }
 
