@@ -813,6 +813,18 @@ pub async fn devices_set_device_color(w: W<'_>, device_id: String, color: String
 
 #[tauri::command]
 #[specta::specta]
+pub async fn devices_person_color(w: W<'_>) -> R<String> {
+    Ok(w.person_color())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_set_person_color(w: W<'_>, color: String) -> R<()> {
+    w.set_person_color(&color)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn devices_rename_device(w: W<'_>, device_id: String, name: String) -> R<String> {
     w.rename_device(&device_id, &name)
 }
@@ -1164,6 +1176,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             devices_devices,
             devices_colors,
             devices_set_device_color,
+            devices_person_color,
+            devices_set_person_color,
             devices_rename_device,
             devices_add_device,
             devices_join_with_code,

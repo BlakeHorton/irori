@@ -161,6 +161,9 @@ pub struct BoardAgent {
     pub person_id: String,
     /// The member's name on the board, "" when unknown.
     pub person: String,
+    /// The member's own colour pick on their member.profile, "" for none
+    /// (card #385); the window places it beside the viewer's devices.
+    pub person_color: String,
 }
 
 /// Another person on a shared board ([`super::Core::board_people`]).
@@ -171,6 +174,9 @@ pub struct BoardMember {
     /// Their member.profile name, "" when unknown.
     pub name: String,
     pub board_id: String,
+    /// Their own colour pick on their member.profile, "" for none (card
+    /// #385).
+    pub color: String,
 }
 
 /// A folded `agent.card` row.
@@ -1824,12 +1830,15 @@ impl Services {
             )?;
             b.store.append("irori", kinds::MEMBER_DEVICE_ADDED, &add)?;
         }
-        // None yet, or the person renamed themself (card #183): the board
-        // shows the newest name.
+        // None yet, or the person renamed themself (card #183) or picked
+        // a colour (card #385): the board shows the newest of both.
+        let color = self.person_color.chosen();
         if v.profile(&me.id)
             .is_none_or(|n| n != self.ident.current().name)
+            || v.profile_color(&me.id) != color
         {
-            let prof = self.ident.member_profile_row(epoch)?;
+            let mut prof = self.ident.member_profile_row(epoch)?;
+            prof.color = color;
             b.store.append("irori", kinds::MEMBER_PROFILE, &prof)?;
         }
         Ok(())
@@ -2266,6 +2275,7 @@ impl super::Core {
                 let person_id = person_of.get(&a.key).cloned().unwrap_or_default();
                 out.push(BoardAgent {
                     person: people.get(&person_id).cloned().unwrap_or_default(),
+                    person_color: b.verifier.profile_color(&person_id),
                     key: a.key,
                     name: a.name,
                     status: a.status,
@@ -2298,6 +2308,7 @@ impl super::Core {
                     key: format!("{PERSON_ACTOR_PREFIX}{}", p.person_id),
                     name,
                     board_id: b.id.clone(),
+                    color: b.verifier.profile_color(&p.person_id),
                 });
             }
         }

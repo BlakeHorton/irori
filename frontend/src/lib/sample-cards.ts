@@ -1280,6 +1280,8 @@ export function sampleCards(now: Date): CardDetail[] {
           status: "busy",
           live: true,
           where: "Blake's agent",
+          // Blake's colour on shared boards (card #385).
+          color: "indigo",
         }),
       ],
       owner: "sample-person-0",

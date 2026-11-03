@@ -178,6 +178,7 @@ fn note(st: &Store, m: &Member, name: &str) -> Event {
         name: name.into(),
         person_epoch: 1,
         person_sig: String::new(),
+        ..Default::default()
     };
     append(st, "irori", kinds::MEMBER_PROFILE, &p)
 }

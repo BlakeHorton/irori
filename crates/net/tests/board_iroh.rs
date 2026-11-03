@@ -286,6 +286,7 @@ impl Dev {
             name: name.into(),
             person_epoch: 1,
             person_sig: String::new(),
+            ..Default::default()
         };
         self.append("irori", kinds::MEMBER_PROFILE, &p)
     }

@@ -78,6 +78,8 @@ struct MemberFold {
     cuts: BTreeMap<String, i64>,
     claims: Vec<CutClaim>,
     name: String,
+    /// The latest counted profile's colour (card #385).
+    color: String,
     profile: bool,
 }
 
@@ -367,6 +369,7 @@ fn fold_member(
         cuts: mine,
         claims,
         name: String::new(),
+        color: String::new(),
         profile: false,
     };
     for p in &rows.profiles {
@@ -383,6 +386,7 @@ fn fold_member(
             canon_of(&b),
         ) {
             m.name = p.prof.name.clone(); // the latest counted one
+            m.color = p.prof.color.clone();
             m.profile = true;
         }
     }
@@ -960,6 +964,17 @@ impl BoardVerifier {
         let st = self.lock();
         let m = st.members.get(person_id)?;
         m.profile.then(|| m.name.clone())
+    }
+
+    /// The colour on a member's counted member.profile, "" when none
+    /// (card #385). Not checked against a palette here.
+    pub fn profile_color(&self, person_id: &str) -> String {
+        let st = self.lock();
+        st.members
+            .get(person_id)
+            .filter(|m| m.profile)
+            .map(|m| m.color.clone())
+            .unwrap_or_default()
     }
 
     /// A member's certified devices in this board, by device id.

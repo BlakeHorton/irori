@@ -867,6 +867,7 @@ impl Identity {
             name: b.name,
             person_epoch: b.person_epoch,
             person_sig: sig,
+            color: String::new(),
         })
     }
 

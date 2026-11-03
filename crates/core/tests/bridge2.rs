@@ -758,3 +758,33 @@ fn a_boards_people_show_who_is_online_and_their_agents() {
     assert!((0..60_000).contains(&ago), "seen {ago} ms ago: {bob:?}");
     assert_eq!(bob.working + bob.free, 2, "{bob:?}");
 }
+
+/// Card #385: Bob picks his colour on shared boards. His Core writes it on
+/// his member.profile, and once the board syncs Alice's Core sees it on
+/// Bob; going back to the default clears it again.
+#[test]
+fn a_persons_colour_pick_reaches_the_other_side() {
+    let t = two_people();
+    let bob = Two::person(t.b());
+    let bobs = |c: &Core| {
+        c.board_people()
+            .into_iter()
+            .find(|p| p.key == bob)
+            .map(|p| p.color)
+    };
+    assert_eq!(bobs(t.a()), Some(String::new()), "no pick yet");
+    assert!(t.b().set_person_color("mauve").is_err());
+    t.b().set_person_color("pink").unwrap();
+    wait_for(30, "bob's Core takes the pick", || {
+        t.b().person_color() == "pink"
+    });
+    wait_for(30, "alice sees bob in pink", || {
+        t.sync();
+        bobs(t.a()).as_deref() == Some("pink")
+    });
+    t.b().set_person_color("").unwrap();
+    wait_for(30, "alice sees bob's default again", || {
+        t.sync();
+        bobs(t.a()).as_deref() == Some("")
+    });
+}

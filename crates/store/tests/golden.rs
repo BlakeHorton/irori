@@ -91,7 +91,12 @@ const SINCE_GO: [&str; 10] = [
 
 /// Kinds added after the Go port that board logs refuse: the person's own
 /// rows (device names, card #184; a card's pause, card #207).
-const SINCE_GO_REFUSED: [&str; 3] = [kinds::DEVICE_NAME, kinds::TASK_ARCHIVED, kinds::TASK_PAUSED];
+const SINCE_GO_REFUSED: [&str; 4] = [
+    kinds::DEVICE_NAME,
+    kinds::TASK_ARCHIVED,
+    kinds::TASK_PAUSED,
+    kinds::PERSON_COLOR,
+];
 
 #[test]
 fn kinds_registry_matches_go() {

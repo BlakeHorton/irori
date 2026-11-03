@@ -348,6 +348,17 @@ export const devices = {
     if (inWails()) return DevicesService.SetDeviceColor(deviceId, color)
     sample.color(deviceId, color)
   },
+  // personColor is the person's own colour on shared boards (card #385),
+  // "" for the default each friend's screen picks.
+  async personColor(): Promise<string> {
+    if (inWails()) return DevicesService.PersonColor()
+    return samplePersonColor
+  },
+  // setPersonColor picks it; "" goes back to the default.
+  async setPersonColor(color: string): Promise<void> {
+    if (inWails()) return DevicesService.SetPersonColor(color)
+    samplePersonColor = color
+  },
   // rename is the person's name for a device (card #184); "" goes back to
   // the computer's name. Returns the name as kept.
   async rename(deviceId: string, name: string): Promise<string> {
@@ -355,6 +366,8 @@ export const devices = {
     return sample.rename(deviceId, name)
   },
 }
+
+let samplePersonColor = ""
 
 // MaxDeviceName mirrors coord::devname::MAX_LEN.
 export const MaxDeviceName = 40

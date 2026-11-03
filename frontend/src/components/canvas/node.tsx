@@ -99,9 +99,13 @@ export function BlockerBody({ n }: { n: BlockerNode }) {
 
 // AgentBody is an agent (or the person) as a pill in its device colour.
 export function AgentBody({ n }: { n: AgentNode }) {
-  const tint = n.person
-    ? "var(--person)"
-    : deviceVar(n.agent.color) || "var(--primary)"
+  // You stay in the person tint; another person on a shared board wears
+  // their own colour (card #385), as their agents do.
+  const tint =
+    n.person && n.agent.deviceId
+      ? "var(--person)"
+      : deviceVar(n.agent.color) ||
+        (n.person ? "var(--person)" : "var(--primary)")
   return (
     <div
       className={cn(

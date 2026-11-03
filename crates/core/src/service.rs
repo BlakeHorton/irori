@@ -229,6 +229,8 @@ struct Services {
     /// these events, never on a timer (#91).
     asks_kick: Arc<Kick>,
     colors: coord::devcolor::Picks,
+    /// The person's own colour on shared boards (card #385).
+    person_color: coord::devcolor::PersonPick,
     /// The person's names for their devices (card #184).
     device_names: coord::devname::Names,
     files: blob::Files,
@@ -638,6 +640,13 @@ struct DeviceColor<'a> {
     device_id: &'a str,
 }
 
+/// The `person.color` payload (card #385).
+#[derive(Serialize)]
+struct PersonColor<'a> {
+    at_device: &'a str,
+    color: &'a str,
+}
+
 impl Core {
     /// Brings everything up (Go `Start` without the net, pairing, boards,
     /// home server and API listener). The lockfile is written by
@@ -931,8 +940,9 @@ impl Core {
         let files =
             blob::Files::open(dir.join("files")).map_err(|e| fail(&st, other("attachments", e)))?;
         let colors = coord::devcolor::Picks::new();
+        let person_color = coord::devcolor::PersonPick::new();
         let colors_sub = Arc::new(st.subscribe());
-        load_colors(&st, &colors);
+        load_colors(&st, &colors, &person_color);
         let device_names = coord::devname::Names::new();
         load_device_names(&st, &device_names);
         laps.lap("colors+names");
@@ -1090,6 +1100,7 @@ impl Core {
             answering,
             asks_kick: Kick::new(),
             colors,
+            person_color,
             device_names,
             files,
             scrubber,
@@ -1419,11 +1430,19 @@ impl Core {
                 let _reg = reg;
                 while let Some(ev) = sub.recv() {
                     if ev.is_resync() {
-                        load_colors(&s.store, &s.colors);
+                        load_colors(&s.store, &s.colors, &s.person_color);
                         load_device_names(&s.store, &s.device_names);
+                        s.follow_person_name();
                         s.hub.publish(CoreEvent::Devices);
                     } else if ev.kind == coord::devcolor::KIND {
                         s.colors.apply(&ev);
+                    } else if ev.kind == coord::devcolor::PERSON_KIND {
+                        // The pick reaches every shared board on the
+                        // person's member.profile (card #385).
+                        if s.person_color.apply(&ev) {
+                            s.follow_person_name();
+                            s.hub.publish(CoreEvent::Devices);
+                        }
                     } else if ev.kind == coord::devname::KIND {
                         // A rename from this device was folded when it was
                         // written; the window still hears it here.
@@ -2103,6 +2122,36 @@ impl Core {
             .map_err(|e| e.to_string())
     }
 
+    /// The person's own colour on shared boards, "" when they haven't
+    /// picked one (card #385).
+    pub fn person_color(&self) -> String {
+        self.s.person_color.chosen()
+    }
+
+    /// Records the person's colour on shared boards (`""` goes back to the
+    /// default each viewer picks). Every shared board hears it on the
+    /// person's member.profile. Only the window calls it.
+    pub fn set_person_color(&self, color: &str) -> Result<(), String> {
+        if !color.is_empty() && !coord::devcolor::valid(color) {
+            return Err(format!(
+                "{} isn't one of the colours",
+                gocompat::quote::quote(color)
+            ));
+        }
+        self.s
+            .store
+            .append(
+                "user",
+                coord::devcolor::PERSON_KIND,
+                &PersonColor {
+                    at_device: &self.s.device.id,
+                    color,
+                },
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// What each of the person's devices is called, by id: the person's
     /// name for it (card #184), else its certificate's label (the
     /// computer's name when it joined), else this device's own name.
@@ -2322,9 +2371,12 @@ fn load_device_names(st: &Store, names: &coord::devname::Names) {
     }
 }
 
-fn load_colors(st: &Store, colors: &coord::devcolor::Picks) {
+fn load_colors(st: &Store, colors: &coord::devcolor::Picks, person: &coord::devcolor::PersonPick) {
     let mut f = Filter {
-        kinds: vec![coord::devcolor::KIND.into()],
+        kinds: vec![
+            coord::devcolor::KIND.into(),
+            coord::devcolor::PERSON_KIND.into(),
+        ],
         limit: store::MAX_LIST_LIMIT,
         ..Filter::default()
     };
@@ -2332,6 +2384,7 @@ fn load_colors(st: &Store, colors: &coord::devcolor::Picks) {
         let Ok(evs) = st.list(&f) else { return };
         for ev in &evs {
             colors.apply(ev);
+            person.apply(ev);
         }
         if (evs.len() as i64) < f.limit {
             return;

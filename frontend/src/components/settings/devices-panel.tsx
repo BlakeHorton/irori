@@ -49,6 +49,7 @@ export function DevicesPanel({ open }: { open: boolean }) {
         ))}
       </ul>
       {error && <p className="text-xs text-destructive">{error}</p>}
+      <PersonColor open={open} />
       <HomeServer open={open} />
       <div className="border-t border-border pt-3">
         {status?.state ? (
@@ -913,6 +914,63 @@ function RenameField({
         )}
       </small>
     </form>
+  )
+}
+
+// PersonColor is the person's colour on shared boards (card #385): friends
+// see them and their agents in it. A friend's screen moves it to the next
+// free colour if one of the friend's own devices already wears it.
+function PersonColor({ open }: { open: boolean }) {
+  const [color, setColor] = useState("")
+  const [error, setError] = useState("")
+  useEffect(() => {
+    if (!open) return
+    actions
+      .personColor()
+      .then(setColor)
+      .catch((e: unknown) => setError(errorText(e)))
+  }, [open])
+  const pick = async (c: string) => {
+    try {
+      await actions.setPersonColor(c)
+      setColor(c)
+      setError("")
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
+  return (
+    <div className="grid gap-1 border-t border-border pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm">Your colour on shared boards</span>
+        <span className="flex items-center gap-1">
+          {DeviceColors.map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              aria-label={`${c} on shared boards`}
+              aria-pressed={color === c}
+              className={cn(
+                "size-4 rounded-full outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                color === c && "ring-1 ring-ink"
+              )}
+              style={{ background: `var(--device-${c})` }}
+              onClick={() => void pick(color === c ? "" : c)}
+            />
+          ))}
+        </span>
+      </div>
+      <small className="text-xs text-muted-foreground">
+        {error ? (
+          <span className="text-destructive">{error}</span>
+        ) : color ? (
+          "Friends see you and your agents in it. Click it again for the default."
+        ) : (
+          "Friends see you and your agents in a colour none of their devices wear. Pick one to choose it."
+        )}
+      </small>
+    </div>
   )
 }
 

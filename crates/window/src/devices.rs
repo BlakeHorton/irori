@@ -192,6 +192,17 @@ impl Window {
         self.core.set_device_color(device_id, color)
     }
 
+    /// DevicesService.PersonColor: the person's colour on shared boards,
+    /// "" for the default each friend's screen picks (card #385).
+    pub fn person_color(&self) -> String {
+        self.core.person_color()
+    }
+
+    /// DevicesService.SetPersonColor ("" goes back to the default).
+    pub fn set_person_color(&self, color: &str) -> Result<(), String> {
+        self.core.set_person_color(color)
+    }
+
     /// DevicesService.HomeServer.
     pub fn home_server(&self) -> HomeServerView {
         self.seams.mesh.home_server()

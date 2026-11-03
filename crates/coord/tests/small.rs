@@ -2,7 +2,7 @@
 //! (I:internal/names/names_test.go, devcolor/devcolor_test.go,
 //! roster/roster_test.go, roster/fold_test.go).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -423,4 +423,79 @@ fn test_agent_card_json_is_gos() {
     // Go's json.Unmarshal matches keys case-insensitively.
     let back: AgentCard = coord::gojson::decode(br#"{"KEY":"x/y","Status":"idle"}"#).unwrap();
     assert_eq!((back.key.as_str(), back.status.as_str()), ("x/y", "idle"));
+}
+
+// ---- person colours on shared boards (card #385) ----
+
+fn people(v: &[(&str, &str)]) -> Vec<(String, String)> {
+    v.iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect()
+}
+
+#[test]
+fn person_default_avoids_the_viewers_devices() {
+    let taken: Vec<String> = PALETTE[..6].iter().map(|s| s.to_string()).collect();
+    let got = devcolor::place_people(&people(&[("friend", "")]), &taken);
+    assert_eq!(got["friend"], PALETTE[6]);
+}
+
+#[test]
+fn person_pick_wins_when_free() {
+    let got = devcolor::place_people(&people(&[("friend", "pink")]), &["teal".into()]);
+    assert_eq!(got["friend"], "pink");
+}
+
+#[test]
+fn person_pick_clashing_with_a_device_is_nudged() {
+    let got = devcolor::place_people(&people(&[("friend", "pink")]), &["pink".into()]);
+    // The next one along from pink that is free.
+    assert_eq!(got["friend"], "lime");
+}
+
+#[test]
+fn two_people_never_share_while_colours_remain() {
+    let got = devcolor::place_people(
+        &people(&[("b", "cyan"), ("a", "cyan"), ("c", "")]),
+        &["teal".into(), "orange".into()],
+    );
+    let mut seen = HashSet::new();
+    for (id, c) in &got {
+        assert!(devcolor::valid(c), "{id} got {c}");
+        assert!(c != "teal" && c != "orange", "{id} wears a device colour");
+        assert!(seen.insert(c.clone()), "{id} repeats {c}");
+    }
+    assert_eq!(got["a"], "cyan"); // first by id keeps the pick
+    assert_eq!(got["b"], "indigo");
+}
+
+#[test]
+fn placement_is_stable_and_falls_back_when_full() {
+    let taken: Vec<String> = PALETTE.iter().map(|s| s.to_string()).collect();
+    let a = devcolor::place_people(&people(&[("x", "sand"), ("y", "")]), &taken);
+    let b = devcolor::place_people(&people(&[("y", ""), ("x", "sand")]), &taken);
+    assert_eq!(a, b);
+    assert_eq!(a["x"], "sand");
+    assert!(devcolor::valid(&a["y"]));
+}
+
+#[test]
+fn person_pick_folds_newest_and_ignores_non_person_writers() {
+    let p = devcolor::PersonPick::new();
+    let row = |color: &str, at: u64, actor: &str| Event {
+        device_id: "pc".into(),
+        seq: at as i64,
+        hlc: hlc::Timestamp(at),
+        actor: actor.into(),
+        kind: devcolor::PERSON_KIND.into(),
+        payload: format!(r#"{{"color":"{color}"}}"#).into_bytes(),
+        sig: Vec::new(),
+    };
+    assert!(p.apply(&row("pink", 2, "user")));
+    assert!(!p.apply(&row("teal", 1, "user")));
+    assert!(!p.apply(&row("teal", 3, "agent:x")));
+    assert!(!p.apply(&row("mauve", 4, "user")));
+    assert_eq!(p.chosen(), "pink");
+    assert!(p.apply(&row("", 5, "user")));
+    assert_eq!(p.chosen(), "");
 }

@@ -352,9 +352,15 @@ pub struct MemberProfile {
     pub name: String,
     pub person_epoch: i64,
     pub person_sig: String,
+    /// The person's colour on shared boards (card #385), a
+    /// `devcolor::PALETTE` name or "". Outside `personSig`, so builds from
+    /// before it still count the row; only the person's own certified
+    /// devices can write a counted profile, which is enough for a colour.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub color: String,
 }
 go_struct!(MemberProfile { "personId" => person_id: str, "name" => name: str,
-    "personEpoch" => person_epoch: int, "personSig" => person_sig: str });
+    "personEpoch" => person_epoch: int, "personSig" => person_sig: str, "color" => color: str });
 
 impl MemberProfile {
     pub fn body(&self) -> MemberProfileBody {

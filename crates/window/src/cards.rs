@@ -719,6 +719,35 @@ pub(crate) struct People {
     /// The other people on the shared boards by board key
     /// (person:<personId>), so a mention of one is named (card #177).
     persons: HashMap<String, irori_core::BoardMember>,
+    /// Each other person's colour on this screen by person id (card #385):
+    /// their pick, nudged off this person's device colours and off each
+    /// other.
+    others: BTreeMap<String, String>,
+}
+
+/// The other people's colours on this screen (card #385): every person
+/// seen on a shared board, as a member or by their agents, with their own
+/// pick, placed off the viewer's device colours and off each other.
+fn place_others(
+    persons: &HashMap<String, irori_core::BoardMember>,
+    board: &HashMap<String, irori_core::BoardAgent>,
+    devices: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut picks: BTreeMap<String, String> = BTreeMap::new();
+    for a in board.values().filter(|a| !a.person_id.is_empty()) {
+        picks
+            .entry(a.person_id.clone())
+            .or_default()
+            .clone_from(&a.person_color);
+    }
+    for m in persons.values() {
+        if let Some(pid) = m.key.strip_prefix(store::kinds::PERSON_ACTOR_PREFIX) {
+            picks.insert(pid.to_string(), m.color.clone());
+        }
+    }
+    let people: Vec<(String, String)> = picks.into_iter().collect();
+    let taken: Vec<String> = devices.values().cloned().collect();
+    coord::devcolor::place_people(&people, &taken)
 }
 
 fn unsent_key(agent: &str, r: &str) -> String {
@@ -775,6 +804,7 @@ impl Window {
         }
         p.known = c.known_agent_names();
         p.colors = c.device_colors();
+        p.others = place_others(&p.persons, &p.board, &p.colors);
         let mut live = 0;
         p.names = c.device_labels().into_iter().collect();
         for d in c.certified_devices() {
@@ -879,6 +909,11 @@ impl People {
                 status: "person".into(),
                 live: true,
                 where_: "On the board".into(),
+                color: key
+                    .strip_prefix(store::kinds::PERSON_ACTOR_PREFIX)
+                    .and_then(|pid| self.others.get(pid))
+                    .cloned()
+                    .unwrap_or_default(),
                 ..AgentRef::default()
             };
         }
@@ -932,6 +967,7 @@ impl People {
             } else {
                 format!("{}'s agent", a.person)
             };
+            r.color = self.others.get(&a.person_id).cloned().unwrap_or_default();
             return r;
         }
         r.where_ = self.where_(&dev);
@@ -2582,6 +2618,39 @@ mod tests {
         assert!(heard_by(&newer_unread).is_empty());
     }
 
+    // Card #385: another person and their agents wear one colour, their
+    // pick unless one of this person's devices wears it.
+    #[test]
+    fn another_persons_agents_wear_their_colour_off_my_devices() {
+        let mut p = People::default();
+        p.colors.insert("pc".into(), "pink".into());
+        p.persons.insert(
+            "person:blake".into(),
+            irori_core::BoardMember {
+                key: "person:blake".into(),
+                name: "Blake".into(),
+                board_id: "b".into(),
+                color: "pink".into(),
+            },
+        );
+        p.board.insert(
+            "agent:c1".into(),
+            irori_core::BoardAgent {
+                key: "agent:c1".into(),
+                name: "wren".into(),
+                status: "busy".into(),
+                board_id: "b".into(),
+                person_id: "blake".into(),
+                person: "Blake".into(),
+                person_color: "pink".into(),
+            },
+        );
+        p.others = place_others(&p.persons, &p.board, &p.colors);
+        let (face, agent) = (p.ref_("person:blake"), p.ref_("agent:c1"));
+        assert_eq!(face.color, "lime", "nudged off the PC's pink");
+        assert_eq!(agent.color, face.color);
+    }
+
     // Card #264: on a shared board a question counts under Needs a decision
     // only for the person it's for (keys as private_task leaves them: this
     // person's "" or user:, another member's person:<id>); everyone else's
@@ -2595,6 +2664,7 @@ mod tests {
                 key: "person:blake".into(),
                 name: "Blake".into(),
                 board_id: "b".into(),
+                ..Default::default()
             },
         );
         let q = |id: &str, question: &str, reference: &str| {

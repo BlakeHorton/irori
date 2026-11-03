@@ -171,6 +171,9 @@ kinds! {
     NODE_ADDR = "node.addr" => Replicated, Refuses;
     // devcolor
     DEVICE_COLOR = "device.color" => Replicated, Refuses;
+    /// `{color, at}`, actor `user`: the person's colour on shared boards
+    /// (card #385); boards learn it from member.profile.
+    PERSON_COLOR = "person.color" => Replicated, Refuses;
     // devname (card #184)
     DEVICE_NAME = "device.name" => Replicated, Refuses;
     // v0.5 shared boards: board logs only
