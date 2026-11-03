@@ -118,6 +118,11 @@ pub fn options(data: &Path, claude: &Path) -> Options {
     }
 }
 
+/// How long a wait for something that should happen gives up after. It
+/// only bounds a hang: each wait returns as soon as the thing happens, and
+/// a Mac busy with other builds can take over 10 s to start a Core (#402).
+pub const LOAD_DEADLINE: Duration = Duration::from_secs(60);
+
 impl Rig {
     pub async fn new() -> Rig {
         Rig::with(Duration::ZERO, |_| {}).await
@@ -140,7 +145,7 @@ impl Rig {
         let core = Arc::new(tokio::task::block_in_place(|| Core::start(o)).unwrap());
         let me = core.device_id().to_string();
         let (key_a, key_b) = (format!("{me}/{SESS_A}"), format!("{me}/{SESS_B}"));
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + LOAD_DEADLINE;
         loop {
             let n = core
                 .local_agents()
@@ -356,7 +361,7 @@ impl Drop for EvStream {
 impl EvStream {
     /// The next event of type `t`, skipping others.
     pub async fn next(&mut self, t: &str) -> Value {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        let deadline = tokio::time::Instant::now() + LOAD_DEADLINE;
         loop {
             match tokio::time::timeout_at(deadline, self.rx.recv()).await {
                 Err(_) => panic!("no {t} event"),
@@ -391,7 +396,7 @@ impl EvStream {
 
     /// The stream closes, after an event of type `t` (empty: any).
     pub async fn ended(&mut self, t: &str) {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        let deadline = tokio::time::Instant::now() + LOAD_DEADLINE;
         let mut seen = t.is_empty();
         loop {
             match tokio::time::timeout_at(deadline, self.rx.recv()).await {
@@ -434,7 +439,7 @@ impl Rig {
         tokio::task::block_in_place(|| drop(core));
         let core =
             Arc::new(tokio::task::block_in_place(|| Core::start(options(&data, &claude))).unwrap());
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + LOAD_DEADLINE;
         while !core.local_agents().iter().any(|c| c.key == key_a) {
             assert!(
                 Instant::now() < deadline,

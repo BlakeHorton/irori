@@ -123,9 +123,11 @@ impl Rig {
     }
 }
 
-/// Waits until `ok` holds, or fails after `secs` seconds.
+/// Waits until `ok` holds, or fails after `secs` seconds, and never
+/// sooner than 60: it returns as soon as `ok` holds, and a Mac busy with
+/// other builds can be many seconds late (#402).
 pub fn wait_for(secs: u64, what: &str, mut ok: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(secs);
+    let deadline = Instant::now() + Duration::from_secs(secs.max(60));
     while !ok() {
         assert!(Instant::now() < deadline, "timed out waiting for {what}");
         std::thread::sleep(Duration::from_millis(20));

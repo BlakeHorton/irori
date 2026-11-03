@@ -74,7 +74,9 @@ impl Rig {
         let core = Arc::new(Core::start(opts).unwrap());
         let me = core.device_id().to_string();
         let (key_a, key_b) = (format!("{me}/{SESS_A}"), format!("{me}/{SESS_B}"));
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // Returns as soon as presence lists both; a Mac busy with other
+        // builds can take over 10 s (#402).
+        let deadline = Instant::now() + Duration::from_secs(60);
         while core
             .local_agents()
             .iter()

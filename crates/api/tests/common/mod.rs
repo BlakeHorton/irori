@@ -107,8 +107,8 @@ impl Rig {
         let me = core.device_id().to_string();
         let (key_a, key_b) = (format!("{me}/{SESS_A}"), format!("{me}/{SESS_B}"));
         // Presence lists them within a scan or two; a loaded machine (a
-        // parallel build) has taken over 10 s.
-        let deadline = Instant::now() + Duration::from_secs(30);
+        // parallel build) has taken over 10 s, and 30 s under check.sh (#402).
+        let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let n = core
                 .local_agents()
