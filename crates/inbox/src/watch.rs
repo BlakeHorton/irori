@@ -649,7 +649,8 @@ impl Watcher {
         let body = match names.len() {
             1 => format!("From {}", names[0]),
             2 => format!("From {} and {}", names[0], names[1]),
-            n => format!("From {}, {} and {} more", names[0], names[1], n - 2),
+            3 => format!("From {}, {} and {}", names[0], names[1], names[2]),
+            n => format!("From {}, {} and {} others", names[0], names[1], n - 2),
         };
         Note {
             id: WAITING_ID.into(),
