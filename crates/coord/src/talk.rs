@@ -62,8 +62,10 @@ pub const KIND_THREAD: &str = "thread";
 pub const DM_PREFIX: &str = "dm:";
 /// A channel's `convId` starts with this.
 pub const CHANNEL_PREFIX: &str = "ch_";
-/// The space every Talk 1 channel is in: the private log (Personal).
-pub const PERSONAL_SPACE: &str = "personal";
+/// The space every Talk 1 channel is in: empty is Personal (the private
+/// log). The fold stores any spaceId as written, so a space log's
+/// channels (Spaces, #392) fold the same.
+pub const PERSONAL_SPACE: &str = "";
 
 /// The longest channel name and topic, in characters.
 pub const MAX_NAME: usize = 80;

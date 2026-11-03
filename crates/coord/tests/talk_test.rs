@@ -40,7 +40,7 @@ fn channel_posts_and_unread() {
     assert!(c.id.starts_with(talk::CHANNEL_PREFIX));
     assert_eq!(c.name, "general");
     assert_eq!(c.topic, "what's up");
-    assert_eq!(c.space_id, talk::PERSONAL_SPACE);
+    assert_eq!(c.space_id, "", "empty is Personal");
     assert_eq!(t.members(&c.id), vec![Member::of(USER)], "the maker joins");
     want(t.create_channel(ALICE, "GENERAL", ""), ErrorKind::Invalid);
     want(t.create_channel(ALICE, "  ", ""), ErrorKind::Invalid);
@@ -263,11 +263,12 @@ fn rows_from_other_devices_fold_in_log_order() {
         t0 + 10,
         "user",
         kinds::TALK_CHANNEL_CREATED,
-        &serde_json::json!({"channelId": "ch_1", "spaceId": "personal", "name": "first", "by": "user:dev-b"}),
+        &serde_json::json!({"channelId": "ch_1", "spaceId": "sp_1", "name": "first", "by": "user:dev-b"}),
     );
     assert!(t.apply(&made));
     let c = t.channel("ch_1").unwrap();
     assert_eq!((c.name.as_str(), c.archived), ("renamed", true));
+    assert_eq!(c.space_id, "sp_1", "another space's id is kept");
     assert!(t.channel_named("renamed").is_none(), "archived");
 
     // Posts sort by their rows, not by arrival.
