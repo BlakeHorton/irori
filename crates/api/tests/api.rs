@@ -9,10 +9,12 @@ use std::time::{Duration, Instant};
 use irori_api::client::{Client, Error, NO_REPLAY, Opened, StreamItem};
 use tokio::sync::mpsc::Receiver;
 
+/// The next stream item. The deadline only bounds a hang: it returns as
+/// soon as the item comes, and a busy machine can take over 10 s (#402).
 fn next(rig: &common::Rig, rx: &mut Receiver<StreamItem>) -> StreamItem {
     rig.rt
-        .block_on(async { tokio::time::timeout(Duration::from_secs(10), rx.recv()).await })
-        .expect("no stream item in 10 s")
+        .block_on(async { tokio::time::timeout(Duration::from_secs(60), rx.recv()).await })
+        .expect("no stream item in 60 s")
         .expect("the stream ended")
 }
 

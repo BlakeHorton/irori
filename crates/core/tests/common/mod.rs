@@ -89,7 +89,9 @@ impl Rig {
             core,
             _dirs: vec![d, c, w],
         };
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // A long deadline: it returns as soon as presence lists both, and
+        // a Mac busy with other builds can take well over 10 s (#402).
+        let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let n = r
                 .core

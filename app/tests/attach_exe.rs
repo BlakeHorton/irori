@@ -110,11 +110,12 @@ impl Exe {
         Exe { child, lines: rx }
     }
 
-    /// The next stdout line, raw.
+    /// The next stdout line, raw. The deadline only bounds a hang: under
+    /// load (other builds on the Mac) the exe can take over 15 s (#402).
     fn line(&self) -> String {
         self.lines
-            .recv_timeout(Duration::from_secs(15))
-            .expect("a stdout line within 15 s")
+            .recv_timeout(Duration::from_secs(60))
+            .expect("a stdout line within 60 s")
     }
 
     /// The next line of type `t`, raw and parsed; every line on the way is
