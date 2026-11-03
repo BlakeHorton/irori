@@ -7,12 +7,34 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
 
 import { BoardsService, Events } from "./host"
-import { BoardSettings, BoardSummary, InviteStatus, SharePreview } from "./models"
+import { BoardSettings, BoardSummary, InviteStatus, SharePreview, type SummaryMember } from "./models"
 import { sampleShare, sampleWithdraw, samplePreview, setSampleBoards } from "./cards"
-import { inWails } from "./irori"
+import { inWails, relativeTime } from "./irori"
 import { errorText } from "./talk"
 
 export { BoardSettings, BoardSummary, InviteStatus, SharePreview }
+export type { SummaryMember }
+
+// presenceLine says how a member is on a board (card #371): "online",
+// "seen 5m ago" (heard within ten minutes) or "offline · seen 2h ago",
+// then how many of their agents on the board are working or free. An
+// offline person's agent counts are left out: only their own device writes
+// an agent's status, so the last ones it wrote may be stale.
+export function presenceLine(m: SummaryMember, now: Date): string {
+  const seen = m.lastSeen ? new Date(m.lastSeen) : null
+  const at = seen && !Number.isNaN(seen.getTime()) ? seen : null
+  if (m.presence !== "online" && m.presence !== "recent")
+    return at ? `offline · seen ${relativeTime(at, now)}` : "offline"
+  const head = m.presence === "online" ? "online" : at ? `seen ${relativeTime(at, now)}` : "seen recently"
+  const parts: string[] = []
+  if (m.working > 0) parts.push(`${m.working} working`)
+  if (m.free > 0) parts.push(`${m.free} free`)
+  return parts.length ? `${head} · ${parts.join(", ")}` : `${head} · no agents`
+}
+
+// PresenceReload is how often the People panel reads presence again while
+// it is open: connections come and go without a boards:changed.
+export const PresenceReload = 20_000
 
 // EventBoardsChanged mirrors the Go constant in boards_service.go: a board
 // opened, went or was renamed.
@@ -113,10 +135,27 @@ function boardsState(): BoardSummary[] {
       name: "MLG",
       tag: "mlg",
       // Shared with Blake (card #268): each card shows whose it is.
-      people: ["Stephen", "Blake"],
+      people: ["Stephen", "Blake", "Casey"],
       members: [
-        { personId: "sample-me", name: "Stephen", me: true },
-        { personId: "sample-person-0", name: "Blake", me: false },
+        { personId: "sample-me", name: "Stephen", me: true, presence: "online", working: 2, free: 1 },
+        {
+          personId: "sample-person-0",
+          name: "Blake",
+          me: false,
+          presence: "recent",
+          lastSeen: new Date(Date.now() - 5 * 60_000).toISOString(),
+          working: 1,
+          free: 0,
+        },
+        {
+          personId: "sample-person-1",
+          name: "Casey",
+          me: false,
+          presence: "offline",
+          lastSeen: new Date(Date.now() - 2 * 3600_000).toISOString(),
+          working: 1,
+          free: 1,
+        },
       ],
       owner: true,
       devices: 2,
@@ -132,7 +171,7 @@ function boardsState(): BoardSummary[] {
       name: "Website refresh",
       tag: "site",
       people: ["Stephen"],
-      members: [{ personId: "sample-me", name: "Stephen", me: true }],
+      members: [{ personId: "sample-me", name: "Stephen", me: true, presence: "online", working: 0, free: 0 }],
       owner: true,
       devices: 2,
       cards: 0,

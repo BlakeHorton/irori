@@ -163,6 +163,16 @@ pub struct SummaryMember {
     pub name: String,
     /// The person at this device.
     pub me: bool,
+    /// online, recent or offline on this board (card #371).
+    pub presence: String,
+    /// When they were last seen here; zero when unknown, and for this
+    /// person.
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    pub last_seen: GoTime,
+    /// Their agents on the board that are working.
+    pub working: i64,
+    /// Their agents on the board that are idle.
+    pub free: i64,
 }
 
 /// Where a private card was shared to, when it was: the board and the
@@ -491,7 +501,7 @@ impl Services {
                     owner: m.owner(&me),
                     ready: m.created,
                     people: self.board_people(b),
-                    members: self.board_members(b),
+                    members: self.board_members_present(b),
                     leaving: self.board_leaving(b),
                     warnings: self.board_status(b),
                     ..Default::default()
@@ -571,6 +581,21 @@ impl Services {
         self.board_members(b).into_iter().map(|m| m.name).collect()
     }
 
+    /// [`Self::board_members`] with each one's presence (card #371).
+    pub(crate) fn board_members_present(&self, b: &BoardLog) -> Vec<SummaryMember> {
+        let mut out = self.board_members(b);
+        let people: Vec<String> = out.iter().map(|m| m.person_id.clone()).collect();
+        for (m, p) in out.iter_mut().zip(self.board_presence(b, &people)) {
+            m.presence = p.presence;
+            if p.last_seen_ms > 0 {
+                m.last_seen = GoTime::unix_milli(p.last_seen_ms);
+            }
+            m.working = p.working;
+            m.free = p.free;
+        }
+        out
+    }
+
     /// `b`'s current members, this person first (card #268).
     pub(crate) fn board_members(&self, b: &BoardLog) -> Vec<SummaryMember> {
         let me = self.person_id();
@@ -593,6 +618,7 @@ impl Services {
                 name: name_of(&me),
                 person_id: me.clone(),
                 me: true,
+                ..Default::default()
             });
         }
         for p in &m.members {
@@ -601,6 +627,7 @@ impl Services {
                     name: name_of(&p.person_id),
                     person_id: p.person_id.clone(),
                     me: false,
+                    ..Default::default()
                 });
             }
         }

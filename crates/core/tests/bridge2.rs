@@ -720,3 +720,30 @@ fn a_board_thread_mention_reaches_the_other_person_and_their_agent() {
     settle_bridged(t.b(), &t.rb.key_a, 1);
     assert_eq!(cards.mentions().len(), 1);
 }
+
+/// Card #371: a board's summary says how each member is: Alice, at this
+/// device, is online; Bob's device isn't connected (no network here) but
+/// its rows just arrived, so he was seen moments ago, with his agents on
+/// the board counted.
+#[test]
+fn a_boards_people_show_who_is_online_and_their_agents() {
+    let t = two_people();
+    t.b().board_key(&t.board, &t.rb.key_a).unwrap();
+    t.b().board_key(&t.board, &t.rb.key_b).unwrap();
+    t.sync();
+    let s = t
+        .a()
+        .board_list()
+        .into_iter()
+        .find(|s| s.board_id == t.board)
+        .unwrap();
+    let me = s.members.iter().find(|m| m.me).unwrap();
+    assert_eq!(me.presence, "online", "{me:?}");
+    assert!(me.last_seen.is_zero(), "{me:?}");
+    let bob = s.members.iter().find(|m| !m.me).unwrap();
+    assert_eq!(bob.person_id, t.b().person().id);
+    assert_eq!(bob.presence, "recent", "{bob:?}");
+    let ago = now().unix_milli_value() - bob.last_seen.unix_milli_value();
+    assert!((0..60_000).contains(&ago), "seen {ago} ms ago: {bob:?}");
+    assert_eq!(bob.working + bob.free, 2, "{bob:?}");
+}

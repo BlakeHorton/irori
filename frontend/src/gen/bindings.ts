@@ -1359,6 +1359,16 @@ export type SummaryMember = {
 	name: string,
 	/**  The person at this device. */
 	me: boolean,
+	/**  online, recent or offline on this board (card #371). */
+	presence: string,
+	/**
+	 *  When they were last seen here; left out when unknown, and for this
+	 *  person.
+	 */
+	lastSeen?: string,
+	/**  Their agents on the board that are working, and idle. */
+	working: number,
+	free: number,
 };
 
 /**

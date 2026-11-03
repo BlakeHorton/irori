@@ -491,7 +491,7 @@ export function SubtaskPreview(p: Partial<B.SubtaskPreview> = {}): B.SubtaskPrev
 
 /** SummaryMember with Go's zero values for every field left out. */
 export function SummaryMember(p: Partial<B.SummaryMember> = {}): B.SummaryMember {
-  return { "personId": "", "name": "", "me": false, ...p } as B.SummaryMember
+  return { "personId": "", "name": "", "me": false, "presence": "", "working": 0, "free": 0, ...p } as B.SummaryMember
 }
 
 /** Target with Go's zero values for every field left out. */

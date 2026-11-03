@@ -65,6 +65,16 @@ pub struct SummaryMember {
     pub name: String,
     /// The person at this device.
     pub me: bool,
+    /// online, recent or offline on this board (card #371).
+    pub presence: String,
+    /// When they were last seen here; left out when unknown, and for this
+    /// person.
+    #[serde(skip_serializing_if = "GoTime::is_zero")]
+    #[specta(optional, type = crate::ts::Time)]
+    pub last_seen: GoTime,
+    /// Their agents on the board that are working, and idle.
+    pub working: i64,
+    pub free: i64,
 }
 
 fn is_zero_rank(r: &f64) -> bool {
@@ -91,6 +101,10 @@ impl From<irori_core::BoardSummary> for BoardSummary {
                     person_id: m.person_id,
                     name: m.name,
                     me: m.me,
+                    presence: m.presence,
+                    last_seen: m.last_seen,
+                    working: m.working,
+                    free: m.free,
                 })
                 .collect(),
             owner: s.owner,

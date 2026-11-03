@@ -6,10 +6,12 @@ import {
   boards,
   boardsNow,
   inviteOpen,
+  presenceLine,
   reloadBoards,
   subscribeBoards,
   suggestTag,
   validTag,
+  type SummaryMember,
 } from "./boards"
 
 // settled waits for the reloads a change started (the sample's list is a
@@ -86,4 +88,39 @@ describe("invites", () => {
       expect(inviteOpen(InviteStatus({ state: st }))).toBe(false)
   })
 
+})
+
+// Card #371: the People panel's line for each member.
+describe("presenceLine", () => {
+  const now = new Date("2026-11-03T20:00:00Z")
+  const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
+  const m = (p: Partial<SummaryMember>): SummaryMember => ({
+    personId: "p",
+    name: "Blake",
+    me: false,
+    presence: "online",
+    working: 0,
+    free: 0,
+    ...p,
+  })
+
+  test("online, with their agents on the board", () => {
+    expect(presenceLine(m({ working: 2, free: 1 }), now)).toBe("online · 2 working, 1 free")
+    expect(presenceLine(m({ free: 1 }), now)).toBe("online · 1 free")
+    expect(presenceLine(m({}), now)).toBe("online · no agents")
+  })
+
+  test("recent says when they were seen", () => {
+    expect(presenceLine(m({ presence: "recent", lastSeen: ago(5 * 60_000), working: 1 }), now)).toBe(
+      "seen 5m ago · 1 working"
+    )
+  })
+
+  test("offline says when, and leaves out agent counts that may be stale", () => {
+    expect(
+      presenceLine(m({ presence: "offline", lastSeen: ago(2 * 3600_000), working: 3, free: 1 }), now)
+    ).toBe("offline · seen 2h ago")
+    expect(presenceLine(m({ presence: "offline" }), now)).toBe("offline")
+    expect(presenceLine(m({ presence: "" }), now)).toBe("offline")
+  })
 })

@@ -6,7 +6,7 @@
 // cards starts a thread on this board (card #134), listed in the board's
 // own Threads panel above who is on it.
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { ArrowLeftIcon, EllipsisIcon, PinIcon, PinOffIcon, SettingsIcon } from "lucide-react"
 
 import { AskBox } from "@/components/cards/ask-box"
@@ -33,6 +33,9 @@ import { Input } from "@/components/ui/input"
 import {
   boards as actions,
   MaxBoardName,
+  PresenceReload,
+  presenceLine,
+  reloadBoards,
   useBoards,
   useInvite,
   type BoardSummary,
@@ -41,6 +44,7 @@ import { useThreads, type CardSummary, type DoneState } from "@/lib/cards"
 import { plainLine } from "@/lib/irori"
 import { go } from "@/lib/nav"
 import { errorText } from "@/lib/talk"
+import { stateDot } from "@/lib/devices"
 import { cn } from "@/lib/utils"
 
 import { BoardSettingsPanel, InviteHow, InvitePanel, useInviteReach } from "./parts"
@@ -128,7 +132,7 @@ export function BoardPage({
           hidden: threadsHidden,
           onHide: setThreadsHidden,
         }}
-        aside={<PeoplePanel board={b} onChanged={reload} />}
+        aside={<PeoplePanel board={b} now={now} onChanged={reload} />}
       />
     </>
   )
@@ -445,24 +449,63 @@ function inviteError(err: unknown): string {
 }
 
 // PeoplePanel is who is on the board and how to get more people on it:
+// each with a presence dot and line (card #371: online, seen 5m ago or
+// offline, and their agents on the board), read again every
+// PresenceReload while it is open;
 // Invite someone (an owner, once the board is ready) with how an invite
 // works, else why there is no Invite. An open invite stands in for the
 // Invite button until it ends (card #103). The board's settings live
 // behind the header's cog (card #312).
-function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: () => Promise<void> }) {
+function PeoplePanel({
+  board: b,
+  now,
+  onChanged,
+}: {
+  board: BoardSummary
+  now: Date
+  onChanged: () => Promise<void>
+}) {
   const { invite, setInvite } = useInvite(true)
+  useEffect(() => {
+    const t = setInterval(() => void reloadBoards(), PresenceReload)
+    return () => clearInterval(t)
+  }, [])
   const reach = useInviteReach(true)
   const [error, setError] = useState<string | null>(null)
   const inviting = !!invite && invite.state !== ""
   return (
     <aside className="glass-panel grid grid-cols-[minmax(0,1fr)] gap-3 p-4 text-[13px]" aria-label="People on this board">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">People</h2>
-      {b.people.length > 0 && (
-        <ul className="grid gap-0.5 text-xs text-ink">
-          {b.people.map((p, i) => (
-            <li key={i}>{plainLine(p) || "someone"}</li>
+      {b.members.length > 0 ? (
+        <ul className="grid gap-1.5 text-xs">
+          {b.members.map((m) => (
+            <li
+              key={m.personId}
+              className="grid grid-cols-[8px_minmax(0,1fr)] items-center gap-x-2"
+            >
+              <span
+                className={cn(
+                  "size-2 rounded-full",
+                  stateDot(m.presence === "online" ? "connected" : m.presence)
+                )}
+                aria-hidden
+              />
+              <span className="min-w-0 truncate">
+                <span className="text-ink">{plainLine(m.name) || "someone"}</span>
+                {m.me && <span className="text-muted-foreground"> (you)</span>}{" "}
+                <small className="text-muted-foreground">{presenceLine(m, now)}</small>
+              </span>
+            </li>
           ))}
         </ul>
+      ) : (
+        b.people.length > 0 && (
+          <ul className="grid gap-0.5 text-xs text-ink">
+            {b.people.map((p, i) => (
+              <li key={i}>{plainLine(p) || "someone"}</li>
+            ))}
+          </ul>
+        )
       )}
       {inviting ? (
         <InvitePanel

@@ -693,7 +693,7 @@ pub(crate) fn open_cards_of(m: &irori_identity::membership::Membership) -> Strin
     }
 }
 
-fn roster_of(s: &Services, b: &BoardLog) -> Vec<AgentCard> {
+pub(super) fn roster_of(s: &Services, b: &BoardLog) -> Vec<AgentCard> {
     {
         let live: HashMap<String, AgentCard> = s
             .roster
