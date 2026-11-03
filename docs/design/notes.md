@@ -83,9 +83,48 @@ When the paths, flags or versions a note names have changed since it was accepte
 - Building notes automatically from the board's history. That was shape B, set aside because it is noisy, goes stale and is unsafe on shared boards.
 - A per-board handbook page. That was shape C.
 
-## 11. For the build card
+## 11. Build contract (card #401)
 
-- **Storage:** note rows (`note.proposed`, `note.accepted`, `note.edited`, `note.removed`) go in the private log for Mine and in the board log for a board. They must be added to the board kind allow-list (v0.5-shared-boards.md §2.2).
-- **Tools:** agent tools to propose and search notes. The wake text gets a short notes section.
-- **Tag matching:** how worktree paths and machine tags are matched, and the ranking and cap per wake.
-- **Import:** a one-time pass that proposes notes from the agents' existing memory files, for Stephen to review.
+What v1 is built on. The rows and the coord/Core layer are on main; the window, the agent tools and the Notes page build on them.
+
+**Rows** (`crates/store/src/kinds.rs`, replicated, board logs accept them; `crates/coord/src/board/notes.rs` folds them):
+
+| Kind | Payload |
+|---|---|
+| `note.proposed` | `{noteId, kind, text, tags, source?, taskId?, commentId?, blockerId?, by, at}` |
+| `note.accepted` | `{noteId, by, at}`: a person accepts a proposal, or an agent's pending edit or removal |
+| `note.edited` | `{noteId, kind?, text?, tags?, why?, by, at}` |
+| `note.removed` | `{noteId, why?, by, at}` |
+
+- A person's note is accepted at once. An agent's is `proposed` until a person accepts it: on Mine, the person; on a board, any member's `person:` key, written from that member's own device.
+- An agent's edit or removal of a live note becomes the note's `pending` change; the live text stays until a person accepts. An agent edits or withdraws its own proposal directly. A person's edit or removal applies at once and drops any pending change.
+- `history` keeps every step: proposed, accepted, edited, edit_proposed, removal_proposed, removed.
+- Board closure: `taskId`, `commentId` and `blockerId` go through the board log's closure check like any card row, so a board note's source is always on that board.
+- Refused when written: an unknown kind, empty text, text over 500 characters, no tags, a tag of unknown shape, and text the scrubber would mask (keys, tokens, passwords).
+
+**Kinds:** `rule`, `gotcha`, `decision`, `pointer`, `preference`.
+
+**Tags** (case folded except repo keys and paths):
+
+| Tag | Matches a wake when | Score |
+|---|---|---|
+| `path:<repoKey>:<path>` | the agent's repo is `<repoKey>` and one of its paths is `<path>` or under it | 5 |
+| `repo:<repoKey>` | the card's or worktree's repo | 4 |
+| `board:<tag>` | a Mine note about a shared board: the card is on that board | 3 |
+| `machine:<device name>` | the agent's device name | 2 |
+| `everywhere` | always | 1 |
+| `topic:<word>` | never on wake; for search | 0 |
+
+A wake takes the accepted notes of every log the agent reads: Mine for the person's own agents, plus the card's board when it is on one. Each note scores by its best tag; the wake keeps the top 8 (`NOTES_PER_WAKE`), newest first within a score. `Coord::notes_for(&NoteContext{board, repo_key, paths, machine})` does one log; the wake merges Mine and the board's.
+
+**Scopes and routing** (`crates/core/src/service/notes.rs`): `mine`, or a board's tag or id. A Mine note never enters a board log, whatever its tags name (`crates/core/tests/notes.rs`). Core API: `propose_note(by, scope, NewNote)`, `accept_note(by, id)`, `edit_note(by, id, NoteEdit, why)`, `remove_note(by, id, why)`, `notes(scope, removed)`, `search_notes(q, live_only)`. Each returns `ScopedNote {scope, boardId?, ...note}`. Ids may carry `note:`.
+
+**Window commands** (to build): `notes_list {scope?}`, `note_new {scope, kind, text, tags, source?, taskId?, commentId?, blockerId?}` (New note and Keep as note), `note_accept {id}`, `note_edit {id, kind?, text?, tags?}`, `note_remove {id, why?}`. Keep as note defaults to Mine (§8), prefilled from the source's text, with tags guessed from its card (board, `repo:`).
+
+**Agent tools** (to build): `notes_propose {scope?, kind, text, tags, source?}` for a new note, or `{note, kind?, text?, tags?, why}` / `{note, remove: true, why}` for an agent's proposed edit or removal. `notes_search {q}` searches accepted notes only, in the logs the agent reads. A proposal reaches no agent. The wake gets a short **Notes** section in the same untrusted-data framing as other agents' messages: each note's kind, text, `note:<id>`, author and accepter, and the tag that matched.
+
+**Notes a wake carried** (to build): the card page shows which notes its agent got on wake and why. Record the note ids and matched tags with the wake (device-local or on the private log's wake row), never in a board log.
+
+**Still true?** (v1, to build): shown when a note's `path:` names a path that is gone from the repo, or its source card was deleted. Nothing more clever in v1.
+
+**Not in v1:** the one-time import of the agents' memory files, and a note's read count.

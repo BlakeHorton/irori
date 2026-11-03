@@ -62,6 +62,7 @@ pub use crate::service::boards::{
     valid_board_id,
 };
 pub use crate::service::invites::{InviteStatus, InviteWatchFn};
+pub use crate::service::notes::{SCOPE_MINE, ScopedNote};
 pub use crate::service::{
     BoardReviewer, Core, HomeEdit, NO_HOME_SERVER, NowFn, Options, ReviveFn, StartError,
 };

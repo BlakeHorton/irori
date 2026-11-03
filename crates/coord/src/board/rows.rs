@@ -614,3 +614,54 @@ crate::go_struct! {
         pub at: GoTime = "at",
     }
 }
+
+crate::go_struct! {
+    /// A new note (card #401).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct NoteProposedRow {
+        pub note_id: String = "noteId",
+        pub kind: String = "kind",
+        pub text: String = "text",
+        pub tags: Vec<String> = "tags",
+        pub source: String = "source" "omit",
+        pub task_id: String = "taskId" "omit",
+        pub comment_id: String = "commentId" "omit",
+        pub blocker_id: String = "blockerId" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct NoteAcceptedRow {
+        pub note_id: String = "noteId",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    /// Each given field replaces the note's (an agent's waits for an
+    /// accept when the note is live).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct NoteEditedRow {
+        pub note_id: String = "noteId",
+        pub kind: String = "kind" "omit",
+        pub text: String = "text" "omit",
+        pub tags: Option<Vec<String>> = "tags" "omit",
+        pub why: String = "why" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct NoteRemovedRow {
+        pub note_id: String = "noteId",
+        pub why: String = "why" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}

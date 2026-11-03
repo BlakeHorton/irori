@@ -202,6 +202,17 @@ kinds! {
     /// How a card's linked PR stands on GitHub (card #208): `{taskId, pr,
     /// state?, review?, mergedAt?, error?, by, at}`, by `irori`.
     PR_STATE = "pr.state" => Replicated, Accepts;
+    /// Notes (decision 45, card #401): in the private log for Mine, in a
+    /// board's log for that board. `{noteId, kind, text, tags, source?,
+    /// taskId?, commentId?, blockerId?, by, at}`.
+    NOTE_PROPOSED = "note.proposed" => Replicated, Accepts;
+    /// `{noteId, by, at}`: a person accepts a proposal or an agent's
+    /// pending edit or removal.
+    NOTE_ACCEPTED = "note.accepted" => Replicated, Accepts;
+    /// `{noteId, kind?, text?, tags?, why?, by, at}`.
+    NOTE_EDITED = "note.edited" => Replicated, Accepts;
+    /// `{noteId, why?, by, at}`.
+    NOTE_REMOVED = "note.removed" => Replicated, Accepts;
     // v0.5 private-log rows, never in a board log
     BOARD_JOINED = "board.joined" => Replicated, Refuses;
     BOARD_FORGOT = "board.forgot" => Replicated, Refuses;

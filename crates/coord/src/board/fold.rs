@@ -82,7 +82,7 @@ const CLOCK_SKEW: Duration = Duration::from_secs(120);
 pub const SUB_BUFFER: usize = 64;
 
 /// The row prefixes coord folds.
-pub const FOLLOW_KINDS: [&str; 7] = [
+pub const FOLLOW_KINDS: [&str; 8] = [
     "task.",
     "lease.",
     "blocker.",
@@ -90,6 +90,7 @@ pub const FOLLOW_KINDS: [&str; 7] = [
     "board.ask.",
     "review.",
     "wait.",
+    "note.",
 ];
 
 /// Whether coord folds `kind`.
@@ -298,6 +299,8 @@ pub struct Fold {
     /// A board's review requests by card, and its dedicated reviewers.
     pub(crate) reviews: BTreeMap<String, Vec<super::review::ReviewRequest>>,
     pub(crate) reviewers: super::review::Reviewers,
+    /// Notes by id, with the row that made each (card #401).
+    pub(crate) notes: BTreeMap<String, (super::notes::Note, RowPos)>,
     /// Cards the person deleted (card #57): never folded again.
     pub(crate) deleted: HashSet<String>,
     /// Cards that were in_review when they were blocked (card #191): an
@@ -414,6 +417,7 @@ impl Fold {
             paused: HashMap::new(),
             reviews: BTreeMap::new(),
             reviewers: BTreeMap::new(),
+            notes: BTreeMap::new(),
             deleted: HashSet::new(),
             review_before_block: HashSet::new(),
             pr_states: Default::default(),
@@ -969,6 +973,10 @@ impl Fold {
             }
             kinds::LEASE_STOLEN => self.apply_stolen(ev),
             kinds::REVIEW_REQUESTED | kinds::REVIEW_REVIEWER => self.fold_review(ev, &at),
+            kinds::NOTE_PROPOSED
+            | kinds::NOTE_ACCEPTED
+            | kinds::NOTE_EDITED
+            | kinds::NOTE_REMOVED => self.fold_note(ev, &at),
             kinds::PR_STATE => self.fold_pr_state(ev),
             kinds::LEASE_RELEASED => {
                 let Some(p) = row::<LeaseReleasedRow>(&ev.payload) else {

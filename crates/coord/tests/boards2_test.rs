@@ -1580,3 +1580,67 @@ fn a_board_card_waits_on_its_persons_private_leases() {
     sync(&a, &b);
     assert_eq!(b.c.get_task(&t.id).unwrap().state, WORKING);
 }
+
+fn board_note(text: &str) -> NewNote {
+    NewNote {
+        kind: "gotcha".into(),
+        text: text.into(),
+        tags: vec![format!("repo:{REPO_A}")],
+        ..NewNote::default()
+    }
+}
+
+#[test]
+fn a_board_note_any_member_accepts_reaches_every_members_agents() {
+    let (a, b, _) = two_people();
+    let n =
+        a.c.propose_note(CARD1, board_note("MLG models ship to the repo, not zips."))
+            .unwrap();
+    sync(&a, &b);
+    let cx = NoteContext {
+        repo_key: REPO_A.into(),
+        ..NoteContext::default()
+    };
+    for s in [&a, &b] {
+        assert_eq!(s.c.note_by_id(&n.id).unwrap().state, NOTE_PROPOSED);
+        assert!(
+            s.c.notes_for(&cx).is_empty(),
+            "a proposed note reaches no agent"
+        );
+    }
+    // p2's device can't accept as p1: the forged row is ignored.
+    let _ = b.c.accept_note(P1, &n.id);
+    sync(&a, &b);
+    assert_eq!(a.c.note_by_id(&n.id).unwrap().state, NOTE_PROPOSED);
+    // An agent never accepts.
+    let e = b.c.accept_note(CARD2, &n.id).unwrap_err();
+    assert!(e.is(ErrorKind::NotAllowed), "{e}");
+    // The other person accepts it: live for both people's agents.
+    b.c.accept_note(P2, &n.id).unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let n2 = s.c.note_by_id(&n.id).unwrap();
+        assert_eq!(
+            (n2.state.as_str(), n2.accepted_by.as_str()),
+            (NOTE_ACCEPTED, P2)
+        );
+        assert_eq!(s.c.notes_for(&cx).len(), 1);
+    }
+    // Either member removes it.
+    a.c.remove_note(P1, &n.id, "done with zips").unwrap();
+    sync(&a, &b);
+    assert_eq!(b.c.note_by_id(&n.id).unwrap().state, NOTE_REMOVED);
+}
+
+#[test]
+fn a_board_note_names_only_cards_on_the_board() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let mut n = board_note("from the card");
+    n.task_id = t.id.clone();
+    n.source = format!("task:{}", t.id);
+    a.c.propose_note(CARD1, n.clone()).unwrap();
+    n.task_id = "01NOTONTHISBOARD0000000000".into();
+    let e = a.c.propose_note(CARD1, n).unwrap_err();
+    assert!(e.is(ErrorKind::NotFound), "{e}");
+}

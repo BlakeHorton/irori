@@ -138,6 +138,12 @@ pub fn multiline(s: &str) -> bool {
     s.contains(['\r', '\n'])
 }
 
+/// Whether text holds what the scrubber would mask: a key, token or
+/// password (notes never carry secrets, card #401).
+pub(crate) fn looks_secret(text: &str) -> bool {
+    scrub::string(text) != text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

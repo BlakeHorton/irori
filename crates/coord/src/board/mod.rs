@@ -24,6 +24,7 @@ mod idle;
 mod links;
 mod mention;
 mod mirror;
+mod notes;
 mod offers;
 mod placed;
 mod prstate;
@@ -61,6 +62,11 @@ pub use fold::{
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
 pub use mention::{board_form, mention_into, without_mentioned};
 pub use mirror::RELEASE_REQUEST;
+pub use notes::{
+    NOTE_ACCEPTED, NOTE_CHANGED, NOTE_KINDS, NOTE_MAX_TEXT, NOTE_PROPOSED, NOTE_REMOVED,
+    NOTES_PER_WAKE, NewNote, Note, NoteChange, NoteContext, NoteEdit, NoteEvent, NoteMatch,
+    TAG_BOARD, TAG_EVERYWHERE, TAG_MACHINE, TAG_PATH, TAG_REPO, TAG_TOPIC, clean_tag,
+};
 pub use placed::MAX_PLACE;
 pub use prstate::{
     NOTICE_PR, PR_CHANGES_REQUESTED, PR_CLOSED, PR_MERGED, PR_OPEN, PrCheck, PrState,
@@ -826,6 +832,44 @@ impl Coord {
     pub fn set_reviewer(&self, by: &str, reviewer: &str, repo: &str) -> Result<()> {
         self.lock().set_reviewer(by, reviewer, repo)
     }
+    // ---- notes (card #401) ----
+
+    /// Writes a new note. A person's is accepted at once; an agent's waits
+    /// for a person's accept.
+    pub fn propose_note(&self, by: &str, n: NewNote) -> Result<Note> {
+        self.lock().propose_note(by, n)
+    }
+    /// A person accepts a proposed note, or an agent's pending edit or
+    /// removal of one.
+    pub fn accept_note(&self, by: &str, id: &str) -> Result<Note> {
+        self.lock().accept_note(by, id)
+    }
+    /// Edits a note: a person's applies at once, an agent's on a live note
+    /// waits for an accept.
+    pub fn edit_note(&self, by: &str, id: &str, e: NoteEdit, why: &str) -> Result<Note> {
+        self.lock().edit_note(by, id, e, why)
+    }
+    /// Removes a note: a person's removes it, an agent's on a live note
+    /// waits for an accept.
+    pub fn remove_note(&self, by: &str, id: &str, why: &str) -> Result<Note> {
+        self.lock().remove_note(by, id, why)
+    }
+    /// Every note, newest first; removed ones only when asked.
+    pub fn notes(&self, removed: bool) -> Vec<Note> {
+        self.lock().list_notes(removed)
+    }
+    pub fn note_by_id(&self, id: &str) -> Option<Note> {
+        self.lock().notes.get(id).map(|(n, _)| n.clone())
+    }
+    /// Notes holding every word of q; `live_only` for what agents read.
+    pub fn search_notes(&self, q: &str, live_only: bool) -> Vec<Note> {
+        self.lock().search_notes(q, live_only)
+    }
+    /// The accepted notes for a wake where `cx` says the agent works.
+    pub fn notes_for(&self, cx: &NoteContext) -> Vec<NoteMatch> {
+        self.lock().notes_for(cx)
+    }
+
     /// A card's review requests, oldest first.
     pub fn reviews(&self, id: &str) -> Vec<ReviewRequest> {
         self.lock().reviews.get(id).cloned().unwrap_or_default()
