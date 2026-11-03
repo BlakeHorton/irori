@@ -9,7 +9,7 @@
 // event callback gets the payload as `data`.
 
 import { listen } from "@tauri-apps/api/event"
-import { writeText } from "@tauri-apps/plugin-clipboard-manager"
+import { readImage, writeText } from "@tauri-apps/plugin-clipboard-manager"
 import { openUrl } from "@tauri-apps/plugin-opener"
 
 import { commands } from "../gen/bindings"
@@ -77,6 +77,18 @@ export const Browser = {
 export const Clipboard = {
   SetText(text: string): Promise<void> {
     return call(writeText(text))
+  },
+  // Image is the picture on the clipboard as RGBA pixels, read natively
+  // (card #321): WebKit hands a paste of a HEIC-only clipboard (a macOS
+  // screenshot) to the page with no files.
+  async Image(): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+    const img = await call(readImage())
+    try {
+      const [rgba, size] = await Promise.all([img.rgba(), img.size()])
+      return { rgba, width: size.width, height: size.height }
+    } finally {
+      void img.close().catch(() => {})
+    }
   },
 }
 

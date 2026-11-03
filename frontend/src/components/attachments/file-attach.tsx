@@ -9,6 +9,7 @@ import { PaperclipIcon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { MaxUploadFiles } from "@/lib/cards"
+import { clipboardImage } from "@/lib/clipboard"
 
 import { FileKindIcon } from "./file-kind-icon"
 
@@ -56,7 +57,25 @@ export function useFileAttach(off = false, why = "") {
     // text. True when the paste was files (taken, or refused with why).
     onPaste: (e: ClipboardEvent) => {
       const more = clipboardFiles(e.clipboardData)
-      if (!more.length) return false
+      if (!more.length) {
+        // WebKit says a HEIC-only clipboard (a macOS screenshot) is
+        // files but hands over none (card #321): the host reads the
+        // picture instead.
+        if (!filesWithheld(e.clipboardData)) return false
+        e.preventDefault()
+        if (off) {
+          if (why) setRefused(why)
+          return false
+        }
+        clipboardImage().then(
+          (f) => add([f]),
+          (err: unknown) =>
+            setRefused(
+              `Couldn't paste the picture: ${err instanceof Error ? err.message : String(err)}`
+            )
+        )
+        return true
+      }
       const done = took(more)
       if (done || !off) e.preventDefault()
       return done && !off
@@ -103,6 +122,15 @@ export function clipboardFiles(
     .filter((i) => i.kind === "file")
     .map((i) => i.getAsFile())
     .filter((f): f is File => !!f)
+}
+
+// filesWithheld is a paste that says it carries files but hands none
+// over: WebKit does this for a clipboard holding only a HEIC picture.
+export function filesWithheld(
+  d: Pick<DataTransfer, "files" | "items" | "types"> | null | undefined
+): boolean {
+  if (!d || !Array.from(d.types ?? []).includes("Files")) return false
+  return clipboardFiles(d).length === 0
 }
 
 function pastedFiles(list: FileList | File[] | null | undefined): File[] {
