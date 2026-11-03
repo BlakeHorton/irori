@@ -36,10 +36,12 @@ import { cn } from "@/lib/utils"
 // what my agents may do, reviewers).
 
 // useInviteReach says why an invite link from this device may not reach
-// someone away from your home, or "" when it should (card #107). The link
-// names this device's home server: off, or on but not reachable from
-// outside, it only works for someone on your network (no third-party
-// relays, architecture.md §7.1).
+// someone away from your home, or "" when it should (card #107). With
+// "Meet through public relays" on (decision 43, docs/design/public-relays.md)
+// the invite dials n0's public relays, so it reaches any network, CGNAT
+// included, and there is nothing to warn about (issue 9). With it off, the
+// link names this device's home server: off, or on but not reachable from
+// outside, it only works for someone on your network.
 export function useInviteReach(open: boolean): string {
   const [why, setWhy] = useState("")
   useEffect(() => {
@@ -57,6 +59,7 @@ export function useInviteReach(open: boolean): string {
 }
 
 export function inviteReachLine(h: HomeServerView): string {
+  if (h.publicRelays) return ""
   if (!h.can || h.elsewhere) return ""
   if (!h.on) {
     return "Your home server is off, so the link only works for someone who can reach this device directly, like on your network. Turn it on in Settings, Devices to invite people from anywhere."

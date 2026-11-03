@@ -186,6 +186,26 @@ function DeviceRow({
 // one can't be found on its network, and one when your home server can't
 // be reached. "Meet through public relays" (card #328) on every device.
 // Advanced holds the relay you run or rent elsewhere.
+// homeLine is the warning under the home server. Its "can't be reached
+// from outside" lines (CGNAT, port forward needed) tell the truth about the
+// home server, but with public relays on (decision 43) devices and invites
+// still reach this PC from any network, so the line says that instead of
+// "can't reach this PC" (issue 9). Other lines (couldn't start, port moved,
+// an entered address) are shown as they are.
+export function homeLine(hs: HomeServerView): string {
+  const line = plainLine(hs.line ?? "")
+  if (!hs.publicRelays) return line
+  const relays =
+    "Your home server can't be reached from outside your home, but public relays connect your devices and invited people from any network."
+  if (hs.reach === "cgnat") return relays
+  if (hs.reach === "forward") {
+    // Keep the router steps, for anyone who wants a direct connection too.
+    const steps = line.replace(/^Away from home your devices can't reach this PC\.\s*/, "")
+    return steps && steps !== line ? `${relays} For a direct connection: ${steps}` : relays
+  }
+  return line
+}
+
 function HomeServer({ open }: { open: boolean }) {
   const [hs, setHs] = useState<HomeServerView | null>(null)
   const [publicAddr, setPublicAddr] = useState("")
@@ -314,8 +334,8 @@ function HomeServer({ open }: { open: boolean }) {
               />
             </div>
           )}
-          {hs.line && (
-            <p className="text-xs text-warning">{plainLine(hs.line)}</p>
+          {homeLine(hs) && (
+            <p className="text-xs text-warning">{homeLine(hs)}</p>
           )}
           {askPublic && (
             <form
