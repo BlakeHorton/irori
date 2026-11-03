@@ -1121,6 +1121,17 @@ impl Fold {
             raised = f.raised;
             revised = f.revised;
         } else {
+            // The person's completed on a card waiting on its done check is
+            // their Done (card #315): the check reads answered Done, not
+            // closed, and the card goes straight to completed.
+            let person = if self.on_board {
+                p.by.starts_with(kinds::PERSON_ACTOR_PREFIX)
+            } else {
+                self.is_owner(&p.by)
+            };
+            if p.state == COMPLETED && person {
+                super::cards::say_done_open(&mut t, &p.by, when);
+            }
             super::cards::close_open(&mut t, &p.by, &p.note, when);
             if is_terminal(&was) && !is_terminal(&p.state) {
                 what = "reopened it".into();

@@ -494,6 +494,17 @@ impl Coord {
     ) -> Result<(Task, Vec<Notice>)> {
         self.lock().answer(by, id, blocker, a)
     }
+    /// The person's Done on done check `blocker` (card #315): the card is
+    /// completed in one step, and `[0]` tells its holders so.
+    pub fn say_done(
+        &self,
+        by: &str,
+        id: &str,
+        blocker: &str,
+        mentions: &[Mention],
+    ) -> Result<(Task, Vec<Notice>)> {
+        self.lock().say_done(by, id, blocker, mentions)
+    }
     /// An agent's comment or blocker reply. `[0]` is the comment's own
     /// notice; a `mentioned` notice follows when the input mentions anyone.
     pub fn comment_on(

@@ -5,6 +5,7 @@
 mod common;
 
 use common::*;
+use coord::rows::TaskStateRow;
 use coord::*;
 use store::kinds;
 
@@ -319,4 +320,127 @@ fn a_long_proof_check_can_be_revised() {
         },
     )
     .unwrap();
+}
+
+/// Card #315: the person's Done completes the card in one step. Its
+/// holders hear it is completed (never "working again"), the check reads
+/// answered Done, and no row ever puts the card back to working.
+#[test]
+fn done_goes_straight_to_completed() {
+    let e = env();
+    let t = claimed(&e);
+    let got =
+        e.c.set_task_state(BOB, &t.id, COMPLETED, "all green")
+            .unwrap();
+    let bid = done_checks(&got)[0].id.clone();
+    let resolved_before = e.rows(kinds::BLOCKER_RESOLVED).len();
+    let status_before = e.rows(kinds::TASK_STATUS).len();
+
+    let (closed, ns) = e.c.say_done(USER, &t.id, &bid, &[]).unwrap();
+    assert_eq!(closed.state, COMPLETED);
+    assert!(done_checks(&closed).is_empty());
+    let b = closed.blockers.iter().find(|b| b.id == bid).unwrap();
+    let res = b.resolved.as_ref().expect("resolved");
+    assert_eq!(res.answer, DONE_ANSWER);
+    assert_eq!(res.option, 0);
+    assert!(!res.closed, "{res:?}");
+    assert_eq!(res.by, USER);
+
+    let n = &ns[0];
+    assert_eq!(n.kind, NOTICE_ANSWERED);
+    assert_eq!(n.to, vec![BOB.to_string()]);
+    assert_eq!(
+        n.text,
+        format!(
+            "The person said Done on \"ship it\" (#1, task:{id}): it is completed.\nshow task:{id} for the card, its comments and links.",
+            id = t.id
+        )
+    );
+    assert!(!n.text.contains("working"), "{}", n.text);
+
+    // The state history: one completed row and no resolve row, so the
+    // card went from waiting on the person straight to completed.
+    assert_eq!(e.rows(kinds::BLOCKER_RESOLVED).len(), resolved_before);
+    let status = e.rows(kinds::TASK_STATUS);
+    assert_eq!(status.len(), status_before + 1);
+    let row: TaskStateRow = payload(status.last().unwrap());
+    assert_eq!(row.state, COMPLETED);
+    let states: Vec<String> = status
+        .iter()
+        .map(|ev| payload::<TaskStateRow>(ev).state)
+        .collect();
+    assert!(!states.iter().skip(status_before).any(|s| s == WORKING));
+
+    // It folds the same on replay.
+    let again = e.reopen_with(Options {
+        done_check: true,
+        ..e.opts()
+    });
+    let t2 = again.get_task(&t.id).unwrap();
+    assert_eq!(t2.state, COMPLETED);
+    let r2 = t2.blockers.iter().find(|b| b.id == bid).unwrap();
+    assert_eq!(r2.resolved.as_ref().unwrap().answer, DONE_ANSWER);
+}
+
+#[test]
+fn say_done_is_the_persons_and_only_on_a_done_check() {
+    let e = env();
+    let t = claimed(&e);
+    let got = e.c.set_task_state(BOB, &t.id, COMPLETED, "").unwrap();
+    let bid = done_checks(&got)[0].id.clone();
+    assert!(e.c.say_done(BOB, &t.id, &bid, &[]).is_err());
+    assert!(e.c.say_done(USER, &t.id, "b99", &[]).is_err());
+    let u = claimed_other(&e);
+    let (blocked, _) =
+        e.c.raise(
+            BOB,
+            &u.id,
+            NewBlocker {
+                question: "which port?".into(),
+                ..NewBlocker::default()
+            },
+        )
+        .unwrap();
+    let qb = blocked.blockers[0].id.clone();
+    assert!(e.c.say_done(USER, &u.id, &qb, &[]).is_err());
+    assert_eq!(e.c.get_task(&t.id).unwrap().state, BLOCKED);
+}
+
+fn claimed_other(e: &Env) -> Task {
+    let t =
+        e.c.create_task(
+            ALICE,
+            NewTask {
+                title: "other".into(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    e.c.claim_task(BOB, &t.id).unwrap()
+}
+
+/// Card #315: an old window's Done left on an open check closes the card
+/// on the agent's next completed, with no resolve row putting it back to
+/// working first.
+#[test]
+fn an_old_windows_open_done_closes_without_working() {
+    let e = env();
+    let t = claimed(&e);
+    let got = e.c.set_task_state(BOB, &t.id, COMPLETED, "").unwrap();
+    let bid = done_checks(&got)[0].id.clone();
+    e.c.answer(
+        USER,
+        &t.id,
+        &bid,
+        BlockerAnswer {
+            pick: 1,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    let resolved_before = e.rows(kinds::BLOCKER_RESOLVED).len();
+    let closed = e.c.set_task_state(BOB, &t.id, COMPLETED, "").unwrap();
+    assert_eq!(closed.state, COMPLETED);
+    assert!(done_checks(&closed).is_empty());
+    assert_eq!(e.rows(kinds::BLOCKER_RESOLVED).len(), resolved_before);
 }

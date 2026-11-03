@@ -118,6 +118,16 @@ fn board_cards_and_answers() {
     // Done closes it, as the person.
     let a = r.w.answer(&t.id, &check_id, 0, "", false, &[]).unwrap();
     assert_eq!(a.card.summary.state, coord::COMPLETED);
+    // In one step (card #315): the check reads answered Done.
+    let ct = co.get_task(&t.id).unwrap();
+    let res = ct
+        .blockers
+        .iter()
+        .find(|b| b.id == check_id)
+        .and_then(|b| b.resolved.clone())
+        .expect("resolved");
+    assert_eq!(res.answer, coord::DONE_ANSWER);
+    assert!(!res.closed);
     assert!(r.w.cards().is_empty());
     let done = r.w.done_cards(0, "").unwrap();
     assert_eq!(done.cards.len(), 1);

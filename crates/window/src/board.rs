@@ -556,19 +556,7 @@ impl Window {
                 .is_some_and(|o| option >= 0 && o.answer == coord::DONE_ANSWER)
         {
             let (_, ns) = co
-                .answer(
-                    &me,
-                    task_id,
-                    blocker_id,
-                    BlockerAnswer {
-                        pick: option + 1,
-                        resolve: true,
-                        mentions: plan.log.clone(),
-                        ..BlockerAnswer::default()
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-            co.set_task_state(&me, task_id, coord::COMPLETED, "")
+                .say_done(&me, task_id, blocker_id, &plan.log)
                 .map_err(|e| e.to_string())?;
             let (ns, mentioned) = self.route_mentioned(ns, &plan);
             let told = ns

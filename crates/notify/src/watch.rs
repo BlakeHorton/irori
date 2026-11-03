@@ -119,7 +119,7 @@ impl RoomSource for Coord {
 
 /// The person's Done on card `id`'s done check, from a finished card's
 /// Mark Done (cards #112, #130): resolve it with Done and close the card as
-/// `by`, as the window's Done does. The notices are for the agent that
+/// `by` in one step, as the window's Done does (card #315). The notices are for the agent that
 /// finished it; the caller routes them. Refused while the card has any
 /// other open question (one raised after the card went up), or no check.
 pub fn mark_done(co: &Coord, by: &str, id: &str) -> Result<Vec<coord::Notice>, String> {
@@ -133,27 +133,14 @@ pub fn mark_done(co: &Coord, by: &str, id: &str) -> Result<Vec<coord::Notice>, S
             t.short_ref()
         ));
     }
-    let Some((b, pick)) = open.iter().rev().find_map(|b| {
-        b.options
-            .iter()
-            .position(|o| o.answer == coord::DONE_ANSWER)
-            .map(|i| (b, i as i64 + 1))
-    }) else {
+    let Some(b) = open
+        .iter()
+        .rev()
+        .find(|b| b.options.iter().any(|o| o.answer == coord::DONE_ANSWER))
+    else {
         return Err(format!("{} isn't waiting on a done check", t.short_ref()));
     };
-    let (_, ns) = co
-        .answer(
-            by,
-            id,
-            &b.id,
-            coord::BlockerAnswer {
-                pick,
-                resolve: true,
-                ..coord::BlockerAnswer::default()
-            },
-        )
-        .map_err(|e| e.to_string())?;
-    Coord::set_task_state(co, by, id, coord::COMPLETED, "").map_err(|e| e.to_string())?;
+    let (_, ns) = co.say_done(by, id, &b.id, &[]).map_err(|e| e.to_string())?;
     Ok(ns)
 }
 

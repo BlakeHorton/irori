@@ -87,6 +87,24 @@ pub(crate) fn close_open(t: &mut Task, by: &str, note: &str, at: GoTime) {
     trim_resolved(t);
 }
 
+/// The person's completed answers t's open done checks with Done (card
+/// #315), as their Done button would have.
+pub(crate) fn say_done_open(t: &mut Task, by: &str, at: GoTime) {
+    for b in t.blockers.iter_mut().filter(|b| b.open() && b.done_check) {
+        let Some(i) = b.options.iter().position(|o| o.answer == DONE_ANSWER) else {
+            continue;
+        };
+        b.resolved = Some(Resolution {
+            answer: DONE_ANSWER.into(),
+            option: i as i64,
+            by: by.into(),
+            at,
+            closed: false,
+            note: String::new(),
+        });
+    }
+}
+
 /// Keeps the newest KEEP_RESOLVED resolved items.
 fn trim_resolved(t: &mut Task) {
     let n = t.blockers.len() - count_open(t);
@@ -1003,7 +1021,9 @@ impl Fold {
         if need_proof && !said_done && note.is_empty() {
             return Err(invalid(NEEDS_PROOF));
         }
-        for bid in earlier {
+        // The person already said Done: the completed row below closes the
+        // checks itself (card #315), with no stop at working on the way.
+        for bid in earlier.into_iter().filter(|_| !said_done) {
             self.answer(
                 by,
                 &t.id,
@@ -1571,6 +1591,66 @@ impl Fold {
         let mut ns = vec![n];
         ns.extend(mn);
         Ok((self.tasks[id].clone(), ns))
+    }
+
+    /// The person's Done on a done check (card #315): one completed row,
+    /// which answers the check Done as it folds, so the card goes from
+    /// waiting on the person straight to completed, never through working.
+    /// The notice says it is completed.
+    pub(crate) fn say_done(
+        &mut self,
+        by: &str,
+        id: &str,
+        bid: &str,
+        mentions: &[Mention],
+    ) -> Result<(Task, Vec<Notice>)> {
+        let by = caller(by)?;
+        if !self.is_owner(&by) {
+            return Err(not_allowed("only the person says Done on a done check"));
+        }
+        let ms = self.check_mentions(&by, mentions)?;
+        let t = self.open_task(id)?.clone();
+        let Some(b) = t.blockers.iter().find(|b| b.id == bid).cloned() else {
+            return Err(not_found(format!(
+                "task {id} has no blocker {}",
+                quote(bid)
+            )));
+        };
+        if !b.open() {
+            return Err(bad_state(format!("blocker {} is already resolved", b.id)));
+        }
+        if !b.done_check || !b.options.iter().any(|o| o.answer == DONE_ANSWER) {
+            return Err(invalid(format!("blocker {} isn't a done check", b.id)));
+        }
+        let t = self.set_task_state(&by, id, COMPLETED, "")?;
+        let mut n = Notice {
+            kind: NOTICE_ANSWERED.into(),
+            task_id: id.into(),
+            reference: format!("task:{id}"),
+            title: t.title.clone(),
+            by: by.clone(),
+            ..Notice::default()
+        };
+        let r = &b.raised_by;
+        if *r != by && !r.is_empty() && !self.is_owner(r) && r != SWEEPER {
+            n.to = vec![r.clone()];
+        }
+        for h in self.recipients(&t, &by) {
+            if !n.to.contains(&h) {
+                n.to.push(h);
+            }
+        }
+        n.text = format!(
+            "The person said Done on {} ({}): it is completed.{}",
+            quote(&t.title),
+            t.refs(),
+            deeper(id)
+        );
+        let mut mn = self.mention_notice(&by, id, &ms, DONE_ANSWER, &format!("task:{id}"), "")?;
+        super::mention::mention_into(&mut n, &mut mn);
+        let mut ns = vec![n];
+        ns.extend(mn);
+        Ok((t, ns))
     }
 
     pub(crate) fn comment_on(
