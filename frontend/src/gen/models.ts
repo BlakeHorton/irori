@@ -91,6 +91,10 @@ export type State = B.State
 export type Step = B.Step
 export type SubtaskPreview = B.SubtaskPreview
 export type SummaryMember = B.SummaryMember
+export type TalkConversation = B.TalkConversation
+export type TalkMember = B.TalkMember
+export type TalkMemberRef = B.TalkMemberRef
+export type TalkPost = B.TalkPost
 export type Target = B.Target
 export type Task = B.Task
 export type TaskResult = B.TaskResult
@@ -492,6 +496,26 @@ export function SubtaskPreview(p: Partial<B.SubtaskPreview> = {}): B.SubtaskPrev
 /** SummaryMember with Go's zero values for every field left out. */
 export function SummaryMember(p: Partial<B.SummaryMember> = {}): B.SummaryMember {
   return { "personId": "", "name": "", "me": false, "presence": "", "working": 0, "free": 0, ...p } as B.SummaryMember
+}
+
+/** TalkConversation with Go's zero values for every field left out. */
+export function TalkConversation(p: Partial<B.TalkConversation> = {}): B.TalkConversation {
+  return { "convId": "", "kind": "", "name": "", "unread": 0, "mentions": 0, "members": [], "lastAt": "", "readOnly": false, ...p } as B.TalkConversation
+}
+
+/** TalkMember with Go's zero values for every field left out. */
+export function TalkMember(p: Partial<B.TalkMember> = {}): B.TalkMember {
+  return { "kind": "", "key": "", ...p } as B.TalkMember
+}
+
+/** TalkMemberRef with Go's zero values for every field left out. */
+export function TalkMemberRef(p: Partial<B.TalkMemberRef> = {}): B.TalkMemberRef {
+  return { "kind": "", "key": "", ...p } as B.TalkMemberRef
+}
+
+/** TalkPost with Go's zero values for every field left out. */
+export function TalkPost(p: Partial<B.TalkPost> = {}): B.TalkPost {
+  return { "postId": "", "convId": "", "by": "", "text": "", "mentions": [], "agentsNow": false, "at": "", ...p } as B.TalkPost
 }
 
 /** Target with Go's zero values for every field left out. */

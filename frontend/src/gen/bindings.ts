@@ -198,6 +198,23 @@ export const commands = {
 	voiceStart: () => __TAURI_INVOKE<number>("voice_start"),
 	voiceStop: (session: number) => __TAURI_INVOKE<null>("voice_stop", { session }),
 	voiceOpenSettings: (code: string) => __TAURI_INVOKE<null>("voice_open_settings", { code }),
+	/**
+	 *  Every command, plus the event payload types the frontend listens for.
+	 *  Talk's list: channels, DMs and open threads, with unread counts.
+	 */
+	talkConversations: () => __TAURI_INVOKE<TalkConversation[]>("talk_conversations"),
+	/**  Up to `limit` posts before `before` (none: the newest), oldest first. */
+	talkPosts: (convId: string, before: string | null, limit: number) => __TAURI_INVOKE<TalkPost[]>("talk_posts", { convId, before, limit }),
+	/**  Posts as the person; returns the post's id (a thread's: the comment's). */
+	talkPost: (convId: string, text: string, agentsNow: boolean, threadFrom: string | null) => __TAURI_INVOKE<string>("talk_post", { convId, text, agentsNow, threadFrom }),
+	/**  The person has read `conv_id` up to post `up_to`. */
+	talkRead: (convId: string, upTo: string) => __TAURI_INVOKE<null>("talk_read", { convId, upTo }),
+	/**  Makes a channel; returns its conv id. */
+	talkChannelCreate: (name: string, topic: string | null) => __TAURI_INVOKE<string>("talk_channel_create", { name, topic }),
+	/**  The person's DM with an agent, opened if new; returns its conv id. */
+	talkDm: (member: TalkMemberRef) => __TAURI_INVOKE<string>("talk_dm", { member }),
+	talkJoin: (convId: string, member: TalkMemberRef) => __TAURI_INVOKE<null>("talk_join", { convId, member }),
+	talkLeave: (convId: string, member: TalkMemberRef) => __TAURI_INVOKE<null>("talk_leave", { convId, member }),
 };
 
 /* Types */
@@ -1371,6 +1388,52 @@ export type SummaryMember = {
 	/**  Their agents on the board that are working, and idle. */
 	working: number,
 	free: number,
+};
+
+/**  One conversation in Talk's list. */
+export type TalkConversation = {
+	convId: string,
+	/**  `thread`, `channel` or `dm`. */
+	kind: string,
+	name: string,
+	topic?: string | null,
+	unread: number,
+	mentions: number,
+	members: TalkMember[],
+	/**  The newest post's time (the zero time when it has none). */
+	lastAt: string,
+	/**  A DM between two agents: the person reads it only. */
+	readOnly: boolean,
+};
+
+/**  One side of a conversation. */
+export type TalkMember = {
+	/**  `person` or `agent`. */
+	kind: string,
+	key: string,
+	/**  What it goes by ("you" for the person). */
+	name?: string,
+};
+
+/**  Who to add to or take out of a conversation. */
+export type TalkMemberRef = {
+	/**  `person` or `agent`. */
+	kind: string,
+	key: string,
+};
+
+/**  One post. */
+export type TalkPost = {
+	postId: string,
+	convId: string,
+	by: string,
+	text: string,
+	mentions: string[],
+	agentsNow: boolean,
+	threadFrom?: string | null,
+	/**  The card made from it (always null in Talk 1). */
+	card?: string | null,
+	at: string,
 };
 
 /**
