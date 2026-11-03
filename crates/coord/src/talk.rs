@@ -562,7 +562,7 @@ impl Talk {
     /// Every channel, archived ones too, by name.
     pub fn channels(&self) -> Vec<Channel> {
         let mut out: Vec<Channel> = self.lock().channels.values().cloned().collect();
-        out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        out.sort_by_key(|a| a.name.to_lowercase());
         out
     }
 

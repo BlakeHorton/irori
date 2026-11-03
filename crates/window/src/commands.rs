@@ -1083,7 +1083,6 @@ pub async fn voice_open_settings(w: W<'_>, code: String) -> R<()> {
     blocking(&w, move |w| w.voice_open_settings(&code)).await
 }
 
-/// Every command, plus the event payload types the frontend listens for.
 // ---- talk (card #389) -----------------------------------------------------
 
 /// Talk's list: channels, DMs and open threads, with unread counts.
@@ -1156,6 +1155,7 @@ pub async fn talk_leave(w: W<'_>, conv_id: String, member: TalkMemberRef) -> R<(
     w.talk_leave(&conv_id, &member)
 }
 
+/// Every command, plus the event payload types the frontend listens for.
 pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
