@@ -373,10 +373,27 @@ impl Fold {
         let res = (|| -> Result<()> {
             for (_, id) in &ids {
                 let t = &self.tasks[id];
+                // A hand-out from before its last holder let it go (card
+                // #338) is stale: the card goes out as if just posted,
+                // never back to the one who let it go.
+                let fresh = || Offer {
+                    heard: t.let_go.iter().map(|(k, _)| k.clone()).collect(),
+                    ..Offer::default()
+                };
                 let o = match t.live_offer() {
+                    Some(o) if stale_offer(t, o) => fresh(),
                     Some(o) => o.clone(),
-                    None if t.offer.is_none() && offerable(t) => Offer::default(),
+                    None if t.offer.is_none() && offerable(t) => fresh(),
                     None => continue,
+                };
+                let let_go = if o.to.is_empty() && o.reason.is_empty() && t.let_go.is_some() {
+                    if t.returned.is_some() {
+                        "the agent working it went away"
+                    } else {
+                        "the agent working it gave it back"
+                    }
+                } else {
+                    ""
                 };
                 let mut heard = o.heard.clone();
                 let (was, why) = if !o.to.is_empty() {
@@ -391,7 +408,7 @@ impl Fold {
                 } else if o.reason == OFFER_PASSED {
                     (String::new(), "the agent it went to gave it back")
                 } else {
-                    (String::new(), "")
+                    (String::new(), let_go)
                 };
                 if !was.is_empty() && !heard.contains(&was) {
                     heard.push(was.clone());
@@ -528,6 +545,11 @@ fn machine_rank(
     } else {
         1
     }
+/// Whether hand-out o of card t came before its last holder let it go.
+fn stale_offer(t: &Task, o: &Offer) -> bool {
+    t.let_go
+        .as_ref()
+        .is_some_and(|(_, at)| !gotime::before(at, &o.since))
 }
 
 /// The notice handing unheld card t to agent `to`.

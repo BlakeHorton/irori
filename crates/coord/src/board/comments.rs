@@ -291,12 +291,31 @@ impl Fold {
             kinds::TASK_LEFT,
             &TaskMemberRow {
                 task_id: id.into(),
-                who,
+                who: who.clone(),
                 by: by.clone(),
                 at,
                 ..TaskMemberRow::default()
             },
         )?;
+        // The last holder of a private working card handed it back (card
+        // #338): it goes up again, and Irori hands it to the next free
+        // agent. A shared card keeps its state for whoever joins next.
+        let t = &self.tasks[id];
+        if t.holders.is_empty() && t.state == WORKING && t.subtasks.is_empty() && !t.shared {
+            let note = format!("nobody is on it: {} left it", self.named(&who));
+            self.write(
+                SWEEPER,
+                kinds::TASK_STATUS,
+                &TaskStateRow {
+                    task_id: id.into(),
+                    state: SUBMITTED.into(),
+                    note,
+                    by: SWEEPER.into(),
+                    at,
+                    ..TaskStateRow::default()
+                },
+            )?;
+        }
         Ok(self.tasks[id].clone())
     }
 
@@ -1436,12 +1455,19 @@ impl Fold {
     fn return_gone(&mut self, now: &GoTime, out: &mut Vec<Notice>) -> Result<()> {
         let mut live = HashSet::new();
         let mut mute = HashSet::new();
+        // Agents whose session ended (card #338): wound down or closed, not
+        // merely missing for a restart. They come off their cards at the
+        // next sweep, without the holder grace.
+        let mut ended: HashSet<String> = self.gone_rows.keys().cloned().collect();
         if let Some(r) = &self.roster {
             for a in r.agents() {
                 if crate::roster::answers(&a.status) {
+                    ended.remove(&a.key);
                     live.insert(a.key);
                 } else if a.status == crate::roster::NOT_ANSWERING {
                     mute.insert(a.key);
+                } else if a.status == "gone" {
+                    ended.insert(a.key);
                 }
             }
         }
@@ -1464,7 +1490,12 @@ impl Fold {
                 // local_key alone holds for every member's agents, and a
                 // task.left for another person's agent folds to nothing
                 // and was written again every sweep (card #242).
-                if !gotime::at_least(now, &first, self.holder_grace)
+                let grace = if ended.contains(&h) {
+                    std::time::Duration::ZERO
+                } else {
+                    self.holder_grace
+                };
+                if !gotime::at_least(now, &first, grace)
                     || self.is_owner(&h)
                     || !self.local_key(&h)
                     || !self.may_write(&h, &self.dev)

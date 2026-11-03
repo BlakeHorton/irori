@@ -675,6 +675,9 @@ impl Fold {
                     what = "joined".into();
                 } else {
                     t.holders = remove_str(&t.holders, &p.who);
+                    if t.holders.is_empty() {
+                        t.let_go = Some((p.who.clone(), at(p.at)));
+                    }
                     if p.reason == LEFT_REMOVED {
                         what = "was taken off: their person left the board".into();
                     }

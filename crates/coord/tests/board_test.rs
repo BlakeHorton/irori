@@ -535,25 +535,27 @@ fn test_join_leave_share() {
             WORKING,
         ),
         (
-            "last leaves: state kept, no holder",
+            // Card #338: the last holder of a private working card gives
+            // it back, so it goes up again for the next free agent.
+            "last leaves: back up, no holder",
             Box::new(|| c.leave(CAROL, &s, CAROL)),
             None,
             vec![],
-            WORKING,
+            SUBMITTED,
         ),
         (
             "creator shares again",
             Box::new(|| c.set_shared(ALICE, &s, true)),
             None,
             vec![],
-            WORKING,
+            SUBMITTED,
         ),
         (
             "share again: no-op",
             Box::new(|| c.set_shared(ALICE, &s, true)),
             None,
             vec![],
-            WORKING,
+            SUBMITTED,
         ),
     ];
     for (name, f, want_e, holders, state) in steps {

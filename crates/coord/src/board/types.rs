@@ -390,6 +390,11 @@ pub struct Task {
     pub left_off: Option<LeftOff>,
     #[serde(skip_serializing_if = "omit")]
     pub returned: Option<Returned>,
+    /// Who let it go last and when: its last holder left or went away
+    /// (card #338). A hand-out from before then is stale, so the card
+    /// goes out again as if just posted.
+    #[serde(skip)]
+    pub let_go: Option<(String, GoTime)>,
     #[serde(skip_serializing_if = "omit")]
     pub parent: String,
     #[serde(skip_serializing_if = "omit")]
