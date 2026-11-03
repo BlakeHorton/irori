@@ -1021,6 +1021,39 @@ fn link_refs(ls: &[Link]) -> String {
 }
 
 /// Text that asks more than one thing: two or more question marks.
+/// The word in a card's done-when that leaves a choice to the person
+/// (card #354): "Stephen picks what becomes cards". A verb after can,
+/// lets or able ("the person can pick a theme") is a feature, not a choice.
+fn choice_left(done_when: &str) -> Option<&'static str> {
+    const VERBS: [(&str, &str); 12] = [
+        ("pick", "pick"),
+        ("picks", "pick"),
+        ("choose", "choose"),
+        ("chooses", "choose"),
+        ("decide", "decide"),
+        ("decides", "decide"),
+        ("select", "select"),
+        ("selects", "select"),
+        ("approve", "approve"),
+        ("approves", "approve"),
+        ("prioritise", "prioritise"),
+        ("prioritize", "prioritize"),
+    ];
+    const FEATURE: [&str; 7] = ["can", "could", "let", "lets", "allow", "allows", "able"];
+    let words: Vec<String> = done_when
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect();
+    words.iter().enumerate().find_map(|(i, w)| {
+        let verb = VERBS.iter().find(|(v, _)| v == w)?.1;
+        let feature = words[i.saturating_sub(3)..i]
+            .iter()
+            .any(|p| FEATURE.contains(&p.as_str()));
+        (!feature).then_some(verb)
+    })
+}
+
 fn many_questions(text: &str) -> bool {
     text.matches('?').count() > 1
 }
@@ -1920,6 +1953,20 @@ pub(crate) fn board_status(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         Ok(v) => v,
         Err(e) => return map_err(e),
     };
+    // A done check is for work the person checks, not a choice still
+    // theirs (card #354): a card whose done-when has them pick or decide
+    // asks that as a blocker first. board_edit's done-when lifts it.
+    if completing
+        && let Some(t) = co.get_task(&id)
+        && !t.blockers.iter().any(|b| !b.done_check)
+        && let Some(w) = choice_left(&t.done_criteria)
+    {
+        return err_text(&format!(
+            "{}'s done-when has the person {w} (\"{}\"): a done check isn't where they choose, and a Done there settles nothing. Raise a board_block that asks for that choice, with the options and your pick recommended: true; act on their answer, then set completed. If done-when describes something already settled, board_edit it to say what is done.",
+            t.short_ref(),
+            one_line(&t.done_criteria, 160)
+        ));
+    }
     // An agent's completed waits on the person's Done, so it brings proof
     // they can decide on without digging (card #140): the text is the done
     // check's context, the files its attachments. Coord refuses one without

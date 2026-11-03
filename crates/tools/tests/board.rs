@@ -2048,6 +2048,81 @@ fn test_board_status_completed_waits_on_the_persons_done() {
     has(&board, &["Is this done?"]);
 }
 
+/// Card #354: a card whose done-when leaves a choice to the person asks it
+/// as a blocker; a done check there would settle nothing.
+#[test]
+fn test_board_status_completed_asks_a_choice_as_a_blocker() {
+    DONE_CHECK.with(|c| c.set(true));
+    let h = new_harness();
+    let a = call_a();
+    let id = h.new_card(
+        &a,
+        json!({"title": "findings", "done_when": "Findings listed; Stephen picks what becomes cards."}),
+    );
+    h.okj(&a, "board_join", json!({"task_id": id}));
+    let done = json!({"task_id": id, "state": "completed", "proof": "Six findings on the card."});
+    h.failsj(
+        &a,
+        "board_status",
+        done.clone(),
+        &[
+            "has the person pick",
+            "Stephen picks what becomes cards",
+            "board_block",
+            "board_edit",
+        ],
+    );
+    let t = h.b.co.get_task(&id).unwrap();
+    assert_eq!(t.state, coord::WORKING);
+    assert!(t.blockers.is_empty(), "{:?}", t.blockers);
+    // Asked as a blocker, answered and acted on: now it completes.
+    h.okj(
+        &a,
+        "board_block",
+        json!({"task_id": id, "question": "Which findings become cards?",
+               "options": [{"answer": "All six", "recommended": true}, {"answer": "None"}]}),
+    );
+    h.okj(
+        &a,
+        "board_unblock",
+        json!({"task_id": id, "blocker_id": "b1", "note": "made six cards"}),
+    );
+    let out = h.okj(&a, "board_status", done);
+    has(&out, &["waits on the person to confirm it's done"]);
+
+    // A feature the person uses is no choice left, and board_edit lifts it.
+    for (when, ok) in [
+        ("the person can pick a theme in settings", true),
+        ("the app lets Stephen choose a voice", true),
+        ("tests pass", true),
+        ("Stephen decides which to keep", false),
+    ] {
+        let id = h.new_card(&a, json!({"title": "x", "done_when": when}));
+        let b = call_b();
+        h.okj(&b, "board_join", json!({"task_id": id}));
+        let out = h.callj(
+            &b,
+            "board_status",
+            json!({"task_id": id, "state": "completed", "proof": "p"}),
+        );
+        assert_eq!(!out.contains("has the person"), ok, "{when}: {out}");
+        if !ok {
+            h.okj(
+                &b,
+                "board_edit",
+                json!({"task_id": id, "done_when": "kept the two Stephen chose"}),
+            );
+            let out = h.okj(
+                &b,
+                "board_status",
+                json!({"task_id": id, "state": "completed", "proof": "p"}),
+            );
+            has(&out, &["waits on the person"]);
+        }
+        h.okj(&b, "board_leave", json!({"task_id": id}));
+    }
+}
+
 /// Card #140: completed's screenshots ride on the done check beside the
 /// proof; proof and attach belong to completed only.
 #[test]
