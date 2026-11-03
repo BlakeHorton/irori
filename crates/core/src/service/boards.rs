@@ -527,6 +527,19 @@ impl Boards {
         lock(&self.inner).logs.values().cloned().collect()
     }
 
+    /// [`Boards::list`] without waiting (card #422): `None` while another
+    /// thread holds the list. A coord's busy hook reads it under that
+    /// coord's lock, and [`Services::route`] holds the list while it reads
+    /// board coords.
+    fn try_list(&self) -> Option<Vec<Arc<BoardLog>>> {
+        let inner = match self.inner.try_lock() {
+            Ok(g) => g,
+            Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return None,
+        };
+        Some(inner.logs.values().cloned().collect())
+    }
+
     pub(crate) fn get(&self, id: &str) -> Result<Arc<BoardLog>> {
         let get = || lock(&self.inner).logs.get(id).cloned();
         if let Some(b) = get() {
@@ -818,6 +831,51 @@ pub fn migrate_board_files(data_dir: &std::path::Path) -> std::io::Result<usize>
 }
 
 impl Services {
+    /// Card #422: a working card the person's agent `agent` (its mesh key)
+    /// holds in a log other than `from`'s, as `tag#n "title"`: one card at
+    /// a time holds across the private board and every shared board.
+    /// `from` is the log asking: `None` the private board, else that
+    /// board's id. On a board the agent is `agent:<cardId>` under each of
+    /// the cards its devices minted for it.
+    ///
+    /// Called under the asking coord's lock, so it never waits on a lock
+    /// that may be waiting on that coord. A board coord may wait on the
+    /// private one (as `outside_leases` does), so a board asks the private
+    /// coord outright. Everything else is tried without waiting: the
+    /// private coord never waits on a board's, two boards never wait on
+    /// each other, and the boards list is held while `route` reads board
+    /// coords. A log busy at that instant counts as not busy, i.e. as
+    /// before #422: the next hand-out or join reads it again.
+    pub(crate) fn busy_outside(&self, agent: &str, from: Option<&str>) -> Option<String> {
+        if agent.is_empty() {
+            return None;
+        }
+        if from.is_some()
+            && let Some(d) = self.coord.busy_card(agent)
+        {
+            return Some(d);
+        }
+        for b in self.boards.try_list()? {
+            if from == Some(b.id.as_str()) {
+                continue;
+            }
+            let Some(co) = b.coord.get() else { continue };
+            let cards: Vec<String> = match b.maps.try_lock() {
+                Ok(m) => m
+                    .by_id
+                    .iter()
+                    .filter(|(_, a)| a.as_str() == agent)
+                    .map(|(id, _)| format!("{AGENT_ACTOR_PREFIX}{id}"))
+                    .collect(),
+                Err(_) => continue,
+            };
+            if let Some(d) = cards.iter().find_map(|k| co.try_busy_card(k)) {
+                return Some(d);
+            }
+        }
+        None
+    }
+
     pub(crate) fn boards_dir(&self) -> PathBuf {
         self.data_dir.join(SPACES_DIR)
     }
@@ -1321,6 +1379,20 @@ impl Services {
                     // card's external wait naming some held ones closes
                     // when they go. Under the board coord's lock: takes the
                     // private coord's, which never waits on a board coord.
+                    // One card at a time across logs (card #422): the
+                    // board's agent:<cardId> is the person's session by
+                    // this board's card map (another member's agent maps to
+                    // none and counts here only); then every other log is
+                    // asked by its key there (see busy_outside's locks).
+                    busy_elsewhere: Some({
+                        let (s, bw) = (Arc::downgrade(self), Arc::downgrade(&b));
+                        Arc::new(move |key: &str| {
+                            let (s, b) = (s.upgrade()?, bw.upgrade()?);
+                            let card = key.strip_prefix(AGENT_ACTOR_PREFIX)?;
+                            let agent = lock(&b.maps).by_id.get(card)?.clone();
+                            s.busy_outside(&agent, Some(&b.id))
+                        })
+                    }),
                     outside_leases: Some({
                         let s = Arc::downgrade(self);
                         Arc::new(move || {

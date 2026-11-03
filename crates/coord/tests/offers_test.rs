@@ -7,6 +7,7 @@
 
 mod common;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use common::*;
@@ -539,4 +540,41 @@ fn a_card_blocked_on_another_task_waits_for_it_then_goes_out_once() {
             .iter()
             .all(|n| n.kind != NOTICE_OFFER)
     );
+}
+
+/// Card #422: a working card in another of the Core's logs (a shared
+/// board's, say) makes the agent busy here too: the hand-out skips it for
+/// the next free agent, and board_join tells it no, naming that card.
+#[test]
+fn a_working_card_in_another_log_counts_as_busy() {
+    let e = Env::new();
+    let elsewhere: BusyFn =
+        Arc::new(|k: &str| (k == CAROL).then(|| "wind#4 \"Merge desk\"".to_string()));
+    let c = e.reopen_with(Options {
+        busy_elsewhere: Some(elsewhere),
+        ..e.opts()
+    });
+    let t = c.create_task(ALICE, nt("Port the parser")).unwrap();
+    let n = c.offer_card(ALICE, &t.id, &room()).unwrap();
+    assert_eq!(n.to, [BOB], "CAROL works wind#4 elsewhere: BOB next: {n:?}");
+    let err = c.claim_task(CAROL, &t.id).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("one card at a time") && msg.contains("wind#4 \"Merge desk\""),
+        "{msg}"
+    );
+    // BOB, free everywhere, takes it.
+    c.claim_task(BOB, &t.id).unwrap();
+    // A card someone assigned to CAROL still goes through.
+    let a = c.create_task(ALICE, nt("Assigned to CAROL")).unwrap();
+    c.assign_task(ALICE, &a.id, CAROL).unwrap();
+    c.claim_task(CAROL, &a.id).unwrap();
+}
+
+/// Card #422: with no hook only this log counts, as before.
+#[test]
+fn no_busy_elsewhere_hook_changes_nothing() {
+    let e = Env::new();
+    let (_, n) = post(&e, "Port the parser", &room());
+    assert_eq!(n.to, [CAROL], "{n:?}");
 }

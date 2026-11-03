@@ -161,6 +161,8 @@ type KeyFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 type StrFn = Arc<dyn Fn(&str) -> String + Send + Sync>;
 /// [`Options::hop_of`].
 pub type HopFn = Arc<dyn Fn(&str) -> i64 + Send + Sync>;
+/// [`Options::busy_elsewhere`].
+pub type BusyFn = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// Whether a person owned the board at a row's place (`None`: now).
 pub type OwnerAtFn = Arc<dyn Fn(&str, Option<&RowPos>) -> bool + Send + Sync>;
 
@@ -182,6 +184,14 @@ pub struct Options {
     pub is_owner: Option<KeyFn>,
     /// A removed device: its leases end everywhere. `None` revokes nobody.
     pub revoked: Option<KeyFn>,
+    /// A working card agent `key` (as this log knows it) holds in another
+    /// of the Core's logs, described for a refusal (`wind#4 "title"`), or
+    /// `None` (card #422). This log's own cards count by themselves; the
+    /// hook adds the rest, so one card at a time holds across the private
+    /// board and every shared board. Called under this coord's lock: it
+    /// must never wait on a coord that may wait on this one. `None`: only
+    /// this log counts.
+    pub busy_elsewhere: Option<BusyFn>,
     /// Fold a shared board's log.
     pub board: bool,
     /// An agent's completed waits on the person's Done (card #112). The
@@ -338,6 +348,29 @@ impl Coord {
 
     fn lock(&self) -> Locked<'_> {
         Locked(self.f.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// The working card agent `key` has in hand in this log, as
+    /// `tag#n "title"` (card #422): what [`Options::busy_elsewhere`] says of
+    /// it from another log. Waits for the lock.
+    pub fn busy_card(&self, key: &str) -> Option<String> {
+        // A read under the raw guard: nothing to flush, and no unlock hook
+        // runs inside the caller's lock.
+        let f = self.f.lock().unwrap_or_else(|e| e.into_inner());
+        f.busy_with(key, "").map(Fold::busy_text)
+    }
+
+    /// [`Coord::busy_card`] without waiting: `None` while another thread
+    /// holds the lock, so a hook reading a coord that may be waiting on
+    /// its own can't deadlock (the agent then counts as free here, as it
+    /// did before card #422).
+    pub fn try_busy_card(&self, key: &str) -> Option<String> {
+        let f = match self.f.try_lock() {
+            Ok(f) => f,
+            Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return None,
+        };
+        f.busy_with(key, "").map(Fold::busy_text)
     }
 
     // ---- tasks ----

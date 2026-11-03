@@ -1837,3 +1837,121 @@ fn a_board_card_reaches_an_idle_agent_not_on_the_board() {
     assert_eq!(c.private_key(&o.to), r.key_b);
     r.core.close().unwrap();
 }
+
+/// Card #422: one card at a time holds across logs. alpha works wind#1 on
+/// a shared board, so a private card beta posts unheld goes to gamma, who
+/// is free everywhere, and alpha is told no when it tries to take it,
+/// naming wind#1. Then gamma, working that private card, is told no on a
+/// second board card, naming its private one.
+#[test]
+fn a_working_card_on_a_shared_board_keeps_the_agent_off_private_hand_outs() {
+    let r = Rig::new();
+    let c = &r.core;
+    let b1 = c.create_board("Wind", "wind").unwrap();
+    let co = c.board_coord(&b1).unwrap();
+    let me = format!("{PERSON_ACTOR_PREFIX}{}", c.person().id);
+    let caller = |key: &str, name: &str| tools::Caller {
+        sender: inbox::Sender::new(key, name, "claude"),
+        path: String::new(),
+    };
+    let call = |key: &str, name: &str, tool: &str, args: serde_json::Value| -> String {
+        match c.tools().call(
+            &caller(key, name),
+            tool,
+            &serde_json::to_vec(&args).unwrap(),
+        ) {
+            Ok(s) => s,
+            Err(e) => format!("Error: {e}"),
+        }
+    };
+    // alpha takes wind#1 up: working, not shared, no subtasks.
+    let w = co.create_task(&me, new_task("Merge desk")).unwrap();
+    let out = call(
+        &r.key_a,
+        "alpha",
+        "board_join",
+        serde_json::json!({"task_id": "wind#1"}),
+    );
+    assert!(!out.starts_with("Error"), "alpha joins wind#1: {out}");
+    let card_a = c.board_key(&b1, &r.key_a).unwrap();
+    let w = co.get_task(&w.id).unwrap();
+    assert!(
+        w.holders == [card_a.clone()] && w.state == coord::WORKING,
+        "{w:?}"
+    );
+
+    // gamma comes up, free everywhere.
+    let sess_c = "cccccccc-3333-4333-8333-000000000003";
+    let key_c = format!("{}/{sess_c}", c.device_id());
+    common::write_session(
+        &r.claude.join("sessions"),
+        "900003.json",
+        sess_c,
+        "gamma",
+        &r.data,
+    );
+    wait_for(10, "presence lists gamma", || {
+        c.local_agents().iter().any(|a| a.key == key_c)
+    });
+
+    // beta posts a private card unheld: alpha is busy on wind#1, so gamma
+    // is handed it.
+    let out = call(
+        &r.key_b,
+        "beta",
+        "board_create",
+        serde_json::json!({"title": "Port the parser"}),
+    );
+    assert!(out.contains("Created"), "{out}");
+    let p = c
+        .coord()
+        .list_tasks(&coord::TaskFilter::default())
+        .into_iter()
+        .find(|t| t.title == "Port the parser")
+        .unwrap();
+    wait_for(10, "the private card is handed to gamma", || {
+        c.sweep_coord().ok();
+        c.coord()
+            .get_task(&p.id)
+            .and_then(|t| t.live_offer().cloned())
+            .is_some_and(|o| o.to == key_c)
+    });
+    let o = c.coord().get_task(&p.id).unwrap().offer.unwrap();
+    assert!(!o.heard.contains(&r.key_a), "alpha was handed it: {o:?}");
+
+    // alpha tries to take it anyway: told no, naming wind#1.
+    let out = call(
+        &r.key_a,
+        "alpha",
+        "board_join",
+        serde_json::json!({"task_id": p.id}),
+    );
+    assert!(
+        out.contains("one card at a time") && out.contains("wind#1") && out.contains("Merge desk"),
+        "alpha took a second card: {out}"
+    );
+    assert!(c.coord().get_task(&p.id).unwrap().holders.is_empty());
+
+    // gamma takes it, then is told no on a second board card, naming the
+    // private one.
+    let out = call(
+        &key_c,
+        "gamma",
+        "board_join",
+        serde_json::json!({"task_id": p.id}),
+    );
+    assert!(!out.starts_with("Error"), "gamma joins: {out}");
+    let w2 = co.create_task(&me, new_task("Second desk")).unwrap();
+    let out = call(
+        &key_c,
+        "gamma",
+        "board_join",
+        serde_json::json!({"task_id": w2.short_ref()}),
+    );
+    assert!(
+        out.contains("one card at a time") && out.contains("Port the parser"),
+        "gamma took a board card while working a private one: {out}"
+    );
+    assert!(co.get_task(&w2.id).unwrap().holders.is_empty());
+    r.core.close().unwrap();
+}

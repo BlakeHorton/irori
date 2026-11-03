@@ -208,6 +208,8 @@ pub struct Fold {
     pub(crate) holder_grace: Duration,
     pub(crate) owner_fn: KeyFn,
     pub(crate) revoked: Option<KeyFn>,
+    /// See [`super::Options::busy_elsewhere`].
+    pub(crate) busy_elsewhere: Option<super::BusyFn>,
     pub(crate) on_board: bool,
     pub(crate) done_check: bool,
     pub(crate) person: String,
@@ -363,6 +365,7 @@ impl Fold {
             },
             owner_fn,
             revoked: o.revoked,
+            busy_elsewhere: o.busy_elsewhere,
             on_board,
             done_check: o.done_check,
             person,

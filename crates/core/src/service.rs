@@ -31,7 +31,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -915,6 +915,10 @@ impl Core {
         );
         laps.lap("inbox");
 
+        // The Services the private coord's busy hook reads the boards
+        // through (card #422), set once they exist; until then only the
+        // private board counts.
+        let svc_cell: Arc<OnceLock<Weak<Services>>> = Arc::new(OnceLock::new());
         let co = Arc::new(
             Coord::new(
                 st.clone(),
@@ -928,6 +932,14 @@ impl Core {
                     is_owner: Some(is_owner.clone()),
                     revoked: Some(revoked.clone()),
                     done_check: true,
+                    // A working card on a shared board counts here too:
+                    // one card at a time across logs (card #422).
+                    busy_elsewhere: Some({
+                        let cell = svc_cell.clone();
+                        Arc::new(move |agent: &str| {
+                            cell.get()?.upgrade()?.busy_outside(agent, None)
+                        })
+                    }),
                     ..Default::default()
                 },
             )
@@ -1185,6 +1197,7 @@ impl Core {
             boards: board_set,
             invites,
         });
+        let _ = svc_cell.set(Arc::downgrade(&s));
         let _ = s.boards.kicker.set({
             let m = Arc::downgrade(&s.mesh);
             Arc::new(move || {

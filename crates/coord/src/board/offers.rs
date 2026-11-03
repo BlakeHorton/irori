@@ -9,7 +9,9 @@
 //! without taking it, or it goes away. With nobody free it waits, and goes
 //! out when an agent goes idle. The poster's device runs the hand-out and
 //! writes its `task.offered` rows. An agent busy on a working card (or
-//! owning open steps on one) is told no when it tries to take a second.
+//! owning open steps on one) is told no when it tries to take a second,
+//! wherever that working card is: the private board or a shared one
+//! (card #422, [`super::Options::busy_elsewhere`]).
 
 use std::collections::{HashMap, HashSet};
 
@@ -125,6 +127,22 @@ impl Fold {
         busy.into_iter().next()
     }
 
+    /// How a busy card reads in a refusal: `tag#n "title"`.
+    pub(crate) fn busy_text(t: &Task) -> String {
+        format!("{} {}", t.short_ref(), quote(&t.title))
+    }
+
+    /// The working card `key` holds in another of the Core's logs (card
+    /// #422), by [`super::Options::busy_elsewhere`].
+    pub(crate) fn busy_elsewhere(&self, key: &str) -> Option<String> {
+        self.busy_elsewhere.as_ref().and_then(|f| f(key))
+    }
+
+    /// Whether `key` has a working card in hand here or in another log.
+    pub(crate) fn busy_anywhere(&self, key: &str) -> bool {
+        self.busy_with(key, "").is_some() || self.busy_elsewhere(key).is_some()
+    }
+
     /// Refuses `by` taking card t while it already works another one. A
     /// shared card, a card someone assigned to `by`, and a person are let
     /// through.
@@ -132,18 +150,21 @@ impl Fold {
         if t.shared || contains(&t.assigned, by) || self.is_owner(by) {
             return Ok(());
         }
-        match self.busy_with(by, &t.id) {
-            None => Ok(()),
-            Some(b) => Err(Error::raw(
-                ErrorKind::NotAllowed,
-                format!(
-                    "coord: you already hold {} {} and it is still working: one card at a time. Finish it (board_status completed) or hand it back (board_leave) first; until then leave {} for a free agent.",
-                    b.short_ref(),
-                    quote(&b.title),
-                    t.short_ref()
-                ),
-            )),
-        }
+        // A working card in another log (card #422) counts as one here.
+        let held = match self.busy_with(by, &t.id) {
+            Some(b) => Fold::busy_text(b),
+            None => match self.busy_elsewhere(by) {
+                Some(d) => d,
+                None => return Ok(()),
+            },
+        };
+        Err(Error::raw(
+            ErrorKind::NotAllowed,
+            format!(
+                "coord: you already hold {held} and it is still working: one card at a time. Finish it (board_status completed) or hand it back (board_leave) first; until then leave {} for a free agent.",
+                t.short_ref()
+            ),
+        ))
     }
 
     /// Keeps the inbox's view of card `id`'s hand-out current, so a
@@ -212,7 +233,7 @@ impl Fold {
             if skip.contains(&a.key)
                 || out.contains(&a.key)
                 || elsewhere.contains(&a.key)
-                || self.busy_with(&a.key, "").is_some()
+                || self.busy_anywhere(&a.key)
             {
                 continue;
             }
@@ -242,7 +263,7 @@ impl Fold {
                     && !self.is_owner(&a.key)
                     && a.status == "idle"
                     && a.device_state != crate::roster::OFFLINE
-                    && self.busy_with(&a.key, "").is_none()
+                    && !self.busy_anywhere(&a.key)
             })
             .collect();
         let mut cards: Vec<&Task> = self
