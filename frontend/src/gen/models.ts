@@ -69,6 +69,11 @@ export type MentionOutcome = B.MentionOutcome
 export type Message = B.Message
 export type Mode = B.Mode
 export type NewCardInput = B.NewCardInput
+export type NoteChangeView = B.NoteChangeView
+export type NoteEditInput = B.NoteEditInput
+export type NoteEventView = B.NoteEventView
+export type NoteInput = B.NoteInput
+export type NoteView = B.NoteView
 export type NotifyOptions = B.NotifyOptions
 export type Outcome = B.Outcome
 export type PairJoiner = B.PairJoiner
@@ -392,6 +397,31 @@ export function Message(p: Partial<B.Message> = {}): B.Message {
 /** NewCardInput with Go's zero values for every field left out. */
 export function NewCardInput(p: Partial<B.NewCardInput> = {}): B.NewCardInput {
   return { ...p } as B.NewCardInput
+}
+
+/** NoteChangeView with Go's zero values for every field left out. */
+export function NoteChangeView(p: Partial<B.NoteChangeView> = {}): B.NoteChangeView {
+  return { "by": "", "at": "", "kind": "", "text": "", "tags": null, "remove": false, "why": "", ...p } as B.NoteChangeView
+}
+
+/** NoteEditInput with Go's zero values for every field left out. */
+export function NoteEditInput(p: Partial<B.NoteEditInput> = {}): B.NoteEditInput {
+  return { ...p } as B.NoteEditInput
+}
+
+/** NoteEventView with Go's zero values for every field left out. */
+export function NoteEventView(p: Partial<B.NoteEventView> = {}): B.NoteEventView {
+  return { "what": "", "by": "", "at": "", "text": "", ...p } as B.NoteEventView
+}
+
+/** NoteInput with Go's zero values for every field left out. */
+export function NoteInput(p: Partial<B.NoteInput> = {}): B.NoteInput {
+  return { ...p } as B.NoteInput
+}
+
+/** NoteView with Go's zero values for every field left out. */
+export function NoteView(p: Partial<B.NoteView> = {}): B.NoteView {
+  return { "id": "", "scope": "", "boardId": "", "kind": "", "text": "", "tags": [], "source": "", "taskId": "", "by": "", "byPerson": false, "at": "", "state": "", "acceptedBy": "", "acceptedAt": "", "updated": "", "pending": null, "history": [], "stale": "", ...p } as B.NoteView
 }
 
 /** NotifyOptions with Go's zero values for every field left out. */

@@ -44,33 +44,37 @@ fn a_mine_note_never_enters_a_board_log() {
         .unwrap();
     assert_eq!((mine.scope.as_str(), mine.board_id.as_str()), ("mine", ""));
     assert_eq!(mine.note.state, coord::NOTE_ACCEPTED);
-    // A board note, by its tag.
-    let shared = c
+    // A board note waits until every member's Irori reads note rows
+    // (#411, #392): refused with a reason, and nothing is written.
+    let e = c
         .propose_note(&me, "mlg", nn("Ship models to the repo.", &["everywhere"]))
+        .unwrap_err();
+    assert!(e.is(coord::ErrorKind::NotAllowed), "{e}");
+    assert!(e.to_string().contains("Mine"), "{e}");
+    assert!(note_rows(&c.board_store(&b).unwrap()).is_empty());
+    assert_eq!(note_rows(c.store()), vec![mine.note.id.clone()]);
+
+    // Written straight to the board's coord (as the gate will allow), a
+    // board note goes in the board log only.
+    let person = format!("{}{}", store::kinds::PERSON_ACTOR_PREFIX, c.person().id);
+    let shared = c
+        .board_coord(&b)
+        .unwrap()
+        .propose_note(&person, nn("Ship models to the repo.", &["everywhere"]))
         .unwrap();
-    assert_eq!(shared.board_id, b);
-
-    let board_rows = note_rows(&c.board_store(&b).unwrap());
-    let private_rows = note_rows(c.store());
-    assert_eq!(board_rows, vec![shared.note.id.clone()]);
-    assert!(
-        !board_rows.contains(&mine.note.id),
-        "a Mine note reached the board log"
+    assert_eq!(
+        note_rows(&c.board_store(&b).unwrap()),
+        vec![shared.id.clone()]
     );
-    assert!(private_rows.contains(&mine.note.id));
-    assert!(!private_rows.contains(&shared.note.id));
+    assert!(!note_rows(c.store()).contains(&shared.id));
 
-    // The board knows the person by their board key, and both show in the list.
-    assert!(
-        shared
-            .note
-            .by
-            .starts_with(store::kinds::PERSON_ACTOR_PREFIX)
-    );
     let all = c.notes("", false).unwrap();
     assert_eq!(all.len(), 2);
     assert_eq!(c.notes("mine", false).unwrap().len(), 1);
+    assert_eq!(c.notes("mlg", false).unwrap()[0].board_id, b);
     assert_eq!(c.search_notes("repo", true).len(), 1);
+    // Removing it from the board waits too; an unknown scope is refused.
+    assert!(c.remove_note(&me, &shared.id, "").is_err());
     assert!(
         c.propose_note(&me, "nope", nn("x", &["everywhere"]))
             .is_err()

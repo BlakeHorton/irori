@@ -688,6 +688,21 @@ impl Capture {
         crate::watch::run(&self.inner, cancel);
     }
 
+    /// The worktree roots this device has seen for `repo_key`, sorted
+    /// (the Notes page's Still true? check, card #411).
+    pub fn repo_roots(&self, repo_key: &str) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .inner
+            .read()
+            .repo_roots
+            .values()
+            .filter(|r| r.repo_key == repo_key)
+            .map(|r| r.root.clone())
+            .collect();
+        v.sort();
+        v
+    }
+
     /// The fold's normRoot for a root (exposed for the cursor-file tests).
     pub fn norm_root(root: &str) -> String {
         norm_root(root)

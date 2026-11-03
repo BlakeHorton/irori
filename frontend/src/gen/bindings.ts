@@ -151,6 +151,11 @@ export const commands = {
 	boardsSetAutonomy: (boardId: string, preset: string) => __TAURI_INVOKE<BoardSettings>("boards_set_autonomy", { boardId, preset }),
 	boardsSetThreads: (boardId: string, mode: string) => __TAURI_INVOKE<BoardSettings>("boards_set_threads", { boardId, mode }),
 	boardsSetReviewer: (boardId: string, agent: string, repo: string) => __TAURI_INVOKE<BoardSettings>("boards_set_reviewer", { boardId, agent, repo }),
+	notesList: (scope: string, removed: boolean) => __TAURI_INVOKE<NoteView[]>("notes_list", { scope, removed }),
+	noteNew: (note: NoteInput) => __TAURI_INVOKE<NoteView>("note_new", { note }),
+	noteAccept: (id: string) => __TAURI_INVOKE<NoteView>("note_accept", { id }),
+	noteEdit: (id: string, edit: NoteEditInput) => __TAURI_INVOKE<NoteView>("note_edit", { id, edit }),
+	noteRemove: (id: string, why: string) => __TAURI_INVOKE<NoteView>("note_remove", { id, why }),
 	boardsInvite: (boardId: string) => __TAURI_INVOKE<InviteStatus>("boards_invite", { boardId }),
 	boardsJoinInvite: (link: string) => __TAURI_INVOKE<InviteStatus>("boards_join_invite", { link }),
 	boardsConfirmInviteWords: (words: string) => __TAURI_INVOKE<InviteStatus>("boards_confirm_invite_words", { words }),
@@ -1177,6 +1182,88 @@ export type NewCardInput = {
 	 *  the card as the person's first comment, and with the hand-out.
 	 */
 	files?: UploadFile[],
+};
+
+/**  A pending agent change to a live note, waiting for a person's accept. */
+export type NoteChangeView = {
+	by: string,
+	at: string,
+	/**  The proposed kind, text or tags; empty or absent when unchanged. */
+	kind: string,
+	text: string,
+	tags: string[] | null,
+	/**  The proposal is to remove the note. */
+	remove: boolean,
+	why: string,
+};
+
+/**  An edit: each given field replaces the note's. */
+export type NoteEditInput = {
+	kind?: string | null,
+	text?: string | null,
+	tags?: string[] | null,
+};
+
+/**  One step of a note's history. */
+export type NoteEventView = {
+	/**  proposed, accepted, edited, edit_proposed, removal_proposed, removed. */
+	what: string,
+	by: string,
+	at: string,
+	text: string,
+};
+
+/**  What New note and Keep as note write. */
+export type NoteInput = {
+	/**  `mine` (the default), or a board's tag or id. */
+	scope?: string,
+	kind?: string,
+	text?: string,
+	tags?: string[],
+	/**  Where it came from, as in [`NoteView::source`]. */
+	source?: string,
+	/**  The source's card, comment and blocker, when it has them. */
+	taskId?: string,
+	commentId?: string,
+	blockerId?: string,
+};
+
+/**  A note as the Notes page shows it. */
+export type NoteView = {
+	/**  The bare id; refs are `note:<id>`. */
+	id: string,
+	/**  `mine`, or the board's tag. */
+	scope: string,
+	/**  `""` for Mine. */
+	boardId: string,
+	/**  rule, gotcha, decision, pointer or preference. */
+	kind: string,
+	text: string,
+	tags: string[],
+	/**  `task:<id>`, `comment:<id>`, `blocker:<taskId>/<b1>`, `proof:<taskId>`, or "". */
+	source: string,
+	taskId: string,
+	/**
+	 *  The author's key: the person (`user:…`, or `person:…` on a board)
+	 *  or an agent.
+	 */
+	by: string,
+	/**  Whether the author is a person (a person's note is live at once). */
+	byPerson: boolean,
+	at: string,
+	/**  proposed, accepted or removed. */
+	state: string,
+	acceptedBy: string,
+	acceptedAt: string,
+	updated: string,
+	pending: NoteChangeView | null,
+	history: NoteEventView[],
+	/**
+	 *  Still true? (v1): why the note may be out of date, else "". A
+	 *  `path:` tag whose path is gone from every checkout of its repo on
+	 *  this device, or a source card that is gone.
+	 */
+	stale: string,
 };
 
 /**  The notification settings (Go `notify.Options`). */

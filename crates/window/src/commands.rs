@@ -767,6 +767,42 @@ pub async fn boards_set_reviewer(
     w.boards_set_reviewer(&board_id, &agent, &repo)
 }
 
+// ---- Notes (card #401) ------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn notes_list(w: W<'_>, scope: String, removed: bool) -> R<Vec<crate::notes::NoteView>> {
+    blocking(&w, move |w| w.notes_list(&scope, removed)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn note_new(w: W<'_>, note: crate::notes::NoteInput) -> R<crate::notes::NoteView> {
+    blocking(&w, move |w| w.note_new(note)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn note_accept(w: W<'_>, id: String) -> R<crate::notes::NoteView> {
+    blocking(&w, move |w| w.note_accept(&id)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn note_edit(
+    w: W<'_>,
+    id: String,
+    edit: crate::notes::NoteEditInput,
+) -> R<crate::notes::NoteView> {
+    blocking(&w, move |w| w.note_edit(&id, edit)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn note_remove(w: W<'_>, id: String, why: String) -> R<crate::notes::NoteView> {
+    blocking(&w, move |w| w.note_remove(&id, &why)).await
+}
+
 // ---- Invites ----------------------------------------------------------------------
 
 #[tauri::command]
@@ -1267,6 +1303,11 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             boards_set_autonomy,
             boards_set_threads,
             boards_set_reviewer,
+            notes_list,
+            note_new,
+            note_accept,
+            note_edit,
+            note_remove,
             boards_invite,
             boards_join_invite,
             boards_confirm_invite_words,

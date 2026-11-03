@@ -24,6 +24,27 @@ pub struct NoteLog {
 }
 
 impl Services {
+    /// Whether this device may write note rows into board `board_id`'s log
+    /// (#411). An older Irori refuses an unknown kind, and every later row
+    /// of that writer's stream then fails its gap check there, so one
+    /// note.* row would stall this device's whole stream on any member
+    /// device that predates notes (nutmeg, #392). The board hello's
+    /// `spaces` field says which devices read the new rows; until that
+    /// gate is on main (#392), board notes wait. Mine notes never do.
+    pub(crate) fn board_notes_ready(
+        &self,
+        board_id: &str,
+    ) -> std::result::Result<(), coord::Error> {
+        let _ = board_id;
+        Err(Error::coord(
+            CK::NotAllowed,
+            format_args!(
+                "board notes wait until every member's Irori can read them (card #392); keep it in Mine for now"
+            ),
+        )
+        .into_coord())
+    }
+
     /// The log for `scope` (`""` or `mine`: the private log; else a board's
     /// tag or id), with each of `keys` as that log knows the caller.
     pub(crate) fn notes_log(
@@ -78,6 +99,14 @@ impl Services {
             },
             out,
         ))
+    }
+
+    /// [`Services::board_notes_ready`] for a board log; Mine always passes.
+    pub(crate) fn write_gate(&self, l: &NoteLog) -> std::result::Result<(), coord::Error> {
+        if l.board_id.is_empty() {
+            return Ok(());
+        }
+        self.board_notes_ready(&l.board_id)
     }
 
     /// Every log this device reads notes from: Mine first, then each shown
@@ -158,6 +187,7 @@ impl super::Core {
         n: coord::NewNote,
     ) -> std::result::Result<ScopedNote, coord::Error> {
         let (l, keys) = self.s.notes_log(scope, &[by.to_string()])?;
+        self.s.write_gate(&l)?;
         let note = l.coord.propose_note(&keys[0], n)?;
         Ok(scoped(&l, note))
     }
@@ -165,6 +195,7 @@ impl super::Core {
     /// A person accepts note `id` (or an agent's pending change to it).
     pub fn accept_note(&self, by: &str, id: &str) -> std::result::Result<ScopedNote, coord::Error> {
         let (l, keys) = self.s.note_log(id, &[by.to_string()])?;
+        self.s.write_gate(&l)?;
         let id = id.strip_prefix("note:").unwrap_or(id);
         Ok(scoped(&l, l.coord.accept_note(&keys[0], id)?))
     }
@@ -177,6 +208,7 @@ impl super::Core {
         why: &str,
     ) -> std::result::Result<ScopedNote, coord::Error> {
         let (l, keys) = self.s.note_log(id, &[by.to_string()])?;
+        self.s.write_gate(&l)?;
         let id = id.strip_prefix("note:").unwrap_or(id);
         Ok(scoped(&l, l.coord.edit_note(&keys[0], id, e, why)?))
     }
@@ -188,6 +220,7 @@ impl super::Core {
         why: &str,
     ) -> std::result::Result<ScopedNote, coord::Error> {
         let (l, keys) = self.s.note_log(id, &[by.to_string()])?;
+        self.s.write_gate(&l)?;
         let id = id.strip_prefix("note:").unwrap_or(id);
         Ok(scoped(&l, l.coord.remove_note(&keys[0], id, why)?))
     }

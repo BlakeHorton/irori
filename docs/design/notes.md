@@ -119,12 +119,14 @@ A wake takes the accepted notes of every log the agent reads: Mine for the perso
 
 **Scopes and routing** (`crates/core/src/service/notes.rs`): `mine`, or a board's tag or id. A Mine note never enters a board log, whatever its tags name (`crates/core/tests/notes.rs`). Core API: `propose_note(by, scope, NewNote)`, `accept_note(by, id)`, `edit_note(by, id, NoteEdit, why)`, `remove_note(by, id, why)`, `notes(scope, removed)`, `search_notes(q, live_only)`. Each returns `ScopedNote {scope, boardId?, ...note}`. Ids may carry `note:`.
 
-**Window commands** (to build): `notes_list {scope?}`, `note_new {scope, kind, text, tags, source?, taskId?, commentId?, blockerId?}` (New note and Keep as note), `note_accept {id}`, `note_edit {id, kind?, text?, tags?}`, `note_remove {id, why?}`. Keep as note defaults to Mine (§8), prefilled from the source's text, with tags guessed from its card (board, `repo:`).
+**Window commands** (`crates/window/src/notes.rs`, #411): `notes_list {scope, removed}` returns `NoteView[]` (an empty scope lists Mine and every board), `note_new {note: {scope, kind, text, tags, source, taskId, commentId, blockerId}}` (New note and Keep as note), `note_accept {id}`, `note_edit {id, edit: {kind?, text?, tags?}}` and `note_remove {id, why}`, all as the person. A `NoteView` carries `pending` (an agent's edit, or `remove: true`), `history`, `byPerson` and `stale`. Keep as note defaults to Mine (§8), prefilled from the source's text, with tags guessed from its card (board, `repo:`).
+
+**Board writes are gated** (#411): an older Irori refuses an unknown kind, and every later row of that writer's stream then fails its gap check, so one `note.*` row would stall this device's stream on any member device that predates notes. Core's notes API refuses every board-scope write ("board notes wait until every member's Irori can read them") until #392's board-hello gate (`BoardMesh::not_ready_for_spaces`) is on main; `Services::board_notes_ready` is the one place to switch it. Mine writes never wait.
 
 **Agent tools** (to build): `notes_propose {scope?, kind, text, tags, source?}` for a new note, or `{note, kind?, text?, tags?, why}` / `{note, remove: true, why}` for an agent's proposed edit or removal. `notes_search {q}` searches accepted notes only, in the logs the agent reads. A proposal reaches no agent. The wake gets a short **Notes** section in the same untrusted-data framing as other agents' messages: each note's kind, text, `note:<id>`, author and accepter, and the tag that matched.
 
 **Notes a wake carried** (to build): the card page shows which notes its agent got on wake and why. Record the note ids and matched tags with the wake (device-local or on the private log's wake row), never in a board log.
 
-**Still true?** (v1, to build): shown when a note's `path:` names a path that is gone from the repo, or its source card was deleted. Nothing more clever in v1.
+**Still true?** (v1): `NoteView.stale` says "its source card is gone", or "<path> is gone from <repo>" when a `path:` tag's path is missing from every checkout of that repo this device has seen. Repos with no checkout here are not checked.
 
 **Not in v1:** the one-time import of the agents' memory files, and a note's read count.
