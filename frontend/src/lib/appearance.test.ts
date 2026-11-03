@@ -61,7 +61,9 @@ test("hex round-trips through OKLCH", () => {
 })
 
 test("design/themes.css is up to date (bun scripts/gen-themes.ts)", async () => {
-  const file = await Bun.file(new URL("../design/themes.css", import.meta.url)).text()
+  // LF line ends, like gen-models --check and xtask bindings --check: a
+  // Windows checkout with core.autocrlf=true has CRLF here (#344).
+  const file = (await Bun.file(new URL("../design/themes.css", import.meta.url)).text()).replace(/\r\n/g, "\n")
   expect(file).toBe(themesCSS())
 })
 
