@@ -198,10 +198,7 @@ export const commands = {
 	voiceStart: () => __TAURI_INVOKE<number>("voice_start"),
 	voiceStop: (session: number) => __TAURI_INVOKE<null>("voice_stop", { session }),
 	voiceOpenSettings: (code: string) => __TAURI_INVOKE<null>("voice_open_settings", { code }),
-	/**
-	 *  Every command, plus the event payload types the frontend listens for.
-	 *  Talk's list: channels, DMs and open threads, with unread counts.
-	 */
+	/**  Talk's list: channels, DMs and open threads, with unread counts. */
 	talkConversations: () => __TAURI_INVOKE<TalkConversation[]>("talk_conversations"),
 	/**  Up to `limit` posts before `before` (none: the newest), oldest first. */
 	talkPosts: (convId: string, before: string | null, limit: number) => __TAURI_INVOKE<TalkPost[]>("talk_posts", { convId, before, limit }),
