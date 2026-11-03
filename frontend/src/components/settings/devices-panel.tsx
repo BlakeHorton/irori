@@ -58,12 +58,13 @@ export function DevicesPanel({ open }: { open: boolean }) {
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Devices find each other on your local network and through your home
-        server, one of your own devices; nothing goes through a public server.
-        Others on a network see that sealed messages pass, never their content,
-        and a relay you add under Advanced sees IP addresses. What reaches
-        another device stays there, so a secret an agent wrote that the scrubber
-        missed is copied for good.
+        Devices find each other on your local network, through your home server,
+        and with public relays on, through iroh&apos;s free relays, which see
+        which devices connect but never what they say. Others on a network see
+        that sealed messages pass, never their content, and a relay you add
+        under Advanced sees IP addresses. What reaches another device stays
+        there, so a secret an agent wrote that the scrubber missed is copied for
+        good.
       </p>
     </div>
   )
