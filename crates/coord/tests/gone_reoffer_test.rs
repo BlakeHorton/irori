@@ -110,6 +110,30 @@ fn an_ended_holder_s_working_card_is_offered_within_a_minute() {
     assert!(after.holders.is_empty(), "{:?}", after.holders);
     assert_eq!(after.state, SUBMITTED);
     assert!(got[0].text.contains("went away"), "{}", got[0].text);
+
+    // Handed once: later sweeps leave it with DAVE, no fresh notices.
+    for _ in 0..4 {
+        e.clk.add(secs(5));
+        let ns = tick(&e, &agents);
+        assert!(
+            ns.iter().all(|n| n.kind != NOTICE_OFFER),
+            "offered again: {ns:?}"
+        );
+    }
+    // DAVE's turn ends without taking it: it moves on to CAROL, never
+    // back to DAVE or to BOB.
+    e.clk.add(secs(5));
+    let later = e.clk.now();
+    agents.retain(|a| a.key != DAVE);
+    agents.push(idle_at(DAVE, later));
+    agents.push(idle_at(CAROL, e.clk.now()));
+    let ns = tick(&e, &agents);
+    let to: Vec<_> = ns
+        .iter()
+        .filter(|n| n.kind == NOTICE_OFFER)
+        .flat_map(|n| n.to.clone())
+        .collect();
+    assert_eq!(to, [CAROL], "{ns:?}");
 }
 
 #[test]

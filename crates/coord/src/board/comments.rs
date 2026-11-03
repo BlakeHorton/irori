@@ -1456,8 +1456,8 @@ impl Fold {
         let mut live = HashSet::new();
         let mut mute = HashSet::new();
         // Agents whose session ended (card #338): wound down or closed, not
-        // merely missing for a restart. They come off their cards at the
-        // next sweep, without the holder grace.
+        // merely missing for a restart. They come off their cards after
+        // ENDED_GRACE (time to --resume), not the holder grace.
         let mut ended: HashSet<String> = self.gone_rows.keys().cloned().collect();
         if let Some(r) = &self.roster {
             for a in r.agents() {
@@ -1491,7 +1491,7 @@ impl Fold {
                 // task.left for another person's agent folds to nothing
                 // and was written again every sweep (card #242).
                 let grace = if ended.contains(&h) {
-                    std::time::Duration::ZERO
+                    super::ENDED_GRACE
                 } else {
                     self.holder_grace
                 };

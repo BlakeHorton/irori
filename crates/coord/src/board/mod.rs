@@ -89,6 +89,10 @@ pub const MAX_TTL: Duration = Duration::from_secs(4 * 3600);
 pub const GONE_GRACE: Duration = Duration::from_secs(3 * 60);
 /// A holder gone this long is taken off its cards.
 pub const HOLDER_GRACE: Duration = Duration::from_secs(10 * 60);
+/// A holder whose session ended (agent.gone: wound down or closed) is
+/// taken off its cards this long after, so the card goes to the next free
+/// agent within a minute (card #338); a quick --resume keeps it.
+pub const ENDED_GRACE: Duration = Duration::from_secs(30);
 
 pub const MAX_COMMENT: usize = 4000;
 /// What the person types (a comment, an ask, a blocker answer) is held to

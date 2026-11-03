@@ -545,11 +545,13 @@ fn machine_rank(
     } else {
         1
     }
+}
+
 /// Whether hand-out o of card t came before its last holder let it go.
 fn stale_offer(t: &Task, o: &Offer) -> bool {
     t.let_go
         .as_ref()
-        .is_some_and(|(_, at)| !gotime::before(at, &o.since))
+        .is_some_and(|(_, at)| gotime::before(&o.since, at))
 }
 
 /// The notice handing unheld card t to agent `to`.
