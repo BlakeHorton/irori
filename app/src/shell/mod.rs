@@ -14,6 +14,8 @@
 //! launch-at-login seam ([`ShellLogin`]) and feeds the tray its inbox and
 //! decide counts. The tray is `State<Arc<Tray>>`.
 
+#[cfg(target_os = "android")]
+mod apk;
 #[cfg(test)]
 mod golden;
 pub mod instance;
@@ -120,6 +122,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
             show(app);
         }
     }));
+    // Android's install screen for in-app updates (card #270).
+    #[cfg(target_os = "android")]
+    let app = app.plugin(apk::init(updater.clone()));
     let app = app
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())

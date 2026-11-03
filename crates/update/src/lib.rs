@@ -70,13 +70,18 @@ pub const EVENT_UPDATE_STATUS: &str = "update:status";
 /// Go's phases, in the order of a normal run.
 pub const PHASE_IDLE: &str = "idle";
 pub const PHASE_CHECKING: &str = "checking";
+/// Android only (card #270): a newer release is out and nothing is
+/// downloaded yet; the person's tap downloads it (a phone may be on a
+/// metered network, so the check never downloads on its own).
+pub const PHASE_AVAILABLE: &str = "available";
 pub const PHASE_DOWNLOADING: &str = "downloading";
 pub const PHASE_READY: &str = "ready";
 pub const PHASE_INSTALLING: &str = "installing";
 pub const PHASE_ERROR: &str = "error";
 
-/// Go `supported`: Windows and macOS update themselves.
-pub const SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
+/// Go `supported`: Windows and macOS update themselves; Android through
+/// its own install screen (card #270).
+pub const SUPPORTED: bool = cfg!(any(windows, target_os = "macos", target_os = "android"));
 
 /// Go `Status`, as the window and tray see it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -122,6 +127,24 @@ type Quit = Arc<dyn Fn() + Send + Sync>;
 type OnChange = Arc<dyn Fn(&Status) + Send + Sync>;
 /// Where the updater's diagnostics go (Go `log.Printf`).
 pub type Logger = Arc<dyn Fn(&str) + Send + Sync>;
+/// What opening Android's install screen came to (card #270).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApkOutcome {
+    /// The install screen is open; Android asks the person to confirm.
+    Opened,
+    /// "Install unknown apps" isn't allowed for Irori yet: its settings page
+    /// was opened instead.
+    NeedsPermission,
+}
+
+/// Opens Android's package installer on a verified APK (the app wires it to
+/// its Kotlin plugin; tests: a recorder).
+pub type ApkInstaller = Arc<dyn Fn(&Path) -> Result<ApkOutcome, String> + Send + Sync>;
+
+/// The line a ready APK shows once Irori had to ask for the permission.
+pub const NEEDS_INSTALL_PERMISSION: &str =
+    "Allow Irori to install apps on the page that just opened, then tap Install again.";
+
 /// Finds the running Irori.app (Go `macPlatform`'s `app`): tests point it
 /// at a fake bundle.
 pub type RunningApp = Arc<dyn Fn() -> Result<PathBuf, String> + Send + Sync>;
@@ -133,6 +156,9 @@ pub enum Platform {
     Nsis,
     /// The `.app` swap (macOS only).
     Mac,
+    /// The APK through Android's install screen (card #270; usable anywhere
+    /// in tests).
+    Android,
     /// No self-update (Linux and the rest).
     Unsupported,
 }
@@ -144,6 +170,8 @@ impl Platform {
             Platform::Nsis
         } else if cfg!(target_os = "macos") {
             Platform::Mac
+        } else if cfg!(target_os = "android") {
+            Platform::Android
         } else {
             Platform::Unsupported
         }
@@ -153,6 +181,7 @@ impl Platform {
         match self {
             Platform::Nsis => "windows installer".into(),
             Platform::Mac => format!("macOS {} app", release::goarch()),
+            Platform::Android => format!("Android {} APK", release::goarch()),
             Platform::Unsupported => std::env::consts::OS.into(),
         }
     }
@@ -161,6 +190,7 @@ impl Platform {
         match self {
             Platform::Nsis => release::is_installer_asset(name),
             Platform::Mac => release::is_mac_app_asset(name, release::goarch()),
+            Platform::Android => release::is_android_apk_asset(name, release::goarch()),
             Platform::Unsupported => false,
         }
     }
@@ -168,6 +198,8 @@ impl Platform {
 
 struct Inner {
     status: Status,
+    /// Android: the update on offer while available, kept for the tap.
+    pending: Option<UpdateInfo>,
     emit: Option<Emit>,
     quit: Option<Quit>,
     on_change: Option<OnChange>,
@@ -186,6 +218,7 @@ pub struct Updater {
     log: Logger,
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     running_app: Option<RunningApp>,
+    apk_installer: Mutex<Option<ApkInstaller>>,
     inner: Mutex<Inner>,
     in_flight: AtomicBool,
 }
@@ -205,8 +238,10 @@ impl Updater {
             pid: std::process::id(),
             log: Arc::new(|l: &str| eprintln!("{l}")),
             running_app: None,
+            apk_installer: Mutex::new(None),
             inner: Mutex::new(Inner {
                 status: Status::phase(PHASE_IDLE),
+                pending: None,
                 emit: None,
                 quit: None,
                 on_change: None,
@@ -248,6 +283,19 @@ impl Updater {
         self
     }
 
+    /// Opens Android's install screen through `f` (the app's Kotlin plugin;
+    /// card #270).
+    pub fn with_apk_installer(self, f: ApkInstaller) -> Updater {
+        self.set_apk_installer(f);
+        self
+    }
+
+    /// The same once the updater is shared: the app's Android plugin is
+    /// registered after the updater is built.
+    pub fn set_apk_installer(&self, f: ApkInstaller) {
+        *self.apk_installer.lock().unwrap() = Some(f);
+    }
+
     fn logf(&self, line: &str) {
         (self.log)(line);
     }
@@ -265,7 +313,7 @@ impl Updater {
     pub fn with_platform(mut self, plat: Platform) -> Updater {
         self.plat = plat;
         self.supported = match plat {
-            Platform::Nsis => true,
+            Platform::Nsis | Platform::Android => true,
             Platform::Mac => cfg!(target_os = "macos"),
             Platform::Unsupported => false,
         };
@@ -349,6 +397,12 @@ impl Updater {
             return;
         }
         self.cleanup();
+        if self.plat == Platform::Android {
+            if let Err(e) = self.check_available().await {
+                self.logf(&format!("irori: update check failed: {e}"));
+            }
+            return;
+        }
         if let Err(e) = self.check_and_download().await {
             self.logf(&format!("irori: auto-update failed: {e}"));
         }
@@ -365,6 +419,17 @@ impl Updater {
             Platform::Mac => {
                 if let Ok(live) = self.live_app() {
                     mac::cleanup(&live);
+                }
+            }
+            // An APK from an earlier update has been installed (or given
+            // up on): drop it.
+            Platform::Android => {
+                if let Ok(rd) = std::fs::read_dir(&self.dir) {
+                    for e in rd.flatten() {
+                        if e.file_name().to_string_lossy().ends_with(".apk") {
+                            let _ = std::fs::remove_file(e.path());
+                        }
+                    }
                 }
             }
             _ => {}
@@ -390,6 +455,10 @@ impl Updater {
         }
         let _clear = Clear(&self.in_flight);
 
+        if self.plat == Platform::Android {
+            // A phone's check never downloads: the banner's tap does.
+            return self.check_available_locked().await;
+        }
         let st = self.status();
         if st.phase == PHASE_READY || st.phase == PHASE_INSTALLING {
             return Ok(st);
@@ -438,6 +507,158 @@ impl Updater {
         Ok(st)
     }
 
+    /// Android's startup and manual check (card #270): look for a newer
+    /// release with an APK and its SHA256SUMS line, and park in available
+    /// (or idle) without downloading. One run at a time, as
+    /// [`Self::check_and_download`].
+    pub async fn check_available(&self) -> Result<Status, String> {
+        if self
+            .in_flight
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Ok(self.status());
+        }
+        let r = self.check_available_locked().await;
+        self.in_flight.store(false, Ordering::SeqCst);
+        r
+    }
+
+    async fn check_available_locked(&self) -> Result<Status, String> {
+        let st = self.status();
+        if matches!(
+            st.phase.as_str(),
+            PHASE_AVAILABLE | PHASE_DOWNLOADING | PHASE_READY | PHASE_INSTALLING
+        ) {
+            return Ok(st);
+        }
+        self.set_status(|s| *s = Status::phase(PHASE_CHECKING));
+        match self.check_for_update().await {
+            Ok(Some(info)) => {
+                self.logf(&format!("irori: update v{} is available", info.version));
+                self.inner.lock().unwrap().pending = Some(info.clone());
+                Ok(self.set_status(|s| {
+                    *s = Status {
+                        version: info.version.clone(),
+                        notes: info.notes.clone(),
+                        ..Status::phase(PHASE_AVAILABLE)
+                    }
+                }))
+            }
+            Ok(None) => Ok(self.set_status(|s| *s = Status::phase(PHASE_IDLE))),
+            Err(e) => {
+                self.fail(&e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Android's Install (card #270): the person tapped the banner.
+    /// Downloads the APK on offer, checks it against SHA256SUMS (a mismatch
+    /// deletes it and fails), then opens Android's install screen. It ends
+    /// in ready: Android replaces the app on its own once the person
+    /// confirms, and a cancelled screen leaves Install to tap again. When
+    /// installing unknown apps isn't allowed yet, the settings page opens
+    /// and the status says so ([`NEEDS_INSTALL_PERMISSION`]).
+    pub async fn install_apk(&self) -> Result<Status, String> {
+        if self.plat != Platform::Android {
+            return Err(self.unsupported_error());
+        }
+        if self
+            .in_flight
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Ok(self.status());
+        }
+        let r = self.install_apk_locked().await;
+        self.in_flight.store(false, Ordering::SeqCst);
+        r
+    }
+
+    async fn install_apk_locked(&self) -> Result<Status, String> {
+        let (st, mut info) = {
+            let g = self.inner.lock().unwrap();
+            (g.status.clone(), g.pending.clone())
+        };
+        // Try again after a failure reads the release afresh: a fixed
+        // SHA256SUMS (or a newer release) replaces what was on offer.
+        if st.phase == PHASE_ERROR {
+            match self.check_for_update().await {
+                Ok(Some(i)) => {
+                    self.inner.lock().unwrap().pending = Some(i.clone());
+                    info = Some(i);
+                }
+                Ok(None) => {
+                    self.inner.lock().unwrap().pending = None;
+                    return Ok(self.set_status(|s| *s = Status::phase(PHASE_IDLE)));
+                }
+                Err(e) => {
+                    self.fail(&e);
+                    return Err(e);
+                }
+            }
+        }
+        let Some(info) = info else {
+            return Err(format!(
+                "no update to install (phase {})",
+                go_quote(&st.phase)
+            ));
+        };
+        let apk = if st.phase == PHASE_READY && st.installer_path.is_file() {
+            st.installer_path.clone()
+        } else {
+            self.logf(&format!("irori: downloading update v{}", info.version));
+            self.set_status(|s| {
+                *s = Status {
+                    version: info.version.clone(),
+                    notes: info.notes.clone(),
+                    ..Status::phase(PHASE_DOWNLOADING)
+                }
+            });
+            match self.download_verified(&info).await {
+                Ok(p) => p,
+                Err(e) => {
+                    self.fail(&e);
+                    return Err(e);
+                }
+            }
+        };
+        self.set_status(|s| {
+            *s = Status {
+                version: info.version.clone(),
+                notes: info.notes.clone(),
+                installer_path: apk.clone(),
+                ..Status::phase(PHASE_READY)
+            }
+        });
+        let open = self.apk_installer.lock().unwrap().clone();
+        let Some(open) = open else {
+            let e = "no installer on this build".to_string();
+            self.set_status(|s| s.error = e.clone());
+            return Err(e);
+        };
+        match open(&apk) {
+            Ok(ApkOutcome::Opened) => {
+                self.logf(&format!(
+                    "irori: opened the install screen for v{}",
+                    info.version
+                ));
+                Ok(self.status())
+            }
+            Ok(ApkOutcome::NeedsPermission) => {
+                self.logf("irori: asked to allow installing unknown apps");
+                Ok(self.set_status(|s| s.error = NEEDS_INSTALL_PERMISSION.into()))
+            }
+            Err(e) => {
+                self.logf(&format!("irori: open the install screen: {e}"));
+                let msg = format!("Couldn't open the install screen: {e}");
+                self.set_status(|s| s.error = msg.clone());
+                Err(msg)
+            }
+        }
+    }
+
     #[allow(unused_variables)]
     fn stage(&self, downloaded: &Path, info: &UpdateInfo) -> Result<PathBuf, String> {
         #[cfg(target_os = "macos")]
@@ -477,6 +698,9 @@ impl Updater {
     /// flips to installing before quitting so [`Updater::install_on_exit`]
     /// sees it; a launch failure goes back to ready.
     pub fn restart_to_update(&self) -> Result<(), String> {
+        if self.plat == Platform::Android {
+            return Err("on Android, Install opens the install screen (install_apk)".into());
+        }
         let (path, quit) = {
             let mut g = self.inner.lock().unwrap();
             if g.status.phase != PHASE_READY {
@@ -503,8 +727,12 @@ impl Updater {
         Ok(())
     }
 
-    /// Go `InstallOnExit`: from ready only, install without relaunch.
+    /// Go `InstallOnExit`: from ready only, install without relaunch. Never
+    /// on Android, where only the person's tap opens the install screen.
     pub fn install_on_exit(&self) {
+        if self.plat == Platform::Android {
+            return;
+        }
         let path = {
             let mut g = self.inner.lock().unwrap();
             if g.status.phase != PHASE_READY {
@@ -530,13 +758,26 @@ impl Updater {
 
     fn client(&self, timeout: Option<Duration>) -> Result<reqwest::Client, String> {
         let provider = Arc::new(rustls::crypto::ring::default_provider());
-        use rustls_platform_verifier::BuilderVerifierExt as _;
-        let tls = rustls::ClientConfig::builder_with_provider(provider)
+        let builder = rustls::ClientConfig::builder_with_provider(provider)
             .with_safe_default_protocol_versions()
-            .map_err(|e| e.to_string())?
-            .with_platform_verifier()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        // Android's platform verifier needs JNI set up with the app's
+        // Context (and its Kotlin half) or the first handshake panics; the
+        // phone checks against Mozilla's roots instead (card #270).
+        #[cfg(target_os = "android")]
+        let tls = builder
+            .with_root_certificates(rustls::RootCertStore {
+                roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+            })
             .with_no_client_auth();
+        #[cfg(not(target_os = "android"))]
+        let tls = {
+            use rustls_platform_verifier::BuilderVerifierExt as _;
+            builder
+                .with_platform_verifier()
+                .map_err(|e| e.to_string())?
+                .with_no_client_auth()
+        };
         let mut b = reqwest::Client::builder()
             .tls_backend_preconfigured(tls)
             .user_agent(format!("irori/{}", self.current));

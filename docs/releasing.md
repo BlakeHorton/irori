@@ -91,10 +91,35 @@ step 5.
 | `irori-<v>-windows-amd64.zip` | nobody (portable exe) |
 | `irori-<v>-macos-arm64.app.zip` | the macOS updater (`irori-…-macos-<arch>.app.zip` or `-macos-universal.app.zip`) |
 | `irori-<v>-macos-arm64.dmg` | nobody (first install) |
-| `SHA256SUMS` | both; an asset without a line is never offered |
+| `irori-<v>-android-arm64.apk` | the Android app (card #270: `irori-…-android-<arch>.apk`) |
+| `SHA256SUMS` | all three; an asset without a line is never offered |
 
-`crates/update/tests/release_names.rs` reads the names out of the two
-scripts and fails if they drift from the matchers.
+### Android (card #270)
+
+A phone never downloads on its own (it may be on a metered network). At
+start it reads `/releases/latest`. When a newer release has the APK and a
+`SHA256SUMS` line for it, the bar says "Irori v<v> is available". Update
+downloads it to `<data>/updates`, checks the hash (a mismatch deletes it and
+says nothing was installed), and opens Android's install screen through the
+app's FileProvider. The first time, Android asks to allow installing unknown
+apps from Irori: that settings page opens, and Install goes on from there.
+Android replaces the app in place, data kept, and its "App installed" screen
+offers Open. Two things only the release can get right: each release's
+`versionCode` must be higher than the last (Android refuses an equal or lower
+one), and every release must be signed with the same key (a debug build on a
+phone needs one uninstall before the first release goes on).
+
+Testing it on an emulator: build two APKs with `IRORI_VERSION` set (for
+example 0.6.1 and 0.6.2), a higher `versionCode` for the second (`--config
+'{"version":"0.6.2","bundle":{"android":{"versionCode":2}}}'`), and
+`IRORI_UPDATE_API=http://127.0.0.1:9250` so the release lookup goes to a local
+fake of the GitHub API (serve `repos/StephenSHorton/irori/releases/latest`
+plus the APK and `SHA256SUMS`, then `adb reverse tcp:9250 tcp:9250`). Release
+builds never set `IRORI_UPDATE_API`.
+
+`crates/update/tests/release_names.rs` reads the names out of the Windows
+and macOS scripts and fails if they drift from the matchers; the Android
+script (#269) joins it when it lands.
 
 ## What the installer does
 

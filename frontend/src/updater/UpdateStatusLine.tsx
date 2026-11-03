@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Download, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { isAndroid } from "./android"
 import { useUpdater } from "./useUpdater"
 
 // UpdateStatusLine is the version line for a settings/about view: the running
@@ -39,6 +40,32 @@ export function UpdateStatusLine() {
       <span className="opacity-40">·</span>
       {!supported ? (
         <span>Updates are not supported on this platform yet</span>
+      ) : status.phase === "available" ||
+        (status.phase === "ready" && isAndroid()) ? (
+        // A phone's update waits for the person's tap (card #270).
+        <>
+          <span className="flex items-center gap-1 text-primary">
+            <Download className="size-3.5" aria-hidden="true" /> {target} is{" "}
+            {status.phase === "ready" ? "downloaded" : "available"}
+          </span>
+          <Button
+            size="xs"
+            onClick={() => void restart()}
+            title={`Download and check ${target}, then open Android's install screen`}
+          >
+            <Download aria-hidden="true" />{" "}
+            {status.phase === "ready" ? "Install" : "Update"}
+          </Button>
+          {restartError ? (
+            <span
+              className="flex items-center gap-1 text-destructive"
+              title={restartError}
+            >
+              <AlertTriangle className="size-3.5" aria-hidden="true" /> Update
+              failed
+            </span>
+          ) : null}
+        </>
       ) : status.phase === "ready" ? (
         <>
           <span className="flex items-center gap-1 text-primary">

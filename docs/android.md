@@ -49,3 +49,4 @@ On the phone: Settings → About phone → tap Build number 7 times, then Develo
 - Data lives in the app's private files dir (`/data/data/com.stephenshorton.irori/files/irori`); `mobile_main` sets `IRORI_HOME`, `HOME` and `CLAUDE_CONFIG_DIR` there before the shell starts.
 - The app library is linked with 16 KB pages (`.cargo/config.toml`); without it Android 15+ phones warn that the app isn't 16 KB compatible.
 - Logs: `adb shell run-as com.stephenshorton.irori tail files/irori/irori.log`.
+- Updates (card #270): the release's APK, checked against `SHA256SUMS`, goes to Android's install screen through `ApkInstallPlugin.kt` (app/gen/android) and the FileProvider's `irori/updates/` path; the manifest asks for `REQUEST_INSTALL_PACKAGES`. The updater checks TLS against bundled Mozilla roots on Android (the platform verifier would need JNI set up). See docs/releasing.md, Android.

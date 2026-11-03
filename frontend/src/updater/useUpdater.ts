@@ -10,8 +10,16 @@ export const UPDATE_STATUS_EVENT = "update:status"
 // The banner stays hidden for that version only; a newer release shows again.
 const DISMISS_KEY = "irori.update.dismissed"
 
+// "available" is Android's (card #270): a newer release is out and only the
+// person's tap downloads it.
 export type UpdatePhase =
-  "idle" | "checking" | "downloading" | "ready" | "installing" | "error"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "installing"
+  | "error"
 
 export interface UpdaterState {
   /** Backend update state (phase/version/notes/error). */
@@ -30,7 +38,11 @@ export interface UpdaterState {
   restartError: string
   /** Manual "Check for updates": checks and downloads, never installs. */
   check: () => Promise<void>
-  /** "Restart now": launches the installer and quits Irori. */
+  /**
+   * "Restart now": launches the installer and quits Irori. On Android
+   * (card #270) it is Update/Install: download, check SHA256SUMS, open
+   * Android's install screen.
+   */
   restart: () => Promise<void>
   /** "Later": hide the banner for this version. */
   dismiss: () => void

@@ -52,6 +52,13 @@ pub fn is_mac_app_asset(name: &str, arch: &str) -> bool {
             || n.ends_with("-macos-universal.app.zip"))
 }
 
+/// The Android APK for `arch` (card #270): `irori-<v>-android-<arch>.apk`,
+/// as scripts/release-android.sh names it (#269).
+pub fn is_android_apk_asset(name: &str, arch: &str) -> bool {
+    let n = name.to_lowercase();
+    n.starts_with("irori-") && n.ends_with(&format!("-android-{arch}.apk"))
+}
+
 /// Go `isChecksumAsset`.
 pub fn is_checksum_asset(name: &str) -> bool {
     name.eq_ignore_ascii_case("SHA256SUMS")

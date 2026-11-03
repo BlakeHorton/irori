@@ -3739,6 +3739,7 @@ dependencies = [
  "sha2 0.11.1",
  "tempfile",
  "tokio",
+ "webpki-roots",
 ]
 
 [[package]]

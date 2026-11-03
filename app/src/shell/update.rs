@@ -23,10 +23,16 @@ use super::tray::Tray;
 /// go to the Core's log (irori.log), as Go's `log.Printf` did: the release
 /// exe is a GUI-subsystem program with no stderr.
 pub fn new(data: &Path) -> Arc<upd::Updater> {
-    Arc::new(
-        upd::Updater::new(upd::REPO, crate::commands::version(), data.join("updates"))
-            .with_logger(Arc::new(irori_core::log)),
-    )
+    let u = upd::Updater::new(upd::REPO, crate::commands::version(), data.join("updates"))
+        .with_logger(Arc::new(irori_core::log));
+    // Test builds only (card #270's emulator run): IRORI_UPDATE_API at
+    // build time points the release lookup at a local fake of the GitHub
+    // API. Release builds never set it.
+    let u = match option_env!("IRORI_UPDATE_API") {
+        Some(base) if !base.is_empty() => u.with_api_base(base),
+        _ => u,
+    };
+    Arc::new(u)
 }
 
 fn to_window(st: upd::Status) -> UpdateStatus {
@@ -49,24 +55,8 @@ impl irori_window::seams::Updater for WindowUpdater {
         self.0.supported()
     }
     fn check_and_download(&self) -> UpdateStatus {
-        // The window's command is async on the shared runtime: run the
-        // check as its own task and wait on a channel (a nested block_on
-        // would panic on a worker). The wait can last the whole download,
-        // so on a runtime worker it is block_in_place: the worker's other
-        // tasks move to another thread instead of stalling behind it. The
-        // runtime is multi-thread (shell::run), which block_in_place needs.
         let u = self.0.clone();
-        let (tx, rx) = std::sync::mpsc::channel();
-        tauri::async_runtime::spawn(async move {
-            let _ = tx.send(u.check_and_download().await);
-        });
-        let on_worker = tokio::runtime::Handle::try_current()
-            .is_ok_and(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread);
-        let got = if on_worker {
-            tokio::task::block_in_place(|| rx.recv())
-        } else {
-            rx.recv()
-        };
+        let got = wait(async move { u.check_and_download().await });
         match got {
             Ok(Ok(st)) => to_window(st),
             Ok(Err(e)) => {
@@ -81,7 +71,38 @@ impl irori_window::seams::Updater for WindowUpdater {
         }
     }
     fn restart_to_update(&self) -> Result<(), String> {
+        if cfg!(target_os = "android") {
+            // Card #270: Install downloads, checks and opens Android's
+            // install screen; it may take the whole download.
+            let u = self.0.clone();
+            return match wait(async move { u.install_apk().await }) {
+                Ok(r) => r.map(|_| ()),
+                Err(_) => Err("the update stopped".into()),
+            };
+        }
         self.0.restart_to_update()
+    }
+}
+
+/// Runs `f` as its own task on the shared runtime and waits for it. The
+/// window's commands are async on that runtime, where a nested block_on
+/// would panic on a worker. The wait can last a whole download, so on a
+/// runtime worker it is block_in_place: the worker's other tasks move to
+/// another thread instead of stalling behind it. The runtime is
+/// multi-thread (shell::run), which block_in_place needs.
+fn wait<T: Send + 'static>(
+    f: impl std::future::Future<Output = T> + Send + 'static,
+) -> Result<T, std::sync::mpsc::RecvError> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    tauri::async_runtime::spawn(async move {
+        let _ = tx.send(f.await);
+    });
+    let on_worker = tokio::runtime::Handle::try_current()
+        .is_ok_and(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread);
+    if on_worker {
+        tokio::task::block_in_place(|| rx.recv())
+    } else {
+        rx.recv()
     }
 }
 
@@ -214,7 +235,11 @@ pub fn wire(app: &AppHandle, u: &Arc<upd::Updater>, tray: Option<Arc<Tray>>, n: 
             });
             t.set_update(ready);
         }
-        card.on_status(st);
+        // A phone shows the window's banner only: the desktop card's
+        // "Install restarts Irori" isn't how Android updates (card #270).
+        if !cfg!(target_os = "android") {
+            card.on_status(st);
+        }
     }));
 }
 

@@ -52,6 +52,7 @@ unchanged.
 | `/?share=sample-card-10#card/sample-card-10` | Share to board's preview, with a path in the goal taken out |
 | `/?settings` | Settings (card #132): Notifications; `?settings=devices`, `=people`, `=app` open those sections |
 | `/?update=ready` | the update card (`downloading`, `installing` too) |
+| `/?android&update=available` | the phone's update bar (card #270): Update downloads, checks SHA256SUMS and opens Android's install screen; `update=ready` says Install, `update=error` Try again |
 | `/?empty` | no cards yet |
 | `/?mode=light` | the light hearth palette (the app is dark by default, card #266); add it to any row above |
 | `/?from=sample-card-4` | the grid as a card's Back leaves it (that card marked and focused) |
