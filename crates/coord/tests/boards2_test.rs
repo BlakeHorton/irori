@@ -1395,3 +1395,73 @@ fn a_question_can_be_for_another_member() {
     let e = ask(&a, CARD1, &t.id, "Who?", for_person("person:p9")).unwrap_err();
     assert!(e.is(ErrorKind::Invalid), "{e}");
 }
+
+/// Card #236: wind#16's holder heard "PR merged" four times, the later ones
+/// after the card was set completed and waited on the person's Done. Once
+/// the merge is told, a completed card awaiting Done stays quiet at every
+/// later poll, from either device.
+#[test]
+fn a_merged_pr_on_a_completed_board_card_awaiting_done_is_not_told_again() {
+    const PR: &str = "https://github.com/a/b/pull/9";
+    let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
+    let a = side_full("dev-a", P1, &owners, true, None, None);
+    let b = side_full("dev-b", P2, &owners, true, None, None);
+    a.st.append(
+        P1,
+        kinds::BOARD_CREATED,
+        &raw(r#"{"boardId":"b","creator":{"personId":"p1"},"name":"wind","tag":"wind"}"#),
+    )
+    .unwrap();
+    a.st.append(
+        P1,
+        kinds::BOARD_MEMBER_ADDED,
+        &raw(r#"{"personId":"p2","role":"member"}"#),
+    )
+    .unwrap();
+    pull(&a, &b);
+    b.st.append(
+        CARD2,
+        kinds::AGENT_CARD,
+        &raw(r#"{"cardId":"c2","personId":"p2","status":"active"}"#),
+    )
+    .unwrap();
+    sync(&a, &b);
+    let t = a.c.create_task(P1, nt("ship it", "")).unwrap();
+    sync(&a, &b);
+    b.c.claim_task(CARD2, &t.id).unwrap();
+    b.c.add_link(CARD2, &t.id, PR).unwrap();
+    sync(&a, &b);
+    let merged = || PrCheck {
+        pr: PR.into(),
+        state: PR_MERGED.into(),
+        ..PrCheck::default()
+    };
+
+    b.clk.add(Duration::from_secs(60));
+    let (_, ns) = b.c.record_pr_state(&t.id, merged()).unwrap();
+    assert_eq!(ns.len(), 1);
+
+    // The holder sets it completed: it waits on the person's Done.
+    let got =
+        b.c.set_task_state(CARD2, &t.id, COMPLETED, "shipped")
+            .unwrap();
+    assert_eq!(got.state, BLOCKED);
+    assert!(got.blockers.iter().any(|x| x.open() && x.done_check));
+    sync(&a, &b);
+
+    // Four more polls, 3 minutes apart (wind#16's repeats): nothing.
+    for _ in 0..4 {
+        b.clk.add(Duration::from_secs(180));
+        let (_, ns) = b.c.record_pr_state(&t.id, merged()).unwrap();
+        assert!(
+            ns.is_empty(),
+            "told again after completed: {:?}",
+            ns[0].text
+        );
+        sync(&a, &b);
+        if let Ok((_, ns)) = a.c.record_pr_state(&t.id, merged()) {
+            assert!(ns.is_empty(), "the other device told it again");
+        }
+        sync(&a, &b);
+    }
+}
