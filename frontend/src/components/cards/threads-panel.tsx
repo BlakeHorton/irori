@@ -361,7 +361,7 @@ function ThreadView({
                 variant="slate"
                 className="h-4 gap-1 px-1 text-[10.5px]"
               >
-                <Face who={w} noDot />
+                <Face who={w} inline />
                 {displayName(w)}
               </Badge>
             ))}
