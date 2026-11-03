@@ -202,6 +202,12 @@ After that, the app's update bar offers each release (see "Android (card
 #270)" above). By hand: open the APK from the release page on the phone, or
 `adb install -r irori-<v>-android-arm64.apk`.
 
+## iOS
+
+Releases ship no iOS build: Apple only installs an app that is signed with an Apple ID, so
+each person builds Irori on their own Mac and installs it on their own iPhone.
+docs/ios.md has the steps.
+
 ## Launch at login across the cutover
 
 The installer and the `.app` swap keep the Go paths, so a registration the
