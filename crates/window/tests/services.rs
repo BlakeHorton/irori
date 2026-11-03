@@ -709,3 +709,76 @@ fn not_done_goes_back_to_the_agent() {
     assert_eq!(cards.len(), 1);
     assert!(!cards[0].ready, "answered: it is back with the agent");
 }
+
+/// Talk (card #389) through the window: a channel, a post, a DM with an
+/// agent (opened with talk_dm), a thread's reply through the comment box's
+/// call, reads, and the TS shapes of what talk_conversations and
+/// talk_posts send.
+#[test]
+fn talk_through_the_window() {
+    let src = std::fs::read_to_string(manifest_dir().join("../../frontend/src/gen/bindings.ts"))
+        .unwrap()
+        .replace("\r\n", "\n");
+    let r = Rig::new();
+    let w = &r.w;
+    let ch = w.talk_channel_create("general", Some("the room")).unwrap();
+    let p = w.talk_post(&ch, "hello room", true, None).unwrap();
+    assert!(w.talk_post(&ch, "  ", true, None).is_err());
+    let from = w
+        .talk_post(&ch, "about that", false, Some(p.clone()))
+        .unwrap();
+    let posts = w.talk_posts(&ch, None, 0).unwrap();
+    assert_eq!(posts.len(), 2);
+    assert_eq!(posts[1].post_id, from);
+    assert_eq!(posts[1].thread_from.as_deref(), Some(p.as_str()));
+    assert!(!posts[1].agents_now);
+    assert_eq!(w.talk_posts(&ch, Some(&from), 10).unwrap().len(), 1);
+
+    let agent = irori_window::talk::TalkMemberRef {
+        kind: "agent".into(),
+        key: r.key_a.clone(),
+    };
+    let dm = w.talk_dm(&agent).unwrap();
+    assert_eq!(w.talk_dm(&agent).unwrap(), dm, "one DM per pair");
+    let id = w.talk_post(&dm, "got a minute?", true, None).unwrap();
+    let ds = w.core.inbox().for_agent(&r.key_a, false, 10);
+    assert!(ds.iter().any(|d| d.message_id == id), "{ds:?}");
+
+    // A thread's reply is a comment on it.
+    let (t, _) = w
+        .core
+        .coord()
+        .post_ask(
+            &w.core.user_sender().key,
+            coord::NewAsk {
+                text: "why is it slow?".into(),
+                thread: true,
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+    let cid = w.talk_post(&t.id, "still slow", false, None).unwrap();
+    let tp = w.talk_posts(&t.id, None, 50).unwrap();
+    assert_eq!(tp.len(), 2);
+    assert_eq!(tp[1].post_id, cid);
+    assert_eq!(w.core.coord().comments(&t.id).unwrap().len(), 1);
+
+    let cs = w.talk_conversations().unwrap();
+    for (id, kind) in [(&ch, "channel"), (&dm, "dm"), (&t.id, "thread")] {
+        let c = cs.iter().find(|c| &c.conv_id == id).expect(kind);
+        assert_eq!(c.kind, kind);
+    }
+    let c = cs.iter().find(|c| c.conv_id == ch).unwrap();
+    assert_eq!(c.topic.as_deref(), Some("the room"));
+    assert_eq!(c.unread, 0, "the person's own posts");
+    w.talk_read(&ch, &from).unwrap();
+    w.talk_leave(&ch, &agent).unwrap();
+    w.talk_join(&ch, &agent).unwrap();
+    assert!(w.core.talk().is_member(&ch, &r.key_a));
+
+    let j = |v: &dyn erased::Ser| v.json();
+    check_shape(&src, "TalkConversation", &j(c));
+    check_shape(&src, "TalkMember", &j(&c.members[0]));
+    check_shape(&src, "TalkPost", &j(&posts[1]));
+}

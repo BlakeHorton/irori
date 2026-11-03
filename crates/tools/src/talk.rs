@@ -356,11 +356,13 @@ pub fn conversations(b: &dyn Backend, reader: &str) -> Result<Vec<Conversation>,
             continue;
         }
         let members = thread_members(&t);
-        let on = members.iter().any(|m| ct::canon(&m.key) == me);
+        let ps = thread_posts(co, &t);
+        // On it: asked, told, holding, watching or answered.
+        let on = members.iter().any(|m| ct::canon(&m.key) == me)
+            || ps.iter().any(|p| ct::canon(&p.by) == me);
         if !person && !on {
             continue;
         }
-        let ps = thread_posts(co, &t);
         let (unread, mentions) = counts(talk, &ps, reader, &t.id);
         out.push(Conversation {
             conv_id: t.id.clone(),

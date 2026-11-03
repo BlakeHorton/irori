@@ -1066,3 +1066,96 @@ fn test_branch_wait_wakes_once() {
     );
     assert!(co.branch_waits().is_empty());
 }
+
+/// Talk (card #389): the person makes a channel and posts, mentions alpha
+/// (woken with a mention notice, and now in the channel), DMs beta (woken
+/// with a message whose id is the post's), and reads the channel; every
+/// write tells the window (talk:changed). After a restart the Core folds
+/// the same channels, posts, members and read cursor from the log.
+#[test]
+fn test_talk_survives_a_restart() {
+    let r = Rig::new();
+    let me = r.core.user_sender();
+    let feed = r.core.feed(&[Topic::Talk]);
+    let ch = r
+        .core
+        .talk_channel_create(&me.key, "general", "the room")
+        .unwrap();
+    wait_for(5, "talk:changed", || {
+        matches!(feed.try_recv(), Some(CoreEvent::Talk))
+    });
+    let p1 = r
+        .core
+        .talk_post(&me, &ch.id, "@alpha hello room", &[], true, None)
+        .unwrap();
+    assert_eq!(p1.post.mentions, vec![r.key_a.clone()]);
+    assert!(
+        r.core.talk().is_member(&ch.id, &r.key_a),
+        "mentioned: joined"
+    );
+    let ns = r.notices_to(&r.key_a);
+    assert_eq!(ns.len(), 1, "{ns:?}");
+    assert_eq!(ns[0].message.reason, coord::NOTICE_MENTIONED);
+    assert!(
+        r.core
+            .talk_post(&me, &ch.id, "   ", &[], true, None)
+            .is_err()
+    );
+    assert!(
+        r.core
+            .talk_post(&me, "ch_nope", "x", &[], true, None)
+            .is_err()
+    );
+
+    let dm = r
+        .core
+        .talk_open_dm(
+            &coord::talk::Member::of(&me.key),
+            &coord::talk::Member::of(&r.key_b),
+            &me.key,
+        )
+        .unwrap();
+    let p2 = r
+        .core
+        .talk_post(&me, &dm, "can you look at #3?", &[], false, None)
+        .unwrap();
+    let sent = p2.sent.expect("a DM to an agent is a message");
+    assert_eq!(sent.message_id, p2.post.post_id);
+    assert_eq!(sent.mode, mode::WAKE);
+    r.core
+        .talk_mark_read(&ch.id, &p1.post.post_id, &me.key)
+        .unwrap();
+
+    let before = r.core.talk_conversations(&me.key).unwrap();
+    let posts_ch = r.core.talk_posts(&me.key, &ch.id, None, 50).unwrap();
+    let posts_dm = r.core.talk_posts(&me.key, &dm, None, 50).unwrap();
+    assert_eq!(posts_ch.len(), 1);
+    assert_eq!(posts_dm.len(), 1, "the message shows once: {posts_dm:?}");
+    assert!(!posts_dm[0].agents_now);
+
+    let (data, claude) = (r.data.clone(), r.claude.clone());
+    r.core.close().unwrap();
+    let c = Core::start(common::options(&data, &claude)).unwrap();
+    assert_eq!(c.talk_posts(&me.key, &ch.id, None, 50).unwrap(), posts_ch);
+    assert_eq!(c.talk_posts(&me.key, &dm, None, 50).unwrap(), posts_dm);
+    assert_eq!(
+        c.talk().cursor(&me.key, &ch.id),
+        Some(p1.post.post_id.clone())
+    );
+    let after = c.talk_conversations(&me.key).unwrap();
+    let pick = |cs: &[tools::talk::Conversation], id: &str| {
+        cs.iter().find(|x| x.conv_id == id).cloned().unwrap()
+    };
+    for id in [&ch.id, &dm] {
+        let (a, b) = (pick(&before, id), pick(&after, id));
+        assert_eq!(a.members, b.members, "{id}");
+        assert_eq!(
+            (a.unread, a.name.clone()),
+            (b.unread, b.name.clone()),
+            "{id}"
+        );
+    }
+    assert_eq!(pick(&after, &ch.id).name, "general");
+    c.close().unwrap();
+    drop(r);
+}

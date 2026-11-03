@@ -472,8 +472,21 @@ fn test_specs() {
     );
     assert!(s.specs("other").is_empty(), "unknown client got specs");
     let read_only = [
-        "overview", "search", "show", "agents", "events", "inbox", "board", "leases", "timeline",
-        "why", "commits", "prs", "waits", "talk_read", "talk_list",
+        "overview",
+        "search",
+        "show",
+        "agents",
+        "events",
+        "inbox",
+        "board",
+        "leases",
+        "timeline",
+        "why",
+        "commits",
+        "prs",
+        "waits",
+        "talk_read",
+        "talk_list",
     ];
     for sp in s.specs("") {
         assert_eq!(
