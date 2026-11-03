@@ -11,7 +11,7 @@
 //! writes its `task.offered` rows. An agent busy on a working card (or
 //! owning open steps on one) is told no when it tries to take a second.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gocompat::quote::quote;
 use gocompat::time::GoTime;
@@ -131,13 +131,18 @@ impl Fold {
             .collect()
     }
 
-    /// The agents among `roster` free to take card t now, the one idle
-    /// longest first: live, idle, in t's repo when both have one, holding
-    /// no working card, handed no other card or ask, and not in `skip`.
+    /// The agents among `roster` free to take card t now: live, idle, in
+    /// t's repo when both have one, holding no working card, handed no
+    /// other card or ask, and not in `skip`. Those on the machine the card
+    /// needs come first (card #340, see `machine_rank`), then the one idle
+    /// longest.
     pub(crate) fn free_for(&self, t: &Task, roster: &[AgentCard], skip: &[String]) -> Vec<String> {
         let elsewhere = self.handed_elsewhere(&t.id);
+        let needs = needs_machine(t);
+        let repo_devs = repo_devices(t, roster);
         let mut out: Vec<String> = Vec::new();
         let mut since: HashMap<String, GoTime> = HashMap::new();
+        let mut rank: HashMap<String, u8> = HashMap::new();
         for a in roster {
             if a.key.is_empty()
                 || a.key == SWEEPER
@@ -147,11 +152,7 @@ impl Fold {
             {
                 continue;
             }
-            let dev = if a.device_id.is_empty() {
-                owner::device_of(&a.key)
-            } else {
-                a.device_id.as_str()
-            };
+            let dev = device_of(a);
             if let Some(r) = &self.revoked
                 && !dev.is_empty()
                 && r(dev)
@@ -170,8 +171,14 @@ impl Fold {
             }
             out.push(a.key.clone());
             since.insert(a.key.clone(), a.updated_at);
+            rank.insert(a.key.clone(), machine_rank(needs, &repo_devs, a, dev));
         }
-        out.sort_by(|x, y| gotime::cmp(&since[x], &since[y]).then_with(|| x.cmp(y)));
+        out.sort_by(|x, y| {
+            rank[x]
+                .cmp(&rank[y])
+                .then_with(|| gotime::cmp(&since[x], &since[y]))
+                .then_with(|| x.cmp(y))
+        });
         out
     }
 
@@ -433,6 +440,93 @@ impl Fold {
             Ok(())
         })();
         (out, res)
+    }
+}
+
+/// The machine card t asks for (card #340): `needs:mac` or `needs:pc`
+/// (`needs:windows` too) in its title, objective or done-when. None when
+/// it names neither, or both.
+fn needs_machine(t: &Task) -> Option<Machine> {
+    let text = format!("{} {} {}", t.title, t.objective, t.done_criteria).to_lowercase();
+    let mac = text.contains("needs:mac");
+    let pc = text.contains("needs:pc") || text.contains("needs:windows");
+    match (mac, pc) {
+        (true, false) => Some(Machine::Mac),
+        (false, true) => Some(Machine::Pc),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Machine {
+    Mac,
+    Pc,
+}
+
+/// The machine an agent runs on, from its working directory's shape: a
+/// drive letter or UNC path is a PC, /Users or /Volumes a Mac.
+fn machine_of(cwd: &str) -> Option<Machine> {
+    let b = cwd.as_bytes();
+    if cwd.starts_with("\\\\") || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':') {
+        Some(Machine::Pc)
+    } else if cwd.starts_with("/Users/") || cwd.starts_with("/Volumes/") {
+        Some(Machine::Mac)
+    } else {
+        None
+    }
+}
+
+/// The devices card t's repo is known on: those with an agent working in
+/// it, and the one where the card was last worked (its `where`). Most
+/// agents start outside a repo, so this is often just the latter, or none.
+fn repo_devices(t: &Task, roster: &[AgentCard]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    if t.repo_key.is_empty() {
+        return out;
+    }
+    for a in roster {
+        if a.repo_key == t.repo_key {
+            out.insert(device_of(a).to_string());
+        }
+    }
+    if let Some(w) = &t.where_
+        && !w.who.is_empty()
+        && !(w.worktree.is_empty() && w.cwd.is_empty())
+    {
+        out.insert(owner::device_of(&w.who).to_string());
+    }
+    out.remove("");
+    out
+}
+
+fn device_of(a: &AgentCard) -> &str {
+    if a.device_id.is_empty() {
+        owner::device_of(&a.key)
+    } else {
+        a.device_id.as_str()
+    }
+}
+
+/// How well agent `a` on device `dev` fits the machine card t needs: 0 on
+/// it, 1 unknown, 2 on the other one. A `needs:` hint wins; without one,
+/// a device where the card's repo is known beats the rest.
+fn machine_rank(
+    needs: Option<Machine>,
+    repo_devs: &HashSet<String>,
+    a: &AgentCard,
+    dev: &str,
+) -> u8 {
+    if let Some(n) = needs {
+        return match machine_of(&a.cwd) {
+            Some(m) if m == n => 0,
+            Some(_) => 2,
+            None => 1,
+        };
+    }
+    if repo_devs.is_empty() || repo_devs.contains(dev) {
+        0
+    } else {
+        1
     }
 }
 

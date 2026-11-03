@@ -451,7 +451,7 @@
         },
         "objective": {
           "type": "string",
-          "description": "Optional: what needs doing and why, briefly."
+          "description": "Optional: what needs doing and why, briefly. Write needs:mac or needs:pc in it when only one machine can do the work: Irori offers the card to a free agent there first."
         },
         "done_when": {
           "type": "string",

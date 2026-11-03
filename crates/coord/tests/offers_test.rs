@@ -315,3 +315,91 @@ fn a_stale_hand_out_notice_closes_before_it_wakes() {
         e.c.stale_offer(&r, BOB)
     );
 }
+
+// ---- card #340: the right machine first ----------------------------------
+
+const MAC_FREE: &str = "dev-mac/mac-free-session";
+const MAC_REPO: &str = "dev-mac/mac-repo-session";
+const PC_FREE: &str = "dev-pc/pc-free-session";
+const ONLY_ON_MAC: &str = "remote:github.com/example/mac-only";
+
+fn on(key: &str, dev: &str, cwd: &str, status: &str, since_min: u64) -> AgentCard {
+    let at = GoTime::unix(fixed_now().secs - 60 * (60 - since_min as i64), 0);
+    AgentCard {
+        device_id: dev.into(),
+        cwd: cwd.into(),
+        ..card(key, status, at, at)
+    }
+}
+
+/// Everyone starts in the home folder (no repo key), as on the real Mac and
+/// PC; the PC agent has been idle longest. One busy Mac agent works in the
+/// Mac-only repo.
+fn two_machines() -> Vec<AgentCard> {
+    let mut repo_agent = on(
+        MAC_REPO,
+        "dev-mac",
+        "/Users/s/projects/mac-only",
+        "busy",
+        50,
+    );
+    repo_agent.repo_key = ONLY_ON_MAC.into();
+    vec![
+        idle(ALICE, 5),
+        on(MAC_FREE, "dev-mac", "/Users/s", "idle", 20),
+        on(PC_FREE, "dev-pc", "C:\\Users\\s", "idle", 1),
+        repo_agent,
+    ]
+}
+
+fn post_new(e: &Env, t: NewTask, agents: &[AgentCard]) -> Notice {
+    let t = e.c.create_task(ALICE, t).unwrap();
+    e.c.offer_card(ALICE, &t.id, agents).unwrap()
+}
+
+#[test]
+fn a_card_whose_repo_is_only_on_the_mac_goes_to_a_mac_agent_first() {
+    let e = Env::new();
+    let n = post_new(
+        &e,
+        NewTask {
+            repo_key: ONLY_ON_MAC.into(),
+            ..nt("Mac build of the bundle")
+        },
+        &two_machines(),
+    );
+    assert_eq!(n.to, [MAC_FREE], "the PC agent idle longer must not get it");
+}
+
+#[test]
+fn needs_pc_goes_to_the_pc_and_needs_mac_to_the_mac() {
+    let e = Env::new();
+    let mut room = two_machines();
+    room.push(on(BOB, "dev-mac", "/Users/s", "idle", 15));
+    let n = post_new(
+        &e,
+        NewTask {
+            objective: "Check the installer. needs:pc".into(),
+            ..nt("Windows installer check")
+        },
+        &room,
+    );
+    assert_eq!(n.to, [PC_FREE]);
+    let n = post_new(
+        &e,
+        NewTask {
+            objective: "Notarize. Needs:Mac".into(),
+            ..nt("Mac notarize check")
+        },
+        &room,
+    );
+    // BOB, on the Mac, idle longest of the Mac agents (PC_FREE has a card).
+    assert_eq!(n.to, [BOB]);
+}
+
+#[test]
+fn a_card_with_no_machine_signal_still_goes_to_the_one_idle_longest() {
+    let e = Env::new();
+    let n = post_new(&e, nt("Anywhere work"), &two_machines());
+    assert_eq!(n.to, [PC_FREE]);
+}
