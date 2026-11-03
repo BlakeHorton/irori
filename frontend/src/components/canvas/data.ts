@@ -377,4 +377,8 @@ export type CanvasProps = {
   auto: Layout
   onOpen: (id: string) => void // App's openCard: the real card page
   onPlace: (id: string, x: number, y: number) => void // keep a card's spot
+  // Full screen (card #410): whether the canvas fills the window, and
+  // the button that toggles it.
+  full?: boolean
+  onFull?: () => void
 }

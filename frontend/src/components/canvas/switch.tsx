@@ -3,7 +3,7 @@
 // lazy chunk, so React Flow only loads when Canvas is picked. A card's spot
 // is kept in coord (cards.place), so every device shows the same layout.
 
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cards as cardsApi, type CardDetail, type CardSummary } from "@/lib/cards"
@@ -97,13 +97,26 @@ function useBlockerDetails(list: CardSummary[]): Map<string, CardDetail> {
   return got
 }
 
-// BoardCanvas is the canvas over the cards the grid shows.
+// typing is a key pressed in a field, where F is a letter, not a shortcut.
+function typing(t: EventTarget | null): boolean {
+  const e = t as HTMLElement | null
+  return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName))
+}
+
+// BoardCanvas is the canvas over the cards the grid shows. fill: it takes
+// the column's remaining height (card #410), so the page never scrolls in
+// Canvas; without it (a phone) it has a set height in the scrolling page.
+// Full screen lays the same canvas over the whole window, so pan and zoom
+// carry over both ways: the corner button or F (while the canvas has
+// focus) opens it, Esc or the button closes it.
 export function BoardCanvas({
   cards,
   onOpen,
+  fill = false,
 }: {
   cards: CardSummary[]
   onOpen: (id: string) => void
+  fill?: boolean
 }) {
   // The grid hands a new array on every render (its clock ticks): build
   // the graph again only when a card's content changed, or a drag in
@@ -115,8 +128,44 @@ export function BoardCanvas({
   const graph = useMemo(() => toGraph(stable, details), [stable, details])
   const auto = useMemo(() => autoLayout(graph), [graph])
   const layout = useMemo(() => withPlaced(graph, auto), [graph, auto])
+  const [full, setFull] = useState(() => previewFlag("full") !== null)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!full) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return
+      e.preventDefault()
+      setFull(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [full])
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key.toLowerCase() !== "f" || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return
+    e.preventDefault()
+    setFull((f) => !f)
+  }
+  const size = full
+    ? "fixed inset-0 z-50 rounded-none! pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+    : fill
+      ? "min-h-[280px] flex-[1_1_0]"
+      : "h-[calc(100vh-220px)] min-h-[480px]"
+  // fixed and relative are one property: give only one.
+  const at = full ? "" : "relative "
   return (
-    <div className="glass-panel relative h-[calc(100vh-220px)] min-h-[480px] overflow-hidden">
+    <div
+      ref={box}
+      tabIndex={-1}
+      aria-label="Board canvas"
+      data-canvas-full={full ? "" : undefined}
+      // A click on the canvas gives it focus, so F reaches it.
+      onPointerDownCapture={() => {
+        if (!box.current?.contains(document.activeElement)) box.current?.focus({ preventScroll: true })
+      }}
+      onKeyDown={onKey}
+      style={full ? { background: "var(--background)" } : undefined}
+      className={`glass-panel ${at}overflow-hidden outline-none ${size}`}
+    >
       <Suspense
         fallback={<p className="p-4 text-sm text-muted-foreground">Loading the canvas…</p>}
       >
@@ -126,6 +175,11 @@ export function BoardCanvas({
           auto={auto}
           onOpen={onOpen}
           onPlace={(id, x, y) => void cardsApi.place(id, x, y)}
+          full={full}
+          onFull={() => {
+            setFull((f) => !f)
+            box.current?.focus({ preventScroll: true })
+          }}
         />
       </Suspense>
     </div>

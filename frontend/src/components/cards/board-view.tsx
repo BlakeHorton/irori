@@ -270,6 +270,12 @@ export function BoardView({
       why={threads.why}
     />
   )
+  // Canvas fills what's left of the window (card #410): the column
+  // doesn't scroll, the canvas takes its remaining height and a long lead
+  // (Needs you) scrolls in a box of its own. A phone keeps one scrolling
+  // column with a set-height canvas.
+  const fill = !narrow && view === "canvas" && active !== "done" && mine.length > 0
+  const column = fill ? fillColumn : boardColumn
   const withThreads = (main: ReactNode) =>
     narrow ? (
       <div className="-mx-1 grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-4 overflow-y-auto px-1 pb-10">
@@ -292,7 +298,7 @@ export function BoardView({
       </div>
     ) : aside ? (
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        <div className={boardColumn}>{main}</div>
+        <div className={column}>{main}</div>
         <div className="-mr-1 grid min-h-0 shrink-0 content-start gap-3.5 overflow-y-auto pr-1 pb-4 lg:w-[360px]">
           {panel}
           {aside}
@@ -300,7 +306,7 @@ export function BoardView({
       </div>
     ) : showThreads && threads ? (
       <div className="flex min-h-0 flex-1 gap-4">
-        <div className={boardColumn}>{main}</div>
+        <div className={column}>{main}</div>
         <div className="-mr-1 min-h-0 w-[380px] shrink-0 overflow-y-auto pr-1 pb-4">
           <ThreadsPanel
             threads={threads.list}
@@ -313,7 +319,7 @@ export function BoardView({
         </div>
       </div>
     ) : (
-      <div className={boardColumn}>{main}</div>
+      <div className={column}>{main}</div>
     )
 
   const threadsBtn = threads && threadsButton && (
@@ -360,7 +366,11 @@ export function BoardView({
       {header}
       {withThreads(
         <>
-          {lead}
+          {fill && lead ? (
+            <div className="max-h-[30%] min-h-0 overflow-y-auto">{lead}</div>
+          ) : (
+            lead
+          )}
           {rows && (
             <h2 className="px-1 pt-2 text-base font-semibold">Agent progress</h2>
           )}
@@ -432,7 +442,7 @@ export function BoardView({
               now={now}
             />
           ) : view === "canvas" ? (
-            <BoardCanvas cards={shown} onOpen={onOpen} />
+            <BoardCanvas cards={shown} onOpen={onOpen} fill={fill} />
           ) : shown.length && rows ? (
             <>
               {pinnedGroup.length > 0 && (
@@ -507,3 +517,9 @@ export function BoardView({
 // leaving it unscrollable (card #301).
 const boardColumn =
   "-mx-1 grid min-h-0 min-w-0 flex-1 auto-rows-max content-start gap-3.5 overflow-y-auto px-1 pb-10"
+
+// The column in Canvas (card #410): a flex column exactly the space left,
+// that never scrolls. Its rows keep their height (shrink-0); the canvas
+// grows into the rest.
+const fillColumn =
+  "-mx-1 flex min-h-0 min-w-0 flex-1 flex-col gap-3.5 overflow-hidden px-1 pt-1 pb-4 *:shrink-0"

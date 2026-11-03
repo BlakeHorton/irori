@@ -9,7 +9,8 @@
 import "@xyflow/react/dist/style.css"
 import "./flow.css"
 
-import { useCallback, useMemo, useState } from "react"
+import { Maximize2, Minimize2 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Background,
   BackgroundVariant,
@@ -20,6 +21,8 @@ import {
   Position,
   ReactFlow,
   applyNodeChanges,
+  useReactFlow,
+  useStore,
   type Edge,
   type Node,
   type NodeChange,
@@ -181,7 +184,26 @@ function toEdges(graph: Graph): Edge[] {
   })
 }
 
-export default function Canvas({ graph, layout, auto, onOpen, onPlace }: CanvasProps) {
+// KeepCenter holds the middle of the view still when the canvas changes
+// size (a window resize, full screen on or off: card #410): React Flow
+// keeps the top-left corner, so the view would slide.
+function KeepCenter() {
+  const w = useStore((s) => s.width)
+  const h = useStore((s) => s.height)
+  const { getViewport, setViewport } = useReactFlow()
+  const last = useRef({ w: 0, h: 0 })
+  useEffect(() => {
+    const prev = last.current
+    last.current = { w, h }
+    if (!prev.w || !prev.h || !w || !h) return
+    if (prev.w === w && prev.h === h) return
+    const v = getViewport()
+    void setViewport({ x: v.x + (w - prev.w) / 2, y: v.y + (h - prev.h) / 2, zoom: v.zoom })
+  }, [w, h, getViewport, setViewport])
+  return null
+}
+
+export default function Canvas({ graph, layout, auto, onOpen, onPlace, full, onFull }: CanvasProps) {
   const start = useMemo(() => toNodes(graph, layout), [graph, layout])
   const [nodes, setNodes] = useState<Node[]>(start)
   const [seed, setSeed] = useState(start)
@@ -287,12 +309,13 @@ export default function Canvas({ graph, layout, auto, onOpen, onPlace }: CanvasP
         />
         )}
         <Controls showInteractive={false} />
+        <KeepCenter />
       </ReactFlow>
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
       {placed && (
         <Button
           size="sm"
           variant="secondary"
-          className="absolute top-3 right-3 z-10"
           title="Put every card back where Irori lays it out"
           onClick={() => {
             for (const n of graph.nodes) {
@@ -304,6 +327,19 @@ export default function Canvas({ graph, layout, auto, onOpen, onPlace }: CanvasP
           Tidy up
         </Button>
       )}
+      {onFull && (
+        <Button
+          size="icon-sm"
+          variant="secondary"
+          aria-pressed={!!full}
+          aria-label={full ? "Exit full screen" : "Full screen"}
+          title={full ? "Exit full screen (Esc)" : "Full screen (F)"}
+          onClick={onFull}
+        >
+          {full ? <Minimize2 /> : <Maximize2 />}
+        </Button>
+      )}
+      </div>
     </div>
   )
 }
