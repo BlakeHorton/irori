@@ -212,8 +212,14 @@ export function heardLine(
 // LiveRoster is each agent's live roster state by key (App provides it from
 // roster:changed, card #299): a card's AgentRef carries the status of when
 // the card was read, the roster the status of now.
-export type LiveAgent = { status: string; updatedAt?: string; lastTool?: string }
-export const LiveRoster = createContext<ReadonlyMap<string, LiveAgent>>(new Map())
+export type LiveAgent = {
+  status: string
+  updatedAt?: string
+  lastTool?: string
+}
+export const LiveRoster = createContext<ReadonlyMap<string, LiveAgent>>(
+  new Map()
+)
 
 // StoppedGrace is how long an agent must sit idle before a thread says it
 // stopped without replying: between the end of one turn and the wake that
@@ -238,19 +244,23 @@ export function workingLine(
   if (over) return null
   const seen = new Set<string>()
   const on = agents.filter((a) => {
-    if (a.status === "person" || !a.live || a.offline || seen.has(a.key)) return false
+    if (a.status === "person" || !a.live || a.offline || seen.has(a.key))
+      return false
     seen.add(a.key)
     return true
   })
   const status = (a: AgentRef) => live.get(a.key)?.status ?? a.status
   const names = (rs: AgentRef[]) => {
     const n = rs.map(displayName)
-    return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}` : n[0]
+    return n.length > 1
+      ? `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`
+      : n[0]
   }
   const busy = on.filter((a) => status(a) === "busy")
   if (busy.length) {
     // One agent: what it is doing right now, when a tool is running.
-    const doing = busy.length === 1 ? toolPhrase(live.get(busy[0].key)?.lastTool ?? "") : ""
+    const doing =
+      busy.length === 1 ? toolPhrase(live.get(busy[0].key)?.lastTool ?? "") : ""
     return {
       text: `${names(busy)} ${busy.length > 1 ? "are" : "is"} ${doing || "working"}…`,
       tone: "working",
@@ -260,7 +270,13 @@ export function workingLine(
   // The person's latest comment, and whether anyone answered it since.
   let p = -1
   for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i].kind !== ThreadKind.Event && items[i].who.status === "person") { p = i; break }
+    if (
+      items[i].kind !== ThreadKind.Event &&
+      items[i].who.status === "person"
+    ) {
+      p = i
+      break
+    }
   }
   if (p < 0) return null
   const comment = items[p]
@@ -274,7 +290,9 @@ export function workingLine(
     if (!heard.includes(a.key) || status(a) !== "idle") return false
     if (after.some((it) => it.who.key === a.key)) return false
     const since = parseTime(live.get(a.key)?.updatedAt)
-    return !!since && since > at && now.getTime() - since.getTime() >= StoppedGrace
+    return (
+      !!since && since > at && now.getTime() - since.getTime() >= StoppedGrace
+    )
   })
   if (!stopped.length) return null
   return { text: `${names(stopped)} stopped without replying`, tone: "stopped" }
@@ -312,7 +330,8 @@ export function toolPhrase(tool: string): string {
       if (name === "search") return "searching Irori"
       return "using Irori"
     }
-    if (server.includes("chrome") || server.includes("browser")) return "using the browser"
+    if (server.includes("chrome") || server.includes("browser"))
+      return "using the browser"
     return `using ${server.replace(/[-_]/g, " ")}`
   }
   return `using ${tool}`

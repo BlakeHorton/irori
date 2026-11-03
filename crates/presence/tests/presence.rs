@@ -954,14 +954,26 @@ async fn exit_removes_at_once() {
 #[test]
 fn last_tool_is_the_tool_running_now() {
     // card #299: the newest assistant row ends in a tool_use, no result yet.
-    let a = |content: &str| format!("{{\"type\":\"assistant\",\"timestamp\":\"2026-11-03T05:00:00Z\",\"message\":{{\"content\":[{content}]}}}}\n");
+    let a = |content: &str| {
+        format!(
+            "{{\"type\":\"assistant\",\"timestamp\":\"2026-11-03T05:00:00Z\",\"message\":{{\"content\":[{content}]}}}}\n"
+        )
+    };
     let user = "{\"type\":\"user\",\"timestamp\":\"2026-11-03T05:00:01Z\",\"message\":{\"content\":[{\"type\":\"tool_result\"}]}}\n";
     let tool = a(r#"{"type":"text","text":"Looking."},{"type":"tool_use","name":"Bash"}"#);
     let n = 1 << 16;
     assert_eq!(tail_of(&tool, n).last_tool, "Bash", "running");
-    assert_eq!(tail_of(&format!("{tool}{user}"), n).last_tool, "", "its result came back");
+    assert_eq!(
+        tail_of(&format!("{tool}{user}"), n).last_tool,
+        "",
+        "its result came back"
+    );
     let prose = a(r#"{"type":"tool_use","name":"Read"},{"type":"text","text":"Done."}"#);
     assert_eq!(tail_of(&prose, n).last_tool, "", "ends in prose");
     let side = "{\"type\":\"assistant\",\"isSidechain\":true,\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Grep\"}]}}\n";
-    assert_eq!(tail_of(&format!("{tool}{side}"), n).last_tool, "Bash", "a subagent's tool isn't the session's");
+    assert_eq!(
+        tail_of(&format!("{tool}{side}"), n).last_tool,
+        "Bash",
+        "a subagent's tool isn't the session's"
+    );
 }
