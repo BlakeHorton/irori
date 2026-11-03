@@ -101,19 +101,36 @@ fn setup_diagnostics(cmd: &str) {
     });
 }
 
-/// The phone entry (card #226): Tauri's Android/iOS shell calls it. The
-/// app's private files dir holds Irori's data, as IRORI_HOME, and stands in
-/// for HOME; a phone runs no Claude sessions, so the Claude dir is an empty
-/// one there.
+/// The phone entry (card #226, iOS #269): Tauri's Android/iOS shell calls
+/// it. The app's private storage holds Irori's data, as IRORI_HOME (on
+/// Android it also stands in for HOME); a phone runs no Claude sessions, so
+/// the Claude dir is an empty one there.
 #[cfg(mobile)]
 #[tauri::mobile_entry_point]
 pub fn mobile_main() {
-    const FILES: &str = "/data/data/com.stephenshorton.irori/files";
-    for (k, v) in [
-        ("HOME", FILES.to_string()),
-        ("IRORI_HOME", format!("{FILES}/irori")),
-        ("CLAUDE_CONFIG_DIR", format!("{FILES}/claude")),
-    ] {
+    // Android: the app's private files dir. iOS (#269): the app container's
+    // Library/Application Support, under the HOME iOS gives every app.
+    #[cfg(target_os = "android")]
+    let (home, files) = {
+        const FILES: &str = "/data/data/com.stephenshorton.irori/files";
+        (Some(FILES.to_string()), FILES.to_string())
+    };
+    #[cfg(target_os = "ios")]
+    let (home, files) = (
+        None::<String>,
+        format!(
+            "{}/Library/Application Support",
+            std::env::var("HOME").unwrap_or_default()
+        ),
+    );
+    let mut vars = vec![
+        ("IRORI_HOME", format!("{files}/irori")),
+        ("CLAUDE_CONFIG_DIR", format!("{files}/claude")),
+    ];
+    if let Some(h) = home {
+        vars.insert(0, ("HOME", h));
+    }
+    for (k, v) in vars {
         if std::env::var_os(k).is_none_or(|v| v.is_empty()) {
             let _ = std::fs::create_dir_all(&v);
             // SAFETY: first thing in the process, before any thread starts.

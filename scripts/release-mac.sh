@@ -34,20 +34,22 @@ appzip="irori-$v-macos-arm64.app.zip"
 dmg="irori-$v-macos-arm64.dmg"
 # The PC's two, as scripts/release.ps1 names them (checked at --finalize).
 win_assets=("irori-$v-windows-amd64-installer.exe" "irori-$v-windows-amd64.zip")
+# The phone's, as scripts/release-android.sh names it (#269).
+android_apk="irori-$v-android-arm64.apk"
 
 if [[ "$MODE" == "--finalize" ]]; then
-  # All five assets, and a SHA256SUMS line for each of the four, before
+  # All six assets, and a SHA256SUMS line for each of the five, before
   # anything installed can see the release: a Go v0.5.x Mac finding no
   # .app.zip line fails with "release vX has no macOS arm64 app asset".
   names="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
   sums="$(gh release download "$tag" --repo "$REPO" --pattern SHA256SUMS --output -)"
-  for n in "$appzip" "$dmg" "${win_assets[@]}" SHA256SUMS; do
+  for n in "$appzip" "$dmg" "${win_assets[@]}" "$android_apk" SHA256SUMS; do
     if ! grep -qxF -- "$n" <<<"$names"; then
       echo "draft $tag has no $n; not publishing" >&2
       exit 1
     fi
   done
-  for n in "$appzip" "$dmg" "${win_assets[@]}"; do
+  for n in "$appzip" "$dmg" "${win_assets[@]}" "$android_apk"; do
     if ! awk -v n="$n" '$2 == n && length($1) == 64 { found = 1 } END { exit !found }' <<<"$sums"; then
       echo "SHA256SUMS on $tag has no line for $n; not publishing" >&2
       exit 1
@@ -140,4 +142,4 @@ grep -v -e "  $appzip\$" -e "  $dmg\$" "$DIST/SHA256SUMS" >"$DIST/SHA256SUMS.new
 mv "$DIST/SHA256SUMS.new" "$DIST/SHA256SUMS"
 cat "$DIST/SHA256SUMS"
 gh release upload "$tag" --repo "$REPO" --clobber "$DIST/$appzip" "$DIST/$dmg" "$DIST/SHA256SUMS"
-echo "Mac assets added to the draft $tag; publish it with --finalize"
+echo "Mac assets added to the draft $tag; add the APK (scripts/release-android.sh $v --publish), then --finalize"

@@ -41,14 +41,16 @@ $installer = "irori-$v-windows-amd64-installer.exe"
 $zip = "irori-$v-windows-amd64.zip"
 # The Mac's two, as scripts/release-mac.sh names them (checked at -Finalize).
 $macAssets = @("irori-$v-macos-arm64.app.zip", "irori-$v-macos-arm64.dmg")
+# The phone's, as scripts/release-android.sh names it on the Mac (#269).
+$androidApk = "irori-$v-android-arm64.apk"
 
 if ($Finalize) {
-    # All five assets, and a SHA256SUMS line for each of the four, before
+    # All six assets, and a SHA256SUMS line for each of the five, before
     # anything installed can see the release: a Go v0.5.x Mac finding no
     # .app.zip line fails with "release vX has no macOS arm64 app asset".
     $names = @(& gh release view $tag --repo $Repo --json assets --jq ".assets[].name")
     if ($LASTEXITCODE -ne 0) { throw "gh release view failed" }
-    $want = @($installer, $zip) + $macAssets
+    $want = @($installer, $zip) + $macAssets + @($androidApk)
     foreach ($n in $want + @("SHA256SUMS")) {
         if ($names -notcontains $n) { throw "draft $tag has no $n; not publishing" }
     }
@@ -163,7 +165,7 @@ if ($Publish) {
     $ghArgs += @((Join-Path $dist $installer), (Join-Path $dist $zip), (Join-Path $dist "SHA256SUMS"))
     & gh @ghArgs
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
-    Write-Host "draft release $tag created; add the Mac assets (scripts/release-mac.sh $v --publish), then -Finalize"
+    Write-Host "draft release $tag created; add the Mac and Android assets (scripts/release-mac.sh $v --publish, scripts/release-android.sh $v --publish), then -Finalize"
 } else {
     Write-Host "dry run: assets in $dist"
 }

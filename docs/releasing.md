@@ -67,9 +67,23 @@ compiler. When they are not on PATH, point the build at them:
    Keychain item and goes to the real network, so it is off by default),
    then uploads the `.app.zip` and `.dmg` to the draft and adds their lines
    to its `SHA256SUMS`.
-5. Publish the draft: `scripts/release.ps1 -Version 0.6.0 -Finalize` (or
+5. Mac, Android (#269):
+
+   ```sh
+   scripts/release-android.sh 0.6.0 --publish
+   ```
+
+   It builds the frontend and the app for `aarch64-linux-android` with
+   `cargo tauri android build --apk` (release, `versionName` X.Y.Z and
+   `versionCode` major·1000000 + minor·1000 + patch, Tauri's formula, so
+   every release is newer to Android), signs it with the release key
+   (zipalign with 16 KB pages, then `apksigner`), checks the signature,
+   version and alignment, then uploads `irori-<v>-android-arm64.apk` to the
+   draft and adds its line to `SHA256SUMS`. Toolchain: docs/android.md. See
+   "Android" below for the key.
+6. Publish the draft: `scripts/release.ps1 -Version 0.6.0 -Finalize` (or
    `scripts/release-mac.sh 0.6.0 --finalize`). It refuses unless the draft
-   has all five assets and a `SHA256SUMS` line for each of the four.
+   has all six assets and a `SHA256SUMS` line for each of the five.
 
 With `-Publish` / `--publish` both scripts refuse to build unless HEAD is
 the tag's commit and the tree has no uncommitted changes (a dry run only
@@ -117,9 +131,8 @@ fake of the GitHub API (serve `repos/StephenSHorton/irori/releases/latest`
 plus the APK and `SHA256SUMS`, then `adb reverse tcp:9250 tcp:9250`). Release
 builds never set `IRORI_UPDATE_API`.
 
-`crates/update/tests/release_names.rs` reads the names out of the Windows
-and macOS scripts and fails if they drift from the matchers; the Android
-script (#269) joins it when it lands.
+`crates/update/tests/release_names.rs` reads the names out of the three
+scripts and fails if they drift from the matchers or from each other.
 
 ## What the installer does
 
@@ -169,6 +182,25 @@ credentials are set: `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` and
 `APPLE_API_KEY_P8` (a path), or `APPLE_ID`, `APPLE_TEAM_ID` and
 `APPLE_APP_SPECIFIC_PASSWORD`. Once a release is Developer ID signed, keep
 signing: the updater refuses an unsigned update over a signed app.
+
+## Android
+
+The release key is `~/.config/irori/android/irori-release.jks` (alias
+`irori`, override with `IRORI_ANDROID_KEYSTORE`), and its password is in the
+login Keychain (service `irori-android-release`, account `irori`). It was
+made once with `scripts/release-android.sh --new-key`, which refuses to
+make another. Android installs an update only if it is signed with the same
+key as the installed app, so a lost key means every phone has to uninstall
+(losing its local data) and reinstall. Keep a backup of the file and the
+password, and on a new Mac restore both instead of making a key.
+
+A phone that has a debug build (docs/android.md) is signed with the debug
+key, so the first release APK won't install over it: uninstall the debug
+build once, then install the APK and pair the phone again.
+
+After that, the app's update bar offers each release (see "Android (card
+#270)" above). By hand: open the APK from the release page on the phone, or
+`adb install -r irori-<v>-android-arm64.apk`.
 
 ## Launch at login across the cutover
 

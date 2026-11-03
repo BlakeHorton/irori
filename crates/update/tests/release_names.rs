@@ -49,6 +49,17 @@ fn release_script_asset_names() {
         assert!(!is_installer_asset(other), "windows would take {other}");
     }
 
+    // The phone APK (#269): named the same by its script and both finalize
+    // checks, and taken by neither desktop updater.
+    let android = repo_file("scripts/release-android.sh");
+    let apk = assigned(&android, "apk", false);
+    assert_eq!(apk, "irori-1.2.3-android-arm64.apk");
+    assert_eq!(assigned(&mac, "android_apk", false), apk);
+    assert_eq!(assigned(&win, "androidApk", true), apk);
+    assert!(!is_installer_asset(&apk), "windows would take {apk}");
+    assert!(!is_mac_app_asset(&apk, "arm64"), "mac would take {apk}");
+    assert!(android.contains("shasum -a 256"));
+
     assert!(win.contains("\"SHA256SUMS\"") && mac.contains("SHA256SUMS"));
     assert!(is_checksum_asset("SHA256SUMS"));
     // The sha256sum line format the updater parses.

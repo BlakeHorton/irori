@@ -2,7 +2,12 @@
 /testdata/private/
 # tauri-build output
 # Tauri writes app/gen/schemas on every build; app/gen/android is the Android
-# project (cargo tauri android init), kept so its manifest edits stay (#240).
+# project (cargo tauri android init), kept so its manifest edits stay (#240);
+# app/gen/apple is the iOS one (cargo tauri ios init), kept for its Info.plist
+# permission strings (#269; its own .gitignore drops build/ and Externals/).
 /app/gen/*
 !/app/gen/android/
+!/app/gen/apple/
+/app/gen/android/buildSrc/.kotlin/
+/target-*/
 /dist
