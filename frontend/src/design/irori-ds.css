@@ -68,7 +68,8 @@ html[data-ds="irori"] {
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 
-  /* --backdrop, the light the glass shows, comes from the theme. */
+  /* --backdrop, the light the glass shows, comes from the theme; the body
+     lays the dot grid (--dots, below) over it. */
 }
 
 html[data-ds="irori"].dark {
@@ -209,8 +210,23 @@ html[data-ds="irori"]
   box-shadow: var(--glass-shadow);
 }
 
+/* The dot grid (card #325, from agility-platform's glass theme): 1px dots
+   on a 22px grid over the theme's glows, under the glass. The dots take the
+   text colour, so they follow light and dark; --dot-alpha sets how strong. */
+html[data-ds="irori"] {
+  --dot-alpha: 14%;
+  --dots: radial-gradient(
+      color-mix(in oklch, var(--foreground) var(--dot-alpha), transparent) 1px,
+      transparent 1.6px
+    )
+    0 0 / 22px 22px;
+}
+html[data-ds="irori"].dark {
+  --dot-alpha: 12%;
+}
+
 html[data-ds="irori"] body {
-  background: var(--backdrop), var(--background);
+  background: var(--dots), var(--backdrop), var(--background);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
