@@ -25,6 +25,7 @@
 //! | `capturetools` | `capture.go` (timeline, why, agent resolution) |
 //! | `attachments` | `attachments.go` |
 //! | [`notify`] | `notify.go` |
+//! | [`talk`] | (Rust only, card #389) talk_post, talk_read, talk_list, talk_join, talk_leave |
 //!
 //! Wiring notes (for the merge):
 //! - The Core implements [`Backend`] (Go's `core.Core` does). Optional
@@ -57,6 +58,7 @@ mod observe;
 mod room;
 mod shared;
 mod specs;
+pub mod talk;
 mod waits;
 
 use std::collections::HashMap;
@@ -234,6 +236,11 @@ pub trait Backend: Send + Sync {
     fn shared_boards(&self) -> Option<&dyn SharedBoards> {
         None
     }
+    /// Talk's channels, DMs and read cursors (card #389); `None`: the
+    /// talk_* tools answer that Talk is off.
+    fn talk(&self) -> Option<&Arc<coord::talk::Talk>> {
+        None
+    }
 }
 
 /// The clock the tools read.
@@ -258,10 +265,19 @@ pub(crate) struct Inner {
 }
 
 /// The read-only tools that read as the caller.
-const CALLER_READS: [&str; 6] = ["inbox", "timeline", "overview", "search", "show", "board"];
+const CALLER_READS: [&str; 8] = [
+    "inbox",
+    "timeline",
+    "overview",
+    "search",
+    "show",
+    "board",
+    "talk_read",
+    "talk_list",
+];
 
 fn handlers() -> HashMap<&'static str, Handler> {
-    let list: [(&'static str, Handler); 45] = [
+    let list: [(&'static str, Handler); 50] = [
         ("agents", observe::agents),
         ("events", observe::events),
         ("send", messages::send),
@@ -307,6 +323,11 @@ fn handlers() -> HashMap<&'static str, Handler> {
         ("wait", waits::wait),
         ("waits", waits::waits),
         ("wait_cancel", waits::wait_cancel),
+        ("talk_post", talk::talk_post),
+        ("talk_read", talk::talk_read),
+        ("talk_list", talk::talk_list),
+        ("talk_join", talk::talk_join),
+        ("talk_leave", talk::talk_leave),
     ];
     list.into_iter().collect()
 }

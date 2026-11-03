@@ -43,6 +43,8 @@ pub enum Topic {
     Asks,
     /// The person renamed one of their devices (`devices:changed`).
     Devices,
+    /// Talk's channels, DMs or posts changed (`talk:changed`, card #389).
+    Talk,
 }
 
 /// One change.
@@ -58,6 +60,9 @@ pub enum CoreEvent {
     /// What a device is called changed (card #184), here or on another of
     /// the person's devices.
     Devices,
+    /// A `talk.*` row folded, here or synced, or a message was sent (it
+    /// may show as a DM) (card #389).
+    Talk,
     /// Events were dropped for this feed: re-read everything it shows.
     Resync,
 }
@@ -72,6 +77,7 @@ impl CoreEvent {
             CoreEvent::Capture(_) => Topic::Capture,
             CoreEvent::Asks(_) => Topic::Asks,
             CoreEvent::Devices => Topic::Devices,
+            CoreEvent::Talk => Topic::Talk,
             CoreEvent::Resync => return None,
         })
     }

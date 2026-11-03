@@ -10,6 +10,7 @@
 //! | `boards:invite` | `InviteStatus` | every change of the open invite |
 //! | `devices:pairing` | [`PairStatus`] | pairing change (M7) |
 //! | `devices:changed` | `{}` | a device renamed, here or synced (#184) |
+//! | `talk:changed` | `{}` | coalesced, 250 ms: a `talk.*` row folded, or a message sent (#389) |
 //! | `settings:launch-at-login` | bool | after every toggle attempt |
 //! | `app:open` | [`Target`] | a card's Open (M6 toast) |
 //! | `update:status` | [`UpdateStatus`] | updater transitions (M8) |
@@ -42,6 +43,7 @@ pub const EVENT_BOARD_CHANGED: &str = "board:changed";
 pub const EVENT_CAPTURE_CHANGED: &str = "capture:changed";
 pub const EVENT_DEVICES_PAIRING: &str = "devices:pairing";
 pub const EVENT_DEVICES_CHANGED: &str = "devices:changed";
+pub const EVENT_TALK_CHANGED: &str = "talk:changed";
 pub const EVENT_APP_OPEN: &str = "app:open";
 
 /// The board:changed and boards:changed payload.
@@ -213,6 +215,18 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
             let q = feed.queue().clone();
             coalesce(&q, BOARD_EMIT_EVERY, &stop, |_| {
                 w.emit(EVENT_DEVICES_CHANGED, &Empty {});
+            });
+        }));
+    }
+    {
+        // Talk (card #389): a channel, DM, post or read cursor changed,
+        // here or synced, or an agent's message may show as a DM.
+        let (w, stop) = (w.clone(), stop.clone());
+        let feed = w.core.feed(&[Topic::Talk]);
+        out.push(spawn("irori-window-talk", move || {
+            let q = feed.queue().clone();
+            coalesce(&q, BOARD_EMIT_EVERY, &stop, |_| {
+                w.emit(EVENT_TALK_CHANGED, &Empty {});
             });
         }));
     }

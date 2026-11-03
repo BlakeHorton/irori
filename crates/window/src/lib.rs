@@ -59,6 +59,7 @@ pub mod roster;
 pub mod seams;
 pub mod settings;
 pub mod stop;
+pub mod talk;
 pub mod threads;
 pub mod ts;
 pub mod update;

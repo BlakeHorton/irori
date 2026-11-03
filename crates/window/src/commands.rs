@@ -26,6 +26,7 @@ use crate::invites::InviteStatus;
 use crate::mentions::{MentionCandidate, MentionOutcome};
 use crate::roster::{GoneSession, RosterChange};
 use crate::settings::{NotifyOptions, Target};
+use crate::talk::{TalkConversation, TalkMemberRef, TalkPost};
 use crate::ts::{self, Typed};
 use crate::update::UpdateStatus;
 use crate::voice::{VoiceDownload, VoiceEvent, VoiceStatus};
@@ -1083,6 +1084,78 @@ pub async fn voice_open_settings(w: W<'_>, code: String) -> R<()> {
 }
 
 /// Every command, plus the event payload types the frontend listens for.
+// ---- talk (card #389) -----------------------------------------------------
+
+/// Talk's list: channels, DMs and open threads, with unread counts.
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_conversations(w: W<'_>) -> R<Vec<TalkConversation>> {
+    w.talk_conversations()
+}
+
+/// Up to `limit` posts before `before` (none: the newest), oldest first.
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_posts(
+    w: W<'_>,
+    conv_id: String,
+    before: Option<String>,
+    limit: i64,
+) -> R<Vec<TalkPost>> {
+    w.talk_posts(&conv_id, before.as_deref().filter(|b| !b.is_empty()), limit)
+}
+
+/// Posts as the person; returns the post's id (a thread's: the comment's).
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_post(
+    w: W<'_>,
+    conv_id: String,
+    text: String,
+    agents_now: bool,
+    thread_from: Option<String>,
+) -> R<String> {
+    w.talk_post(
+        &conv_id,
+        &text,
+        agents_now,
+        thread_from.filter(|t| !t.is_empty()),
+    )
+}
+
+/// The person has read `conv_id` up to post `up_to`.
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_read(w: W<'_>, conv_id: String, up_to: String) -> R<()> {
+    w.talk_read(&conv_id, &up_to)
+}
+
+/// Makes a channel; returns its conv id.
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_channel_create(w: W<'_>, name: String, topic: Option<String>) -> R<String> {
+    w.talk_channel_create(&name, topic.as_deref())
+}
+
+/// The person's DM with an agent, opened if new; returns its conv id.
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_dm(w: W<'_>, member: TalkMemberRef) -> R<String> {
+    w.talk_dm(&member)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_join(w: W<'_>, conv_id: String, member: TalkMemberRef) -> R<()> {
+    w.talk_join(&conv_id, &member)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn talk_leave(w: W<'_>, conv_id: String, member: TalkMemberRef) -> R<()> {
+    w.talk_leave(&conv_id, &member)
+}
+
 pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
@@ -1214,6 +1287,14 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             voice_start,
             voice_stop,
             voice_open_settings,
+            talk_conversations,
+            talk_posts,
+            talk_post,
+            talk_read,
+            talk_channel_create,
+            talk_dm,
+            talk_join,
+            talk_leave,
         ])
         .typ::<RosterChange>()
         .typ::<CaptureChange>()

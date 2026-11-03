@@ -1631,5 +1631,124 @@
     "clients": [
       "grok"
     ]
+  },
+  {
+    "name": "talk_post",
+    "description": "Post in Talk: a channel, a DM or a thread. A DM with an agent wakes it now; @name in text (or mention) wakes that agent and adds it to the channel. Posting to a thread is a comment on it. Talk is for talking: put work on a card.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "conv": {
+          "type": "string",
+          "description": "The conversation: a channel (#name), a DM (@agent, or person for the person), or a thread (#12). Ids from talk_list work too."
+        },
+        "text": {
+          "type": "string",
+          "description": "The post, plain text, at most 4000 characters."
+        },
+        "mention": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional agents to mention, by name or key, besides the @names in text."
+        }
+      },
+      "required": [
+        "conv",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "readOnly": false,
+    "clients": [
+      "claude",
+      "grok"
+    ]
+  },
+  {
+    "name": "talk_read",
+    "description": "Read a Talk conversation, oldest first: what is new since you last read it (or since a post), else the latest posts. Reading marks it read for you.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "conv": {
+          "type": "string",
+          "description": "The conversation: a channel (#name), a DM (@agent, or person for the person), or a thread (#12). Ids from talk_list work too."
+        },
+        "since": {
+          "type": "string",
+          "description": "Optional: a post id; show the posts after it (the next page)."
+        }
+      },
+      "required": [
+        "conv"
+      ],
+      "additionalProperties": false
+    },
+    "readOnly": true,
+    "clients": [
+      "claude",
+      "grok"
+    ]
+  },
+  {
+    "name": "talk_list",
+    "description": "Your Talk conversations with unread counts: the channels you are in, your DMs and the open threads you are on, and the channels you could join.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "readOnly": true,
+    "clients": [
+      "claude",
+      "grok"
+    ]
+  },
+  {
+    "name": "talk_join",
+    "description": "Join a Talk channel, so it shows in talk_list.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "conv": {
+          "type": "string",
+          "description": "The channel: #name or its id."
+        }
+      },
+      "required": [
+        "conv"
+      ],
+      "additionalProperties": false
+    },
+    "readOnly": false,
+    "clients": [
+      "claude",
+      "grok"
+    ]
+  },
+  {
+    "name": "talk_leave",
+    "description": "Leave a Talk channel. A mention there adds you back.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "conv": {
+          "type": "string",
+          "description": "The channel: #name or its id."
+        }
+      },
+      "required": [
+        "conv"
+      ],
+      "additionalProperties": false
+    },
+    "readOnly": false,
+    "clients": [
+      "claude",
+      "grok"
+    ]
   }
 ]

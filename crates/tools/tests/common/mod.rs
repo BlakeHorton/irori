@@ -128,6 +128,8 @@ pub struct TestBackend {
     pub router: OnceLock<Arc<dyn tools::TaskRouter>>,
     pub shared: OnceLock<Arc<dyn tools::SharedBoards>>,
     pub book: OnceLock<Arc<coord::approvals::Book>>,
+    /// Talk's fold over the same store (card #389).
+    pub talk: Arc<coord::talk::Talk>,
 }
 
 impl Backend for TestBackend {
@@ -160,6 +162,9 @@ impl Backend for TestBackend {
     }
     fn asks(&self) -> Option<&Arc<coord::approvals::Book>> {
         self.book.get()
+    }
+    fn talk(&self) -> Option<&Arc<coord::talk::Talk>> {
+        Some(&self.talk)
     }
 }
 
@@ -310,8 +315,10 @@ pub fn new_harness_setup(
     let mut g = card(KEY_G, "grokker", "", "");
     g.agent = "grok".into();
     roster.put(g);
+    let talk = Arc::new(coord::talk::Talk::new(Some(st.clone()), Some(now.clone())));
     let b = Arc::new(TestBackend {
         roster,
+        talk,
         st,
         ib,
         co,

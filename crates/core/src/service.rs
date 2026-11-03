@@ -65,6 +65,7 @@ mod mirror;
 pub mod notes;
 pub use mirror::BoardReviewer;
 pub mod invites;
+mod talk;
 
 use boards::Boards;
 
@@ -234,6 +235,8 @@ struct Services {
     person_color: coord::devcolor::PersonPick,
     /// The person's names for their devices (card #184).
     device_names: coord::devname::Names,
+    /// Talk's channels, DMs and read cursors (card #389).
+    talk: Arc<coord::talk::Talk>,
     files: blob::Files,
     scrubber: Arc<scrub::Scrubber>,
     secrets: Mutex<Vec<String>>,
@@ -355,6 +358,9 @@ impl tools::Backend for ToolsView {
     }
     fn shared_boards(&self) -> Option<&dyn tools::SharedBoards> {
         Some(self)
+    }
+    fn talk(&self) -> Option<&Arc<coord::talk::Talk>> {
+        Some(&self.0.talk)
     }
 }
 
@@ -946,6 +952,13 @@ impl Core {
         load_colors(&st, &colors, &person_color);
         let device_names = coord::devname::Names::new();
         load_device_names(&st, &device_names);
+        let talk = Arc::new(coord::talk::Talk::new(Some(st.clone()), {
+            let now = now.clone();
+            Some(Arc::new(move || now().utc()))
+        }));
+        if let Err(e) = talk.load() {
+            logf(format_args!("talk: load: {e}"));
+        }
         laps.lap("colors+names");
         let decisions_sub = Arc::new(st.subscribe());
 
@@ -1103,6 +1116,7 @@ impl Core {
             colors,
             person_color,
             device_names,
+            talk,
             files,
             scrubber,
             secrets: Mutex::new(Vec::new()),
@@ -1435,6 +1449,16 @@ impl Core {
                         load_device_names(&s.store, &s.device_names);
                         s.follow_person_name();
                         s.hub.publish(CoreEvent::Devices);
+                        let _ = s.talk.load();
+                        s.hub.publish(CoreEvent::Talk);
+                    } else if coord::talk::KINDS.contains(&ev.kind.as_str()) {
+                        // A write here was folded when it was written; the
+                        // window still hears it (card #389).
+                        s.talk.apply(&ev);
+                        s.hub.publish(CoreEvent::Talk);
+                    } else if ev.kind == kinds::MESSAGE_SENT {
+                        // Agents' messages show as DMs (card #389).
+                        s.hub.publish(CoreEvent::Talk);
                     } else if ev.kind == coord::devcolor::KIND {
                         s.colors.apply(&ev);
                     } else if ev.kind == coord::devcolor::PERSON_KIND {
