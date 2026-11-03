@@ -81,6 +81,8 @@ pub use review::{
 pub use short::{parse_ref, parse_short, short_suffix};
 pub use threads::{NOT_YOURS_TO_CLOSE as THREAD_NOT_YOURS, TAKE_ANSWERED, THREAD_QUIET};
 pub use types::*;
+/// Talk's post and channel ids are made as comments' are (card #389).
+pub use util::new_id;
 pub use waits::{
     MAX_WAITS, UNTIL_BLOCKED, UNTIL_CHANGED, UNTIL_DONE, UNTIL_UNBLOCKED, WAIT_CARD_GONE,
     WAIT_EXPIRED, WAIT_GONE, WAIT_TTL, until_text, wait_line,

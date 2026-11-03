@@ -1,0 +1,384 @@
+//! Talk's fold (card #389): channels, members, posts, DMs and read
+//! cursors over `talk.*` rows, written through the store and folded again
+//! from it.
+
+mod common;
+
+use common::*;
+use coord::talk::{self, Member, NewPost, Talk};
+use coord::{Error, ErrorKind};
+use store::kinds;
+
+fn talk(e: &Env) -> Talk {
+    let t = Talk::new(Some(e.st.clone()), Some(e.clk.func()));
+    t.load().unwrap();
+    t
+}
+
+fn post(t: &Talk, conv: &str, by: &str, text: &str) -> talk::Post {
+    t.post(NewPost {
+        conv_id: conv.into(),
+        text: text.into(),
+        by: by.into(),
+        agents_now: true,
+        ..NewPost::default()
+    })
+    .unwrap()
+}
+
+fn want(r: coord::Result<impl std::fmt::Debug>, kind: ErrorKind) -> Error {
+    let e = r.expect_err("want an error");
+    assert!(e.is(kind), "{e:?}");
+    e
+}
+
+#[test]
+fn channel_posts_and_unread() {
+    let e = Env::new();
+    let t = talk(&e);
+    let c = t.create_channel(USER, "  #general ", "what's up").unwrap();
+    assert!(c.id.starts_with(talk::CHANNEL_PREFIX));
+    assert_eq!(c.name, "general");
+    assert_eq!(c.topic, "what's up");
+    assert_eq!(c.space_id, talk::PERSONAL_SPACE);
+    assert_eq!(t.members(&c.id), vec![Member::of(USER)], "the maker joins");
+    want(t.create_channel(ALICE, "GENERAL", ""), ErrorKind::Invalid);
+    want(t.create_channel(ALICE, "  ", ""), ErrorKind::Invalid);
+
+    let p1 = post(&t, &c.id, USER, "  hello room ");
+    assert_eq!(p1.text, "hello room");
+    e.clk.add(secs(1));
+    // Posting joins the writer.
+    let p2 = t
+        .post(NewPost {
+            conv_id: c.id.clone(),
+            text: "hi @bob".into(),
+            mentions: vec![BOB.into(), ALICE.into()],
+            by: ALICE.into(),
+            ..NewPost::default()
+        })
+        .unwrap();
+    assert_eq!(p2.mentions, vec![BOB.to_string()], "not the writer");
+    assert!(!p2.agents_now);
+    assert!(t.is_member(&c.id, ALICE));
+    e.clk.add(secs(1));
+    let p3 = post(&t, &c.id, BOB, "hello");
+
+    let ps = t.posts(&c.id);
+    let ids: Vec<&str> = ps.iter().map(|p| p.post_id.as_str()).collect();
+    assert_eq!(ids, [&p1.post_id, &p2.post_id, &p3.post_id]);
+
+    // The person reads others' posts; Bob has one mention.
+    assert_eq!(
+        talk::unread(&ps, t.cursor(USER, &c.id).as_deref(), USER),
+        (2, 0)
+    );
+    assert_eq!(talk::unread(&ps, None, BOB), (2, 1));
+    // Any of the person's devices reads as the person.
+    t.mark_read(&c.id, &p2.post_id, "user:dev-b").unwrap();
+    assert_eq!(t.cursor(USER, &c.id).as_deref(), Some(p2.post_id.as_str()));
+    assert_eq!(
+        talk::unread(&ps, t.cursor(USER, &c.id).as_deref(), USER),
+        (1, 0)
+    );
+    let since = talk::since(&ps, t.cursor(USER, &c.id).as_deref());
+    assert_eq!(since.len(), 1);
+    assert_eq!(since[0].post_id, p3.post_id);
+
+    // Bad posts.
+    want(
+        t.post(NewPost {
+            conv_id: c.id.clone(),
+            text: "   ".into(),
+            by: USER.into(),
+            ..NewPost::default()
+        }),
+        ErrorKind::Invalid,
+    );
+    want(
+        t.post(NewPost {
+            conv_id: c.id.clone(),
+            text: "x".repeat(coord::MAX_COMMENT + 1),
+            by: ALICE.into(),
+            ..NewPost::default()
+        }),
+        ErrorKind::Invalid,
+    );
+    want(
+        t.post(NewPost {
+            conv_id: "ch_nope".into(),
+            text: "x".into(),
+            by: USER.into(),
+            ..NewPost::default()
+        }),
+        ErrorKind::NotFound,
+    );
+    want(
+        t.post(NewPost {
+            conv_id: c.id.clone(),
+            text: "x".into(),
+            by: USER.into(),
+            thread_from: Some("post_nope".into()),
+            ..NewPost::default()
+        }),
+        ErrorKind::NotFound,
+    );
+    let from = t
+        .post(NewPost {
+            conv_id: c.id.clone(),
+            text: "about that".into(),
+            by: USER.into(),
+            thread_from: Some(p3.post_id.clone()),
+            ..NewPost::default()
+        })
+        .unwrap();
+    assert_eq!(from.thread_from.as_deref(), Some(p3.post_id.as_str()));
+
+    // Rows: actors are the person's (user) and the agent's.
+    let rows = e.rows(kinds::TALK_POST);
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[0].actor, "user");
+    assert_eq!(rows[1].actor, format!("agent:{ALICE}"));
+    assert_eq!(e.rows(kinds::TALK_READ).len(), 1);
+}
+
+#[test]
+fn reload_folds_the_same() {
+    let e = Env::new();
+    let t = talk(&e);
+    let c = t.create_channel(USER, "dev", "").unwrap();
+    let p = post(&t, &c.id, ALICE, "one");
+    post(&t, &c.id, USER, "two");
+    t.mark_read(&c.id, &p.post_id, USER).unwrap();
+    t.leave(&c.id, &Member::of(ALICE), ALICE).unwrap();
+    let dm = t
+        .open_dm(&Member::of(USER), &Member::of(BOB), USER)
+        .unwrap();
+    post(&t, &dm, BOB, "psst");
+
+    let t2 = talk(&e);
+    assert_eq!(t2.channels(), t.channels());
+    assert_eq!(t2.posts(&c.id), t.posts(&c.id));
+    assert_eq!(t2.posts(&dm), t.posts(&dm));
+    assert_eq!(t2.members(&c.id), vec![Member::of(USER)]);
+    assert_eq!(t2.cursor(USER, &c.id), Some(p.post_id.clone()));
+    assert_eq!(t2.dms(), t.dms());
+    // Folding a row again changes nothing.
+    for ev in e.rows("talk.") {
+        assert!(!t2.apply(&ev), "{} folded twice", ev.kind);
+    }
+}
+
+#[test]
+fn dms_are_one_per_pair() {
+    let e = Env::new();
+    let t = talk(&e);
+    let dm = t
+        .open_dm(&Member::of(ALICE), &Member::of(USER), ALICE)
+        .unwrap();
+    assert_eq!(dm, talk::dm_id(USER, ALICE));
+    assert_eq!(
+        dm,
+        talk::dm_id(ALICE, "user:dev-b"),
+        "the person on any device"
+    );
+    // Opening it again writes nothing.
+    let n = e.rows(kinds::TALK_MEMBER).len();
+    assert_eq!(
+        t.open_dm(&Member::of("user:dev-b"), &Member::of(ALICE), USER)
+            .unwrap(),
+        dm
+    );
+    assert_eq!(e.rows(kinds::TALK_MEMBER).len(), n);
+    assert_eq!(t.members(&dm).len(), 2);
+    assert_eq!(t.members(&dm)[1].kind, talk::PERSON);
+    want(
+        t.open_dm(&Member::of(USER), &Member::of("user:dev-b"), USER),
+        ErrorKind::Invalid,
+    );
+
+    post(&t, &dm, ALICE, "hi");
+    post(&t, &dm, "user:dev-b", "hello");
+    want(
+        t.post(NewPost {
+            conv_id: dm.clone(),
+            text: "let me in".into(),
+            by: BOB.into(),
+            ..NewPost::default()
+        }),
+        ErrorKind::NotAllowed,
+    );
+    // A thread id isn't Talk's to write.
+    want(
+        t.post(NewPost {
+            conv_id: "01JTASK".into(),
+            text: "x".into(),
+            by: USER.into(),
+            ..NewPost::default()
+        }),
+        ErrorKind::Invalid,
+    );
+    let dms = t.dms();
+    assert_eq!(dms.len(), 1);
+    assert_eq!(dms[0].0, dm);
+}
+
+/// A row another device wrote, as Follow hands it over (not stored).
+fn row(
+    dev: &str,
+    seq: i64,
+    at: u64,
+    actor: &str,
+    kind: &str,
+    p: &serde_json::Value,
+) -> store::Event {
+    store::Event {
+        device_id: dev.into(),
+        seq,
+        hlc: hlc::Timestamp(at),
+        actor: actor.into(),
+        kind: kind.into(),
+        payload: gocompat::json::marshal(p).unwrap(),
+        sig: Vec::new(),
+    }
+}
+
+#[test]
+fn rows_from_other_devices_fold_in_log_order() {
+    let t = Talk::new(None, None);
+    let t0 = hlc_at(fixed_now());
+    // An edit that arrives before its channel still wins over it.
+    let edit = row(
+        "dev-b",
+        2,
+        t0 + 20,
+        "user",
+        kinds::TALK_CHANNEL_EDITED,
+        &serde_json::json!({"channelId": "ch_1", "name": "renamed", "archived": true}),
+    );
+    assert!(!t.apply(&edit), "no channel yet");
+    let made = row(
+        "dev-b",
+        1,
+        t0 + 10,
+        "user",
+        kinds::TALK_CHANNEL_CREATED,
+        &serde_json::json!({"channelId": "ch_1", "spaceId": "personal", "name": "first", "by": "user:dev-b"}),
+    );
+    assert!(t.apply(&made));
+    let c = t.channel("ch_1").unwrap();
+    assert_eq!((c.name.as_str(), c.archived), ("renamed", true));
+    assert!(t.channel_named("renamed").is_none(), "archived");
+
+    // Posts sort by their rows, not by arrival.
+    for (seq, at, id) in [(4, 40, "p2"), (3, 30, "p1"), (5, 50, "p3")] {
+        let ev = row(
+            "dev-b",
+            seq,
+            t0 + at,
+            &format!("agent:{ALICE}"),
+            kinds::TALK_POST,
+            &serde_json::json!({"postId": id, "convId": "ch_1", "text": id, "mentions": [], "agentsNow": true, "by": ALICE, "at": fixed_now()}),
+        );
+        assert!(t.apply(&ev));
+        assert!(!t.apply(&ev), "once");
+    }
+    let ids: Vec<String> = t.posts("ch_1").into_iter().map(|p| p.post_id).collect();
+    assert_eq!(ids, ["p1", "p2", "p3"]);
+
+    // Join then an older leave: the join stands.
+    let join = row(
+        "dev-b",
+        6,
+        t0 + 60,
+        "user",
+        kinds::TALK_MEMBER,
+        &serde_json::json!({"convId": "ch_1", "member": {"kind": "agent", "key": BOB}, "op": "join", "by": "user:dev-b"}),
+    );
+    let old_leave = row(
+        "dev-c",
+        1,
+        t0 + 55,
+        "user",
+        kinds::TALK_MEMBER,
+        &serde_json::json!({"convId": "ch_1", "member": {"kind": "agent", "key": BOB}, "op": "leave", "by": "user:dev-c"}),
+    );
+    assert!(t.apply(&join));
+    assert!(!t.apply(&old_leave));
+    assert!(t.is_member("ch_1", BOB));
+
+    // A card made from a post (nothing writes it in Talk 1) shows on it.
+    let card = row(
+        "dev-b",
+        7,
+        t0 + 70,
+        "user",
+        kinds::TALK_CARD,
+        &serde_json::json!({"postId": "p2", "taskId": "T1"}),
+    );
+    assert!(t.apply(&card));
+    assert_eq!(t.posts("ch_1")[1].card.as_deref(), Some("T1"));
+    assert_eq!(t.card_of("p2").as_deref(), Some("T1"));
+
+    // A row that doesn't decode is dropped.
+    let bad = row(
+        "dev-b",
+        8,
+        t0 + 80,
+        "user",
+        kinds::TALK_POST,
+        &serde_json::json!({"postId": 5}),
+    );
+    assert!(!t.apply(&bad));
+}
+
+#[test]
+fn archived_channels_refuse_posts() {
+    let e = Env::new();
+    let t = talk(&e);
+    let c = t.create_channel(USER, "old", "").unwrap();
+    e.write_raw(
+        "user",
+        kinds::TALK_CHANNEL_EDITED,
+        &serde_json::json!({"channelId": c.id, "archived": true}),
+    );
+    let t = talk(&e);
+    want(
+        t.post(NewPost {
+            conv_id: c.id.clone(),
+            text: "anyone?".into(),
+            by: USER.into(),
+            ..NewPost::default()
+        }),
+        ErrorKind::Invalid,
+    );
+    // Its name is free again.
+    t.create_channel(USER, "old", "").unwrap();
+}
+
+#[test]
+fn pages_run_oldest_first() {
+    let e = Env::new();
+    let t = talk(&e);
+    let c = t.create_channel(USER, "busy", "").unwrap();
+    let mut ids = Vec::new();
+    for i in 0..7 {
+        e.clk.add(secs(1));
+        ids.push(post(&t, &c.id, ALICE, &format!("n{i}")).post_id);
+    }
+    let ps = t.posts(&c.id);
+    let last3: Vec<String> = talk::page(&ps, None, 3)
+        .into_iter()
+        .map(|p| p.post_id)
+        .collect();
+    assert_eq!(last3, ids[4..]);
+    let before: Vec<String> = talk::page(&ps, Some(&ids[4]), 3)
+        .into_iter()
+        .map(|p| p.post_id)
+        .collect();
+    assert_eq!(before, ids[1..4]);
+    assert_eq!(talk::page(&ps, Some(&ids[1]), 3).len(), 1);
+    assert_eq!(talk::page(&ps, Some(&ids[0]), 3).len(), 0);
+    assert_eq!(talk::page(&ps, Some("unknown"), 2).len(), 2);
+    assert_eq!(talk::since(&ps, Some("unknown")).len(), 7);
+}

@@ -10,6 +10,7 @@
 //! | [`names`] | `internal/names` | friendly session names |
 //! | [`devcolor`] | `internal/devcolor` | device colours |
 //! | [`devname`] | (Rust only, card #184) | the person's names for their devices |
+//! | [`talk`] | (Rust only, card #389) | channels, DMs and read cursors |
 
 pub mod approvals;
 pub mod board;
@@ -21,5 +22,6 @@ pub(crate) mod gotime;
 pub mod mentions;
 pub mod names;
 pub mod roster;
+pub mod talk;
 
 pub use board::*;
