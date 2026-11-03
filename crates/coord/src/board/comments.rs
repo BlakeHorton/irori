@@ -1194,11 +1194,9 @@ impl Fold {
                         why.push(format!("task {}", o.state));
                     }
                 }
-                BLOCKED_ON_EXTERNAL => {
-                    if self.outside_wait_gone(&t.id, b) {
-                        ids.push(b.id.clone());
-                        why.push("leases released".to_string());
-                    }
+                BLOCKED_ON_EXTERNAL if self.outside_wait_gone(&t.id, b) => {
+                    ids.push(b.id.clone());
+                    why.push("leases released".to_string());
                 }
                 _ => {}
             }
