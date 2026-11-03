@@ -500,6 +500,10 @@ export function BoardView({
 }
 
 // The Board's column (card #170): it scrolls by itself under the box.
-// The 4px gutter keeps a selected card's ring clear of the clip.
+// The 4px gutter keeps a selected card's ring clear of the clip. Its rows
+// are max-content (auto-rows-max): the column has a set height, and an
+// auto row would shrink a child that clips (Home's progress rows, a
+// glass panel with overflow hidden) to nothing once the column is full,
+// leaving it unscrollable (card #301).
 const boardColumn =
-  "-mx-1 grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-1 pb-10"
+  "-mx-1 grid min-h-0 min-w-0 flex-1 auto-rows-max content-start gap-3.5 overflow-y-auto px-1 pb-10"
