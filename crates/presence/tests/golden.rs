@@ -182,6 +182,7 @@ fn json_matches_go() {
         // Rust-only and omitted when empty, so Go's golden JSON still holds.
         last_tool: String::new(),
         device_state: "recent".into(),
+        device_seen: Default::default(),
     };
     assert_eq!(m(&full), want("cardFull"));
     // And back, as another device's row is read.

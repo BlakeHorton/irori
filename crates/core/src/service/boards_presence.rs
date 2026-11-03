@@ -14,7 +14,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use store::Filter;
 use store::kinds::AGENT_ACTOR_PREFIX;
 
 use super::Services;
@@ -120,36 +119,23 @@ impl Services {
                 device_person.insert(d.cert.device_id, p.clone());
             }
         }
-        let connected = self
-            .mesh
-            .net
-            .board_conns(&b.id)
-            .into_iter()
-            .map(|c| c.peer)
-            .collect();
-        let heard_ms = self
-            .mesh
-            .board(&b.id)
-            .map(|x| x.heard())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|h| (h.device_id, h.at_ms))
-            .collect();
-        let mut wrote_ms = BTreeMap::new();
+        // Each device as device_presence sees it (card #372): the private
+        // mesh for this person's devices, every board's connections and
+        // frames for a member's, the newest board row after a restart.
+        let (mut connected, mut heard_ms) = (BTreeSet::new(), BTreeMap::new());
         for (d, p) in &device_person {
             if *p == me {
                 continue;
             }
-            if let Ok(rows) = b.store.list(&Filter {
-                device_id: d.clone(),
-                desc: true,
-                limit: 1,
-                ..Default::default()
-            }) && let Some(ev) = rows.first()
-            {
-                wrote_ms.insert(d.clone(), ev.hlc.wall_ms());
+            let dp = self.device_presence(d);
+            if dp.state == coord::roster::CONNECTED {
+                connected.insert(d.clone());
+            }
+            if !dp.seen.is_zero() {
+                heard_ms.insert(d.clone(), dp.seen.unix_nano() / 1_000_000);
             }
         }
+        let wrote_ms = BTreeMap::new();
         let agents = {
             let roster = super::boards::roster_of(self, b);
             let m = super::boards::lock(&b.maps);

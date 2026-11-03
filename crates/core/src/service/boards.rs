@@ -206,6 +206,10 @@ pub(crate) struct BoardCard {
     /// default. Readers keep it only after coord::avatar::check.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub avatar: String,
+    /// The device that wrote its newest row: the session's host, as only
+    /// that device writes a card's status (card #372). Never in the row.
+    #[serde(skip)]
+    pub device_id: String,
 }
 
 /// A `board_cards` row: which session a board's agent card is (§2.4). It is
@@ -292,6 +296,10 @@ impl BoardLog {
         if p.card_id.is_empty() {
             return;
         }
+        let p = BoardCard {
+            device_id: ev.device_id.clone(),
+            ..p
+        };
         lock(&self.maps).cards.insert(p.card_id.clone(), p);
     }
 
@@ -741,6 +749,10 @@ pub(super) fn roster_of(s: &Services, b: &BoardLog) -> Vec<AgentCard> {
         let me = s.device.id.as_str();
         let m = lock(&b.maps);
         let mut out = Vec::with_capacity(m.cards.len());
+        // Cards whose host device the meshes answer for (card #372), read
+        // once the maps lock is dropped: device_presence takes the boards
+        // list and reads board stores.
+        let mut others: Vec<(usize, String)> = Vec::new();
         for (id, card) in &m.cards {
             let mut a = AgentCard {
                 key: format!("{AGENT_ACTOR_PREFIX}{id}"),
@@ -749,6 +761,7 @@ pub(super) fn roster_of(s: &Services, b: &BoardLog) -> Vec<AgentCard> {
                 status: card.status.clone(),
                 ..Default::default()
             };
+            let mut placed = false;
             if let Some(agent) = m.by_id.get(id) {
                 let mine = irori_identity::owner::device_of(agent) == me;
                 match live.get(agent) {
@@ -756,11 +769,35 @@ pub(super) fn roster_of(s: &Services, b: &BoardLog) -> Vec<AgentCard> {
                     Some(l) if mine || l.status != "gone" => {
                         a.status = l.status.clone();
                         a.updated_at = l.updated_at;
+                        // The person's own session: its device as the
+                        // private roster has it (card #372).
+                        a.device_id = l.device_id.clone();
+                        a.device_state = l.device_state.clone();
+                        a.device_seen = l.device_seen;
+                        placed = true;
                     }
                     _ => {}
                 }
             }
+            if !placed && !card.device_id.is_empty() {
+                // Another member's agent (or one of the person's no live
+                // roster knows): its host device as the meshes see it.
+                others.push((out.len(), card.device_id.clone()));
+            }
             out.push(a);
+        }
+        drop(m);
+        // One presence read per device, not per card.
+        let mut seen: HashMap<String, super::liveness::DevicePresence> = HashMap::new();
+        for (i, dev) in others {
+            let p = seen
+                .entry(dev.clone())
+                .or_insert_with(|| s.device_presence(&dev))
+                .clone();
+            let a = &mut out[i];
+            a.device_id = dev;
+            a.device_state = p.state;
+            a.device_seen = p.seen;
         }
         out
     }
@@ -1731,6 +1768,7 @@ impl Services {
             person_id: self.person_id(),
             status: card_status(Some(&card.status)).into(),
             avatar: self.faces.get(&card.name),
+            device_id: self.device.id.clone(),
         };
         // The mapping first: a card whose session nobody knows is worse
         // than a mapping to a card that failed to append (it is retried).
@@ -2190,6 +2228,20 @@ impl Services {
                 errs.push(e.to_string());
             }
             ns.extend(asks.into_iter().map(|n| self.own_ask_notice(&b, n)));
+            if notices {
+                // Card #372: this person's agents hosted here hear when an
+                // agent they work with on the board drops off.
+                let me = self.device.id.clone();
+                let hosted: std::collections::HashSet<String> = lock(&b.maps)
+                    .by_id
+                    .iter()
+                    .filter(|(_, a)| irori_identity::owner::device_of(a) == me)
+                    .map(|(id, _)| format!("{AGENT_ACTOR_PREFIX}{id}"))
+                    .collect();
+                let agents = roster_of(self, &b);
+                let away = b.coord().sweep_presence(&agents, &|k| hosted.contains(k));
+                ns.extend(away.into_iter().map(|n| self.private_notice(n)));
+            }
             for n in ns {
                 let from = if n.person {
                     self.user_sender()

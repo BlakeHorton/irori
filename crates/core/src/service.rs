@@ -61,6 +61,7 @@ mod boards_own;
 pub mod boards_presence;
 pub mod boards_status;
 mod bridge;
+mod liveness;
 mod mirror;
 pub mod notes;
 mod notifications;
@@ -362,6 +363,17 @@ impl tools::Backend for ToolsView {
     fn room_agents(&self) -> Vec<AgentCard> {
         self.0.ask_agents()
     }
+    fn board_agents(&self) -> Vec<tools::BoardAgent> {
+        self.0
+            .board_others()
+            .into_iter()
+            .map(|a| tools::BoardAgent {
+                board: a.board,
+                person: a.person,
+                card: presence_card(a.card),
+            })
+            .collect()
+    }
     fn events(&self, f: &Filter) -> Result<Vec<Event>, String> {
         self.0.store.list(f).map_err(|e| e.to_string())
     }
@@ -491,6 +503,7 @@ fn presence_card(c: AgentCard) -> presence::AgentCard {
         last_tool: c.last_tool,
         device_state: c.device_state,
         waiting_for: c.waiting_for,
+        device_seen: c.device_seen,
     }
 }
 
@@ -524,6 +537,7 @@ fn roster_card(c: presence::AgentCard) -> AgentCard {
         last_tool: c.last_tool,
         device_state: c.device_state,
         waiting_for: c.waiting_for,
+        device_seen: c.device_seen,
     }
 }
 
@@ -896,6 +910,15 @@ impl Core {
                 Arc::new(move |dev: &str| match cell.get() {
                     Some(n) => n.liveness(dev).to_string(),
                     None => coord::roster::OFFLINE.to_string(),
+                })
+            }),
+            seen: Some({
+                let cell = node_cell.clone();
+                Arc::new(move |dev: &str| {
+                    cell.get()
+                        .and_then(|n| n.last_seen(dev))
+                        .map(gocompat::time::GoTime::from_system)
+                        .unwrap_or_default()
                 })
             }),
             revoked: Some(revoked.clone()),
@@ -3482,7 +3505,12 @@ impl Services {
         let (ns, err) = self.coord.sweep_notices_partial();
         self.sweep_spawns();
         let (asks, aerr) = self.coord.sweep_asks_partial(&self.ask_agents());
-        for n in ns.iter().chain(asks.iter()) {
+        // Card #372: an agent here hears when one it works with drops off.
+        let me = self.device.id.clone();
+        let away = self.coord.sweep_presence(&self.roster.agents(), &|k| {
+            irori_identity::owner::device_of(k) == me
+        });
+        for n in ns.iter().chain(asks.iter()).chain(away.iter()) {
             let from = if n.person {
                 self.user_sender()
             } else {

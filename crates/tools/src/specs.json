@@ -99,7 +99,7 @@
   },
   {
     "name": "agents",
-    "description": "List the agents on this device: name, key, status, what each is doing now, working directory, repoKey, permission mode and last activity. Use it to find who to message and which repo each works in.",
+    "description": "List the agents on the person's devices, and other people's agents on shared boards: name, key, status, whether its device is online, recent (seen 3m ago) or offline (since when), what each is doing now, working directory, repoKey, permission mode and last activity. Use it to find who to message, which repo each works in, and whether it is there to answer.",
     "inputSchema": {
       "type": "object",
       "properties": {

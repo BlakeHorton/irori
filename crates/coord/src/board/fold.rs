@@ -321,6 +321,9 @@ pub struct Fold {
     pub(crate) paused: HashMap<String, (bool, RowPos)>,
     /// A board's review requests by card, and its dedicated reviewers.
     pub(crate) reviews: BTreeMap<String, Vec<super::review::ReviewRequest>>,
+    /// Agents whose device reads offline, for the presence notices (card
+    /// #372). In memory only.
+    pub(crate) away: HashMap<String, super::presence::Away>,
     pub(crate) reviewers: super::review::Reviewers,
     /// Notes by id, with the row that made each (card #401).
     pub(crate) notes: BTreeMap<String, (super::notes::Note, RowPos)>,
@@ -448,6 +451,7 @@ impl Fold {
             archived: HashMap::new(),
             paused: HashMap::new(),
             reviews: BTreeMap::new(),
+            away: HashMap::new(),
             reviewers: BTreeMap::new(),
             notes: BTreeMap::new(),
             deleted: HashSet::new(),

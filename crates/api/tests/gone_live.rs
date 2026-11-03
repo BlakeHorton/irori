@@ -156,6 +156,7 @@ fn others_list(rig: &common::Rig, key: &str) -> bool {
         self_id: "other-device".into(),
         local: None,
         liveness: None,
+        seen: None,
         revoked: None,
     })
     .unwrap()
