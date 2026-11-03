@@ -100,14 +100,26 @@ impl Fold {
         }
         match out.kind.as_str() {
             BLOCKED_ON_LEASE => {
-                let n = normalize_resource(&out.reference)
-                    .map_err(|e| invalid(format!("blocked on a lease: {e}")))?;
-                if !self.lease_held(&n, &self.stamp()) {
-                    return Err(invalid(format!(
-                        "nobody leases {n}; block on external or a person instead"
-                    )));
+                // One lease, or several by space (card #339): it waits until
+                // none of them is held.
+                let now = self.stamp();
+                let mut names = Vec::new();
+                for r in out.reference.split_whitespace() {
+                    let n = normalize_resource(r)
+                        .map_err(|e| invalid(format!("blocked on a lease: {e}")))?;
+                    if !self.wait_lease_held(&n, &now) {
+                        return Err(invalid(format!(
+                            "nobody leases {n}; block on external or a person instead"
+                        )));
+                    }
+                    if !names.contains(&n) {
+                        names.push(n);
+                    }
                 }
-                out.reference = n;
+                if names.is_empty() {
+                    return Err(invalid("blocked on a lease needs the resource"));
+                }
+                out.reference = names.join(" ");
             }
             BLOCKED_ON_TASK => {
                 if out.reference.is_empty() || out.reference == me {
@@ -141,7 +153,16 @@ impl Fold {
                     return Err(invalid("blocked on an agent needs its key"));
                 }
             }
-            BLOCKED_ON_EXTERNAL => {}
+            BLOCKED_ON_EXTERNAL => {
+                // An external wait that names leases held now ("a free
+                // ww/dolphin-slot-1..4 lease") waits on those leases, so it
+                // closes when the last of them goes (card #339).
+                let names = self.leases_named_in(&out.reference, &self.stamp());
+                if !names.is_empty() {
+                    out.kind = BLOCKED_ON_LEASE.into();
+                    out.reference = names.join(" ");
+                }
+            }
             _ => {
                 return Err(invalid(format!(
                     "blocker kind {} (lease|task|person|agent|external)",
@@ -1059,6 +1080,76 @@ impl Fold {
             .any(|l| gotime::after(&l.lease.until, now) && conflicts(&l.res, &res))
     }
 
+    /// Whether lease `name` is held: in this log, or (on a board) by this
+    /// person's agents on their private board (card #339).
+    pub(crate) fn wait_lease_held(&self, name: &str, now: &GoTime) -> bool {
+        if self.lease_held(name, now) {
+            return true;
+        }
+        let Some(f) = &self.outside_leases else {
+            return false;
+        };
+        let res = parse_resource(name).unwrap_or_else(|_| Resource::named(name));
+        f().iter().any(|o| {
+            let or = parse_resource(o).unwrap_or_else(|_| Resource::named(o));
+            conflicts(&or, &res)
+        })
+    }
+
+    /// The live lease names: this log's, then this person's outside ones.
+    fn live_lease_names(&self, now: &GoTime) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .held
+            .values()
+            .filter(|l| gotime::after(&l.lease.until, now))
+            .map(|l| l.lease.resource.clone())
+            .collect();
+        if let Some(f) = &self.outside_leases {
+            for n in f() {
+                if !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+        }
+        out
+    }
+
+    /// The live leases text names (card #339): each by its whole name, or
+    /// a numbered one (`ww/dolphin-slot-3`) by its family
+    /// (`ww/dolphin-slot-1..4` when 3 is in range, `ww/dolphin-slot-N`,
+    /// `ww/dolphin-slot-*`).
+    /// At most what fits a blocker's ref.
+    pub(crate) fn leases_named_in(&self, text: &str, now: &GoTime) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .live_lease_names(now)
+            .into_iter()
+            .filter(|n| names_lease(text, n))
+            .collect();
+        names.sort();
+        let mut out: Vec<String> = Vec::new();
+        let mut len = 0;
+        for n in names {
+            let add = runes(&n) + usize::from(!out.is_empty());
+            if len + add > MAX_REF {
+                break;
+            }
+            len += add;
+            out.push(n);
+        }
+        out
+    }
+
+    /// Whether this device judges blocker b's lease wait (card #339): off a
+    /// board, always; on one, only the raiser's person's devices, the ones
+    /// that see the private leases it may wait on.
+    fn judges_lease_wait(&self, b: &Blocker) -> bool {
+        if !self.on_board {
+            return true;
+        }
+        let mine = self.person_of(&self.person);
+        !mine.is_empty() && self.person_of(&b.raised_by) == mine
+    }
+
     /// The open items of a blocked task whose lease or task went away.
     pub(crate) fn gone_away(&self, t: &Task, now: &GoTime) -> (Vec<String>, Vec<String>) {
         let mut ids = Vec::new();
@@ -1072,9 +1163,17 @@ impl Fold {
             };
             match on.kind.as_str() {
                 BLOCKED_ON_LEASE => {
-                    if !self.lease_held(&on.reference, now) {
+                    let names: Vec<&str> = on.reference.split_whitespace().collect();
+                    if self.judges_lease_wait(b)
+                        && !names.is_empty()
+                        && !names.iter().any(|n| self.wait_lease_held(n, now))
+                    {
                         ids.push(b.id.clone());
-                        why.push("lease released".to_string());
+                        why.push(if names.len() > 1 {
+                            "leases released".to_string()
+                        } else {
+                            "lease released".to_string()
+                        });
                     }
                 }
                 BLOCKED_ON_TASK => {
@@ -1149,7 +1248,8 @@ impl Fold {
                 if t.state != BLOCKED || !bl.open() || on.kind != BLOCKED_ON_LEASE {
                     continue;
                 }
-                if let Ok(res) = parse_resource(&on.reference) {
+                for r in on.reference.split_whitespace() {
+                    let Ok(res) = parse_resource(r) else { continue };
                     for (name, l) in &self.held {
                         if gotime::after(&l.lease.until, &now) && conflicts(&l.res, &res) {
                             let b = blocks.entry(name.clone()).or_default();
@@ -1563,4 +1663,55 @@ impl Fold {
         }
         Ok(())
     }
+}
+
+/// Whether text names lease `name` (card #339): the whole name as a token,
+/// or, for a numbered name (`ww/dolphin-slot-3`), its family:
+/// `ww/dolphin-slot-N` (or `n`, `*`), or a range holding it (`-1..4`).
+pub(crate) fn names_lease(text: &str, name: &str) -> bool {
+    fn name_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '/' | ':')
+    }
+    let starts_token = |i: usize| i == 0 || !text[..i].chars().next_back().is_some_and(name_char);
+    for (i, _) in text.match_indices(name) {
+        let rest = &text[i + name.len()..];
+        let mut it = rest.chars();
+        let ends = match it.next() {
+            None => true,
+            // A sentence's full stop ends it; "x.y" goes on.
+            Some('.') => !it.next().is_some_and(|c| c.is_ascii_alphanumeric()),
+            Some(c) => !name_char(c),
+        };
+        if starts_token(i) && ends {
+            return true;
+        }
+    }
+    let Some(dash) = name.rfind('-') else {
+        return false;
+    };
+    let num = &name[dash + 1..];
+    if num.is_empty() || !num.bytes().all(|b| b.is_ascii_digit()) || dash == 0 {
+        return false;
+    }
+    let (stem, n) = (&name[..=dash], num.parse::<u64>().ok());
+    text.match_indices(stem).any(|(i, _)| {
+        if !starts_token(i) {
+            return false;
+        }
+        let rest = &text[i + stem.len()..];
+        let after = |r: &str| !r.chars().next().is_some_and(name_char);
+        if let Some(r) = rest.strip_prefix(['N', 'n', '*']) {
+            return after(r);
+        }
+        // A range: 1..4 (or 1-4 is not one: that is a name).
+        let lo_len = rest.bytes().take_while(u8::is_ascii_digit).count();
+        let Some(r) = rest[lo_len..].strip_prefix("..") else {
+            return false;
+        };
+        let hi_len = r.bytes().take_while(u8::is_ascii_digit).count();
+        let (Ok(lo), Ok(hi)) = (rest[..lo_len].parse::<u64>(), r[..hi_len].parse::<u64>()) else {
+            return false;
+        };
+        after(&r[hi_len..]) && n.is_some_and(|n| lo <= n && n <= hi)
+    })
 }

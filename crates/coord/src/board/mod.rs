@@ -197,6 +197,11 @@ pub struct Options {
     /// (card #174); `None` or false: only to the author's own. Read when
     /// the hand-out runs, so a change to the setting applies at once.
     pub open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// On a board, the names of the live leases this person's agents hold
+    /// on their private board (card #339): leases live there, so a board
+    /// card can wait on one. Read under this coord's lock; it must never
+    /// wait on a board coord. `None`: only this log's leases.
+    pub outside_leases: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
 }
 
 /// The board rows that carry their writer's hop across the bridge.

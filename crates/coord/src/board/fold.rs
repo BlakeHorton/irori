@@ -209,6 +209,8 @@ pub struct Fold {
     pub(crate) person: String,
     /// See [`super::Options::open_cards_any`].
     pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// See [`super::Options::outside_leases`].
+    pub(crate) outside_leases: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
     /// On a board, the device that wrote each card's task.created: it runs
     /// the card's hand-out (card #174).
     pub(crate) origin: HashMap<String, String>,
@@ -354,6 +356,7 @@ impl Fold {
             person,
             key_person: o.key_person,
             open_cards_any: o.open_cards_any,
+            outside_leases: o.outside_leases,
             origin: HashMap::new(),
             dev_person: o.device_person,
             tag_fn: o.tag,
