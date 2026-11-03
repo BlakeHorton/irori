@@ -227,6 +227,8 @@ export type AgentCard = {
 	transcript: string,
 	repoKey: string,
 	permissionMode: string,
+	/**  The tool the session is running now (card #299). */
+	lastTool?: string,
 	deviceState?: string,
 };
 
@@ -768,6 +770,11 @@ export type CardThreadItem = {
 	attachments?: FileRef[],
 	unheard?: boolean,
 	pending?: string[],
+	/**
+	 *  The person's comment: the agents (keys) that have read it (card
+	 *  #299: a thread says when one of them stopped without replying).
+	 */
+	heardBy?: string[],
 	mentions?: CardMention[],
 	/**
 	 *  The person's comment no agent has read yet (card #105): "can" (Modify

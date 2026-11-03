@@ -85,6 +85,9 @@ pub struct AgentCard {
     pub transcript: String,
     pub repo_key: String,
     pub permission_mode: String,
+    /// The tool the session is running now (card #299).
+    #[specta(optional)]
+    pub last_tool: String,
     #[specta(optional)]
     pub device_state: String,
 }

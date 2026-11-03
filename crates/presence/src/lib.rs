@@ -105,6 +105,10 @@ pub struct AgentCard {
     /// == "bypassPermissions", never a fixed list.
     #[serde(rename = "permissionMode")]
     pub permission_mode: String,
+    /// The tool the session is running now ("" when none; card #299).
+    /// Stays on this device, like lastText.
+    #[serde(rename = "lastTool", skip_serializing_if = "is_empty")]
+    pub last_tool: String,
     /// Set on another device's card in the mesh roster: "connected",
     /// "recent" or "offline". "" on this device's own.
     #[serde(rename = "deviceState", skip_serializing_if = "is_empty")]

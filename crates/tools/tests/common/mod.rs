@@ -106,6 +106,7 @@ impl coord::roster::Agents for CoordRoster {
                 transcript: c.transcript,
                 repo_key: c.repo_key,
                 permission_mode: c.permission_mode,
+                last_tool: c.last_tool,
                 device_state: c.device_state,
             })
             .collect()

@@ -67,6 +67,7 @@ crate::go_struct! {
         pub transcript: String = "transcript",
         pub repo_key: String = "repoKey",
         pub permission_mode: String = "permissionMode",
+        pub last_tool: String = "lastTool" "omit",
         pub device_state: String = "deviceState" "omit",
     }
 }
@@ -334,6 +335,7 @@ fn apply(st: &mut State, ev: &Event) -> bool {
             }
             c.device_id = dev.to_string();
             c.last_text.clear();
+            c.last_tool.clear();
             c.transcript.clear();
             c.pid = 0;
             if c.status.is_empty() || c.status == "gone" {

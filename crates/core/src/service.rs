@@ -431,6 +431,7 @@ fn presence_card(c: AgentCard) -> presence::AgentCard {
         transcript: c.transcript,
         repo_key: c.repo_key,
         permission_mode: c.permission_mode,
+        last_tool: c.last_tool,
         device_state: c.device_state,
     }
 }
@@ -462,6 +463,7 @@ fn roster_card(c: presence::AgentCard) -> AgentCard {
         transcript: c.transcript,
         repo_key: c.repo_key,
         permission_mode: c.permission_mode,
+        last_tool: c.last_tool,
         device_state: c.device_state,
     }
 }
@@ -2662,6 +2664,7 @@ impl Services {
     /// scrubbed (a replicated row can't be scrubbed later).
     fn row_card(&self, mut card: presence::AgentCard) -> presence::AgentCard {
         card.last_text.clear();
+        card.last_tool.clear();
         card.transcript.clear();
         card.pid = 0;
         card.device_state.clear();

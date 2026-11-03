@@ -177,6 +177,8 @@ fn json_matches_go() {
         transcript: r"C:\t.jsonl".into(),
         repo_key: "remote:x/y".into(),
         permission_mode: "bypassPermissions".into(),
+        // Rust-only and omitted when empty, so Go's golden JSON still holds.
+        last_tool: String::new(),
         device_state: "recent".into(),
     };
     assert_eq!(m(&full), want("cardFull"));

@@ -94,7 +94,7 @@ export function App() {
   const roster = useRoster()
   // Threads show "<agent> is working…" from the live roster (card #299).
   const liveRoster = useMemo(
-    () => new Map(roster.agents.map((a) => [a.key, { status: a.status, updatedAt: a.updatedAt }])),
+    () => new Map(roster.agents.map((a) => [a.key, { status: a.status, updatedAt: a.updatedAt, lastTool: a.lastTool }])),
     [roster.agents]
   )
   const { gone } = useGone()

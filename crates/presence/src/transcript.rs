@@ -78,6 +78,10 @@ pub struct Tail {
     pub last_text: String,
     pub last_activity: GoTime,
     pub permission_mode: String,
+    /// The tool the session is running now (card #299): the newest
+    /// assistant row ends in a tool_use with no result after it. "" while
+    /// it writes prose, thinks or waits.
+    pub last_tool: String,
 }
 
 /// Go `transcriptRow`: the tolerant subset of a transcript line.
@@ -99,6 +103,7 @@ static MESSAGE: LazyLock<Schema> = LazyLock::new(|| {
         Schema::Slice(Box::new(Schema::object(vec![
             ("type", Schema::String),
             ("text", Schema::String),
+            ("name", Schema::String),
         ]))),
     )])
 });
@@ -229,7 +234,10 @@ pub fn read_tail<R: Read + Seek>(f: &mut R, size: u64, n: u64) -> Tail {
                 if !text.is_empty() {
                     t.last_text = text;
                 }
+                t.last_tool = running_tool(row.message.as_deref());
             }
+            // The tool's result (or the person's next prompt): nothing runs.
+            "user" if !row.is_sidechain => t.last_tool.clear(),
             _ => {}
         }
     }
@@ -307,6 +315,24 @@ fn last_text_block(raw: Option<&[u8]>) -> String {
         }
     }
     String::new()
+}
+
+/// The tool an assistant message ends on: the name of its last block when
+/// that block is a tool_use, else "".
+fn running_tool(raw: Option<&[u8]>) -> String {
+    let Some(raw) = raw.filter(|r| !r.is_empty()) else {
+        return String::new();
+    };
+    let Ok(msg) = unmarshal(raw, &MESSAGE) else {
+        return String::new();
+    };
+    let Some(content) = msg.get("content") else {
+        return String::new();
+    };
+    match content.items().last() {
+        Some(b) if b.get_str("type") == "tool_use" => one_line(b.get_str("name"), 80),
+        _ => String::new(),
+    }
 }
 
 /// Go `oneLine`: runs of white space become single spaces, capped at

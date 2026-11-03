@@ -530,6 +530,11 @@ pub struct CardThreadItem {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub pending: Vec<String>,
+    /// The person's comment: the agents (keys) that have read it (card
+    /// #299: a thread says when one of them stopped without replying).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub heard_by: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub mentions: Vec<CardMention>,
@@ -2013,12 +2018,9 @@ fn build_thread(
             // An agent that wrote on the card after it has answered: "read
             // it" says nothing more.
             let wrote_after = |k: &str| comments.iter().any(|c| c.by == k && c.hlc > cm.hlc);
-            it.pending = pending_lines(
-                p.heard.get(&cm.id).map(Vec::as_slice).unwrap_or(&[]),
-                t,
-                p,
-                wrote_after,
-            );
+            let heard = p.heard.get(&cm.id).map(Vec::as_slice).unwrap_or(&[]);
+            it.pending = pending_lines(heard, t, p, wrote_after);
+            it.heard_by = heard_by(heard);
         }
         if !cm.to.is_empty() {
             it.to = Some(p.ref_(&cm.to));
@@ -2186,6 +2188,22 @@ fn pending_lines(
             }
         };
         out.push(line);
+    }
+    out
+}
+
+/// The agents that read a person's comment, from its notices (newest
+/// first; an agent's newest notice decides, as in pending_lines).
+fn heard_by(ds: &[(Delivery, bool)]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (d, read) in ds {
+        if d.to.is_empty() || !seen.insert(d.to.as_str()) {
+            continue;
+        }
+        if *read {
+            out.push(d.to.clone());
+        }
     }
     out
 }
@@ -2404,6 +2422,14 @@ mod tests {
             (notice("d/g", coord::NOTICE_COMMENT, st::QUEUED), false),
         ];
         assert_eq!(pending_lines(&both, &t, &p, never), ["garnet read it"]);
+        // card #299: who read it, by the same newest-notice rule.
+        assert_eq!(heard_by(&both), ["d/g"]);
+        assert!(heard_by(&sent).is_empty());
+        let newer_unread = [
+            (notice("d/g", coord::NOTICE_COMMENT, st::QUEUED), false),
+            (notice("d/g", coord::NOTICE_MENTIONED, st::SKIPPED), true),
+        ];
+        assert!(heard_by(&newer_unread).is_empty());
     }
 
     // Card #264: on a shared board a question counts under Needs a decision

@@ -212,7 +212,7 @@ export function heardLine(
 // LiveRoster is each agent's live roster state by key (App provides it from
 // roster:changed, card #299): a card's AgentRef carries the status of when
 // the card was read, the roster the status of now.
-export type LiveAgent = { status: string; updatedAt?: string }
+export type LiveAgent = { status: string; updatedAt?: string; lastTool?: string }
 export const LiveRoster = createContext<ReadonlyMap<string, LiveAgent>>(new Map())
 
 // StoppedGrace is how long an agent must sit idle before a thread says it
@@ -225,7 +225,7 @@ export type WorkingLine = { text: string; tone: "working" | "stopped" }
 // workingLine is the live line under a thread (card #299, GitHub #5):
 // "oak is working…" while an agent on it (a holder, or the one an ask was
 // handed to) is in a turn, by the live roster; "oak stopped without
-// replying" once an agent heard the person's latest comment, had a turn
+// replying" once an agent read the person's latest comment, had a turn
 // after it and went idle with nothing on the thread since. None when the
 // card is over or nobody is on it.
 export function workingLine(
@@ -248,8 +248,14 @@ export function workingLine(
     return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}` : n[0]
   }
   const busy = on.filter((a) => status(a) === "busy")
-  if (busy.length)
-    return { text: `${names(busy)} ${busy.length > 1 ? "are" : "is"} working…`, tone: "working" }
+  if (busy.length) {
+    // One agent: what it is doing right now, when a tool is running.
+    const doing = busy.length === 1 ? toolPhrase(live.get(busy[0].key)?.lastTool ?? "") : ""
+    return {
+      text: `${names(busy)} ${busy.length > 1 ? "are" : "is"} ${doing || "working"}…`,
+      tone: "working",
+    }
+  }
 
   // The person's latest comment, and whether anyone answered it since.
   let p = -1
@@ -258,16 +264,56 @@ export function workingLine(
   }
   if (p < 0) return null
   const comment = items[p]
-  if ((comment.pending ?? []).length) return null // not everyone has heard it yet
   const at = parseTime(comment.at)
   if (!at) return null
+  const heard = comment.heardBy ?? []
   const after = items.slice(p + 1)
   const stopped = on.filter((a) => {
-    if (status(a) !== "idle") return false
+    // It read the comment (an agent still waiting to hear it hasn't
+    // stopped on it) and is idle now.
+    if (!heard.includes(a.key) || status(a) !== "idle") return false
     if (after.some((it) => it.who.key === a.key)) return false
     const since = parseTime(live.get(a.key)?.updatedAt)
     return !!since && since > at && now.getTime() - since.getTime() >= StoppedGrace
   })
   if (!stopped.length) return null
   return { text: `${names(stopped)} stopped without replying`, tone: "stopped" }
+}
+
+// toolPhrase says what a running tool is doing, for the working line
+// ("running a command"); "" for none.
+export function toolPhrase(tool: string): string {
+  if (!tool) return ""
+  const fixed: Record<string, string> = {
+    Bash: "running a command",
+    BashOutput: "running a command",
+    PowerShell: "running a command",
+    Read: "reading files",
+    Edit: "editing files",
+    MultiEdit: "editing files",
+    Write: "editing files",
+    NotebookEdit: "editing files",
+    Grep: "searching files",
+    Glob: "searching files",
+    WebSearch: "searching the web",
+    WebFetch: "reading a web page",
+    Agent: "running a subagent",
+    Task: "running a subagent",
+    TodoWrite: "planning",
+    advisor: "asking for advice",
+  }
+  if (fixed[tool]) return fixed[tool]
+  const m = /^mcp__([^_]+(?:[-_][^_]+)*?)__(.+)$/.exec(tool)
+  if (m) {
+    const [, server, name] = m
+    if (server === "irori") {
+      if (name.startsWith("board")) return "on the Board"
+      if (name === "send" || name === "reply") return "writing a message"
+      if (name === "search") return "searching Irori"
+      return "using Irori"
+    }
+    if (server.includes("chrome") || server.includes("browser")) return "using the browser"
+    return `using ${server.replace(/[-_]/g, " ")}`
+  }
+  return `using ${tool}`
 }

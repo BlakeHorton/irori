@@ -334,6 +334,7 @@ impl Inner {
             c.title = t.title.clone();
             c.last_text = t.last_text.clone();
             c.last_activity = t.last_activity;
+            c.last_tool = t.last_tool.clone();
             c.permission_mode = t.permission_mode.clone();
         }
         c.ai_title = t.ai.clone();
@@ -584,6 +585,7 @@ pub fn changed(a: &AgentCard, b: &AgentCard) -> bool {
         || a.transcript != b.transcript
         || a.repo_key != b.repo_key
         || a.permission_mode != b.permission_mode
+        || a.last_tool != b.last_tool
         || a.name_source != b.name_source
         || a.ai_title != b.ai_title
 }

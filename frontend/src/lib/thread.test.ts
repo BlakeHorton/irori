@@ -15,6 +15,7 @@ import {
   visible,
   workingLine,
   StoppedGrace,
+  toolPhrase,
 } from "./thread"
 
 const otter = AgentRef({
@@ -303,7 +304,15 @@ describe("workingLine", () => {
   const you = AgentRef({ key: "user:me", name: "You", status: "person", live: true })
   const t0 = new Date("2026-11-03T05:00:00Z")
   const at = (s: number) => new Date(t0.getTime() + s * 1000)
-  const comment = CardThreadItem({ id: "c1", kind: "comment", who: you, text: "how's it going?", at: at(0).toISOString() })
+  const comment = CardThreadItem({
+    id: "c1",
+    kind: "comment",
+    who: you,
+    text: "how's it going?",
+    at: at(0).toISOString(),
+    pending: ["oak read it"],
+    heardBy: ["mac/oak"],
+  })
   const roster = (m: Record<string, [string, number]>) =>
     new Map(Object.entries(m).map(([k, [status, s]]) => [k, { status, updatedAt: at(s).toISOString() }]))
 
@@ -340,8 +349,8 @@ describe("workingLine", () => {
     expect(workingLine([oak], [comment], roster({ "mac/oak": ["idle", -5] }), at(30))).toBeNull()
   })
 
-  test("not stopped while someone still has to hear the comment", () => {
-    const waiting = { ...comment, pending: ["oak hears it at its next turn"] }
+  test("not stopped while it hasn't read the comment yet", () => {
+    const waiting = { ...comment, pending: ["queued for oak"], heardBy: [] }
     expect(workingLine([oak], [waiting], roster({ "mac/oak": ["idle", 20] }), at(30))).toBeNull()
   })
 
@@ -355,5 +364,23 @@ describe("workingLine", () => {
   test("an ask handed to an agent counts while it decides", () => {
     const handed = { ...oak, assigned: true }
     expect(workingLine([handed], [comment], roster({ "mac/oak": ["busy", 1] }), at(2))?.tone).toBe("working")
+  })
+})
+
+describe("toolPhrase", () => {
+  test("names what common tools do", () => {
+    expect(toolPhrase("")).toBe("")
+    expect(toolPhrase("Bash")).toBe("running a command")
+    expect(toolPhrase("Edit")).toBe("editing files")
+    expect(toolPhrase("mcp__irori__board_comment")).toBe("on the Board")
+    expect(toolPhrase("mcp__claude-in-chrome__navigate")).toBe("using the browser")
+    expect(toolPhrase("mcp__blender__look")).toBe("using blender")
+    expect(toolPhrase("Frobnicate")).toBe("using Frobnicate")
+  })
+
+  test("the working line adds it for one busy agent", () => {
+    const oak = AgentRef({ key: "mac/oak", name: "oak", status: "idle", live: true })
+    const live = new Map([["mac/oak", { status: "busy", updatedAt: "", lastTool: "Grep" }]])
+    expect(workingLine([oak], [], live, new Date())?.text).toBe("oak is searching files…")
   })
 })
