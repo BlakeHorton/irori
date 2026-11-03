@@ -1593,3 +1593,55 @@ fn a_subtask_that_cant_go_stops_the_family() {
     assert!(!coord::is_terminal(&co.get_task(&parent.id).unwrap().state));
     r.core.close().unwrap();
 }
+
+/// Card #337 (wind#87-91, 2026-11-03): a shared board's open card goes to
+/// one of the person's idle agents that isn't on that board yet, which is
+/// put on the board as it is handed the card (Stephen: "a board's pool
+/// includes the person's own idle agents when the person is on that
+/// board").
+#[test]
+fn a_board_card_reaches_an_idle_agent_not_on_the_board() {
+    let r = Rig::new();
+    let c = &r.core;
+    let b1 = c.create_board("Wind", "wind").unwrap();
+    let caller = |key: &str| tools::Caller {
+        sender: inbox::Sender::new(key, "alpha", "claude"),
+        path: String::new(),
+    };
+    // alpha posts it, so alpha is on the board and never gets its own card;
+    // beta has never touched the board.
+    let out = c
+        .tools()
+        .call(
+            &caller(&r.key_a),
+            "board_create",
+            &serde_json::to_vec(&serde_json::json!({"title": "Three Dolphins", "board": "wind"}))
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(out.contains("Created wind#1"), "{out}");
+    let on_board = |k: &str| {
+        c.board_roster(&b1)
+            .iter()
+            .any(|a| c.private_key(&a.key) == k)
+    };
+    assert!(
+        !on_board(&r.key_b),
+        "beta is on the board before any hand-out"
+    );
+    wait_for(10, "beta is handed wind#1", || {
+        c.sweep_coord().ok();
+        r.notices_to(&r.key_b).iter().any(|d| {
+            d.message.text.contains("Three Dolphins") && d.message.text.contains("handed it to you")
+        })
+    });
+    assert!(
+        on_board(&r.key_b),
+        "beta was handed it but isn't on the board"
+    );
+    let co = c.board_coord(&b1).unwrap();
+    let t = co.list_tasks(&coord::TaskFilter::default()).remove(0);
+    let o = t.live_offer().cloned().unwrap();
+    assert_eq!(c.private_key(&o.to), r.key_b);
+    r.core.close().unwrap();
+}

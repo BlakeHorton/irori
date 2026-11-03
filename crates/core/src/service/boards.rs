@@ -1937,6 +1937,43 @@ impl Services {
         self.sweep_boards_with(false)
     }
 
+    /// Puts this person's idle agents that aren't on board `b` yet on it,
+    /// one per unheld card there that nobody on the board is free to take
+    /// (card #337: Stephen, "a board's pool includes the person's own idle
+    /// agents when the person is on that board"). The idle longest go
+    /// first; the hand-out sweep that follows picks among them.
+    fn card_idle_agents(&self, b: &BoardLog) {
+        if self.inbox.policy().paused {
+            return;
+        }
+        let n = b.coord().unserved_offers(&self.board_ask_agents(b));
+        if n == 0 {
+            return;
+        }
+        let me = self.device.id.as_str();
+        let mut idle: Vec<AgentCard> = {
+            let m = lock(&b.maps);
+            self.roster
+                .agents()
+                .into_iter()
+                .filter(|a| {
+                    a.status == "idle"
+                        && a.device_state != coord::roster::OFFLINE
+                        && !m.keys.contains_key(&a.key)
+                        && (a.device_id == me
+                            || a.device_id.is_empty()
+                                && irori_identity::owner::device_of(&a.key) == me)
+                })
+                .collect()
+        };
+        idle.sort_by_key(|a| (a.updated_at.unix_nano(), a.key.clone()));
+        for a in idle.into_iter().take(n) {
+            if let Err(e) = self.card_for(b, &a.key) {
+                logf(format_args!("board {}: put {} on it: {e}", b.id, a.key));
+            }
+        }
+    }
+
     fn sweep_boards_with(&self, notices: bool) -> std::result::Result<(), String> {
         let mut errs = Vec::new();
         for b in self.shown_boards() {
@@ -1948,6 +1985,7 @@ impl Services {
                 }
                 ns = n;
             }
+            self.card_idle_agents(&b);
             let (asks, aerr) = b.coord().sweep_asks_partial(&self.board_ask_agents(&b));
             if let Err(e) = aerr {
                 errs.push(e.to_string());

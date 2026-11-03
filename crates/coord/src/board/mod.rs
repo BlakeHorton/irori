@@ -374,6 +374,11 @@ impl Coord {
     pub fn offer_card(&self, by: &str, id: &str, agents: &[AgentCard]) -> Result<Notice> {
         self.lock().offer_card(by, id, agents)
     }
+    /// How many unheld cards this device hands out have nobody among
+    /// `agents` free to take them (card #337).
+    pub fn unserved_offers(&self, agents: &[AgentCard]) -> usize {
+        self.lock().unserved_offers(agents)
+    }
     pub fn join(&self, by: &str, id: &str, who: &str) -> Result<Task> {
         self.lock().join(by, id, who)
     }

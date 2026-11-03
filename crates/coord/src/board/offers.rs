@@ -347,6 +347,32 @@ impl Fold {
             .collect()
     }
 
+    /// How many unheld cards this device hands out have nobody among
+    /// `agents` free to take them now (card #337): on a shared board the
+    /// Core then puts that many of its person's idle agents on the board.
+    pub(crate) fn unserved_offers(&self, agents: &[AgentCard]) -> usize {
+        self.tasks
+            .values()
+            .filter(|t| {
+                let waiting = match t.live_offer() {
+                    Some(o) => o.to.is_empty(),
+                    None => t.offer.is_none() && offerable(t),
+                };
+                waiting && self.hands_out(t)
+            })
+            .filter(|t| {
+                let mut skip = t
+                    .offer
+                    .as_ref()
+                    .map(|o| o.heard.clone())
+                    .unwrap_or_default();
+                skip.push(t.created_by.clone());
+                let pool = self.offer_pool(t, agents);
+                self.free_for(t, &pool, &skip).is_empty()
+            })
+            .count()
+    }
+
     /// What this device does for the unheld cards its agents posted (on a
     /// shared board, the cards it made): hands each on when the agent it
     /// went to gave it back, ended its turn without taking it, or went

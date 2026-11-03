@@ -577,6 +577,11 @@ fn an_open_card_reaches_the_other_persons_free_agent_per_the_setting() {
         t.b().board_key(&t.board, &t.rb.key_b).unwrap(),
     );
     t.sync();
+    // Alice's own agents sit out (paused): since card #337 her idle agents
+    // would take her card on the board, and this checks Bob's side.
+    let mut pol = t.a().inbox().policy();
+    pol.paused = true;
+    t.a().inbox().set_policy(pol, "user:test").unwrap();
     let co = t.a().board_coord(&t.board).unwrap();
     // The author's agents (the default): Bob's idle agents don't get it.
     let first = co

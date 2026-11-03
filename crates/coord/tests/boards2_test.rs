@@ -1465,3 +1465,32 @@ fn a_merged_pr_on_a_completed_board_card_awaiting_done_is_not_told_again() {
         sync(&a, &b);
     }
 }
+
+/// Card #337: a subtask on a shared board goes out like a top-level card,
+/// to the free agent idle longest (wind#87-91 got a hand-out row; nobody
+/// in the board's pool was free).
+#[test]
+fn a_board_subtask_is_handed_out_like_a_card() {
+    let any = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let (a, b) = two_people_any(&any);
+    let p = a.c.create_task(CARD1, nt("Parent", "")).unwrap();
+    a.c.claim_task(CARD1, &p.id).unwrap();
+    let s =
+        a.c.create_task(
+            CARD1,
+            NewTask {
+                title: "Sub".into(),
+                parent: p.id.clone(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    sync(&a, &b);
+    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
+    r.unwrap();
+    assert!(
+        ns.len() == 1 && ns[0].to == [CARD2] && ns[0].task_id == s.id,
+        "{ns:?}"
+    );
+    assert_eq!(a.c.get_task(&s.id).unwrap().live_offer().unwrap().to, CARD2);
+}
