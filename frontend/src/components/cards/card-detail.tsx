@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react"
+import { useContext, useState, type FormEvent, type ReactNode } from "react"
 import {
   ArrowLeftIcon,
   ExternalLinkIcon,
@@ -23,6 +23,9 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
   agentBusy,
+  namesLine,
+  withLive,
+  workingNow,
   BlockerState,
   busy,
   cards,
@@ -55,7 +58,13 @@ import {
   shortRepo,
 } from "@/lib/irori"
 import { errorText, talk, type GoneSession } from "@/lib/talk"
-import { answerable, blockerChip, blockerTone, heardLine } from "@/lib/thread"
+import {
+  answerable,
+  blockerChip,
+  blockerTone,
+  heardLine,
+  LiveRoster,
+} from "@/lib/thread"
 import { cn } from "@/lib/utils"
 import {
   AskLine,
@@ -129,6 +138,9 @@ export function CardPage({
     null
   )
   const { boards } = useBoards()
+  // The live roster's status over the card's (card #317): the same busy
+  // rule Home's Agent progress reads, as of now.
+  const live = useContext(LiveRoster)
   const back = (
     <Button
       variant="ghost"
@@ -145,8 +157,9 @@ export function CardPage({
     return (
       <article className="grid gap-3" aria-label="Card" aria-busy={!error}>
         {back}
+        {summary && <WorkingRow card={withLive(summary, live)} />}
         {summary ? (
-          <PageHeader card={summary} spinning={busy(summary)} />
+          <PageHeader card={summary} spinning={busy(withLive(summary, live))} />
         ) : (
           !error && (
             <header className="grid gap-2" aria-hidden>
@@ -178,7 +191,9 @@ export function CardPage({
   const open = detail.blockers.filter((b) => !b.resolved)
   // A card blocked the old way (a reason, no items) has nothing to pick.
   const legacy = detail.openBlockers > 0 && open.length === 0
-  const spinning = busy(detail)
+  const now_ = withLive(detail, live)
+  const spinning = busy(now_)
+  const workers = workingNow(now_)
   // Links already on screen (a PR's, an open blocker's or one of its
   // answers') aren't listed again on the side.
   const shownLinks = new Set(
@@ -212,6 +227,7 @@ export function CardPage({
     <MentionBoard.Provider value={detail.onBoard?.id ?? ""}>
     <article className="grid gap-3" aria-label="Card">
       {back}
+      <WorkingRow card={now_} />
       <PageHeader
         card={detail}
         spinning={spinning}
@@ -398,7 +414,7 @@ export function CardPage({
                 !files.length
               }
             >
-              <People detail={detail} gone={gone} />
+              <People detail={now_} gone={gone} />
             </Section>
 
             {detail.reviews.length > 0 && (
@@ -453,7 +469,11 @@ export function CardPage({
               now={now}
               earlier={detail.threadEarlier}
               historyTrimmed={detail.historyTrimmed}
-              on={{ agents: detail.working, over: over(detail) }}
+              on={{
+                agents: detail.working,
+                over: over(detail),
+                working: workers,
+              }}
               composer={
                 <CommentBox cardId={detail.id} noFiles={!!detail.onBoard} />
               }
@@ -463,6 +483,28 @@ export function CardPage({
       </div>
     </article>
     </MentionBoard.Provider>
+  )
+}
+
+// WorkingRow is the card page's top line while an agent works on it (card
+// #317): who, with Agent progress's spinner (a still dot under Reduce
+// Motion), by the same busy rule as Home, so the two never disagree.
+// Nothing while nobody is.
+function WorkingRow({ card }: { card: CardSummary }) {
+  const who = workingNow(card)
+  if (!who.length) return null
+  const names = namesLine(who.map(displayName))
+  return (
+    <p
+      role="status"
+      className="flex min-w-0 items-center gap-2 rounded-lg border border-info/40 bg-info/10 px-3 py-2 text-[13px] text-ink"
+    >
+      <Spinner className="size-4" />
+      <span className="min-w-0 truncate">
+        <span className="font-semibold">{names}</span>{" "}
+        {who.length > 1 ? "are" : "is"} working on this card now
+      </span>
+    </p>
   )
 }
 

@@ -5,6 +5,7 @@
 import {
   BlockerState,
   displayName,
+  namesLine,
   type AgentRef,
   type CardBlocker,
   type CardThreadItem,
@@ -226,7 +227,41 @@ export const LiveRoster = createContext<ReadonlyMap<string, LiveAgent>>(
 // delivers the person's comment it is idle for a moment.
 export const StoppedGrace = 3000
 
-export type WorkingLine = { text: string; tone: "working" | "stopped" }
+// WorkingLine is the live line's text and tone. A working line also gives
+// its parts (card #317): who ("oak", "oak and elm"), the verb and what it
+// is doing ("" for no running tool), so the view can swap in a changing
+// word (ponderWord) while no tool says more.
+export type WorkingLine = {
+  text: string
+  tone: "working" | "stopped"
+  who?: string
+  verb?: "is" | "are"
+  doing?: string
+}
+
+// PonderWords are the working line's changing words while an agent works
+// and no running tool says what on (card #317, like Claude Code's status
+// word). The first is the still word Reduce Motion keeps.
+export const PonderWords = [
+  "working",
+  "pondering",
+  "thinking",
+  "mulling it over",
+  "tinkering",
+  "puzzling it out",
+  "figuring",
+  "noodling",
+] as const
+
+// PonderEvery is how often the word changes, in ms.
+export const PonderEvery = 3000
+
+// ponderWord is the word for the tick'th change: the words in turn, from
+// the first. Reduce Motion shows ponderWord(0), still.
+export function ponderWord(tick: number): string {
+  const n = PonderWords.length
+  return PonderWords[((Math.floor(tick) % n) + n) % n]
+}
 
 // workingLine is the live line under a thread (card #299, GitHub #5):
 // "oak is working…" while an agent on it (a holder, or the one an ask was
@@ -239,7 +274,12 @@ export function workingLine(
   items: readonly CardThreadItem[],
   live: ReadonlyMap<string, LiveAgent>,
   now: Date,
-  over = false
+  over = false,
+  // working: who the card's own rule says is working on it now (the card
+  // page passes workingNow, card #317), so its line agrees with the page's
+  // working row and Home's Agent progress. Left out, any agent on the
+  // thread busy in the live roster counts (an ask's taker, card #299).
+  working?: readonly AgentRef[]
 ): WorkingLine | null {
   if (over) return null
   const seen = new Set<string>()
@@ -250,20 +290,20 @@ export function workingLine(
     return true
   })
   const status = (a: AgentRef) => live.get(a.key)?.status ?? a.status
-  const names = (rs: AgentRef[]) => {
-    const n = rs.map(displayName)
-    return n.length > 1
-      ? `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`
-      : n[0]
-  }
-  const busy = on.filter((a) => status(a) === "busy")
+  const names = (rs: readonly AgentRef[]) => namesLine(rs.map(displayName))
+  const busy = working ?? on.filter((a) => status(a) === "busy")
   if (busy.length) {
     // One agent: what it is doing right now, when a tool is running.
     const doing =
       busy.length === 1 ? toolPhrase(live.get(busy[0].key)?.lastTool ?? "") : ""
+    const who = names(busy)
+    const verb = busy.length > 1 ? "are" : "is"
     return {
-      text: `${names(busy)} ${busy.length > 1 ? "are" : "is"} ${doing || "working"}…`,
+      text: `${who} ${verb} ${doing || "working"}…`,
       tone: "working",
+      who,
+      verb,
+      doing,
     }
   }
 

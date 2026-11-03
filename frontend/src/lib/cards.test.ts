@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { AgentRef, CardAsk } from "./models"
 import { TaskState } from "./models"
-import { askLine, busy, sampleCardRef, cardFromHash, cardHash, openTarget, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
+import { askLine, busy, namesLine, withLive, workingNow, sampleCardRef, cardFromHash, cardHash, openTarget, deviceChips, deviceVar, holderLineShows, Holding, nobodyOn, openAsk, overLabel, workLabel } from "./cards"
 
 const agent = (status: string, more: Partial<AgentRef> = {}) =>
   AgentRef({ key: "d/s", name: "a", status, live: status !== "gone", where: "This PC", ...more })
@@ -35,6 +35,39 @@ describe("busy", () => {
   })
   test("one busy holder among idle ones is enough", () => {
     expect(busy(card(TaskState.Working, [agent("idle"), agent("busy")]))).toBe(true)
+  })
+})
+
+describe("withLive and workingNow (card #317)", () => {
+  const live = (m: Record<string, string>) =>
+    new Map(Object.entries(m).map(([k, status]) => [k, { status }]))
+  test("the live roster's status wins over the card's snapshot", () => {
+    const c = card(TaskState.Working, [agent("idle")])
+    expect(busy(c)).toBe(false)
+    expect(busy(withLive(c, live({ "d/s": "busy" })))).toBe(true)
+    const was = card(TaskState.Working, [agent("busy")])
+    expect(busy(withLive(was, live({ "d/s": "idle" })))).toBe(false)
+  })
+  test("an agent the roster doesn't have keeps its status; nothing new when nothing changed", () => {
+    const c = card(TaskState.Working, [agent("busy")])
+    expect(withLive(c, live({ "other/x": "idle" }))).toBe(c)
+    expect(withLive(c, new Map())).toBe(c)
+  })
+  test("workingNow names the busy taken-up holders, once each, by busy's rule", () => {
+    const oak = agent("busy", { key: "d/oak", name: "oak" })
+    const elm = agent("idle", { key: "d/elm", name: "elm" })
+    const offered = agent("busy", { key: "d/ash", name: "ash", assigned: true })
+    expect(workingNow(card(TaskState.Working, [oak, elm, offered, oak])).map((w) => w.name)).toEqual(["oak"])
+    // Same rule as Agent progress: a card that waits on the person shows nobody working.
+    expect(workingNow(card(TaskState.Working, [oak], 1))).toEqual([])
+    expect(workingNow(card(TaskState.InReview, [oak]))).toEqual([])
+    expect(workingNow(card(TaskState.Completed, [oak]))).toEqual([])
+  })
+  test("namesLine", () => {
+    expect(namesLine([])).toBe("")
+    expect(namesLine(["oak"])).toBe("oak")
+    expect(namesLine(["oak", "elm"])).toBe("oak and elm")
+    expect(namesLine(["oak", "elm", "ash"])).toBe("oak, elm and ash")
   })
 })
 

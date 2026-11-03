@@ -16,6 +16,8 @@ import {
   workingLine,
   StoppedGrace,
   toolPhrase,
+  ponderWord,
+  PonderWords,
 } from "./thread"
 
 const otter = AgentRef({
@@ -342,6 +344,9 @@ describe("workingLine", () => {
     ).toEqual({
       text: "oak is working…",
       tone: "working",
+      who: "oak",
+      verb: "is",
+      doing: "",
     })
   })
 
@@ -434,6 +439,34 @@ describe("workingLine", () => {
         at(2)
       )?.tone
     ).toBe("working")
+  })
+})
+
+describe("working line on a card page (card #317)", () => {
+  const oak = AgentRef({ key: "mac/oak", name: "oak", status: "idle", live: true })
+  const elm = AgentRef({ key: "mac/elm", name: "elm", status: "idle", live: true })
+  const busyRoster = new Map([
+    ["mac/oak", { status: "busy", updatedAt: "" }],
+    ["mac/elm", { status: "busy", updatedAt: "" }],
+  ])
+  test("names who the card's rule gives, not every busy agent on it", () => {
+    const l = workingLine([oak, elm], [], busyRoster, new Date(), false, [elm])
+    expect(l).toMatchObject({ tone: "working", who: "elm", verb: "is" })
+  })
+  test("nobody working by the card's rule: no working line, though the roster says busy", () => {
+    expect(workingLine([oak], [], busyRoster, new Date(), false, [])).toBeNull()
+  })
+})
+
+describe("ponderWord", () => {
+  test("changes word each tick, in turn, and wraps", () => {
+    expect(ponderWord(0)).toBe("working")
+    expect(ponderWord(1)).not.toBe(ponderWord(0))
+    expect(ponderWord(PonderWords.length)).toBe(ponderWord(0))
+    expect(ponderWord(-1)).toBe(PonderWords[PonderWords.length - 1])
+  })
+  test("Reduce Motion's still word is the plain one", () => {
+    expect(ponderWord(0)).toBe(PonderWords[0])
   })
 })
 

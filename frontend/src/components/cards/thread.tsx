@@ -19,12 +19,15 @@ import {
   opensInFull,
   threadEntryId,
   LiveRoster,
+  PonderEvery,
+  ponderWord,
   StoppedGrace,
   threadLabel,
   ThreadKind,
   visible,
   workingLine,
 } from "@/lib/thread"
+import { useReducedMotion } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Spinner } from "./bits"
 import { Face } from "./faces"
@@ -69,7 +72,13 @@ export function Thread({
   scroll?: string
   // on: the agents on this thread (a card's holders, an ask's takers) and
   // whether it is over, for the live "working…" line (card #299).
-  on?: { agents: readonly AgentRef[]; over?: boolean }
+  // working, when given, is who the card's rule says works on it now
+  // (card #317): the line names them, so it agrees with the page.
+  on?: {
+    agents: readonly AgentRef[]
+    over?: boolean
+    working?: readonly AgentRef[]
+  }
 }) {
   const [showAll, setShowAll] = useState(false)
   const live = useContext(LiveRoster)
@@ -82,7 +91,8 @@ export function Thread({
     const id = window.setTimeout(() => setTick((n) => n + 1), StoppedGrace + 100)
     return () => window.clearTimeout(id)
   }, [watching, live])
-  const status = on ? workingLine(on.agents, items, live, new Date(), on.over) : null
+  const status = on ? workingLine(on.agents, items, live, new Date(), on.over, on.working)
+    : null
   // A comment a notification opened the card at: shown even when it is
   // older than the first page, scrolled into view once (card #177).
   const focus = useContext(FocusComment)
@@ -151,18 +161,26 @@ export function Thread({
       ) : (
         !status && <p className="text-muted-foreground">{empty}</p>
       )}
-      {status && (
-        <p
-          role="status"
-          className={cn(
-            "flex items-center gap-1.5 text-[11.5px]",
-            status.tone === "working" ? "text-muted-foreground" : "text-warning"
-          )}
-        >
-          {status.tone === "working" && <Spinner className="size-3" />}
-          {status.text}
-        </p>
-      )}
+      {status &&
+        (status.tone === "working" ? (
+          // Where the next comment will appear (card #317): who is on it,
+          // with a word that changes while no running tool says more.
+          <p
+            role="status"
+            aria-label={status.text}
+            className="flex items-center gap-2 py-0.5 text-[12.5px] text-ink-2"
+          >
+            <Spinner className="size-3.5" />
+            <span className="min-w-0 truncate">
+              <span className="font-medium">{status.who}</span> {status.verb}{" "}
+              {status.doing || <PonderWord />}…
+            </span>
+          </p>
+        ) : (
+          <p role="status" className="text-[11.5px] text-warning">
+            {status.text}
+          </p>
+        ))}
     </>
   )
   if (scroll) {
@@ -190,6 +208,20 @@ export function Thread({
       {composer}
     </div>
   )
+}
+
+// PonderWord is the working line's changing word (card #317): a new one
+// every PonderEvery while it shows; Reduce Motion keeps the first, still.
+// Its own component, so only the word re-renders on each change.
+function PonderWord() {
+  const still = useReducedMotion()
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (still) return
+    const id = window.setInterval(() => setTick((n) => n + 1), PonderEvery)
+    return () => window.clearInterval(id)
+  }, [still])
+  return <span aria-hidden>{ponderWord(still ? 0 : tick)}</span>
 }
 
 function ThreadRow({

@@ -1,11 +1,18 @@
 import { LayersIcon, PinIcon, UserIcon } from "lucide-react"
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import {
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
   busy,
+  withLive,
   cards as cardsApi,
   deviceVar,
   type DeviceChip,
@@ -19,6 +26,7 @@ import {
   type CardSummary,
   type DoneState,
 } from "@/lib/cards"
+import { LiveRoster } from "@/lib/thread"
 import { plainLine, relativeTime } from "@/lib/irori"
 import { TaskState } from "@/lib/models"
 import { ownedBy, ownerFilter, type OwnerMember } from "@/lib/owners"
@@ -464,12 +472,13 @@ function CardTile({
   now?: Date
   dim: boolean
 }) {
+  const live = useContext(LiveRoster)
   const p = percent(card.progress)
   const closed = over(card)
   const parent = (card.subtasks ?? 0) > 0
   const blocked = card.openBlockers > 0
   const title = plainLine(card.title) || "(untitled)"
-  const label = workLabel(card)
+  const label = workLabel(withLive(card, live))
   return (
     <button
       type="button"
@@ -530,7 +539,7 @@ function CardTile({
             Stale
           </Badge>
         )}
-        {busy(card) && <Spinner className="ml-auto" />}
+        {busy(withLive(card, live)) && <Spinner className="ml-auto" />}
       </span>
       {card.talking.length > 1 && (
         <span className="-mt-1 flex">

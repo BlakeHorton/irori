@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { TaskState, type CardSummary } from "./cards"
+import { TaskState, withLive, workingNow, type AgentRef, type CardSummary } from "./cards"
 import { IDLE_LINE, needsOf, needsYou, rowState, toPerson } from "./needs"
 import { State, type Delivery } from "./talk"
 
@@ -101,6 +101,26 @@ describe("rowState", () => {
     expect(rowState(card({ state: TaskState.Completed })).state).toBe("done")
     expect(rowState(card({ state: TaskState.InReview })).line).toBe("In review")
     expect(rowState(card({})).state).toBe("waiting")
+  })
+  test("Agent progress and the card page agree, by the live roster (card #317)", () => {
+    const oak = { key: "d/oak", name: "oak", status: "idle", live: true, where: "This PC" } as AgentRef
+    const c = card({
+      working: [oak],
+      holder: { state: "one", who: { key: "d/oak", name: "oak" }, others: 0 } as CardSummary["holder"],
+    })
+    const live = new Map([["d/oak", { status: "busy" }]])
+    for (const [m, working] of [
+      [new Map(), false],
+      [live, true],
+    ] as const) {
+      const now = withLive(c, m)
+      expect(rowState(now).state === "working").toBe(working)
+      expect(workingNow(now).length > 0).toBe(working)
+    }
+    // A blocker: Needs you on Home, and no working row on the page.
+    const blocked = withLive({ ...c, openBlockers: 1 }, live)
+    expect(rowState(blocked).state).toBe("needs")
+    expect(workingNow(blocked)).toEqual([])
   })
   test("a closed card never needs you", () => {
     expect(needsYou(card({ state: TaskState.Completed, openBlockers: 1 }))).toBe(false)

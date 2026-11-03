@@ -5,7 +5,9 @@
 
 import { Badge } from "@/components/ui/badge"
 import { cardRef, Spinner } from "@/components/cards/bits"
-import { percent, type CardSummary } from "@/lib/cards"
+import { useContext } from "react"
+import { percent, withLive, type CardSummary } from "@/lib/cards"
+import { LiveRoster } from "@/lib/thread"
 import { plainLine } from "@/lib/irori"
 import { rowState, rowStateLabel, type RowState } from "@/lib/needs"
 import { cn } from "@/lib/utils"
@@ -58,7 +60,10 @@ function ProgressRow({
   selected: boolean
   onOpen: (id: string) => void
 }) {
-  const { state, line } = rowState(c)
+  // The live roster's status over the card's (card #317): the card page
+  // reads busy the same way, so the two never disagree.
+  const live = useContext(LiveRoster)
+  const { state, line } = rowState(withLive(c, live))
   const p = percent(c.progress)
   const board = c.scope === "board" ? plainLine(c.scopeLabel) : ""
   return (

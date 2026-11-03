@@ -1831,6 +1831,51 @@ export function agentBusy(w: AgentRef): boolean {
   return w.status === "busy" && w.live && !w.offline && !w.assigned
 }
 
+// withLive is the card with its agents' roster status as of now (card
+// #317): a card's AgentRef carries the status of when the card was read,
+// the live roster (LiveRoster, card #299) the status of now. Home's Agent
+// progress and the card page both read busy through it, so the two never
+// disagree and neither waits for the card to be read again. An agent the
+// roster doesn't have keeps its status.
+export function withLive<
+  C extends { working: readonly AgentRef[] },
+>(c: C, live: ReadonlyMap<string, { status: string }>): C {
+  if (!live.size) return c
+  let changed = false
+  const working = c.working.map((w) => {
+    const s = live.get(w.key)?.status
+    if (!s || s === w.status || w.status === "person") return w
+    changed = true
+    return { ...w, status: s }
+  })
+  return changed ? { ...c, working } : c
+}
+
+// workingNow is who is working on the card right now, by busy's rule:
+// its taken-up holders busy in the roster, while busy says the card is
+// being worked; none otherwise. The card page's working row names them.
+export function workingNow(c: {
+  state: string
+  openBlockers: number
+  working: readonly AgentRef[]
+}): AgentRef[] {
+  if (!busy(c)) return []
+  const seen = new Set<string>()
+  return c.working.filter((w) => {
+    if (!agentBusy(w) || seen.has(w.key)) return false
+    seen.add(w.key)
+    return true
+  })
+}
+
+// namesLine joins names for a line: "oak", "oak and elm", "oak, elm and
+// ash".
+export function namesLine(names: readonly string[]): string {
+  return names.length > 1
+    ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+    : (names[0] ?? "")
+}
+
 // overLabel is a finished card's state word: "Answered" for an ask its
 // taker answered, "Closed" for an ask nothing came of (board.md
 // "Outcomes"), else Done, Canceled or Failed.
