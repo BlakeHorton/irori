@@ -137,6 +137,11 @@ function pastedFiles(list: FileList | File[] | null | undefined): File[] {
   return Array.from(list ?? [])
 }
 
+// composerIcon sits a 28 px icon button on a composer's 36 px line: the
+// rows top-align (a box grows downward as it wraps), so without the margin
+// the icon rides 4 px above the box's first line and the send button (#358).
+export const composerIcon = "my-1 shrink-0"
+
 // FilesOff is why a box took no files: its clip, shown disabled with the
 // reason as its title.
 export function FilesOff({ why }: { why: string }) {
@@ -145,7 +150,7 @@ export function FilesOff({ why }: { why: string }) {
       type="button"
       size="icon-sm"
       variant="ghost"
-      className="shrink-0"
+      className={composerIcon}
       title={why}
       aria-label={`No files here: ${why}`}
       disabled
@@ -168,7 +173,7 @@ export function AttachButton({
       type="button"
       size="icon-sm"
       variant="ghost"
-      className="shrink-0"
+      className={composerIcon}
       title="Add files (or drop them here, or paste a screenshot or file)"
       aria-label="Add files"
       disabled={disabled || attach.full}

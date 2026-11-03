@@ -9,6 +9,7 @@ import {
 } from "react"
 import { LoaderCircleIcon, MicIcon, MicOffIcon } from "lucide-react"
 
+import { composerIcon } from "@/components/attachments/file-attach"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -200,7 +201,7 @@ export function MicButton({
         size="icon-sm"
         variant="ghost"
         className={cn(
-          "shrink-0",
+          composerIcon,
           live && "bg-destructive/15 text-destructive hover:bg-destructive/25",
           st.state === "denied" && !live && "text-muted-foreground"
         )}

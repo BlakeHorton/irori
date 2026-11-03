@@ -1283,7 +1283,7 @@ export function CommentBox({
             : "Comment on the card…"
         }
         aria-label={reply ? "Your reply" : "Your comment on the card"}
-        className="max-h-48 min-h-10 min-w-0 flex-1 bg-card"
+        className="max-h-48 min-h-9 min-w-0 flex-1 bg-card"
         disabled={busy}
       />
       </div>
