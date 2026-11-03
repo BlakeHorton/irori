@@ -23,3 +23,19 @@ describe("Talk lives in the address (card #390)", () => {
     expect(sameSection({ kind: "talk", id: "" }, { kind: "home" })).toBe(false)
   })
 })
+
+describe("Notes lives in the address (card #413)", () => {
+  test("#notes is Mine, #notes/<tag> a board's tab, and they round-trip", () => {
+    expect(sectionFromHash("#notes")).toEqual({ kind: "notes", tab: "" })
+    expect(sectionFromHash("#notes/mlg")).toEqual({ kind: "notes", tab: "mlg" })
+    for (const s of [
+      { kind: "notes", tab: "" },
+      { kind: "notes", tab: "web site" },
+    ] as const)
+      expect(sectionFromHash(sectionHash(s))).toEqual(s)
+  })
+  test("another tab is another place", () => {
+    expect(sameSection({ kind: "notes", tab: "" }, { kind: "notes", tab: "" })).toBe(true)
+    expect(sameSection({ kind: "notes", tab: "" }, { kind: "notes", tab: "mlg" })).toBe(false)
+  })
+})

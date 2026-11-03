@@ -339,7 +339,7 @@ export function AppSidebar({
           icon={NotebookPenIcon}
           label="Notes"
           folded={folded}
-          current={section?.kind === "notes"}
+          current={!openCard && section?.kind === "notes"}
           count={notesWaiting}
           countTone="warning"
           countTitle="Notes agents proposed, waiting on your look"
