@@ -458,6 +458,8 @@ fn test_specs() {
         "talk_join",
         "talk_leave",
         "avatar",
+        "notes_propose",
+        "notes_search",
     ];
     for n in want {
         assert!(
@@ -488,6 +490,7 @@ fn test_specs() {
         "waits",
         "talk_read",
         "talk_list",
+        "notes_search",
     ];
     for sp in s.specs("") {
         assert_eq!(

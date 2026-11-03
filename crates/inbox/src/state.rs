@@ -111,6 +111,11 @@ pub(crate) struct WakeRow {
     pub overflow: Vec<String>,
     #[serde(skip_serializing_if = "zero")]
     pub at: GoTime,
+    /// Card #412: the card the notes were picked for, and the notes.
+    #[serde(rename = "notesTask", skip_serializing_if = "String::is_empty")]
+    pub notes_task: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<crate::WakeNote>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -357,8 +362,38 @@ fn decode_wake(payload: &[u8]) -> std::result::Result<WakeRow, json::Error> {
     f.extend(str_fields(&["path", "mode"]));
     f.push(("overflow", Schema::Slice(Box::new(Schema::String))));
     f.push(("at", Schema::Time));
+    f.push(("notesTask", Schema::String));
+    f.push((
+        "notes",
+        Schema::Slice(Box::new(Schema::object(vec![
+            ("id", Schema::String),
+            ("why", Schema::String),
+            ("kind", Schema::String),
+            ("text", Schema::String),
+            ("by", Schema::String),
+            ("acceptedBy", Schema::String),
+        ]))),
+    ));
     let o = json::unmarshal(payload, &Schema::object(f))?;
+    let notes = o
+        .get("notes")
+        .map(|a| {
+            a.items()
+                .iter()
+                .map(|x| crate::WakeNote {
+                    id: s(x, "id"),
+                    why: s(x, "why"),
+                    kind: s(x, "kind"),
+                    text: s(x, "text"),
+                    by: s(x, "by"),
+                    accepted_by: s(x, "acceptedBy"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(WakeRow {
+        notes_task: s(&o, "notesTask"),
+        notes,
         wake_id: s(&o, "wakeId"),
         to: s(&o, "to"),
         token: s(&o, "token"),
@@ -591,6 +626,7 @@ pub(crate) struct Inner {
     pub on_gone: Option<OnGoneFn>,
     pub on_passed: Option<OnPassedFn>,
     pub stale: Option<StaleFn>,
+    pub notes: Option<crate::NotesFn>,
     pub dev: String,
     pub owner_fn: KeyPredicate,
     pub ignored: i64,
@@ -722,6 +758,7 @@ impl Inbox {
             on_gone: opts.on_recipient_gone,
             on_passed: opts.on_passed,
             stale: opts.stale,
+            notes: opts.notes,
             dev: opts.device_id,
             owner_fn,
             ignored: 0,
@@ -974,6 +1011,8 @@ impl Inner {
                         delivery_ids: r.delivery_ids.clone(),
                         overflow: r.overflow.clone(),
                         prompt: String::new(),
+                        notes_task: r.notes_task.clone(),
+                        notes: r.notes.clone(),
                     },
                     path: r.path.clone(),
                     issued_at: stamp(r.at),

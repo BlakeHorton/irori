@@ -855,6 +855,12 @@ pub async fn note_remove(w: W<'_>, id: String, why: String) -> R<crate::notes::N
     blocking(&w, move |w| w.note_remove(&id, &why)).await
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn card_wake_notes(w: W<'_>, task_id: String) -> R<Vec<crate::notes::WakeNoteView>> {
+    blocking(&w, move |w| Ok(w.card_wake_notes(&task_id))).await
+}
+
 // ---- Invites ----------------------------------------------------------------------
 
 #[tauri::command]
@@ -1412,6 +1418,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             note_accept,
             note_edit,
             note_remove,
+            card_wake_notes,
             boards_invite,
             boards_join_invite,
             boards_confirm_invite_words,

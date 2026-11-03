@@ -119,3 +119,64 @@ fn notes_in_the_window() {
     assert_eq!(on_board.state, "accepted");
     assert_eq!(w.notes_list("mlg", false).unwrap().len(), 1);
 }
+
+#[test]
+fn a_cards_wake_notes_reach_the_window() {
+    let r = Rig::new();
+    let w = &r.w;
+    let me = w.core.user_sender().key;
+    w.core
+        .propose_note(
+            &me,
+            "mine",
+            coord::NewNote {
+                kind: "rule".into(),
+                text: "Every wake hears this.".into(),
+                tags: vec!["everywhere".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let a = tools::Caller {
+        sender: inbox::Sender::new(&r.key_b, "beta", "claude"),
+        path: inbox::path::MOD.into(),
+    };
+    let out = w
+        .core
+        .tools()
+        .call(
+            &a,
+            "board_create",
+            &serde_json::to_vec(
+                &serde_json::json!({"title": "Wake notes card", "assign_to": "alpha"}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(out.starts_with("Created #"), "{out}");
+    let task = w
+        .core
+        .coord()
+        .list_tasks(&coord::TaskFilter::default())
+        .into_iter()
+        .find(|t| t.title == "Wake notes card")
+        .unwrap();
+    assert!(w.card_wake_notes(&format!("task:{}", task.id)).is_empty());
+    w.core
+        .inbox()
+        .next_wake(&r.key_a, inbox::path::MOD)
+        .unwrap()
+        .expect("alpha has the assignment");
+    let got = w.card_wake_notes(&format!("task:{}", task.id));
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(
+        (
+            got[0].text.as_str(),
+            got[0].tag.as_str(),
+            got[0].agent.as_str()
+        ),
+        ("Every wake hears this.", "everywhere", r.key_a.as_str())
+    );
+    let v = serde_json::to_value(&got[0]).unwrap();
+    assert!(v.get("noteId").is_some() && v.get("at").is_some(), "{v}");
+}

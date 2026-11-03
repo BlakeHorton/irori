@@ -129,6 +129,7 @@ export type Value = B.Value
 export type VoiceDownload = B.VoiceDownload
 export type VoiceEvent = B.VoiceEvent
 export type VoiceStatus = B.VoiceStatus
+export type WakeNoteView = B.WakeNoteView
 export type WindDownRow = B.WindDownRow
 export type WindDownStatus = B.WindDownStatus
 
@@ -229,7 +230,7 @@ export function CardBlocker(p: Partial<B.CardBlocker> = {}): B.CardBlocker {
 
 /** CardBoard with Go's zero values for every field left out. */
 export function CardBoard(p: Partial<B.CardBoard> = {}): B.CardBoard {
-  return { "id": "", "name": "", "tag": "", "visibleTo": [], "canWithdraw": false, ...p } as B.CardBoard
+  return { "id": "", "name": "", "tag": "", "visibleTo": [], "canWithdraw": false, "canTransfer": false, ...p } as B.CardBoard
 }
 
 /** CardDetail with Go's zero values for every field left out. */
@@ -680,6 +681,11 @@ export function VoiceEvent(p: Partial<B.VoiceEvent> = {}): B.VoiceEvent {
 /** VoiceStatus with Go's zero values for every field left out. */
 export function VoiceStatus(p: Partial<B.VoiceStatus> = {}): B.VoiceStatus {
   return { "state": "", "reason": "", "fix": "", "modelBytes": 0, ...p } as B.VoiceStatus
+}
+
+/** WakeNoteView with Go's zero values for every field left out. */
+export function WakeNoteView(p: Partial<B.WakeNoteView> = {}): B.WakeNoteView {
+  return { "noteId": "", "kind": "", "text": "", "tag": "", "agent": "", "at": "", ...p } as B.WakeNoteView
 }
 
 /** WindDownRow with Go's zero values for every field left out. */

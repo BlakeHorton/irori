@@ -382,6 +382,9 @@ impl tools::Backend for ToolsView {
     fn talk(&self) -> Option<&Arc<coord::talk::Talk>> {
         Some(&self.0.talk)
     }
+    fn notes(&self) -> Option<&dyn tools::NotesBackend> {
+        Some(self)
+    }
 }
 
 // The Core holds the private log and every board's (v0.5 §2.1); a tools
@@ -888,6 +891,9 @@ impl Core {
 
         // The inbox's hooks reach coord and capture, which open after it.
         let coord_cell: Arc<OnceLock<Arc<Coord>>> = Arc::new(OnceLock::new());
+        // The Services, once built: the inbox's Notes hook reads notes from
+        // every log (card #412).
+        let services_cell: Arc<OnceLock<std::sync::Weak<Services>>> = Arc::new(OnceLock::new());
         let capture_cell: Arc<OnceLock<capture::Capture>> = Arc::new(OnceLock::new());
         let iopts = inbox::Options {
             device_id: me.clone(),
@@ -916,6 +922,15 @@ impl Core {
                 Arc::new(move |d: &inbox::Delivery| {
                     c.get()
                         .map(|co| notice::stale_notice(co, d))
+                        .unwrap_or_default()
+                })
+            }),
+            notes: Some({
+                let c = services_cell.clone();
+                Arc::new(move |agent: &str, refs: &[String]| {
+                    c.get()
+                        .and_then(|w| w.upgrade())
+                        .map(|s| s.wake_notes(agent, refs))
                         .unwrap_or_default()
                 })
             }),
@@ -1213,6 +1228,7 @@ impl Core {
             invites,
         });
         let _ = svc_cell.set(Arc::downgrade(&s));
+        let _ = services_cell.set(Arc::downgrade(&s));
         let _ = s.boards.kicker.set({
             let m = Arc::downgrade(&s.mesh);
             Arc::new(move || {

@@ -171,6 +171,8 @@ pub const MAX_TEXT: usize = 8000;
 /// reaches an agent clipped to [`MAX_TEXT`] characters with a show pointer.
 pub const MAX_PERSON_TEXT: usize = 512 << 10;
 pub const MAX_WAKE_BYTES: usize = 16 << 10;
+/// The most a wake's Notes section adds to its prompt (card #412).
+pub const MAX_NOTES_BYTES: usize = 6 << 10;
 pub const DIRECT_LIMIT: usize = 8;
 pub const DIRECT_WINDOW: Duration = Duration::from_secs(10 * 60);
 /// The runaway-loop guard: a message this many replies down one chain of
@@ -470,6 +472,12 @@ pub struct Wake {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overflow: Vec<String>,
     pub prompt: String,
+    /// The card the wake's notes were picked for (card #412).
+    #[serde(rename = "notesTask", skip_serializing_if = "String::is_empty")]
+    pub notes_task: String,
+    /// The accepted notes the wake carried (card #412).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<WakeNote>,
 }
 
 /// SendWith's choices beyond the text.
@@ -609,6 +617,39 @@ pub type OnGoneFn = Arc<dyn Fn(&Message, &str) -> Result<String> + Send + Sync>;
 pub type OnPassedFn = Arc<dyn Fn(&Message, &str) -> Result<()> + Send + Sync>;
 /// Options.Stale: the note to close a stale notice with, or `""`.
 pub type StaleFn = Arc<dyn Fn(&Delivery) -> String + Send + Sync>;
+/// Options.Notes (card #412): the accepted notes for a wake to `agent`,
+/// given the `task:<id>` refs of the messages in it (the first card it is
+/// about), best first.
+pub type NotesFn = Arc<dyn Fn(&str, &[String]) -> WakeNotes + Send + Sync>;
+
+/// The notes one wake carries (card #412, docs/design/notes.md §6, §11),
+/// recorded on its wake.issued row. Text and names are as written (other
+/// agents' words); the prompt escapes them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WakeNotes {
+    /// The card the notes were picked for (`""`: none; Mine's
+    /// everywhere, machine and repo notes only).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub task: String,
+    pub notes: Vec<WakeNote>,
+}
+
+/// One note in a wake.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WakeNote {
+    /// The note's id (no `note:` prefix).
+    pub id: String,
+    /// The tag that matched.
+    pub why: String,
+    pub kind: String,
+    pub text: String,
+    /// The author and the accepter, as names.
+    pub by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub accepted_by: String,
+}
 
 /// Configures [`Inbox::new`] (I:internal/inbox/inbox.go:340-378).
 #[derive(Clone, Default)]
@@ -627,6 +668,8 @@ pub struct Options {
     pub on_passed: Option<OnPassedFn>,
     /// Runs under the inbox lock: it must not call the inbox.
     pub stale: Option<StaleFn>,
+    /// Runs under the inbox lock: it must not call the inbox.
+    pub notes: Option<NotesFn>,
     /// Test overrides; zero means the constant.
     pub unengaged_limit: Duration,
     pub gone_grace: Duration,

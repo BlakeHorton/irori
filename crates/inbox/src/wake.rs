@@ -4,7 +4,7 @@
 use gocompat::quote::quote;
 use gocompat::time::GoTime;
 
-use crate::fence::{batch, fence};
+use crate::fence::{batch, fence, notes_section};
 use crate::messages::clip;
 use crate::state::{
     APPEND_TOKEN_PREFIX, Drec, Inner, REMINDER_TOKEN_PREFIX, TurnRow, WAKE_TOKEN_PREFIX, WakeRec,
@@ -225,6 +225,12 @@ impl Inner {
         if md == mode::STOP {
             prompt = format!("{}\n\n{prompt}", stop_header(&msgs));
         }
+        let notes = if md == mode::WAKE && !reminder && !token.starts_with(APPEND_TOKEN_PREFIX) {
+            self.wake_notes(agent, &msgs)
+        } else {
+            crate::WakeNotes::default()
+        };
+        prompt.push_str(&notes_section(&notes));
         let mut ids: Vec<String> = full.iter().map(|d| d.id.clone()).collect();
         ids.extend(overflow.iter().cloned());
         let row = WakeRow {
@@ -241,6 +247,8 @@ impl Inner {
             },
             overflow: overflow.clone(),
             at: self.now(),
+            notes_task: notes.task.clone(),
+            notes: notes.notes.clone(),
         };
         self.emit("irori", kinds::WAKE_ISSUED, &row)?;
         Ok(Wake {
@@ -252,7 +260,46 @@ impl Inner {
             delivery_ids: ids,
             overflow,
             prompt,
+            notes_task: notes.task,
+            notes: notes.notes,
         })
+    }
+
+    /// The accepted notes for a wake to agent (card #412): Options.Notes'
+    /// pick for the first card the messages are about, less the notes an
+    /// earlier wake already gave this agent (as they read now), within
+    /// [`crate::MAX_NOTES_BYTES`].
+    fn wake_notes(&self, agent: &str, msgs: &[Delivery]) -> crate::WakeNotes {
+        let Some(f) = self.notes.clone() else {
+            return crate::WakeNotes::default();
+        };
+        let mut refs: Vec<String> = Vec::new();
+        for d in msgs {
+            let r = trim(&d.message.ref_);
+            if r.starts_with("task:") && !refs.iter().any(|x| x == r) {
+                refs.push(r.to_string());
+            }
+        }
+        let mut out = f(agent, &refs);
+        // Seen as given: the same id with the same text. An accepted edit
+        // goes out again.
+        let seen: std::collections::HashSet<(&str, &str)> = self
+            .wakes
+            .values()
+            .filter(|w| w.w.to == agent)
+            .flat_map(|w| w.w.notes.iter().map(|n| (n.id.as_str(), n.text.as_str())))
+            .collect();
+        out.notes
+            .retain(|n| !seen.contains(&(n.id.as_str(), n.text.as_str())));
+        // The section rides above batch's MAX_WAKE_BYTES by at most
+        // MAX_NOTES_BYTES; a note left out goes in a later wake.
+        while notes_section(&out).len() > crate::MAX_NOTES_BYTES {
+            out.notes.pop();
+        }
+        if out.notes.is_empty() {
+            out.task.clear();
+        }
+        out
     }
 
     /// The wake for token, checked to be agent's.
@@ -397,6 +444,10 @@ impl Inner {
                 .collect();
         let mut out = w.w.clone();
         out.prompt = fence(&w.w.token, w.w.reminder, &msgs, &w.w.overflow);
+        out.prompt.push_str(&notes_section(&crate::WakeNotes {
+            task: w.w.notes_task.clone(),
+            notes: w.w.notes.clone(),
+        }));
         out
     }
 }
@@ -485,6 +536,46 @@ impl Inbox {
                 }
             }
             oldest.filter(|o| crate::tm::sub(&now, o) > crate::tm::d(after))
+        })
+    }
+
+    /// The notes wakes carried for card `task` (`task:<id>`, card #412):
+    /// each agent's latest such wake, newest first, as (agent, issued at,
+    /// notes).
+    pub fn task_note_wakes(&self, task: &str) -> Vec<(String, GoTime, Vec<crate::WakeNote>)> {
+        let task = trim(task);
+        let task = if task.starts_with("task:") {
+            task.to_string()
+        } else {
+            format!("task:{task}")
+        };
+        self.read(|b| {
+            let mut best: std::collections::BTreeMap<String, &WakeRec> = Default::default();
+            for w in b.wakes.values() {
+                if w.w.notes_task != task || w.w.notes.is_empty() {
+                    continue;
+                }
+                match best.get(&w.w.to) {
+                    Some(cur) if !crate::tm::before(&cur.issued_at, &w.issued_at) => {}
+                    _ => {
+                        best.insert(w.w.to.clone(), w);
+                    }
+                }
+            }
+            let mut out: Vec<(String, GoTime, Vec<crate::WakeNote>)> = best
+                .into_values()
+                .map(|w| (w.w.to.clone(), w.issued_at, w.w.notes.clone()))
+                .collect();
+            out.sort_by(|x, y| {
+                if crate::tm::before(&y.1, &x.1) {
+                    std::cmp::Ordering::Less
+                } else if crate::tm::before(&x.1, &y.1) {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            });
+            out
         })
     }
 

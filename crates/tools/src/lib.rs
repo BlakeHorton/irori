@@ -53,6 +53,7 @@ mod explore;
 mod format;
 mod mention;
 mod messages;
+mod notes;
 pub mod notice;
 pub mod notify;
 mod observe;
@@ -69,6 +70,7 @@ use gocompat::time::GoTime;
 
 pub use attachments::Attacher;
 pub use format::{clip, clip_mcp, one_line};
+pub use notes::{NotesBackend, ToolNote};
 pub use notify::{Action, Note, Notifier};
 pub use observe::redact;
 pub use shared::{
@@ -250,6 +252,10 @@ pub trait Backend: Send + Sync {
     fn set_avatar(&self, _name: &str, _face: Option<&coord::avatar::Avatar>) -> Result<(), String> {
         Err("faces aren't kept here".into())
     }
+    /// The notes API (card #412); `None` answers "notes aren't available".
+    fn notes(&self) -> Option<&dyn NotesBackend> {
+        None
+    }
 }
 
 /// The clock the tools read.
@@ -286,7 +292,7 @@ const CALLER_READS: [&str; 8] = [
 ];
 
 fn handlers() -> HashMap<&'static str, Handler> {
-    let list: [(&'static str, Handler); 51] = [
+    let list: [(&'static str, Handler); 53] = [
         ("avatar", avatar::avatar),
         ("agents", observe::agents),
         ("events", observe::events),
@@ -338,6 +344,8 @@ fn handlers() -> HashMap<&'static str, Handler> {
         ("talk_list", talk::talk_list),
         ("talk_join", talk::talk_join),
         ("talk_leave", talk::talk_leave),
+        ("notes_propose", notes::notes_propose),
+        ("notes_search", notes::notes_search),
     ];
     list.into_iter().collect()
 }
