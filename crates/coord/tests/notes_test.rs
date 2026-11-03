@@ -184,3 +184,23 @@ fn a_wake_gets_the_most_specific_notes_first() {
     }
     assert_eq!(e.c.notes_for(&cx("", &[], "")).len(), NOTES_PER_WAKE);
 }
+
+#[test]
+fn accepting_another_agents_edit_of_a_proposal_makes_it_live() {
+    let e = Env::new();
+    let n =
+        e.c.propose_note(ALICE, nn("rule", "Use worktrees.", &["everywhere"]))
+            .unwrap();
+    let edit = NoteEdit {
+        text: Some("Use a worktree per card.".into()),
+        ..NoteEdit::default()
+    };
+    let p = e.c.edit_note(BOB, &n.id, edit, "clearer").unwrap();
+    assert_eq!(p.state, NOTE_PROPOSED);
+    assert!(p.pending.is_some());
+    let a = e.c.accept_note(USER, &n.id).unwrap();
+    assert_eq!(
+        (a.state.as_str(), a.text.as_str()),
+        (NOTE_ACCEPTED, "Use a worktree per card.")
+    );
+}

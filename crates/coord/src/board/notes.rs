@@ -387,6 +387,7 @@ impl Fold {
                             n.tags = tags;
                         }
                         n.updated = t;
+                        n.state = NOTE_ACCEPTED.into();
                         n.accepted_by = p.by.clone();
                         n.accepted_at = t;
                         n.history.push(NoteEvent {
