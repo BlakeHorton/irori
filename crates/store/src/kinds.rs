@@ -225,6 +225,19 @@ kinds! {
     SHARED_COPY = "board.sharedcopy" => Replicated, Refuses;
     /// `{boardId, cardId, agentKey}`.
     BOARD_CARD_OF = "board.cardof" => Replicated, Refuses;
+    // talk (#389): channels, DMs and thread posts (docs/design/talk-channels.md §6)
+    /// `{channelId, spaceId, name, topic?, by}`.
+    TALK_CHANNEL_CREATED = "talk.channel.created" => Replicated, Accepts;
+    /// `{channelId, name?, topic?, archived?}`.
+    TALK_CHANNEL_EDITED = "talk.channel.edited" => Replicated, Accepts;
+    /// `{convId, member: {kind, key}, op: join|leave, by}`.
+    TALK_MEMBER = "talk.member" => Replicated, Accepts;
+    /// `{postId, convId, text, mentions[], agentsNow, threadFrom?, attach[]?, by, at}`.
+    TALK_POST = "talk.post" => Replicated, Accepts;
+    /// `{convId, upTo, by}`: a read cursor, the person's own devices only.
+    TALK_READ = "talk.read" => Replicated, Refuses;
+    /// `{postId, taskId}`: a card made from a message.
+    TALK_CARD = "talk.card" => Replicated, Accepts;
     // device-local board rows
     /// `{cardId, agentKey}`; still read, no longer written.
     BOARD_CARD_KEY = "board.cardkey" => Local;

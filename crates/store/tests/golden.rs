@@ -74,7 +74,7 @@ fn board_name(b: Board) -> &'static str {
 
 /// Kinds added after the Go port (shared boards stage 2, waits on card
 /// #87), which Go's table can't list: board logs accept them.
-const SINCE_GO: [&str; 14] = [
+const SINCE_GO: [&str; 19] = [
     kinds::BOARD_ASK_REQUESTED,
     kinds::BOARD_ASK_STATE,
     kinds::BOARD_ASK_EDITED,
@@ -92,15 +92,23 @@ const SINCE_GO: [&str; 14] = [
     kinds::NOTE_ACCEPTED,
     kinds::NOTE_EDITED,
     kinds::NOTE_REMOVED,
+    // Talk rows (card #389).
+    kinds::TALK_CHANNEL_CREATED,
+    kinds::TALK_CHANNEL_EDITED,
+    kinds::TALK_MEMBER,
+    kinds::TALK_POST,
+    kinds::TALK_CARD,
 ];
 
 /// Kinds added after the Go port that board logs refuse: the person's own
-/// rows (device names, card #184; a card's pause, card #207).
-const SINCE_GO_REFUSED: [&str; 4] = [
+/// rows (device names, card #184; a card's pause, card #207; Talk read
+/// cursors, card #389).
+const SINCE_GO_REFUSED: [&str; 5] = [
     kinds::DEVICE_NAME,
     kinds::TASK_ARCHIVED,
     kinds::TASK_PAUSED,
     kinds::PERSON_COLOR,
+    kinds::TALK_READ,
 ];
 
 #[test]
