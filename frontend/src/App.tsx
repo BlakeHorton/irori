@@ -52,6 +52,8 @@ import { UpdateBanner } from "@/updater"
 import { useBoardView } from "@/components/canvas/switch"
 import { BoardHeaderBar, BoardPage } from "@/components/boards/board-page"
 import { BoardsPage } from "@/components/boards/boards-page"
+import { NotesPage } from "@/components/notes/notes-page"
+import { useNotesWaiting } from "@/lib/notes"
 import { go, Home, sameSection, sectionFromHash, type Section } from "@/lib/nav"
 import { CommandPalette, PaletteJump, paletteOpenKey } from "@/components/command-palette"
 import { isMac, useCommands } from "@/lib/commands"
@@ -130,15 +132,19 @@ export function App() {
     }
   }
   // Where the window is (card #96): Home (your own cards), Talk (card
-  // #390), Boards, or one board's page; in the address so back and forward
-  // move between them. ?boards in the preview starts on Boards, ?talk on
-  // Talk, and ?thread=<id> on Talk with that thread open.
+  // #390), Notes (card #413), Boards, or one board's page; in the address
+  // so back and forward move between them. ?boards in the preview starts
+  // on Boards, ?talk on Talk, ?thread=<id> on Talk with that thread open,
+  // and ?notes on Notes (?notes=<board tag> on that board's tab).
   const [section, setSection] = useState<Section>(() => {
     const thread = previewFlag("thread")
     if (thread) return { kind: "talk", id: thread }
     if (previewFlag("talk") !== null) return { kind: "talk", id: "" }
+    const notesTab = previewFlag("notes")
+    if (notesTab !== null) return { kind: "notes", tab: notesTab }
     return previewFlag("boards") !== null ? { kind: "boards" } : sectionFromHash(window.location.hash)
   })
+  const notesWaiting = useNotesWaiting()
   // A board page's own tab (All, Needs a decision, Closed).
   // A board page starts on All; the preview's ?filter=owner:<id> starts it
   // on one member's cards (card #268).
@@ -457,6 +463,7 @@ export function App() {
   useCommands([
     { id: "nav.home", title: "Home", group: "Go to", order: 1, keywords: ["my cards", "start"], run: () => goTo(Home) },
     { id: "nav.talk", title: "Talk", group: "Go to", order: 2, keywords: ["threads", "asks", "conversations", "messages"], run: () => goTo({ kind: "talk", id: "" }) },
+    { id: "nav.notes", title: "Notes", group: "Go to", order: 2, keywords: ["rules", "gotchas", "decisions", "knowledge", "memory"], run: () => goTo({ kind: "notes", tab: "" }) },
     { id: "nav.boards", title: "Boards", group: "Go to", order: 2, keywords: ["shared", "projects"], run: () => goTo({ kind: "boards" }) },
     { id: "nav.held", title: "Held messages", group: "Go to", order: 3, keywords: ["inbox", "waiting", "history"], run: () => openHeld("") },
     {
@@ -519,6 +526,7 @@ export function App() {
         talk={threadList.filter(needsYou).length + unreadDms(conversations)}
         onHeld={() => openHeld("")}
         section={open ? null : section}
+        notesWaiting={notesWaiting}
         boardsNeedYou={boardDecide.length}
         boards={boards}
         cards={cards}
@@ -538,7 +546,9 @@ export function App() {
               ? "Boards"
               : section.kind === "talk"
                 ? "Talk"
-                : "Home"
+                : section.kind === "notes"
+                  ? "Notes"
+                  : "Home"
         }
         bar={
           !open && section.kind === "board" ? (
@@ -587,6 +597,17 @@ export function App() {
             now={now}
             why={whyWaiting(roster.agents)}
           />
+        ) : section.kind === "notes" ? (
+          <Scroll>
+            <NotesPage
+              tab={section.tab}
+              boards={boards}
+              roster={roster}
+              onTab={(tab) => go({ kind: "notes", tab })}
+              onOpen={openCard}
+              now={now}
+            />
+          </Scroll>
         ) : section.kind === "boards" ? (
           <Scroll>
             <BoardsPage

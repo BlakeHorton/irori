@@ -224,6 +224,26 @@ export const TalkService = {
   Leave: (convId: string, member: B.TalkMemberRef) => done(commands.talkLeave(convId, member)),
 }
 
+// NotesService is the window's notes_* commands (card #411). Until the
+// bindings have them it reports unavailable and lib/notes.ts runs on its
+// sample; the calls go by name so this file builds either way.
+type NotesCommands = Record<string, ((...args: unknown[]) => Promise<unknown>) | undefined>
+const notesCmd = (name: string, ...args: unknown[]): Promise<unknown> => {
+  const fn = (commands as unknown as NotesCommands)[name]
+  if (!fn) return Promise.reject(new Error(`this Irori has no ${name} yet (card #411)`))
+  return call(fn(...args))
+}
+export const NotesService = {
+  available: () => typeof (commands as unknown as NotesCommands).notesList === "function",
+  List: (scope: string, removed = false) => notesCmd("notesList", scope, removed),
+  New: (note: unknown) => notesCmd("noteNew", note),
+  Accept: (id: string) => notesCmd("noteAccept", id),
+  Edit: (id: string, edit: unknown) => notesCmd("noteEdit", id, edit),
+  Remove: (id: string, why: string) => notesCmd("noteRemove", id, why),
+  CardWakeNotes: (taskId: string) => notesCmd("cardWakeNotes", taskId),
+  wakeAvailable: () => typeof (commands as unknown as NotesCommands).cardWakeNotes === "function",
+}
+
 export const BoardsService = {
   List: () => call(commands.boardsList()),
   Create: (name: string, tag: string) => call(commands.boardsCreate(name, tag)),

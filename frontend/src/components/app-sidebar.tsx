@@ -22,6 +22,7 @@ import {
   InboxIcon,
   LayoutGridIcon,
   MessagesSquareIcon,
+  NotebookPenIcon,
   PanelLeftIcon,
   XIcon,
   type LucideIcon,
@@ -69,6 +70,7 @@ export function AppSidebar({
   onHeld,
   talk,
   section,
+  notesWaiting = 0,
   boardsNeedYou,
   boards,
   cards,
@@ -84,6 +86,9 @@ export function AppSidebar({
   talk: number
   // Where the window is; null on a card's page.
   section: Section | null
+  // Notes agents proposed (or changes to live ones) waiting on the
+  // person's look (card #413), the amber count by Notes.
+  notesWaiting?: number
   // Cards on boards waiting on the person, the red count by Boards.
   boardsNeedYou: number
   boards: BoardSummary[]
@@ -329,6 +334,16 @@ export function AppSidebar({
           countTone="default"
           countTitle="Threads an agent answered and DMs you haven't read"
           onClick={() => go({ kind: "talk", id: "" })}
+        />
+        <NavItem
+          icon={NotebookPenIcon}
+          label="Notes"
+          folded={folded}
+          current={section?.kind === "notes"}
+          count={notesWaiting}
+          countTone="warning"
+          countTitle="Notes agents proposed, waiting on your look"
+          onClick={() => go({ kind: "notes", tab: "" })}
         />
         <NavItem
           icon={LayoutGridIcon}
