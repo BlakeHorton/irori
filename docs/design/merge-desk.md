@@ -181,6 +181,8 @@ The phone's Talk tab (Talk build step 7) lists desks under Channels. The badge i
 
 ## 10. Open questions for Stephen
 
+**Answered 2026-11-03 on #404:** shape A, a desk channel in Talk with the panel as an interim page until Talk 1 (b1), and every recommendation below as written (b2). The questions stay here as the record of what was weighed.
+
 Each is one blocker, with options and a recommendation.
 
 1. **Shape of the desk.** (A) a Talk channel per repo with a queue panel, PR threads on author cards; (B) a desk page with the same panel and no log; (C) a standing card per repo like wind#4, with Irori posting PRs to it. **Recommend A**, with B's page as the interim until Talk 1 (#389) lands (§2).
