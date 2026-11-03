@@ -115,7 +115,19 @@ impl Rig {
                 .iter()
                 .filter(|c| c.key == key_a || c.key == key_b)
                 .count();
-            if n == 2 {
+            // Presence lists a session before the Core writes its
+            // agent.seen row; a test counting rows from last_seq must not
+            // see those two land among its own (#402).
+            let seen = core
+                .store()
+                .list(&store::Filter {
+                    kinds: vec![store::kinds::AGENT_SEEN.into()],
+                    limit: 1000,
+                    ..Default::default()
+                })
+                .unwrap()
+                .len();
+            if n == 2 && seen >= 2 {
                 break;
             }
             assert!(
