@@ -85,7 +85,9 @@ irori-notify = { path = "crates/notify" }
 irori-update = { path = "crates/update" }
 aho-corasick = "1.1.5"
 flate2 = "1.1.10"
-libc = "0.2.191"
+# Held at 0.2.186: 0.2.187+ limits the RTM_*/RTAX_* route constants to macOS,
+# and iroh's netwatch uses them on iOS too (#269). Lift with netwatch's fix.
+libc = "=0.2.186"
 tokio = { version = "1.54.1", features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
 tokio-util = "0.7.20"
 rusqlite = { version = "0.41.1", features = ["bundled"] }
@@ -171,3 +173,7 @@ opt-level = 3
 # works. Drop once upstream (codeberg.org/tazz4843/whisper-rs) has it.
 [patch.crates-io]
 whisper-rs-sys = { git = "https://github.com/StephenSHorton/whisper-rs", branch = "fix/cross-compile-target-os" }
+# netdev 0.46.3 with netdev 0.47.0's iOS fix (no SIOCGIFAFLAG_IN6 in the iOS
+# SDK), for irori-lan and iroh's netwatch, which needs ^0.46.1 (#269).
+# Drop it when netwatch moves to netdev 0.47.
+netdev = { path = "vendor/netdev" }
