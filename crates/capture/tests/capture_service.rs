@@ -970,7 +970,7 @@ fn run_and_subscribe() {
     let w = r.session(SID_A, &cwd);
     let t = now();
     w.write(&[w.prompt("p1", "hi", &t), w.done(&t)]);
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
     loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         match changes.recv_timeout(left) {
@@ -1227,8 +1227,9 @@ fn event_rig(modify: impl FnOnce(&mut capture::Options)) -> Option<Rig> {
     Some(r)
 }
 
+// Returns as soon as cond holds; 60 s is for a loaded machine (#402).
 fn wait_for(what: &str, cond: impl Fn() -> bool) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
     while !cond() {
         assert!(
             std::time::Instant::now() < deadline,
