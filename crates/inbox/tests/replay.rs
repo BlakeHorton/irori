@@ -652,3 +652,36 @@ fn search_readers() {
         );
     }
 }
+
+/// A page is the oldest `limit` docs of the whole list, each with its own
+/// deliveries: search_docs picks the page before it renders it, so a cold
+/// index no longer renders every message per page (the core hung on it).
+#[test]
+fn search_docs_page_is_the_head_of_the_list() {
+    let h = Harness::new();
+    h.abc();
+    for i in 0..30usize {
+        let to_ = if i.is_multiple_of(2) { "beta" } else { "gamma" };
+        h.send_with(
+            &person(),
+            &to(to_),
+            &format!("note {i}"),
+            SendOptions::default(),
+        );
+    }
+    let all = h.ib.search_docs(&GoTime::ZERO, 0);
+    assert!(all.len() >= 30, "{}", all.len());
+    for n in [1, 7, 29] {
+        assert_eq!(
+            h.ib.search_docs(&GoTime::ZERO, n),
+            all[..n].to_vec(),
+            "page of {n}"
+        );
+    }
+    // Each doc carries its own recipient, not a neighbor's.
+    for d in &all {
+        let i: usize = d.body.trim_start_matches("note ").parse().unwrap();
+        let want = if i.is_multiple_of(2) { KEY_B } else { KEY_C };
+        assert!(d.readers.iter().any(|r| r == want), "{d:?}");
+    }
+}

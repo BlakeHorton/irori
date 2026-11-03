@@ -244,21 +244,37 @@ impl Inbox {
     /// The searchable messages updated at or after since, oldest first.
     pub fn search_docs(&self, since: &GoTime, limit: usize) -> Vec<MsgDoc> {
         let limit = if limit == 0 { MAX_SEARCH_DOCS } else { limit };
-        let mut out: Vec<MsgDoc> = self.read(|b| {
-            b.msgs
-                .iter()
-                .filter_map(|(id, m)| {
+        self.read(|b| {
+            // The page first, then its docs: rendering every message newer
+            // than since, each with a scan of every delivery, made one page
+            // cost messages × deliveries, and a cold index (since zero)
+            // that times the page count, with the inbox locked throughout.
+            let mut page: Vec<(GoTime, &String)> = b
+                .msgs
+                .keys()
+                .filter_map(|id| {
                     let up = b.searchable(id)?;
-                    if tm::before(&up, since) {
-                        return None;
-                    }
-                    Some(b.doc(m, up, &b.deliveries_of(id)))
+                    (!tm::before(&up, since)).then_some((up, id))
                 })
+                .collect();
+            // updated, then ref: msg:<id> orders as its id does.
+            page.sort_by(|p, q| tm::cmp(&p.0, &q.0).then_with(|| p.1.cmp(q.1)));
+            page.truncate(limit);
+            // Each page message's deliveries in one pass, in delivery order.
+            let mut dels: std::collections::HashMap<&str, Vec<&Drec>> = page
+                .iter()
+                .map(|(_, id)| (id.as_str(), Vec::new()))
+                .collect();
+            for did in &b.order {
+                let d = &b.dels[did];
+                if let Some(v) = dels.get_mut(d.d.message_id.as_str()) {
+                    v.push(d);
+                }
+            }
+            page.iter()
+                .map(|(up, id)| b.doc(&b.msgs[*id], *up, &dels[id.as_str()]))
                 .collect()
-        });
-        out.sort_by(|p, q| tm::cmp(&p.updated, &q.updated).then_with(|| p.ref_.cmp(&q.ref_)));
-        out.truncate(limit);
-        out
+        })
     }
 
     /// One message's full rendering for viewer (`""` = the person), or
