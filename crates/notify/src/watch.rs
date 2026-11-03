@@ -165,6 +165,9 @@ pub struct Sources {
     /// An attachment's local path by sha256, when this device holds it
     /// (never a mesh fetch): a card's thumbnail comes from it.
     pub file: Option<FileFn>,
+    /// Which message cards earlier runs showed, so a restart doesn't toast
+    /// them again (#364); `None` remembers only within this run.
+    pub seen: Option<Arc<dyn inbox::watch::SeenStore>>,
 }
 
 /// Resolves an attachment's sha256 to its file on this device.
@@ -234,7 +237,13 @@ async fn run(
     let (ptx, mut prx) = mpsc::channel::<CardAct>(16);
     let mut w = State {
         n: n.clone(),
-        inbox: Watcher::new(&s.user, s.is_owner.clone(), s.name.clone()),
+        inbox: {
+            let w = Watcher::new(&s.user, s.is_owner.clone(), s.name.clone());
+            match s.seen.clone() {
+                Some(st) => w.with_seen(st),
+                None => w,
+            }
+        },
         presses: ptx,
         needs: HashSet::new(),
         asks: HashSet::new(),

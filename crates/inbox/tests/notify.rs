@@ -4,14 +4,15 @@
 
 mod common;
 
+use std::collections::HashSet;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use common::*;
 use inbox::notice::{MERGED_NOTE, NOTICE_WATCHED, Notice, route_notice};
 use inbox::watch::{
-    CardAct, Level, Note, Sink, TAB_HELD, TAB_INBOX, Target, Watcher, held_id, message_id, preview,
-    upper,
+    CardAct, Level, Note, SeenStore, Sink, TAB_HELD, TAB_INBOX, Target, WAITING_ID, Watcher,
+    held_id, message_id, preview, upper,
 };
 use inbox::{Address, Policy, Sender, addr, hold, mode, st, system_sender};
 
@@ -672,4 +673,130 @@ fn route_notice_clips_long_text_with_show() {
         text.ends_with("(clipped; show comment:C1 for all of it)"),
         "{text:?}"
     );
+}
+
+// ---- restarts (#364) ---------------------------------------------------------
+
+/// What a launch remembers of earlier runs, in memory.
+#[derive(Default)]
+struct MemSeen(Mutex<HashSet<String>>);
+
+impl SeenStore for MemSeen {
+    fn load(&self) -> HashSet<String> {
+        self.0.lock().unwrap().clone()
+    }
+    fn save(&self, ids: &HashSet<String>) {
+        *self.0.lock().unwrap() = ids.clone();
+    }
+}
+
+/// beta answers two of the person's messages; returns their deliveries.
+fn two_replies(h: &Harness) -> (inbox::Delivery, inbox::Delivery) {
+    let you = Sender::new(USER, "you", "user");
+    let mut back = Vec::new();
+    for (ask, answer) in [("status?", "all green"), ("and the soak?", "still running")] {
+        let (m, _) = h.ib.send(&you, &to(KEY_B), ask, "").unwrap();
+        let (_, d) =
+            h.ib.send(
+                &claude(KEY_B, "beta"),
+                &Address::new(addr::REPLY, &m.id),
+                answer,
+                "",
+            )
+            .unwrap();
+        assert_eq!(d.to, USER);
+        back.push(d);
+    }
+    let b = back.pop().unwrap();
+    (back.pop().unwrap(), b)
+}
+
+fn launch(h: &Harness, seen: &Arc<MemSeen>) -> (Watcher, FakeSink) {
+    let mut sink = FakeSink::default();
+    let mut w = Watcher::new(USER, None, None).with_seen(seen.clone());
+    w.start(&*h.ib, &mut sink);
+    (w, sink)
+}
+
+#[test]
+fn watch_start_shows_one_quiet_card_for_what_waited() {
+    let h = Harness::new();
+    h.ros
+        .put(&[card(KEY_A, "alpha", "", ""), card(KEY_B, "beta", "", "")]);
+    h.ib.set_policy(
+        Policy {
+            block: vec![KEY_A.into()],
+            ..Policy::default()
+        },
+        USER,
+    )
+    .unwrap();
+    h.ib.send(&claude(KEY_A, "alpha"), &to(KEY_B), "held", "")
+        .unwrap();
+    let (d1, d2) = two_replies(&h);
+    let seen = Arc::new(MemSeen::default());
+
+    let (mut w, mut sink) = launch(&h, &seen);
+    let msgs: Vec<&Note> = sink
+        .posts
+        .iter()
+        .filter(|n| n.id.starts_with("msg:"))
+        .collect();
+    assert_eq!(msgs.len(), 1, "one card for the waiting messages: {msgs:?}");
+    let c = msgs[0];
+    assert!(
+        c.id == WAITING_ID
+            && c.silent
+            && c.title == "2 messages waited for you"
+            && c.body == "From beta",
+        "{c:?}"
+    );
+    assert!(
+        sink.live(&held_id(KEY_A)),
+        "a held message still gets its card"
+    );
+
+    // Read one: the card stays; read both: it goes.
+    h.ib.skip(USER, &d1.id, "").unwrap();
+    w.reconcile(&*h.ib, &mut sink, true);
+    assert!(sink.live(WAITING_ID));
+    // Restart before the last is read: nothing new to show.
+    let (_, again) = launch(&h, &seen);
+    assert!(
+        again.posts.iter().all(|n| !n.id.starts_with("msg:")),
+        "a restart toasted seen messages again: {:?}",
+        again.posts
+    );
+    h.ib.skip(USER, &d2.id, "").unwrap();
+    w.reconcile(&*h.ib, &mut sink, true);
+    assert!(!sink.live(WAITING_ID));
+    assert!(
+        seen.load().is_empty(),
+        "read messages stay in the seen file"
+    );
+}
+
+#[test]
+fn watch_restart_does_not_toast_a_message_again() {
+    let h = Harness::new();
+    h.ros
+        .put(&[card(KEY_A, "alpha", "", ""), card(KEY_B, "beta", "", "")]);
+    let seen = Arc::new(MemSeen::default());
+    let (mut w, mut sink) = launch(&h, &seen);
+    let sub = h.ib.subscribe();
+    let (d1, _) = two_replies(&h);
+    while let Some(c) = sub.try_recv() {
+        w.on_change(&c, sub.is_empty(), &*h.ib, &mut sink);
+    }
+    let id = message_id(&d1.id);
+    assert!(!sink.posts_of(&id).is_empty() && !sink.posts_of(&id)[0].silent);
+    // Closed with its x, or not: either way the next launch shows nothing.
+    sink.live.remove(&id);
+    let (_, again) = launch(&h, &seen);
+    assert!(again.posts.is_empty(), "{:?}", again.posts);
+    // No store (as before): the restart shows the waiting card.
+    let mut plain = FakeSink::default();
+    Watcher::new(USER, None, None).start(&*h.ib, &mut plain);
+    assert_eq!(plain.posts.len(), 1);
+    assert_eq!(plain.posts[0].id, WAITING_ID);
 }

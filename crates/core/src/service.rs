@@ -1187,6 +1187,7 @@ impl Core {
                     let f = s.files.clone();
                     Arc::new(move |id: &str| f.has(id).then(|| f.path(id)))
                 }),
+                seen: Some(Arc::new(notify::SeenFile::new(&s.data_dir))),
             },
         );
         laps.lap("watch");

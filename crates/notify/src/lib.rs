@@ -43,10 +43,10 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 pub use inbox::watch::{
-    Level, TAB_BOARD, TAB_HELD, TAB_INBOX, Target, ask_id, held_id, message_id, needs_id,
-    parse_level, returned_id, unclaimed_id,
+    Level, SeenStore, TAB_BOARD, TAB_HELD, TAB_INBOX, Target, WAITING_ID, ask_id, held_id,
+    message_id, needs_id, parse_level, returned_id, unclaimed_id,
 };
-pub use settings::{SETTINGS_FILE, load, save};
+pub use settings::{SEEN_FILE, SETTINGS_FILE, SeenFile, load, save};
 pub use thumb::{attachment_thumbnail, thumbnail};
 pub use watch::{
     AskSource, BoardSource, FileFn, InboxFeed, RoomSource, Sources, WatchHandle, hold_reason,

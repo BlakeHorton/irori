@@ -29,6 +29,9 @@ pub fn held_id(sender_key: &str) -> String {
 pub fn message_id(delivery_id: &str) -> String {
     format!("msg:{delivery_id}")
 }
+/// The one quiet card at start for messages that waited while Irori was
+/// closed (#364).
+pub const WAITING_ID: &str = "msg:waiting";
 pub fn needs_id(task_id: &str) -> String {
     format!("needs:{task_id}")
 }
@@ -141,6 +144,15 @@ impl InboxSource for Inbox {
     }
 }
 
+/// The message cards the person has already had (posted, or counted on the
+/// start card), kept across restarts so a launch doesn't toast them again
+/// (#364). `load` of nothing yet is empty; a failed `save` only costs a
+/// repeat card next launch.
+pub trait SeenStore: Send + Sync {
+    fn load(&self) -> HashSet<String>;
+    fn save(&self, ids: &HashSet<String>);
+}
+
 /// Shows an agent key as its display name.
 pub type NameFn = Arc<dyn Fn(&str) -> String + Send + Sync>;
 /// Whether a key is the person's on any of their devices.
@@ -172,6 +184,14 @@ pub struct Watcher {
     closed: HashSet<String>,
     msgs: HashSet<String>,
     fails: HashMap<String, String>,
+    /// Delivery ids whose message card the person already had (#364).
+    seen: HashSet<String>,
+    seen_store: Option<Arc<dyn SeenStore>>,
+    /// During start: unseen waiting messages go here, for one quiet card,
+    /// instead of a card each.
+    starting: Option<Vec<Delivery>>,
+    /// What the start card counts; it clears once none of them waits.
+    waiting: HashSet<String>,
 }
 
 /// A hold the person is asked about (Pause all is their own).
@@ -235,12 +255,49 @@ impl Watcher {
             closed: HashSet::new(),
             msgs: HashSet::new(),
             fails: HashMap::new(),
+            seen: HashSet::new(),
+            seen_store: None,
+            starting: None,
+            waiting: HashSet::new(),
         }
     }
 
-    /// At start: what waits from before gets its card.
+    /// Remembers across restarts which message cards the person had.
+    pub fn with_seen(mut self, store: Arc<dyn SeenStore>) -> Watcher {
+        self.seen = store.load();
+        self.seen_store = Some(store);
+        self
+    }
+
+    /// At start: held messages from before get their cards. Messages to
+    /// the person that waited get one quiet card between them, and only
+    /// those no earlier run showed (#364): a restart is not news.
     pub fn start(&mut self, src: &dyn InboxSource, sink: &mut dyn Sink) {
+        self.starting = Some(Vec::new());
         self.reconcile(src, sink, true);
+        let fresh = self.starting.take().unwrap_or_default();
+        match fresh.as_slice() {
+            [] => {}
+            [d] => {
+                let mut note = self.message_note(d);
+                note.silent = true;
+                sink.post(note);
+            }
+            _ => {
+                self.waiting = fresh.iter().map(|d| d.id.clone()).collect();
+                sink.post(self.waiting_note(&fresh));
+            }
+        }
+        if !fresh.is_empty() {
+            self.seen.extend(fresh.iter().map(|d| d.id.clone()));
+            self.save_seen();
+        }
+    }
+
+    fn save_seen(&self) {
+        if let Some(s) = &self.seen_store {
+            s.save(&self.seen);
+        }
     }
 
     /// One inbox change; `drained` is Go's `len(ich) == 0` after reading it.
@@ -433,12 +490,21 @@ impl Watcher {
         let waiting = self.waiting_for(d);
         if waiting && !self.msgs.contains(&id) {
             self.msgs.insert(id.clone());
-            if post {
+            if let Some(fresh) = self.starting.as_mut() {
+                if !self.seen.contains(&id) {
+                    fresh.push(d.clone());
+                }
+            } else if post && !self.seen.contains(&id) {
                 sink.post(self.message_note(d));
+                self.seen.insert(id.clone());
+                self.save_seen();
             }
         } else if !waiting && self.msgs.contains(&id) {
             self.msgs.remove(&id);
             sink.clear(&message_id(&id));
+            if self.waiting.remove(&id) && self.waiting.is_empty() {
+                sink.clear(WAITING_ID);
+            }
         }
     }
 
@@ -460,6 +526,12 @@ impl Watcher {
         left.sort();
         left.dedup();
         self.closed.retain(|id| open.contains(id));
+        // Only what is still open needs remembering.
+        let before = self.seen.len();
+        self.seen.retain(|id| open.contains(id));
+        if self.seen.len() != before {
+            self.save_seen();
+        }
         for id in left {
             if let Some(d) = src.get(&id) {
                 self.delivery(&d, false, post, sink);
@@ -554,6 +626,42 @@ impl Watcher {
                 ref_: key.into(),
             })),
             on_dismiss: Some(CardAct::Forget(key.into())),
+            ..Note::default()
+        }
+    }
+
+    /// The start card for several messages that waited (#364).
+    fn waiting_note(&self, ds: &[Delivery]) -> Note {
+        let mut names: Vec<String> = Vec::new();
+        for d in ds {
+            let mut from = d.message.from.name.clone();
+            if from.is_empty() {
+                from = self.name(&d.message.from.key);
+            }
+            if !names.contains(&from) {
+                names.push(from);
+            }
+        }
+        let open = CardAct::Open(Target {
+            tab: TAB_INBOX.into(),
+            ref_: String::new(),
+        });
+        let body = match names.len() {
+            1 => format!("From {}", names[0]),
+            2 => format!("From {} and {}", names[0], names[1]),
+            n => format!("From {}, {} and {} more", names[0], names[1], n - 2),
+        };
+        Note {
+            id: WAITING_ID.into(),
+            title: format!("{} messages waited for you", ds.len()),
+            body,
+            level: Level::Info,
+            silent: true,
+            actions: vec![Action {
+                label: "Open".into(),
+                run: Some(open.clone()),
+            }],
+            on_click: Some(open),
             ..Note::default()
         }
     }

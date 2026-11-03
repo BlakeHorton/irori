@@ -142,3 +142,54 @@ fn read_all(dir: &Path) -> Result<BTreeMap<String, Vec<u8>>, String> {
     }
     Ok(out)
 }
+
+/// The message cards already shown (#364): one delivery id per line in
+/// `notify-seen` in the data folder, written whole through a temp file and
+/// a rename. Nothing there yet reads as empty.
+pub const SEEN_FILE: &str = "notify-seen";
+
+pub struct SeenFile(pub std::path::PathBuf);
+
+impl SeenFile {
+    /// The file in data folder dir.
+    pub fn new(dir: &Path) -> SeenFile {
+        SeenFile(dir.to_path_buf())
+    }
+}
+
+impl inbox::watch::SeenStore for SeenFile {
+    fn load(&self) -> std::collections::HashSet<String> {
+        std::fs::read_to_string(self.0.join(SEEN_FILE))
+            .map(|s| {
+                s.lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn save(&self, ids: &std::collections::HashSet<String>) {
+        let mut v: Vec<&String> = ids.iter().collect();
+        v.sort();
+        let mut out = String::new();
+        for id in v {
+            out.push_str(id);
+            out.push('\n');
+        }
+        let r = (|| -> std::io::Result<()> {
+            make_dir(&self.0)?;
+            let mut tmp = tempfile::Builder::new()
+                .prefix(&format!("{SEEN_FILE}."))
+                .rand_bytes(9)
+                .tempfile_in(&self.0)?;
+            tmp.write_all(out.as_bytes())?;
+            tmp.persist(self.0.join(SEEN_FILE)).map_err(|e| e.error)?;
+            Ok(())
+        })();
+        if let Err(e) = r {
+            eprintln!("irori: notifications: save {SEEN_FILE}: {e}");
+        }
+    }
+}
