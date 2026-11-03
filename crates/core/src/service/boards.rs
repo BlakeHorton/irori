@@ -875,7 +875,7 @@ impl Services {
     /// open here, or one any of the person's devices made or joined
     /// (board.joined) that hasn't opened or folded here yet. "" when none.
     pub(crate) fn tag_holder(&self, tag: &str) -> String {
-        for b in self.boards.list() {
+        for b in self.shown_boards() {
             if b.verifier.membership().tag == tag {
                 return b.id.clone();
             }
@@ -1265,7 +1265,7 @@ impl Services {
     /// Opens the board on the network (boards stage 2): its member devices,
     /// this person's other devices among them, are dialled on
     /// `irori/board/1` and its rows move only there.
-    fn open_board_net(&self, b: &BoardLog) {
+    pub(crate) fn open_board_net(&self, b: &BoardLog) {
         let parts = crate::BoardParts {
             board_id: b.id.clone(),
             person_id: self.person_id(),
@@ -1578,7 +1578,7 @@ impl Services {
             .map(|a| (a.key, a.status))
             .collect();
         let me = self.device.id.as_str();
-        for b in self.boards.list() {
+        for b in self.shown_boards() {
             let mut m = lock(&b.maps);
             let mine: Vec<(String, String)> = m
                 .by_id
@@ -1939,7 +1939,7 @@ impl Services {
 
     fn sweep_boards_with(&self, notices: bool) -> std::result::Result<(), String> {
         let mut errs = Vec::new();
-        for b in self.boards.list() {
+        for b in self.shown_boards() {
             let mut ns = Vec::new();
             if notices {
                 let (n, err) = b.coord().sweep_notices_partial();
@@ -2179,7 +2179,7 @@ impl super::Core {
     /// own cards come back too, with their live status.
     pub fn board_agents(&self) -> Vec<BoardAgent> {
         let mut out = Vec::new();
-        for b in self.s.boards.list() {
+        for b in self.s.shown_boards() {
             let people: HashMap<String, String> = b
                 .verifier
                 .membership()
@@ -2214,7 +2214,7 @@ impl super::Core {
     pub fn board_people(&self) -> Vec<BoardMember> {
         let me = self.s.person_id();
         let mut out = Vec::new();
-        for b in self.s.boards.list() {
+        for b in self.s.shown_boards() {
             for p in b.verifier.membership().members {
                 if p.person_id.is_empty() || p.person_id == me {
                     continue;

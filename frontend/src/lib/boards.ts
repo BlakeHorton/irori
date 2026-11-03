@@ -243,13 +243,6 @@ export const boards = {
     return boards.leave(id)
   },
 
-  // forgetNow forgets a board showing "Leaving…" on every one of your
-  // devices without waiting; the others may not hear you left.
-  async forgetNow(id: string): Promise<void> {
-    if (inWails()) return BoardsService.ForgetNow(id)
-    return boards.leave(id)
-  },
-
   // removeMember takes someone off a board you own (§4.3).
   async removeMember(boardId: string, personId: string): Promise<BoardSettings> {
     if (inWails()) return BoardsService.RemoveMember(boardId, personId)

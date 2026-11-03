@@ -25,6 +25,7 @@ use std::sync::Arc;
 
 use coord::ErrorKind as CK;
 use irori_identity::membership::{BOARD_MEMBER, BOARD_OWNER, MEMBER_LEFT};
+use irori_identity::objects::BoardMemberLeft;
 use store::Filter;
 use store::kinds::{self, PERSON_ACTOR_PREFIX};
 
@@ -191,9 +192,11 @@ impl Services {
 
     /// Takes the person off a board on every one of their devices (§4.4,
     /// §4.6). Alone on it, a private board.forgot does it now; with other
-    /// people on it, board.member.left goes first and the board shows
-    /// "Leaving…" until another member holds that row
-    /// ([`Services::sweep_leaving`]).
+    /// people on it, board.member.left goes first and the board is gone
+    /// from the person's views at once ([`Services::shown_boards`]): its
+    /// log stays, out of sight, only to carry that row out, and is
+    /// forgotten once another member holds it
+    /// ([`Services::sweep_leaving`]), however long they are offline.
     pub(crate) fn leave_board(self: &Arc<Self>, board_id: &str) -> Result<()> {
         let b = self.board(board_id)?;
         let me = self.person_id();
@@ -230,9 +233,10 @@ impl Services {
         )?;
         if want.is_some_and(|c| c != ev.seq) {
             // Another write landed between the cut and the row: no
-            // vector can cover it, so only Forget now clears Leaving….
+            // vector can cover it. sweep_leaving forgets such a board
+            // (left_unheld), so it isn't kept out of sight for ever.
             logf(format_args!(
-                "board {board_id}: left row at {}, cut said {}: Leaving… won't clear by itself; use Forget now",
+                "board {board_id}: left row at {}, cut said {}: the others may not hear of it; forgetting it",
                 ev.seq,
                 want.unwrap_or_default()
             ));
@@ -259,7 +263,21 @@ impl Services {
         Ok(())
     }
 
-    /// The person left board `b` and it is still here: "Leaving…" (§4.4).
+    /// The boards the person sees: every open board but the ones they
+    /// left whose `left` row is still on its way out (§4.4, card #304).
+    /// The window, the tools' Board, card refs, asks, notices, leases and
+    /// tags all go by it; syncing and the sweep that forgets a left board
+    /// go by `boards.list()`.
+    pub(crate) fn shown_boards(&self) -> Vec<Arc<BoardLog>> {
+        self.boards
+            .list()
+            .into_iter()
+            .filter(|b| !self.board_leaving(b))
+            .collect()
+    }
+
+    /// The person left board `b` and it is still here, out of sight,
+    /// until another member holds the `left` row (§4.4).
     pub(crate) fn board_leaving(&self, b: &BoardLog) -> bool {
         b.verifier
             .membership()
@@ -299,12 +317,45 @@ impl Services {
         })
     }
 
+    /// Whether no member can ever hold the person's `left` row on board
+    /// `b`: each one this device wrote sits above its own cut for this
+    /// device (another write landed between the cut and the row), and
+    /// board vectors stop at a device's cut.
+    fn left_unheld(&self, b: &BoardLog) -> bool {
+        let actor = format!("{PERSON_ACTOR_PREFIX}{}", self.person_id());
+        let dev = self.device.id.clone();
+        let (mut mine, mut held) = (0, 0);
+        let _ = super::boards::each_row(
+            &b.store,
+            Filter {
+                kinds: vec![kinds::BOARD_MEMBER_LEFT.into()],
+                ..Default::default()
+            },
+            |ev| {
+                if ev.actor != actor || ev.device_id != dev {
+                    return;
+                }
+                mine += 1;
+                let cut = irori_identity::objects::decode::<BoardMemberLeft>(&ev.payload)
+                    .and_then(|p| p.cut)
+                    .and_then(|c| c.get(&dev).copied());
+                if cut.is_none_or(|c| c >= ev.seq) {
+                    held += 1;
+                }
+            },
+        );
+        mine > 0 && held == 0
+    }
+
     /// Forgets every board the person left once another member holds the
-    /// `left` row (§4.4): the Core's sweep.
+    /// `left` row (§4.4), or once it is clear none ever can
+    /// ([`Services::left_unheld`]): the Core's sweep, on every device of
+    /// the person, so whichever is online when the others come back
+    /// (the always-on one among them) delivers the row and forgets.
     pub(crate) fn sweep_leaving(self: &Arc<Self>) {
         for b in self.boards.list() {
             if self.board_leaving(&b)
-                && self.leave_heard(&b)
+                && (self.leave_heard(&b) || self.left_unheld(&b))
                 && let Err(e) = self.forget_everywhere(&b.id)
             {
                 logf(format_args!("board {}: forget after leaving: {e}", b.id));

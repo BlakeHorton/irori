@@ -2199,6 +2199,14 @@ impl Core {
         self.s.mesh.open_board(p).await
     }
 
+    /// Opens a board this device holds on the network again, after
+    /// [`Core::close_board_net`]: a member coming back online (tests).
+    pub fn reopen_board_net(&self, board_id: &str) -> Result<(), String> {
+        let b = self.s.board(board_id).map_err(|e| e.to_string())?;
+        self.s.open_board_net(&b);
+        Ok(())
+    }
+
     /// Closes a shared board on the network (left, removed, forgotten).
     pub fn close_board_net(&self, board_id: &str) {
         self.s
@@ -2545,7 +2553,7 @@ impl Services {
             .map(|c| c.key)
             .collect();
         let mut coords = vec![self.coord.clone()];
-        coords.extend(self.boards.list().iter().map(|b| b.coord().clone()));
+        coords.extend(self.shown_boards().iter().map(|b| b.coord().clone()));
         let due = self.pr_watch.due(
             &coords,
             &local,

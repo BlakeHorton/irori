@@ -137,8 +137,8 @@ function BackToBoards() {
 
 // BoardHeaderBar is a board's page header (card #135): its state dot,
 // name and tag, its cards and people, and the actions on the board itself:
-// Pin to the sidebar and Rename (owners) in the open; Leave (or Forget now
-// while leaving) and Forget here in its ⋯ menu (card #211).
+// Pin to the sidebar and Rename (owners) in the open; Leave and Forget here
+// in its ⋯ menu (card #211).
 export function BoardHeaderBar({ boardId }: { boardId: string }) {
   const { boards, reload } = useBoards()
   const b = boards.find((x) => x.boardId === boardId)
@@ -226,11 +226,9 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
         </h1>
       )}
       <span className="hidden min-w-0 truncate text-xs text-muted-foreground lg:inline">
-        {b.leaving
-          ? "Leaving…"
-          : b.ready
-            ? `${b.cards === 1 ? "1 card" : `${b.cards} cards`} · visible to ${b.people.map(plainLine).join(", ")}`
-            : "Its cards are still arriving from your other device"}
+        {b.ready
+          ? `${b.cards === 1 ? "1 card" : `${b.cards} cards`} · visible to ${b.people.map(plainLine).join(", ")}`
+          : "Its cards are still arriving from your other device"}
       </span>
       {error && <span className="truncate text-xs text-destructive">{error}</span>}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -277,7 +275,7 @@ export function BoardHeaderBar({ boardId }: { boardId: string }) {
 }
 
 // BoardActionsMenu is the header's ⋯ menu: the actions that take the board
-// away (Leave, or Forget now while leaving, and Forget here), each behind
+// away (Leave and Forget here), each behind
 // its confirm step. Each item opens its dialog once the menu has closed.
 function BoardActionsMenu({
   board: b,
@@ -292,31 +290,17 @@ function BoardActionsMenu({
   // room for its button (card #227).
   onRename?: () => void
 }) {
-  const [asking, setAsking] = useState<"leave" | "forgetNow" | "forgetHere" | null>(null)
-  const asks: Record<"leave" | "forgetNow" | "forgetHere", ConfirmAsk> = {
-    forgetNow: {
-      variant: "destructive",
-      confirmLabel: "Forget it now",
-      question: (
-        <>
-          Forget <b>{plainLine(b.name)}</b> on every one of your devices now? The others may not hear
-          that you left until one of their devices next reaches yours, which may be never.
-        </>
-      ),
-      onConfirm: async () => {
-        await actions.forgetNow(b.boardId)
-        go({ kind: "boards" })
-      },
-    },
+  const [asking, setAsking] = useState<"leave" | "forgetHere" | null>(null)
+  const asks: Record<"leave" | "forgetHere", ConfirmAsk> = {
     leave: {
       variant: "destructive",
       confirmLabel: "Leave the board",
       question:
         b.people.length > 1 ? (
           <>
-            Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices once another
-            member's Irori has your leave, and nothing you write there counts after it. Coming back
-            needs a new invite.
+            Leave <b>{plainLine(b.name)}</b>? It goes from every one of your devices now, and nothing
+            you write there counts after it. The others hear that you left when their Irori next
+            reaches one of your devices. Coming back needs a new invite.
           </>
         ) : (
           <>
@@ -325,8 +309,10 @@ function BoardActionsMenu({
           </>
         ),
       onConfirm: async () => {
+        // The board goes from every list at once (card #304).
         await actions.leave(b.boardId)
         await reload()
+        go({ kind: "boards" })
       },
     },
     forgetHere: {
@@ -357,15 +343,9 @@ function BoardActionsMenu({
               Rename
             </DropdownMenuItem>
           )}
-          {b.leaving ? (
-            <DropdownMenuItem variant="destructive" onClick={() => setAsking("forgetNow")}>
-              Forget now
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem variant="destructive" onClick={() => setAsking("leave")}>
-              Leave
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem variant="destructive" onClick={() => setAsking("leave")}>
+            Leave
+          </DropdownMenuItem>
           <DropdownMenuItem variant="destructive" onClick={() => setAsking("forgetHere")}>
             Forget here
           </DropdownMenuItem>
@@ -446,7 +426,7 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
               You can invite people once its cards have arrived from your other device.
             </p>
           ) : (
-            !b.leaving && (
+            (
               <div className="grid gap-2">
                 <Button
                   className="w-fit"
@@ -468,7 +448,7 @@ function PeoplePanel({ board: b, onChanged }: { board: BoardSummary; onChanged: 
           {error && <p className="text-xs text-destructive">{error}</p>}
         </>
       )}
-      {b.ready && !b.leaving && (
+      {b.ready && (
         <div className="border-t border-border pt-3">
           <BoardSettingsPanel boardId={b.boardId} onChanged={onChanged} />
         </div>

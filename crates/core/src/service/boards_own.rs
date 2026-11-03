@@ -480,8 +480,7 @@ impl Services {
     pub(crate) fn board_list(&self) -> Vec<BoardSummary> {
         let me = self.person_id();
         let mut out: Vec<BoardSummary> = self
-            .boards
-            .list()
+            .shown_boards()
             .iter()
             .map(|b| {
                 let m = b.verifier.membership();
@@ -621,8 +620,7 @@ impl Services {
     /// The open boards tagged `tag`. Create keeps a tag to one of the
     /// person's boards, but two devices apart can each make one.
     fn boards_by_tag(&self, tag: &str) -> Vec<Arc<BoardLog>> {
-        self.boards
-            .list()
+        self.shown_boards()
             .into_iter()
             .filter(|b| b.verifier.membership().tag == tag)
             .collect()
@@ -658,7 +656,7 @@ impl Services {
             }
         } else {
             std::iter::once(self.coord.clone())
-                .chain(self.boards.list().iter().map(|b| b.coord().clone()))
+                .chain(self.shown_boards().iter().map(|b| b.coord().clone()))
                 .collect()
         };
         let mut hits: Vec<Task> = Vec::new();
@@ -1292,7 +1290,7 @@ impl Services {
     /// it.
     pub(crate) fn board_views(&self, f: &BoardFilter) -> Vec<BoardView> {
         let mut out = Vec::new();
-        for b in self.boards.list() {
+        for b in self.shown_boards() {
             if !b.verifier.membership().created {
                 continue;
             }

@@ -188,13 +188,9 @@ function BoardTile({
           )}
         </span>
         <span className="text-xs text-muted-foreground">
-          {b.leaving
-            ? "Leaving…"
-            : b.ready
-              ? b.people.map(plainLine).join(", ")
-              : "Arriving from your other device"}
+          {b.ready ? b.people.map(plainLine).join(", ") : "Arriving from your other device"}
         </span>
-        {b.ready && !b.leaving && <StateBar segs={boardSegs(mine, b.doneWeek ?? 0)} />}
+        {b.ready && <StateBar segs={boardSegs(mine, b.doneWeek ?? 0)} />}
         {recent.length > 0 && (
           <ul className="grid gap-1" aria-label="Recently active cards">
             {recent.map((c) => (

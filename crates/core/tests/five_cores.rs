@@ -741,8 +741,8 @@ fn five_cores_every_device_gets_the_board() {
 }
 
 /// §4.4: Bob leaves. Alice's board shows him gone and cuts his device;
-/// Bob's board shows "Leaving…" until Alice's device says it holds the
-/// `left` row, then Bob forgets it.
+/// Bob's board is gone from his views at once and its file stays only
+/// until Alice's device says it holds the `left` row, then Bob forgets it.
 #[test]
 fn bob_leaves_and_alice_refuses_his_new_rows() {
     let mut alice = person("alice", 1);
@@ -756,11 +756,8 @@ fn bob_leaves_and_alice_refuses_his_new_rows() {
     });
     b1.core.leave_board(&board).unwrap();
     assert!(
-        b1.core
-            .board_list()
-            .iter()
-            .any(|s| s.board_id == board && s.leaving),
-        "bob's board isn't Leaving…"
+        !b1.core.board_list().iter().any(|s| s.board_id == board),
+        "bob still sees the board he left"
     );
     wait_for(WAIT, "alice's board shows bob gone", || {
         !av.membership().active(&bob_pid)
@@ -776,6 +773,77 @@ fn bob_leaves_and_alice_refuses_his_new_rows() {
         || !b1.core.boards().contains(&board),
     );
     assert!(a1.core.boards().contains(&board), "alice lost the board");
+    close(alice.drain(..).chain(bob.drain(..)));
+}
+
+/// Card #304: Bob leaves while Alice is offline. The board is gone from
+/// every one of Bob's views on both his devices at once, and its file
+/// stays out of sight; when Alice comes back, she hears he left and Bob's
+/// devices forget the board.
+#[test]
+fn bob_leaves_while_alice_is_offline_and_she_hears_it_later() {
+    let mut alice = person("alice", 1);
+    let mut bob = person("bob", 2);
+    let (a1, b1, b2) = (&alice[0], &bob[0], &bob[1]);
+    let board = invited(a1, b1);
+    let av = a1.core.board_verifier(&board).unwrap();
+    let bob_pid = b1.core.person().id.clone();
+    wait_for(WAIT, "alice's board has bob", || {
+        av.membership().active(&bob_pid)
+    });
+    wait_for(WAIT, "b2 opens the board", || {
+        b2.core
+            .board_list()
+            .iter()
+            .any(|s| s.board_id == board && s.ready)
+    });
+    let t = a1
+        .core
+        .board_coord(&board)
+        .unwrap()
+        .create_task(&a1.person_actor(), new_task("shared work"))
+        .unwrap();
+    a1.core.kick_board(&board);
+    wait_for(WAIT, "bob gets the card", || {
+        card_on(b1, &board, &t.id).is_some()
+    });
+
+    // Alice goes offline; Bob leaves.
+    a1.core.close_board_net(&board);
+    b1.core.leave_board(&board).unwrap();
+    let shown = |d: &Dev| d.core.board_list().iter().any(|s| s.board_id == board);
+    assert!(!shown(b1), "b1 still lists the board bob left");
+    assert!(
+        b1.core
+            .board_views(&coord::BoardFilter::default())
+            .is_empty(),
+        "b1's tools still see the board's cards"
+    );
+    wait_for(WAIT, "b2 hides the board too", || !shown(b2));
+    // Kept out of sight while nobody else has the leave.
+    std::thread::sleep(Duration::from_secs(3));
+    assert!(
+        b1.core.boards().contains(&board),
+        "b1 forgot before alice heard"
+    );
+    assert!(
+        av.membership().active(&bob_pid),
+        "alice heard while offline"
+    );
+
+    // Alice comes back: she hears Bob left, and his devices forget it.
+    a1.core.reopen_board_net(&board).unwrap();
+    wait_for(WAIT, "alice's board shows bob gone", || {
+        !av.membership().active(&bob_pid)
+    });
+    for d in [b1, b2] {
+        wait_for(
+            WAIT,
+            &format!("{} forgets the board", d.core.device_id()),
+            || !d.core.boards().contains(&board),
+        );
+    }
+    assert!(!shown(b1) && a1.core.boards().contains(&board));
     close(alice.drain(..).chain(bob.drain(..)));
 }
 
