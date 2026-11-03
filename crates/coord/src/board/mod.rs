@@ -198,9 +198,11 @@ pub struct Options {
     /// the hand-out runs, so a change to the setting applies at once.
     pub open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// On a board, the names of the live leases this person's agents hold
-    /// on their private board (card #339): leases live there, so a board
-    /// card can wait on one. Read under this coord's lock; it must never
-    /// wait on a board coord. `None`: only this log's leases.
+    /// on their private board (card #339). Named leases never show on a
+    /// board, so a board card's external wait that names some held ones is
+    /// judged on this person's devices: the sweep closes it once none of
+    /// them is held. Read under this coord's lock; it must never wait on a
+    /// board coord. `None`: no such waits.
     pub outside_leases: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
 }
 
@@ -399,7 +401,12 @@ impl Coord {
         self.lock().set_shared(by, id, shared)
     }
     pub fn block(&self, by: &str, id: &str, reason: &str, bb: Option<BlockedBy>) -> Result<Task> {
-        self.lock().block(by, id, reason, bb)
+        let mut f = self.lock();
+        let t = f.block(by, id, reason, bb)?;
+        for b in t.open_blockers() {
+            f.note_outside_wait(&t.id, &b);
+        }
+        Ok(t)
     }
     pub fn unblock(&self, by: &str, id: &str, note: &str) -> Result<(Task, Notice)> {
         self.lock().unblock(by, id, note)
@@ -477,7 +484,10 @@ impl Coord {
     // ---- cards ----
 
     pub fn raise(&self, by: &str, id: &str, nb: NewBlocker) -> Result<(Task, Blocker)> {
-        self.lock().raise(by, id, nb)
+        let mut f = self.lock();
+        let (t, b) = f.raise(by, id, nb)?;
+        f.note_outside_wait(&t.id, &b);
+        Ok((t, b))
     }
     /// Revises an open blocker (Fold::revise).
     pub fn revise(

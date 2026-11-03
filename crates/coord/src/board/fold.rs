@@ -211,6 +211,9 @@ pub struct Fold {
     pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::outside_leases`].
     pub(crate) outside_leases: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
+    /// "task/blocker" of external waits on this person's private leases
+    /// (card #339), noted while one of them was held.
+    pub(crate) outside_waits: std::cell::RefCell<HashSet<String>>,
     /// On a board, the device that wrote each card's task.created: it runs
     /// the card's hand-out (card #174).
     pub(crate) origin: HashMap<String, String>,
@@ -357,6 +360,7 @@ impl Fold {
             key_person: o.key_person,
             open_cards_any: o.open_cards_any,
             outside_leases: o.outside_leases,
+            outside_waits: Default::default(),
             origin: HashMap::new(),
             dev_person: o.device_person,
             tag_fn: o.tag,
@@ -1858,12 +1862,35 @@ impl Fold {
                     .chain(&t.co_holders)
                     .any(|h| self.may_write(h, &ev.device_id))
             }),
+            // A wait that ended by itself (a lease released, card #339)
+            // closes from a device of the person whose agent raised it:
+            // that device sees what it waited on.
+            kinds::BLOCKER_CLOSED => self.tasks.get(&p.task_id).is_some_and(|t| {
+                t.blockers
+                    .iter()
+                    .any(|b| b.open() && self.may_write(&b.raised_by, &ev.device_id))
+            }),
+            kinds::BLOCKER_RESOLVED if self.raiser_closes(ev) => true,
             kinds::TASK_STATUS | kinds::BLOCKER_RESOLVED => match self.tasks.get(&p.task_id) {
                 None => true,
                 Some(t) => self.may_cancel(t, &ev.device_id, Some(&RowPos::of(ev))),
             },
             _ => false,
         }
+    }
+
+    /// A sweeper's blocker.resolved that closes one item, written by a
+    /// device of the person whose agent raised it (card #339).
+    fn raiser_closes(&self, ev: &Event) -> bool {
+        let Some(p) = row::<BlockerResolvedRow>(&ev.payload) else {
+            return false;
+        };
+        p.closed
+            && self.tasks.get(&p.task_id).is_some_and(|t| {
+                t.blockers
+                    .iter()
+                    .any(|b| b.id == p.blocker_id && self.may_write(&b.raised_by, &ev.device_id))
+            })
     }
 
     fn unwithdraws(&self, t: &Task, p: &TaskStateRow, ev: &Event) -> bool {

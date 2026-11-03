@@ -1494,3 +1494,89 @@ fn a_board_subtask_is_handed_out_like_a_card() {
     );
     assert_eq!(a.c.get_task(&s.id).unwrap().live_offer().unwrap().to, CARD2);
 }
+
+/// side_reopen, with `leases` as the live leases this person's agents hold
+/// on their private board (card #339).
+fn side_with_leases(
+    s: Side,
+    person: &str,
+    owners: &Owners,
+    leases: Arc<Mutex<Vec<String>>>,
+) -> Side {
+    let me = person.to_string();
+    let o2 = owners.clone();
+    let o = Options {
+        now: Some(s.clk.func()),
+        board: true,
+        person: person.into(),
+        is_owner: Some(Arc::new(move |k: &str| k == me)),
+        key_person: Some(Arc::new(key_person)),
+        device_person: Some(Arc::new(device_person)),
+        tag: Some(Arc::new(|| "mlg".to_string())),
+        board_owner: Some(Arc::new(move |p: &str, at: Option<&RowPos>| {
+            o2.lock().unwrap().iter().any(|(who, from, until)| {
+                who == p && at.map_or(*until == u64::MAX, |at| *from < at.hlc && at.hlc < *until)
+            })
+        })),
+        outside_leases: Some(Arc::new(move || leases.lock().unwrap().clone())),
+        ..Options::default()
+    };
+    let c = Coord::new(s.st.clone(), None, o).unwrap();
+    Side { c, ..s }
+}
+
+/// Card #339, wind#91's case: a board card's external wait names leases
+/// that live on its agent's private board. Its person's device closes the
+/// wait when the last goes and tells the holder; the other member's
+/// device, which can't see those leases, leaves it alone.
+#[test]
+fn a_board_card_waits_on_its_persons_private_leases() {
+    let (a, b, owners) = two_people();
+    let la = Arc::new(Mutex::new(vec![
+        "ww/dolphin-slot-1".to_string(),
+        "ww/dolphin-slot-2".to_string(),
+    ]));
+    let a = side_with_leases(a, P1, &owners, la.clone());
+    let b = side_with_leases(b, P2, &owners, Arc::new(Mutex::new(Vec::new())));
+    let t = a.c.create_task(P1, nt("UDP pose transport", "")).unwrap();
+    a.c.claim_task(CARD1, &t.id).unwrap();
+    let got =
+        a.c.block(
+            CARD1,
+            &t.id,
+            "Waiting for a free Dolphin slot",
+            Some(BlockedBy {
+                kind: BLOCKED_ON_EXTERNAL.into(),
+                reference: "a free ww/dolphin-slot-1..4 lease (all four held)".into(),
+            }),
+        )
+        .unwrap();
+    // Named leases never show on a board: the wait stays in the agent's
+    // words, and p1's devices judge it against p1's private leases.
+    assert_eq!(
+        got.blocked_by,
+        Some(BlockedBy {
+            kind: BLOCKED_ON_EXTERNAL.into(),
+            reference: "a free ww/dolphin-slot-1..4 lease (all four held)".into(),
+        })
+    );
+    sync(&a, &b);
+    assert!(a.c.sweep_notices().unwrap().is_empty());
+    assert!(
+        b.c.sweep_notices().unwrap().is_empty(),
+        "p2's device can't see p1's leases"
+    );
+    assert_eq!(b.c.get_task(&t.id).unwrap().state, BLOCKED);
+    la.lock().unwrap().retain(|n| n != "ww/dolphin-slot-1");
+    assert!(a.c.sweep_notices().unwrap().is_empty(), "slot 2 still held");
+    la.lock().unwrap().clear();
+    let ns = a.c.sweep_notices().unwrap();
+    assert_eq!(ns.len(), 1, "{ns:?}");
+    assert_eq!(
+        (ns[0].kind.as_str(), ns[0].to.clone()),
+        (NOTICE_UNBLOCKED, vec![CARD1.to_string()])
+    );
+    assert_eq!(a.c.get_task(&t.id).unwrap().state, WORKING);
+    sync(&a, &b);
+    assert_eq!(b.c.get_task(&t.id).unwrap().state, WORKING);
+}

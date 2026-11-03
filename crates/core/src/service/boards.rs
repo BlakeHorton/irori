@@ -1229,6 +1229,18 @@ impl Services {
                         let s = Arc::downgrade(self);
                         Arc::new(move |sha: &str| s.upgrade().is_some_and(|s| s.files.has(sha)))
                     }),
+                    // This person's private leases (card #339): a board
+                    // card's external wait naming some held ones closes
+                    // when they go. Under the board coord's lock: takes the
+                    // private coord's, which never waits on a board coord.
+                    outside_leases: Some({
+                        let s = Arc::downgrade(self);
+                        Arc::new(move || {
+                            s.upgrade().map_or_else(Vec::new, |s| {
+                                s.coord.leases().into_iter().map(|l| l.resource).collect()
+                            })
+                        })
+                    }),
                     ..Default::default()
                 },
             )

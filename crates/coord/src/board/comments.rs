@@ -107,7 +107,7 @@ impl Fold {
                 for r in out.reference.split_whitespace() {
                     let n = normalize_resource(r)
                         .map_err(|e| invalid(format!("blocked on a lease: {e}")))?;
-                    if !self.wait_lease_held(&n, &now) {
+                    if !self.lease_held(&n, &now) {
                         return Err(invalid(format!(
                             "nobody leases {n}; block on external or a person instead"
                         )));
@@ -156,7 +156,10 @@ impl Fold {
             BLOCKED_ON_EXTERNAL => {
                 // An external wait that names leases held now ("a free
                 // ww/dolphin-slot-1..4 lease") waits on those leases, so it
-                // closes when the last of them goes (card #339).
+                // closes when the last of them goes (card #339). On a board
+                // the leases are this person's private ones, which never
+                // show on the board: the wait stays external there and
+                // their own devices judge it (outside_wait_gone).
                 let names = self.leases_named_in(&out.reference, &self.stamp());
                 if !names.is_empty() {
                     out.kind = BLOCKED_ON_LEASE.into();
@@ -1080,52 +1083,14 @@ impl Fold {
             .any(|l| gotime::after(&l.lease.until, now) && conflicts(&l.res, &res))
     }
 
-    /// Whether lease `name` is held: in this log, or (on a board) by this
-    /// person's agents on their private board (card #339).
-    pub(crate) fn wait_lease_held(&self, name: &str, now: &GoTime) -> bool {
-        if self.lease_held(name, now) {
-            return true;
-        }
-        let Some(f) = &self.outside_leases else {
-            return false;
-        };
-        let res = parse_resource(name).unwrap_or_else(|_| Resource::named(name));
-        f().iter().any(|o| {
-            let or = parse_resource(o).unwrap_or_else(|_| Resource::named(o));
-            conflicts(&or, &res)
-        })
-    }
-
-    /// The live lease names: this log's, then this person's outside ones.
-    fn live_lease_names(&self, now: &GoTime) -> Vec<String> {
-        let mut out: Vec<String> = self
-            .held
-            .values()
-            .filter(|l| gotime::after(&l.lease.until, now))
-            .map(|l| l.lease.resource.clone())
-            .collect();
-        if let Some(f) = &self.outside_leases {
-            for n in f() {
-                if !out.contains(&n) {
-                    out.push(n);
-                }
-            }
-        }
-        out
-    }
-
-    /// The live leases text names (card #339): each by its whole name, or
-    /// a numbered one (`ww/dolphin-slot-3`) by its family
+    /// The live leases text names (card #339), from `names`: each by its
+    /// whole name, or a numbered one (`ww/dolphin-slot-3`) by its family
     /// (`ww/dolphin-slot-1..4` when 3 is in range, `ww/dolphin-slot-N`,
-    /// `ww/dolphin-slot-*`).
-    /// At most what fits a blocker's ref.
-    pub(crate) fn leases_named_in(&self, text: &str, now: &GoTime) -> Vec<String> {
-        let mut names: Vec<String> = self
-            .live_lease_names(now)
-            .into_iter()
-            .filter(|n| names_lease(text, n))
-            .collect();
+    /// `ww/dolphin-slot-*`). At most what fits a blocker's ref.
+    fn named_of(text: &str, names: impl IntoIterator<Item = String>) -> Vec<String> {
+        let mut names: Vec<String> = names.into_iter().filter(|n| names_lease(text, n)).collect();
         names.sort();
+        names.dedup();
         let mut out: Vec<String> = Vec::new();
         let mut len = 0;
         for n in names {
@@ -1139,15 +1104,63 @@ impl Fold {
         out
     }
 
-    /// Whether this device judges blocker b's lease wait (card #339): off a
-    /// board, always; on one, only the raiser's person's devices, the ones
-    /// that see the private leases it may wait on.
-    fn judges_lease_wait(&self, b: &Blocker) -> bool {
-        if !self.on_board {
-            return true;
+    /// The leases of this log held now that text names.
+    pub(crate) fn leases_named_in(&self, text: &str, now: &GoTime) -> Vec<String> {
+        let live = self
+            .held
+            .values()
+            .filter(|l| gotime::after(&l.lease.until, now))
+            .map(|l| l.lease.resource.clone());
+        Self::named_of(text, live.collect::<Vec<_>>())
+    }
+
+    /// On a board, the private leases of this person (see
+    /// [`super::Options::outside_leases`]) held now that text names.
+    fn outside_named_in(&self, text: &str) -> Vec<String> {
+        match &self.outside_leases {
+            Some(f) if self.on_board => Self::named_of(text, f()),
+            _ => Vec::new(),
         }
+    }
+
+    /// Whether blocker b is one of this person's agents' on a board, so
+    /// this device sees the private leases it may wait on (card #339).
+    fn own_on_board(&self, b: &Blocker) -> bool {
         let mine = self.person_of(&self.person);
-        !mine.is_empty() && self.person_of(&b.raised_by) == mine
+        self.on_board && !mine.is_empty() && self.person_of(&b.raised_by) == mine
+    }
+
+    /// Notes an external wait on a board that names this person's private
+    /// leases held now (card #339): from then on the sweep closes it once
+    /// none of them is held. Kept in memory on this device; a restart
+    /// notes it again while one of its leases is still held.
+    pub(crate) fn note_outside_wait(&self, task_id: &str, b: &Blocker) {
+        let Some(on) = b.on.as_ref() else { return };
+        if on.kind != BLOCKED_ON_EXTERNAL || !b.open() || !self.own_on_board(b) {
+            return;
+        }
+        if !self.outside_named_in(&on.reference).is_empty() {
+            self.outside_waits
+                .borrow_mut()
+                .insert(format!("{task_id}/{}", b.id));
+        }
+    }
+
+    /// Whether blocker b's external wait on private leases is over: it
+    /// named some held then (noted), and names none held now.
+    fn outside_wait_gone(&self, task_id: &str, b: &Blocker) -> bool {
+        let Some(on) = b.on.as_ref() else {
+            return false;
+        };
+        if !self.own_on_board(b) {
+            return false;
+        }
+        let key = format!("{task_id}/{}", b.id);
+        if !self.outside_named_in(&on.reference).is_empty() {
+            self.outside_waits.borrow_mut().insert(key);
+            return false;
+        }
+        self.outside_waits.borrow().contains(&key)
     }
 
     /// The open items of a blocked task whose lease or task went away.
@@ -1164,10 +1177,7 @@ impl Fold {
             match on.kind.as_str() {
                 BLOCKED_ON_LEASE => {
                     let names: Vec<&str> = on.reference.split_whitespace().collect();
-                    if self.judges_lease_wait(b)
-                        && !names.is_empty()
-                        && !names.iter().any(|n| self.wait_lease_held(n, now))
-                    {
+                    if !names.is_empty() && !names.iter().any(|n| self.lease_held(n, now)) {
                         ids.push(b.id.clone());
                         why.push(if names.len() > 1 {
                             "leases released".to_string()
@@ -1182,6 +1192,12 @@ impl Fold {
                     {
                         ids.push(b.id.clone());
                         why.push(format!("task {}", o.state));
+                    }
+                }
+                BLOCKED_ON_EXTERNAL => {
+                    if self.outside_wait_gone(&t.id, b) {
+                        ids.push(b.id.clone());
+                        why.push("leases released".to_string());
                     }
                 }
                 _ => {}

@@ -1382,7 +1382,23 @@ pub(crate) fn board_block(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     if many_questions(&item.question) {
         out += &format!(" Its question asks more than one thing. {ONE_ASK_EACH}");
     }
-    match &bb {
+    // What it waits on as stored: an external wait that names leases held
+    // now became a wait on those leases (card #339).
+    let stored = item
+        .on
+        .clone()
+        .or_else(|| t.blocked_by.clone())
+        .or(bb.clone());
+    match &stored {
+        Some(b)
+            if b.kind == coord::BLOCKED_ON_LEASE
+                && bb.as_ref().is_some_and(|i| i.kind != b.kind) =>
+        {
+            out += &format!(
+                " It names leases held now, so it waits on them ({}) and unblocks by itself, telling you, when the last is released.",
+                one_line(&b.reference, 200)
+            );
+        }
         Some(b) if b.kind == coord::BLOCKED_ON_LEASE || b.kind == coord::BLOCKED_ON_TASK => {
             out += &format!(" It unblocks by itself when that {} goes away.", b.kind);
         }
