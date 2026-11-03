@@ -2051,16 +2051,30 @@ impl Fold {
             self.ask_kind(kinds::TASK_EDITED),
             &TaskEditedRow {
                 task_id: id.into(),
-                title,
-                objective: obj,
-                done_criteria: done,
+                title: title.clone(),
+                objective: obj.clone(),
+                done_criteria: done.clone(),
                 by: by.clone(),
                 from,
                 at,
                 ..TaskEditedRow::default()
             },
         )?;
-        Ok(self.tasks[id].clone())
+        // The fold may hold an edit back (card #318): say so, never "Edited".
+        let now = &self.tasks[id];
+        let landed = title.as_ref().is_none_or(|v| *v == now.title)
+            && obj.as_ref().is_none_or(|v| *v == now.objective)
+            && done.as_ref().is_none_or(|v| *v == now.done_criteria);
+        if !landed {
+            return Err(super::error::Error::raw(
+                super::error::ErrorKind::BadState,
+                format!(
+                    "coord: edit {}: the change didn't apply, so the card still says what it did; tell the person on the card",
+                    now.short_ref()
+                ),
+            ));
+        }
+        Ok(now.clone())
     }
 
     pub(crate) fn may_manage(&self, t: &Task, by: &str) -> bool {

@@ -170,3 +170,78 @@ fn an_edit_from_a_thread_says_so_in_the_thread() {
         lines(&e, &t.id)
     );
 }
+
+/// Card #318: the holder edits from a thread someone else took (or nobody
+/// did). `from` links the thread; it never holds the edit back.
+#[test]
+fn a_holder_edits_from_a_thread_it_did_not_take() {
+    let e = Env::new();
+    e.ros.set(BOB, "busy");
+    e.ros.set(CAROL, "busy");
+    // Alice is the idle one: the thread is hers.
+    let th = thread(&e, "Rename the relay card?");
+    assert_eq!(th.ask.as_ref().unwrap().taker, ALICE, "{th:?}");
+    let t = card(&e, BOB, "Relay retries", "").unwrap();
+    assert!(t.from.is_empty(), "{t:?}");
+
+    // Explicit from: the thread Bob didn't take.
+    let got =
+        e.c.edit_task(
+            BOB,
+            &t.id,
+            TaskEdit {
+                title: Some("Relay: retry three times".into()),
+                objective: Some("Retry three times, then say so.".into()),
+                done_when: Some("A dropped relay retries 3x.".into()),
+                from: format!("#{}", th.short),
+            },
+        )
+        .unwrap();
+    let now = e.c.get_task(&t.id).unwrap();
+    assert_eq!(now.title, "Relay: retry three times");
+    assert_eq!(now.objective, "Retry three times, then say so.");
+    assert_eq!(now.done_criteria, "A dropped relay retries 3x.");
+    assert_eq!(got.title, now.title);
+    assert!(
+        lines(&e, &t.id)
+            .iter()
+            .any(|a| a.what.contains("renamed it from")),
+        "{:?}",
+        lines(&e, &t.id)
+    );
+    assert!(
+        e.c.get_task(&th.id).unwrap().made.contains(&t.id),
+        "the thread still lists the card"
+    );
+
+    // No from: Bob answered the thread, so it is the default, and the
+    // edit still lands.
+    e.c.add_comment(BOB, &th.id, "On it.", false).unwrap();
+    e.c.edit_task(
+        BOB,
+        &t.id,
+        TaskEdit {
+            title: Some("Relay: retry, then report".into()),
+            ..TaskEdit::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        e.c.get_task(&t.id).unwrap().title,
+        "Relay: retry, then report"
+    );
+
+    // Someone who doesn't manage the card still can't, thread or not.
+    want_err(
+        e.c.edit_task(
+            CAROL,
+            &t.id,
+            TaskEdit {
+                title: Some("mine".into()),
+                from: format!("#{}", th.short),
+                ..TaskEdit::default()
+            },
+        ),
+        ErrorKind::NotAllowed,
+    );
+}

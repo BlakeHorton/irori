@@ -693,6 +693,16 @@ impl Fold {
         if ask == p.task_id {
             return (false, String::new());
         }
+        // board_edit's from names the person's thread the change came from
+        // (card #155): a link, not a lock. Only ask_close's edit outcome
+        // names the ask being closed, whose taker gates it (card #318).
+        if self
+            .tasks
+            .get(&ask)
+            .is_some_and(|f| f.ask.as_ref().is_some_and(|a| a.thread))
+        {
+            ask.clear();
+        }
         if ask.is_empty() {
             let Some(t) = self.tasks.get(&p.task_id) else {
                 return (false, String::new());
