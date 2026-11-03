@@ -39,7 +39,7 @@ pub const TAKE_ANSWERED: &str = "answered";
 const MAX_THREAD_NOTICE: usize = 1200;
 
 /// What every agent in a thread hears about closing it.
-pub const NOT_YOURS_TO_CLOSE: &str = "Don't ask_close it: the person resolves it when they're done. If your answer says you'll do work, make the card with board_create from=<this thread's #ref> (or board_edit the card it changes): the thread then shows the card. If you do it with no card, say so plainly in the thread.";
+pub const NOT_YOURS_TO_CLOSE: &str = "Don't ask_close it: the person resolves it when they're done. If your answer says you'll do work, answer in the thread first (board_comment: what you'll do), then make the card with board_create from=<this thread's #ref> (or board_edit the card it changes): Irori refuses a card from a thread you haven't answered, and the thread then shows your answer and the card. If you do it with no card, say so plainly in the thread.";
 
 impl Fold {
     /// Whether `key` is a person, not an agent: this device's person, or on
@@ -312,6 +312,10 @@ impl Fold {
     /// The thread a card `by` makes or changes comes from (card #155):
     /// `from` (a thread's ref) when given, else the one open thread `by`
     /// answered or was handed. None, or more than one: no thread.
+    ///
+    /// An agent must have answered on an open thread before it makes or
+    /// changes a card from it (card #322): the person sees its answer, not
+    /// only the card, and can resolve the thread.
     pub(crate) fn thread_from(&self, by: &str, from: &str) -> super::error::Result<String> {
         if !from.trim().is_empty() {
             let id = self.task_ref_locked(from)?;
@@ -322,6 +326,7 @@ impl Fold {
                     t.short_ref()
                 )));
             }
+            self.check_answered(by, &id)?;
             return Ok(id);
         }
         if by.is_empty() || by == SWEEPER || self.is_owner(by) {
@@ -332,10 +337,29 @@ impl Fold {
                 && (t.ask.as_ref().is_some_and(|a| a.taker == by)
                     || self.thread_repliers(&t.id).iter().any(|k| k == by))
         });
-        Ok(match (hits.next(), hits.next()) {
+        let id = match (hits.next(), hits.next()) {
             (Some(t), None) => t.id.clone(),
-            _ => String::new(),
-        })
+            _ => return Ok(String::new()),
+        };
+        self.check_answered(by, &id)?;
+        Ok(id)
+    }
+
+    /// Refuses a card from open thread `id` by an agent that hasn't
+    /// answered on it yet (card #322).
+    fn check_answered(&self, by: &str, id: &str) -> super::error::Result<()> {
+        if by.is_empty() || by == SWEEPER || self.is_person(by) || !self.open_thread(id) {
+            return Ok(());
+        }
+        if self.thread_repliers(id).iter().any(|k| k == by) {
+            return Ok(());
+        }
+        let r = self.tasks[id].short_ref();
+        Err(super::error::not_allowed(format!(
+            "{r} is the person's thread and you haven't answered on it yet. Answer there first \
+(board_comment {r}: one or two lines on what you'll do), then make the card from it (from={r}): \
+the thread shows your answer and the card, so the person can resolve it."
+        )))
     }
 
     /// Card `card` was made or changed from thread `thread` (card #155):

@@ -46,6 +46,8 @@ fn lines(e: &Env, id: &str) -> Vec<Activity> {
 fn from_links_the_card_and_the_thread() {
     let e = Env::new();
     let th = thread(&e, "Can the lobby show who's typing?");
+    e.c.add_comment(ALICE, &th.id, "Yes: a card for it is coming.", false)
+        .unwrap();
     let t = card(
         &e,
         ALICE,
@@ -91,16 +93,18 @@ fn an_agent_in_one_open_thread_gets_it_by_default() {
     e.ros.set(ALICE, "busy");
     e.ros.set(CAROL, "busy");
     let th = thread(&e, "Is the relay up?");
-    // Handed to bob (the idle one): his card comes from it already.
+    // Handed to bob (the idle one): his card comes from it already, once
+    // he has answered there (card #322).
+    want_err(card(&e, BOB, "Check the relay", ""), ErrorKind::NotAllowed);
+    e.c.add_comment(BOB, &th.id, "I'll check it.", false)
+        .unwrap();
     let t = card(&e, BOB, "Check the relay", "").unwrap();
     assert_eq!(t.from, th.id);
     assert_eq!(e.c.get_task(&th.id).unwrap().made, vec![t.id.clone()]);
     // Carol neither holds nor answered it: no default.
     let c0 = card(&e, CAROL, "Unrelated", "").unwrap();
     assert!(c0.from.is_empty(), "{c0:?}");
-    // Bob answers: the thread nobody holds now still counts for him.
-    e.c.add_comment(BOB, &th.id, "I'll check it.", false)
-        .unwrap();
+    // Bob answered: the thread nobody holds now still counts for him.
     e.c.sweep_asks(&agents(&e)).unwrap();
     let t1 = card(&e, BOB, "Check the relay again", "").unwrap();
     assert_eq!(t1.from, th.id);
@@ -184,7 +188,21 @@ fn a_holder_edits_from_a_thread_it_did_not_take() {
     let t = card(&e, BOB, "Relay retries", "").unwrap();
     assert!(t.from.is_empty(), "{t:?}");
 
-    // Explicit from: the thread Bob didn't take.
+    // Explicit from: the thread Bob didn't take. He answers there first
+    // (card #322); until then the edit is refused, never silently held.
+    want_err(
+        e.c.edit_task(
+            BOB,
+            &t.id,
+            TaskEdit {
+                title: Some("Relay: retry three times".into()),
+                from: format!("#{}", th.short),
+                ..TaskEdit::default()
+            },
+        ),
+        ErrorKind::NotAllowed,
+    );
+    e.c.add_comment(BOB, &th.id, "On it.", false).unwrap();
     let got =
         e.c.edit_task(
             BOB,
@@ -216,7 +234,6 @@ fn a_holder_edits_from_a_thread_it_did_not_take() {
 
     // No from: Bob answered the thread, so it is the default, and the
     // edit still lands.
-    e.c.add_comment(BOB, &th.id, "On it.", false).unwrap();
     e.c.edit_task(
         BOB,
         &t.id,
@@ -244,4 +261,66 @@ fn a_holder_edits_from_a_thread_it_did_not_take() {
         ),
         ErrorKind::NotAllowed,
     );
+}
+
+/// Card #322: an agent that makes a card from the person's thread answers
+/// there first, so the person sees its answer and can resolve the thread.
+#[test]
+fn a_card_from_a_thread_waits_for_the_agents_answer() {
+    let e = Env::new();
+    let other = card(&e, ALICE, "Board page", "").unwrap();
+    let th = thread(&e, "Hide the board settings behind a cog?");
+    let r = format!("#{}", th.short);
+    // Not answered yet: refused, and the thread lists no card.
+    let err = card(&e, ALICE, "Settings behind a cog", &r).unwrap_err();
+    assert!(err.is(ErrorKind::NotAllowed), "{err}");
+    assert!(
+        err.to_string().contains("haven't answered") && err.to_string().contains("board_comment"),
+        "{err}"
+    );
+    assert!(e.c.get_task(&th.id).unwrap().made.is_empty());
+
+    // A board_edit from it is refused the same way.
+    want_err(
+        e.c.edit_task(
+            ALICE,
+            &other.id,
+            TaskEdit {
+                objective: Some("Settings in a dialog.".into()),
+                from: r.clone(),
+                ..TaskEdit::default()
+            },
+        ),
+        ErrorKind::NotAllowed,
+    );
+
+    // Answered: the card is made, and the thread shows the answer and it.
+    e.c.add_comment(ALICE, &th.id, "Yes: I'll move them into a dialog.", false)
+        .unwrap();
+    let t = card(&e, ALICE, "Settings behind a cog", &r).unwrap();
+    assert_eq!(t.from, th.id);
+    assert_eq!(e.c.get_task(&th.id).unwrap().made, vec![t.id.clone()]);
+    let cs = e.c.comments(&th.id).unwrap();
+    assert!(
+        cs.iter()
+            .any(|c| c.by == ALICE && c.text.contains("dialog")),
+        "{cs:?}"
+    );
+    assert!(
+        lines(&e, &th.id)
+            .iter()
+            .any(|a| a.kind == MADE_KIND && a.what == format!("made #{} from this thread", t.short)),
+        "{:?}",
+        lines(&e, &th.id)
+    );
+
+    // The person never needs to answer their own thread.
+    let p = card(&e, USER, "The person's own card", &r).unwrap();
+    assert_eq!(p.from, th.id);
+
+    // Once resolved, a card may still name it as where it came from.
+    let th2 = thread(&e, "And the people panel?");
+    e.c.resolve_thread(USER, &th2.id).unwrap();
+    let late = card(&e, BOB, "People panel", &format!("#{}", th2.short)).unwrap();
+    assert_eq!(late.from, th2.id);
 }

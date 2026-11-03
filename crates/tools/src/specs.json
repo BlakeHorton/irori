@@ -486,7 +486,7 @@
         },
         "from": {
           "type": "string",
-          "description": "Optional: the person's thread this card comes from (#12 or task:\u003cid\u003e). Default: the one open thread you answered or were handed, if there is just one."
+          "description": "Optional: the person's thread this card comes from (#12 or task:\u003cid\u003e). Default: the one open thread you answered or were handed, if there is just one. Answer on the thread (board_comment) before you make or change a card from it: Irori refuses until you have."
         },
         "steps": {
           "type": "array",
@@ -1409,7 +1409,7 @@
         },
         "from": {
           "type": "string",
-          "description": "Optional: the person's thread this change comes from (#12 or task:\u003cid\u003e). Default: the one open thread you answered or were handed, if there is just one."
+          "description": "Optional: the person's thread this change comes from (#12 or task:\u003cid\u003e). Default: the one open thread you answered or were handed, if there is just one. Answer on the thread (board_comment) before you make or change a card from it: Irori refuses until you have."
         }
       },
       "required": [
