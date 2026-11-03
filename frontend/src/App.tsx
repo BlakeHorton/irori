@@ -39,7 +39,7 @@ import {
   useThreads,
 } from "@/lib/cards"
 import { useBoards } from "@/lib/boards"
-import { FocusComment } from "@/lib/thread"
+import { FocusComment, LiveRoster } from "@/lib/thread"
 import { useNow, useRoster } from "@/lib/irori"
 import { previewFlag } from "@/lib/preview"
 import { onOpen } from "@/lib/settings"
@@ -92,6 +92,11 @@ if ("scrollRestoration" in window.history)
 // filter and scroll where they were.
 export function App() {
   const roster = useRoster()
+  // Threads show "<agent> is working…" from the live roster (card #299).
+  const liveRoster = useMemo(
+    () => new Map(roster.agents.map((a) => [a.key, { status: a.status, updatedAt: a.updatedAt }])),
+    [roster.agents]
+  )
   const { gone } = useGone()
   const { cards, loading, error } = useCards()
   const { boards } = useBoards()
@@ -501,6 +506,7 @@ export function App() {
 
   return (
     <AgentCards.Provider value={agentCards}>
+    <LiveRoster.Provider value={liveRoster}>
     {/* No background of its own: the body paints the backdrop the glass
         shows (design/irori-ds.css, #266). */}
     <div className="flex h-svh overflow-hidden">
@@ -694,6 +700,7 @@ export function App() {
         />
       )}
     </div>
+    </LiveRoster.Provider>
     </AgentCards.Provider>
   )
 }

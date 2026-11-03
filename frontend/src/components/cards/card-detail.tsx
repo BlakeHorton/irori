@@ -453,6 +453,7 @@ export function CardPage({
               now={now}
               earlier={detail.threadEarlier}
               historyTrimmed={detail.historyTrimmed}
+              on={{ agents: detail.working, over: over(detail) }}
               composer={
                 <CommentBox cardId={detail.id} noFiles={!!detail.onBoard} />
               }

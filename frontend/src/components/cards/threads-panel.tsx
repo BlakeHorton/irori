@@ -372,6 +372,7 @@ function ThreadView({
         cardId={t.id}
         items={items}
         now={now}
+        on={{ agents: [...t.told, ...t.answeredBy], over: resolved }}
         compact
         empty={
           t.state === "waiting"

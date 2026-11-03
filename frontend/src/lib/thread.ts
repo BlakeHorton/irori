@@ -12,6 +12,8 @@ import {
 
 import { createContext } from "react"
 
+import { parseTime } from "./irori"
+
 // FocusComment is the comment a notification opened the card at (card
 // #177): the thread that holds it shows it, scrolled into view.
 export const FocusComment = createContext("")
@@ -205,4 +207,67 @@ export function heardLine(
         : `${how(watching, mode === "wake" || mode === "stop")}, watching.`
     )
   return parts.join(" ")
+}
+
+// LiveRoster is each agent's live roster state by key (App provides it from
+// roster:changed, card #299): a card's AgentRef carries the status of when
+// the card was read, the roster the status of now.
+export type LiveAgent = { status: string; updatedAt?: string }
+export const LiveRoster = createContext<ReadonlyMap<string, LiveAgent>>(new Map())
+
+// StoppedGrace is how long an agent must sit idle before a thread says it
+// stopped without replying: between the end of one turn and the wake that
+// delivers the person's comment it is idle for a moment.
+export const StoppedGrace = 3000
+
+export type WorkingLine = { text: string; tone: "working" | "stopped" }
+
+// workingLine is the live line under a thread (card #299, GitHub #5):
+// "oak is working…" while an agent on it (a holder, or the one an ask was
+// handed to) is in a turn, by the live roster; "oak stopped without
+// replying" once an agent heard the person's latest comment, had a turn
+// after it and went idle with nothing on the thread since. None when the
+// card is over or nobody is on it.
+export function workingLine(
+  agents: readonly AgentRef[],
+  items: readonly CardThreadItem[],
+  live: ReadonlyMap<string, LiveAgent>,
+  now: Date,
+  over = false
+): WorkingLine | null {
+  if (over) return null
+  const seen = new Set<string>()
+  const on = agents.filter((a) => {
+    if (a.status === "person" || !a.live || a.offline || seen.has(a.key)) return false
+    seen.add(a.key)
+    return true
+  })
+  const status = (a: AgentRef) => live.get(a.key)?.status ?? a.status
+  const names = (rs: AgentRef[]) => {
+    const n = rs.map(displayName)
+    return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}` : n[0]
+  }
+  const busy = on.filter((a) => status(a) === "busy")
+  if (busy.length)
+    return { text: `${names(busy)} ${busy.length > 1 ? "are" : "is"} working…`, tone: "working" }
+
+  // The person's latest comment, and whether anyone answered it since.
+  let p = -1
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].kind !== ThreadKind.Event && items[i].who.status === "person") { p = i; break }
+  }
+  if (p < 0) return null
+  const comment = items[p]
+  if ((comment.pending ?? []).length) return null // not everyone has heard it yet
+  const at = parseTime(comment.at)
+  if (!at) return null
+  const after = items.slice(p + 1)
+  const stopped = on.filter((a) => {
+    if (status(a) !== "idle") return false
+    if (after.some((it) => it.who.key === a.key)) return false
+    const since = parseTime(live.get(a.key)?.updatedAt)
+    return !!since && since > at && now.getTime() - since.getTime() >= StoppedGrace
+  })
+  if (!stopped.length) return null
+  return { text: `${names(stopped)} stopped without replying`, tone: "stopped" }
 }

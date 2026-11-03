@@ -18,11 +18,15 @@ import {
   isRevision,
   opensInFull,
   threadEntryId,
+  LiveRoster,
+  StoppedGrace,
   threadLabel,
   ThreadKind,
   visible,
+  workingLine,
 } from "@/lib/thread"
 import { cn } from "@/lib/utils"
+import { Spinner } from "./bits"
 import { Face } from "./faces"
 import { RichLine, RichText } from "@/components/common/rich-text"
 
@@ -44,6 +48,7 @@ export function Thread({
   inBlocker,
   composer,
   scroll,
+  on,
 }: {
   cardId?: string
   items: CardThreadItem[]
@@ -62,8 +67,22 @@ export function Thread({
   // by themselves, newest in view, and the composer stays under them
   // (a thread in the Threads panel, card #170).
   scroll?: string
+  // on: the agents on this thread (a card's holders, an ask's takers) and
+  // whether it is over, for the live "working…" line (card #299).
+  on?: { agents: readonly AgentRef[]; over?: boolean }
 }) {
   const [showAll, setShowAll] = useState(false)
+  const live = useContext(LiveRoster)
+  // "stopped without replying" waits out a grace after the roster changes;
+  // tick once it has passed so the line shows without another event.
+  const [, setTick] = useState(0)
+  const watching = !!on
+  useEffect(() => {
+    if (!watching) return
+    const id = window.setTimeout(() => setTick((n) => n + 1), StoppedGrace + 100)
+    return () => window.clearTimeout(id)
+  }, [watching, live])
+  const status = on ? workingLine(on.agents, items, live, new Date(), on.over) : null
   // A comment a notification opened the card at: shown even when it is
   // older than the first page, scrolled into view once (card #177).
   const focus = useContext(FocusComment)
@@ -130,7 +149,19 @@ export function Thread({
           </div>
         ))
       ) : (
-        <p className="text-muted-foreground">{empty}</p>
+        !status && <p className="text-muted-foreground">{empty}</p>
+      )}
+      {status && (
+        <p
+          role="status"
+          className={cn(
+            "flex items-center gap-1.5 text-[11.5px]",
+            status.tone === "working" ? "text-muted-foreground" : "text-warning"
+          )}
+        >
+          {status.tone === "working" && <Spinner className="size-3" />}
+          {status.text}
+        </p>
       )}
     </>
   )
