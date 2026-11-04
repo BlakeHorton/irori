@@ -378,11 +378,11 @@ impl Window {
     }
 }
 
-fn lossy(out: &Mutex<Vec<u8>>) -> String {
+pub(crate) fn lossy(out: &Mutex<Vec<u8>>) -> String {
     String::from_utf8_lossy(&out.lock().unwrap_or_else(|e| e.into_inner())).into_owned()
 }
 
-fn copy_capped(mut r: Box<dyn std::io::Read + Send>, out: &Mutex<Vec<u8>>) {
+pub(crate) fn copy_capped(mut r: Box<dyn std::io::Read + Send>, out: &Mutex<Vec<u8>>) {
     let mut buf = [0u8; 4096];
     while let Ok(n) = r.read(&mut buf) {
         if n == 0 {
@@ -408,7 +408,7 @@ fn file_exists(p: &Path) -> bool {
 }
 
 /// The Claude Code CLI without a shell: PATH first, then ~/.local/bin.
-fn find_claude() -> Result<PathBuf, String> {
+pub(crate) fn find_claude() -> Result<PathBuf, String> {
     let names: &[&str] = if cfg!(windows) {
         &["claude.exe", "claude.cmd"]
     } else {
@@ -437,7 +437,7 @@ fn find_claude() -> Result<PathBuf, String> {
 }
 
 /// Keeps a console child of the GUI from flashing a window on Windows.
-fn hide_console(cmd: &mut std::process::Command) {
+pub(crate) fn hide_console(cmd: &mut std::process::Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -497,18 +497,19 @@ pub fn strip_ansi(s: &str) -> String {
 }
 
 /// The folders Claude Code's workspace trust dialog was accepted for.
-struct TrustSet(std::collections::HashSet<String>);
+pub(crate) struct TrustSet(std::collections::HashSet<String>);
 
 impl TrustSet {
-    fn load() -> TrustSet {
-        let file = match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
-            Some(d) => PathBuf::from(d).join(".claude.json"),
-            None => match std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) {
-                Some(h) => PathBuf::from(h).join(".claude.json"),
-                None => return TrustSet(Default::default()),
-            },
-        };
-        let Ok(raw) = std::fs::read(&file) else {
+    pub(crate) fn load() -> TrustSet {
+        match claude_config_file() {
+            Some(file) => TrustSet::load_file(&file),
+            None => TrustSet(Default::default()),
+        }
+    }
+
+    /// The trusted folders in one `.claude.json`.
+    pub(crate) fn load_file(file: &Path) -> TrustSet {
+        let Ok(raw) = std::fs::read(file) else {
             return TrustSet(Default::default());
         };
         #[derive(serde::Deserialize)]
@@ -533,7 +534,13 @@ impl TrustSet {
         )
     }
 
-    fn covers(&self, dir: &str) -> bool {
+    /// Whether exactly this folder has its own trust entry.
+    pub(crate) fn has(&self, dir: &str) -> bool {
+        !dir.is_empty() && self.0.contains(&trust_key(dir))
+    }
+
+    /// Whether this folder or one of its parents is trusted.
+    pub(crate) fn covers(&self, dir: &str) -> bool {
         if dir.is_empty() {
             return false;
         }
@@ -548,6 +555,15 @@ impl TrustSet {
             }
             p = parent;
         }
+    }
+}
+
+/// Claude Code's `.claude.json`: `CLAUDE_CONFIG_DIR`, else the home folder.
+pub(crate) fn claude_config_file() -> Option<PathBuf> {
+    match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
+        Some(d) => Some(PathBuf::from(d).join(".claude.json")),
+        None => std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+            .map(|h| PathBuf::from(h).join(".claude.json")),
     }
 }
 
