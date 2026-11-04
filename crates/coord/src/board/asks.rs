@@ -234,7 +234,11 @@ impl Fold {
         t.ask = Some(Ask {
             wake: a.wake,
             repo_key: a.repo_key.clone(),
-            owner: ev.device_id.clone(),
+            owner: if !a.owner.is_empty() && self.same_person_dev(&a.owner, &ev.device_id) {
+                a.owner.clone()
+            } else {
+                ev.device_id.clone()
+            },
             since: t.created_at,
             // A board log carries mentions in board form only (cards #177,
             // #187); anything else another device wrote is dropped here.
@@ -763,6 +767,11 @@ impl Fold {
         let at = self.stamp();
         let id = new_id(&at);
         let num = self.next_short();
+        // A device with no agents of its own (the phone) leaves the ask to
+        // one of the person's computers (card #408): its roster may be
+        // hours old when it posts, and it sleeps right after.
+        let owner = self.ask_owner(agents);
+        let delegated = owner != self.dev;
         self.write(
             &by,
             kinds::TASK_CREATED,
@@ -786,6 +795,7 @@ impl Fold {
                     } else {
                         input.board.trim().to_string()
                     },
+                    owner: if delegated { owner } else { String::new() },
                 }),
                 by: by.clone(),
                 at,
@@ -807,9 +817,15 @@ impl Fold {
                 },
             )?;
         }
+        let t = self.tasks[&id].clone();
+        if delegated {
+            // Its owner hands it out at its next sweep, kicked by this row.
+            let mut n = ask_notice(&t, &[], true, "");
+            n.attachments = input.files;
+            return Ok((t, n));
+        }
         // A thread goes first to the agents it names (card #116); with
         // none, it is handed out like any ask.
-        let t = self.tasks[&id].clone();
         if input.thread {
             let heard = self.thread_hearers(&text, &mentions);
             if !heard.is_empty() {
@@ -935,6 +951,56 @@ impl Fold {
             return Handed::Ended;
         }
         Handed::Waits
+    }
+
+    /// The device that hands out an ask posted here (card #408): this one
+    /// when it runs agents; otherwise another of the person's devices that
+    /// does, connected first, then the one with the most agents. With none
+    /// known, this one, as before.
+    fn ask_owner(&self, roster: &[AgentCard]) -> String {
+        let dev_of = |a: &AgentCard| cmp_or_dev(&a.device_id, owner::device_of(&a.key)).to_string();
+        if roster.iter().any(|a| dev_of(a) == self.dev) {
+            return self.dev.clone();
+        }
+        let mut devs: BTreeMap<String, (u8, usize)> = BTreeMap::new();
+        for a in roster {
+            let dev = dev_of(a);
+            if dev.is_empty()
+                || a.key == SWEEPER
+                || self.is_owner(&a.key)
+                || !crate::roster::answers(&a.status)
+                || self.revoked.as_ref().is_some_and(|r| r(&dev))
+                || !self.same_person_dev(&dev, &self.dev)
+            {
+                continue;
+            }
+            let rank = match a.device_state.as_str() {
+                crate::roster::CONNECTED | "" => 0,
+                crate::roster::RECENT => 1,
+                _ => 2,
+            };
+            let e = devs.entry(dev).or_insert((rank, 0));
+            e.0 = e.0.min(rank);
+            e.1 += 1;
+        }
+        devs.into_iter()
+            .min_by(|(x, (rx, nx)), (y, (ry, ny))| rx.cmp(ry).then(ny.cmp(nx)).then(x.cmp(y)))
+            .map_or_else(|| self.dev.clone(), |(d, _)| d)
+    }
+
+    /// Whether devices a and b are the same person's: on the private log
+    /// every device is; on a board, by the members' certificates.
+    pub(crate) fn same_person_dev(&self, a: &str, b: &str) -> bool {
+        if !self.on_board {
+            return true;
+        }
+        match &self.dev_person {
+            Some(dp) => {
+                let p = dp(a);
+                !p.is_empty() && p == dp(b)
+            }
+            None => a == b,
+        }
     }
 
     /// The agents among `roster` that may take ask t now, the one idle
@@ -1256,6 +1322,29 @@ impl Fold {
                 let a = t.ask.clone().unwrap_or_default();
                 if !a.taker.is_empty() {
                     continue;
+                }
+                // Posted on another device and left to this one (card
+                // #408): a thread goes first to the agents it names, as
+                // post_ask does.
+                if a.thread && a.reason.is_empty() && !again.contains_key(id) {
+                    let heard = self.thread_hearers(&t.objective, &a.mentions);
+                    if !heard.is_empty() {
+                        self.write_take(
+                            id,
+                            TakeStateRow {
+                                reason: TAKE_POSTED.into(),
+                                told: heard.len() as i64,
+                                heard: heard.clone(),
+                                since: now,
+                                ..TakeStateRow::default()
+                            },
+                        )?;
+                        let t = self.tasks[id].clone();
+                        let mut n = super::threads::thread_notice(&t, &heard);
+                        n.attachments = self.ask_files(id);
+                        out.push(n);
+                        continue;
+                    }
                 }
                 let ag = again.remove(id);
                 // Asked again by the person: everyone may hear it again.

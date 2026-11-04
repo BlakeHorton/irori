@@ -10,7 +10,8 @@ use std::time::Duration;
 use common::*;
 use coord::roster::AgentCard;
 use coord::rows::{
-    TakeRequestedRow, TakeStateRow, TaskClaimedRow, TaskEditedRow, TaskMemberRow, TaskStateRow,
+    AskField, TakeRequestedRow, TakeStateRow, TaskClaimedRow, TaskCreatedRow, TaskEditedRow,
+    TaskMemberRow, TaskStateRow,
 };
 use coord::*;
 use store::{Event, Filter, kinds};
@@ -866,4 +867,118 @@ fn test_long_ask() {
     let (t, _) = post_ask(&e, &long);
     assert_eq!(t.objective, long.trim());
     assert!(t.objective.chars().count() > 20_000);
+}
+
+/// Card #408: a device with no agents of its own (the phone) leaves its ask
+/// to one of the person's computers. It writes no hand-out itself: its
+/// roster may be hours old, and it sleeps right after.
+#[test]
+fn test_a_phone_ask_belongs_to_a_computer() {
+    let e = Env::with("dev-p", Some(person()));
+    // The roster: the Mac's three agents, nothing on the phone.
+    let (tk, n) = post_ask(&e, "This post is about a new 3D model?");
+    let a = ask_of(&e.c, &tk.id);
+    assert!(
+        a.owner == "dev-a" && a.taker.is_empty() && !a.handed,
+        "{a:?}"
+    );
+    assert!(n.to.is_empty(), "{n:?}");
+    assert!(e.rows(kinds::TAKE_STATE).is_empty());
+    // The phone's own sweeps leave it to the Mac.
+    e.clk.add(GONE_GRACE * 10);
+    assert!(e.c.sweep_asks(&agents(&e)).unwrap().is_empty());
+    assert!(ask_of(&e.c, &tk.id).taker.is_empty());
+    // A device that runs agents keeps its own asks, as before.
+    let mac = Env::with("dev-a", Some(person()));
+    let (tk, _) = post_ask(&mac, "Why is CI red?");
+    let a = ask_of(&mac.c, &tk.id);
+    assert!(a.owner == "dev-a" && a.taker == ALICE && a.handed, "{a:?}");
+}
+
+/// Card #408 (ask #390b): the phone's ask reaches the Mac, which hands it
+/// out with its own roster and, when the agent it went to goes away, on to
+/// the next idle one; a thread as much as an ask.
+#[test]
+fn test_the_computer_hands_a_phone_ask_out_and_on() {
+    for thread in [false, true] {
+        let e = Env::with("dev-a", Some(person()));
+        let at = plus(fixed_now(), sec());
+        let id = "01M6HPNJ2VWDNPD5FPHVFK4Q0D";
+        e.remote(
+            "dev-p",
+            1,
+            hlc_at(at),
+            "user",
+            kinds::TASK_CREATED,
+            &TaskCreatedRow {
+                task_id: id.into(),
+                num: 7,
+                title: "This post is about a new 3D model?".into(),
+                objective: "This post is about a new 3D model?".into(),
+                ask: Some(AskField {
+                    wake: true,
+                    thread,
+                    owner: "dev-a".into(),
+                    ..AskField::default()
+                }),
+                by: "user:dev-p".into(),
+                at,
+                ..TaskCreatedRow::default()
+            },
+        );
+        let a = ask_of(&e.c, id);
+        assert!(a.owner == "dev-a" && a.taker.is_empty(), "{a:?}");
+        let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+        let a = ask_of(&e.c, id);
+        assert!(a.taker == ALICE && a.handed, "{a:?}");
+        assert!(ns.len() == 1 && ns[0].to == [ALICE], "{ns:?}");
+        // ALICE goes away: the next idle agent gets it.
+        e.ros.set(ALICE, "");
+        let ns = e.c.sweep_asks(&agents(&e)).unwrap();
+        let a = ask_of(&e.c, id);
+        assert!(
+            a.taker == BOB && a.handed && a.heard == [ALICE, BOB],
+            "{a:?}"
+        );
+        assert!(
+            ns.len() == 1 && ns[0].to == [BOB] && (thread || ns[0].text.contains("went away")),
+            "{ns:?}"
+        );
+    }
+}
+
+/// Card #408: an owner named by another person's device isn't taken on a
+/// board; privately every device is the person's.
+#[test]
+fn test_ask_owner_needs_the_posting_device() {
+    let e = Env::with("dev-a", Some(person()));
+    let at = plus(fixed_now(), sec());
+    let id = "01M6HPNJ2VWDNPD5FPHVFK4Q0E";
+    e.remote(
+        "dev-p",
+        1,
+        hlc_at(at),
+        "user",
+        kinds::TASK_CREATED,
+        &TaskCreatedRow {
+            task_id: id.into(),
+            num: 8,
+            title: "x".into(),
+            objective: "x".into(),
+            ask: Some(AskField {
+                wake: true,
+                ..AskField::default()
+            }),
+            by: "user:dev-p".into(),
+            at,
+            ..TaskCreatedRow::default()
+        },
+    );
+    // No owner named: the posting device's, as before.
+    assert_eq!(ask_of(&e.c, id).owner, "dev-p");
+}
+
+/// The person on any of their devices (the phone's user key too).
+fn person() -> KeyFn {
+    Arc::new(|k: &str| k.starts_with("user:"))
 }

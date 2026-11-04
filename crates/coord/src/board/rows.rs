@@ -20,6 +20,10 @@ crate::go_struct! {
         /// A private thread about a shared board (card #185): it lives in
         /// the person's own log and shows on that board's page.
         pub board: String = "board" "omit",
+        /// The device that hands it out and on (card #408), when it isn't
+        /// the one that posted it: a phone, which runs no agents and sleeps,
+        /// names one of the person's computers.
+        pub owner: String = "owner" "omit",
     }
 }
 
