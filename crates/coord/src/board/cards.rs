@@ -1382,6 +1382,43 @@ impl Fold {
         Ok(self.tasks[id].clone())
     }
 
+    /// Puts a card nobody holds back on the Board when the person answers on
+    /// it (spawned agents §2, card #447): a "Not done" on its done check, or
+    /// an answer to a blocker, waits on an agent, and with no holder there is
+    /// nobody to act on it. SUBMITTED makes it offerable (and, on a spawning
+    /// board, starts a fresh agent); the answer stays in the blocker's
+    /// thread and Left off is kept, for whoever picks it up.
+    pub(crate) fn back_on_board(&mut self, by: &str, id: &str, why: &str) -> Result<bool> {
+        let Some(t) = self.tasks.get(id) else {
+            return Ok(false);
+        };
+        if !t.holders.is_empty()
+            || !t.co_holders.is_empty()
+            || !t.assigned.is_empty()
+            || is_terminal(&t.state)
+            || t.state == SUBMITTED
+            || t.state == WORKING
+            || t.open_ask().is_some()
+            || !t.subtasks.is_empty()
+        {
+            return Ok(false);
+        }
+        let at = self.stamp();
+        self.write(
+            by,
+            kinds::TASK_STATUS,
+            &TaskStateRow {
+                task_id: id.into(),
+                state: SUBMITTED.into(),
+                note: format!("back on the Board: {why}"),
+                by: by.into(),
+                at,
+                ..TaskStateRow::default()
+            },
+        )?;
+        Ok(true)
+    }
+
     pub(crate) fn answer(
         &mut self,
         by: &str,
@@ -1558,6 +1595,9 @@ impl Fold {
             super::mention::mention_into(&mut n, &mut mn);
             let mut ns = vec![n];
             ns.extend(mn);
+            if self.is_owner(&by) {
+                self.back_on_board(&by, id, "the person answered and nobody is on it")?;
+            }
             return Ok((self.tasks[id].clone(), ns));
         }
         let restored = if count_open(&t) == 1 {

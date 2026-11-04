@@ -1661,6 +1661,16 @@ impl Fold {
                             ..TaskStateRow::default()
                         },
                     )?;
+                } else if self.tasks[&id].all_answered() {
+                    // The person already answered everything it waited on (a
+                    // "Not done", a blocker answer) and its agent went before
+                    // acting on it: nobody is left to, so it goes back on the
+                    // Board (card #447).
+                    self.back_on_board(
+                        SWEEPER,
+                        &id,
+                        &format!("the person answered and the agent working it {went}"),
+                    )?;
                 }
                 if !person {
                     out.push(Notice {
