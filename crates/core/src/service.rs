@@ -2269,6 +2269,21 @@ impl Core {
         self.s.set_spawn_setting(s)
     }
 
+    /// The person sets a board's permission choice, extra allow and deny
+    /// rules and per-repo merge policies (card #449): the app only, never
+    /// a tool. The switch and the board's other spawn fields stay.
+    pub fn set_spawn_permissions(
+        &self,
+        board_id: &str,
+        permission: &str,
+        allow: Vec<String>,
+        deny: Vec<String>,
+        merge: std::collections::BTreeMap<String, String>,
+    ) -> Result<spawn::SpawnSetting, String> {
+        self.s
+            .set_spawn_permissions(board_id, permission, allow, deny, merge)
+    }
+
     /// This device's cap on spawned agents.
     pub fn spawn_cap(&self) -> i64 {
         self.s.spawn_cap(&self.s.device.id)

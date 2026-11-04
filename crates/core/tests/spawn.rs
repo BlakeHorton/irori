@@ -91,6 +91,7 @@ fn a_card_gets_its_own_agent_which_ends_at_its_done_check() {
         .set_spawn_setting(SpawnSetting {
             board_id: String::new(),
             on: true,
+            ..SpawnSetting::default()
         })
         .unwrap();
     wait_for(60, "the spawned agent bound to the card", || {
@@ -166,4 +167,108 @@ fn a_card_gets_its_own_agent_which_ends_at_its_done_check() {
         Some(t.id.clone()),
         "the mark stays"
     );
+}
+
+/// Card #449: the board's permission choice and rules reach the spawn. A
+/// limited board starts its agent with acceptEdits and a `--settings` file
+/// holding the board's allow and deny rules; changing the permissions keeps
+/// the switch; and the setting is a `user` row only (no tool writes it).
+#[test]
+fn the_boards_permission_choice_reaches_the_spawn() {
+    let r = Rig::new();
+    let work = tempfile::tempdir().unwrap();
+    let fake = Arc::new(Fake::default());
+    let me = r.core.device_id().to_string();
+    let person = format!("user:{me}");
+    let spawned = format!("{me}/{SPAWNED_SESS}");
+    let co = r.core.coord();
+
+    r.core
+        .set_spawn_setting(SpawnSetting {
+            on: true,
+            ..SpawnSetting::default()
+        })
+        .unwrap();
+    let mut merge = std::collections::BTreeMap::new();
+    merge.insert("remote:github.com/me/api".to_string(), "main".to_string());
+    let set = r
+        .core
+        .set_spawn_permissions(
+            "",
+            "limited",
+            vec![
+                " Bash(cargo test:*) ".into(),
+                "Bash(cargo test:*)".into(),
+                "".into(),
+            ],
+            vec!["Bash(cargo publish:*)".into()],
+            merge,
+        )
+        .unwrap();
+    assert!(set.on, "the switch stays on");
+    assert_eq!(set.allow, ["Bash(cargo test:*)"], "trimmed, once");
+    assert_eq!(r.core.spawn_setting(""), set);
+    // Bad fields are refused and change nothing.
+    assert!(
+        r.core
+            .set_spawn_permissions("", "yolo", vec![], vec![], Default::default())
+            .is_err()
+    );
+    assert_eq!(r.core.spawn_setting("").permission, "limited");
+
+    let t = co
+        .create_task(
+            &person,
+            NewTask {
+                title: "Add the endpoint".into(),
+                repo_key: "remote:github.com/me/api".into(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    co.set_where(
+        &t.id,
+        Where {
+            who: r.key_a.clone(),
+            cwd: work.path().to_string_lossy().into(),
+            worktree: work.path().to_string_lossy().into(),
+            ..Where::default()
+        },
+    )
+    .unwrap();
+    r.core
+        .set_spawner(Some(spawner(&fake, r.claude.join("sessions"))));
+    wait_for(60, "the spawned agent bound to the card", || {
+        co.get_task(&t.id)
+            .is_some_and(|t| t.holders.contains(&spawned))
+    });
+    let req = fake.started.lock().unwrap()[0].clone();
+    assert_eq!(req.permission_mode, "acceptEdits");
+    let file = req.settings_file.expect("a --settings file");
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    let rules = |which: &str| -> Vec<String> {
+        v["permissions"][which]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(rules("allow").contains(&"Bash(cargo test:*)".to_string()));
+    assert!(rules("deny").contains(&"Bash(cargo publish:*)".to_string()));
+    assert!(rules("deny").contains(&"Bash(rm -rf:*)".to_string()));
+    // The repo merges straight to main, so its lead may push there.
+    assert!(!rules("deny").contains(&"Bash(git push origin main:*)".to_string()));
+
+    // Every spawn.set row is the person's, written by the app.
+    let rows = r
+        .core
+        .store()
+        .list(&store::Filter {
+            kinds: vec![store::kinds::SPAWN_SET.into()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(rows.len() >= 2);
+    assert!(rows.iter().all(|ev| ev.actor == "user"), "{rows:?}");
 }

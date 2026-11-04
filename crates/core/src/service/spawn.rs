@@ -115,8 +115,8 @@ impl fmt::Display for SpawnRefusal {
     }
 }
 
-/// A board's spawned-agent settings (`spawn.set`). Part 5 adds the
-/// permission choice, its rules and the merge policy here.
+/// A board's spawned-agent settings (`spawn.set`), set in the app only
+/// (decision 23). Every field defaults, so older rows still read.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnSetting {
@@ -125,6 +125,80 @@ pub struct SpawnSetting {
     pub board_id: String,
     #[serde(default)]
     pub on: bool,
+    /// The permission choice (card #449, decision 8): one of
+    /// [`PERMISSION_CHOICES`]; `""` is bypass, still guarded.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub permission: String,
+    /// Extra Claude Code allow rules (`Bash(cargo test:*)`), from
+    /// Settings › Agents.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<String>,
+    /// Extra deny rules, on top of the fixed ones.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<String>,
+    /// How each repo's work reaches main, by repo key: [`MERGE_PR`] or
+    /// [`MERGE_MAIN`]. A repo not named opens a PR.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub merge: std::collections::BTreeMap<String, String>,
+}
+
+/// [`SpawnSetting::permission`]: acceptEdits plus the board's rules.
+pub const PERMISSION_LIMITED: &str = "limited";
+/// acceptEdits alone: any shell command prompts.
+pub const PERMISSION_EDITS: &str = "edits";
+/// bypassPermissions, never on a shared board or with others' text.
+pub const PERMISSION_BYPASS: &str = "bypass";
+pub const PERMISSION_CHOICES: [&str; 3] = [PERMISSION_LIMITED, PERMISSION_EDITS, PERMISSION_BYPASS];
+/// [`SpawnSetting::merge`]: the lead opens a PR.
+pub const MERGE_PR: &str = "pr";
+/// The lead rebases and pushes to main.
+pub const MERGE_MAIN: &str = "main";
+
+impl SpawnSetting {
+    fn board_permissions(&self) -> super::spawn_permissions::BoardPermissions {
+        use super::spawn_permissions::{BoardPermissions, Choice};
+        BoardPermissions {
+            choice: match self.permission.as_str() {
+                PERMISSION_LIMITED => Choice::Limited,
+                PERMISSION_EDITS => Choice::EditsOnly,
+                _ => Choice::Bypass,
+            },
+            allow: self.allow.clone(),
+            deny: self.deny.clone(),
+        }
+    }
+
+    fn merge_policy(&self, repo_key: &str) -> super::spawn_permissions::MergePolicy {
+        use super::spawn_permissions::MergePolicy;
+        match self.merge.get(repo_key).map(String::as_str) {
+            Some(MERGE_MAIN) => MergePolicy::StraightToMain,
+            _ => MergePolicy::PullRequest,
+        }
+    }
+}
+
+/// Checks the permission fields the window sends: a known choice, rules
+/// that look like Claude Code rules, known merge policies.
+fn valid_permissions(s: &SpawnSetting) -> Result<(), String> {
+    if !s.permission.is_empty() && !PERMISSION_CHOICES.contains(&s.permission.as_str()) {
+        return Err(format!("unknown permission choice {:?}", s.permission));
+    }
+    for r in s.allow.iter().chain(&s.deny) {
+        let r = r.trim();
+        if r.is_empty() || r.len() > 300 || r.contains('\n') {
+            return Err(format!(
+                "a rule is one line of at most 300 characters: {r:?}"
+            ));
+        }
+    }
+    for (repo, m) in &s.merge {
+        if repo.trim().is_empty() || !(m == MERGE_PR || m == MERGE_MAIN) {
+            return Err(format!(
+                "merge policy for {repo:?} is pr or main, not {m:?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -170,31 +244,34 @@ pub struct SpawnPerms {
     pub mode: String,
     /// The `--settings` file's contents, when the mode has limits.
     pub settings: Option<serde_json::Value>,
+    /// Why the board's bypass wasn't used for this spawn.
+    pub fell_back: Option<String>,
 }
 
-/// The permission mode for a spawn on board `board_id` (decision 8 (c)):
-/// bypassPermissions on the private board when the brief quotes only the
-/// person and their agents; otherwise acceptEdits with the deny rules
-/// (card #449's [`super::spawn_permissions`]). Always explicit. Part 5
-/// reads the board's own choice and rules here.
-pub(crate) fn spawn_permissions(board_id: &str, brief: &Brief) -> SpawnPerms {
+/// The permission mode for a spawn on board `board_id` under its setting
+/// (decision 8 (c), card #449): the board's choice and rules, with bypass
+/// refused on a shared board or when the brief quotes anyone but the
+/// person and their agents. Always explicit.
+pub(crate) fn spawn_permissions(
+    set: &SpawnSetting,
+    board_id: &str,
+    repo_key: &str,
+    brief: &Brief,
+) -> SpawnPerms {
     use super::spawn_permissions as sp;
-    let p = sp::BoardPermissions {
-        choice: sp::Choice::Bypass,
-        ..sp::BoardPermissions::default()
-    };
     let got = sp::spawn_permissions(
-        &p,
+        &set.board_permissions(),
         sp::Spawn {
             shared_board: !board_id.is_empty(),
             others_text: brief.others_text,
+            merge: set.merge_policy(repo_key),
             lead: true,
-            ..sp::Spawn::default()
         },
     );
     SpawnPerms {
         mode: got.mode.into(),
         settings: got.settings,
+        fell_back: got.fell_back.map(String::from),
     }
 }
 
@@ -384,6 +461,7 @@ impl Services {
 
     /// The person sets a board's switch, from the app only.
     pub(crate) fn set_spawn_setting(&self, s: SpawnSetting) -> Result<(), String> {
+        valid_permissions(&s)?;
         let row = SpawnSetRow {
             s: s.clone(),
             by: format!("user:{}", self.device.id),
@@ -399,6 +477,39 @@ impl Services {
             .insert(s.board_id.clone(), s);
         self.asks_kick.kick();
         Ok(())
+    }
+
+    /// The person sets a board's permission choice, rules and merge
+    /// policies, from the app only; the switch and the other fields stay.
+    pub(crate) fn set_spawn_permissions(
+        &self,
+        board_id: &str,
+        permission: &str,
+        allow: Vec<String>,
+        deny: Vec<String>,
+        merge: std::collections::BTreeMap<String, String>,
+    ) -> Result<SpawnSetting, String> {
+        let tidy = |v: Vec<String>| -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            for r in v {
+                let r = r.trim().to_string();
+                if !r.is_empty() && !out.contains(&r) {
+                    out.push(r);
+                }
+            }
+            out
+        };
+        let mut s = self.spawn_setting(board_id);
+        s.board_id = board_id.to_string();
+        s.permission = permission.trim().to_string();
+        s.allow = tidy(allow);
+        s.deny = tidy(deny);
+        s.merge = merge
+            .into_iter()
+            .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+            .collect();
+        self.set_spawn_setting(s.clone())?;
+        Ok(s)
     }
 
     pub(crate) fn spawn_cap(&self, device: &str) -> i64 {
@@ -512,7 +623,7 @@ impl Services {
             .get(&t.id)
             .cloned();
         let brief = build_brief(t, &comments, &named, &|_| None, answer.as_deref());
-        let perms = spawn_permissions("", &brief);
+        let perms = spawn_permissions(&self.spawn_setting(""), "", &t.repo_key, &brief);
         let ask = SpawnAsk {
             task_id: t.id.clone(),
             device: me.clone(),
@@ -921,14 +1032,77 @@ mod tests {
             others_text: true,
             ..Brief::default()
         };
-        assert_eq!(spawn_permissions("", &mine).mode, "bypassPermissions");
-        assert_eq!(spawn_permissions("", &mine).settings, None);
+        let set = SpawnSetting::default();
+        assert_eq!(
+            spawn_permissions(&set, "", "r", &mine).mode,
+            "bypassPermissions"
+        );
+        assert_eq!(spawn_permissions(&set, "", "r", &mine).settings, None);
         for p in [
-            spawn_permissions("", &theirs),
-            spawn_permissions("board1", &mine),
+            spawn_permissions(&set, "", "r", &theirs),
+            spawn_permissions(&set, "board1", "r", &mine),
         ] {
             assert_eq!(p.mode, "acceptEdits");
             assert!(p.settings.is_some(), "deny rules go with it");
+            assert!(p.fell_back.is_some(), "and the card can say why");
+        }
+    }
+
+    #[test]
+    fn the_boards_choice_rules_and_merge_policy_are_used() {
+        let mine = Brief::default();
+        let mut set = SpawnSetting {
+            permission: PERMISSION_LIMITED.into(),
+            allow: vec!["Bash(cargo test:*)".into()],
+            deny: vec!["Bash(cargo publish:*)".into()],
+            ..SpawnSetting::default()
+        };
+        let rules = |p: &SpawnPerms, which: &str| -> Vec<String> {
+            p.settings.as_ref().unwrap()["permissions"][which]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect()
+        };
+        let p = spawn_permissions(&set, "", "remote:irori", &mine);
+        assert_eq!(
+            (p.mode.as_str(), p.fell_back.as_deref()),
+            ("acceptEdits", None)
+        );
+        assert!(rules(&p, "allow").contains(&"Bash(cargo test:*)".to_string()));
+        assert!(rules(&p, "deny").contains(&"Bash(cargo publish:*)".to_string()));
+        assert!(rules(&p, "deny").contains(&"Bash(git push origin main:*)".to_string()));
+        // A straight-to-main repo lets the lead push to main.
+        set.merge.insert("remote:irori".into(), MERGE_MAIN.into());
+        let p = spawn_permissions(&set, "", "remote:irori", &mine);
+        assert!(!rules(&p, "deny").contains(&"Bash(git push origin main:*)".to_string()));
+        let p = spawn_permissions(&set, "", "remote:other", &mine);
+        assert!(rules(&p, "deny").contains(&"Bash(git push origin main:*)".to_string()));
+        set.permission = PERMISSION_EDITS.into();
+        let p = spawn_permissions(&set, "", "remote:irori", &mine);
+        assert!(rules(&p, "allow").is_empty());
+    }
+
+    #[test]
+    fn bad_permission_fields_are_refused() {
+        let ok = SpawnSetting::default();
+        assert!(valid_permissions(&ok).is_ok());
+        for bad in [
+            SpawnSetting {
+                permission: "yolo".into(),
+                ..SpawnSetting::default()
+            },
+            SpawnSetting {
+                allow: vec!["a\nb".into()],
+                ..SpawnSetting::default()
+            },
+            SpawnSetting {
+                merge: [("r".to_string(), "squash".to_string())].into(),
+                ..SpawnSetting::default()
+            },
+        ] {
+            assert!(valid_permissions(&bad).is_err(), "{bad:?}");
         }
     }
 
