@@ -4,7 +4,7 @@
 // page and the message dialog still have the full forms (mentions, files);
 // a row has the everyday answers.
 
-import { useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,7 +19,8 @@ import {
   type CardSummary,
 } from "@/lib/cards"
 import { plainLine, relativeTime } from "@/lib/irori"
-import type { Need } from "@/lib/needs"
+import { AgentsService } from "@/lib/host"
+import { NOT_TRUSTED, type Need } from "@/lib/needs"
 import { answerable } from "@/lib/thread"
 import {
   allowLifts,
@@ -59,6 +60,8 @@ export function NeedsYou({
             <li key={`${n.kind}:${n.id}`} className="min-w-0">
               {n.kind === "check" || n.kind === "decision" ? (
                 <CardNeed need={n} now={now} onOpen={onOpenCard} />
+              ) : n.kind === "trust" ? (
+                <TrustRow need={n} now={now} onOpen={onOpenCard} />
               ) : n.kind === "review" ? (
                 <ReviewNeed need={n} now={now} onOpen={onOpenCard} />
               ) : n.kind === "held" ? (
@@ -76,6 +79,7 @@ const kinds = {
   check: { label: "Done check", variant: "success" },
   decision: { label: "Decision", variant: "destructive" },
   review: { label: "Review", variant: "warning" },
+  trust: { label: "Trust", variant: "warning" },
   message: { label: "Message", variant: "info" },
   held: { label: "Held", variant: "warning" },
 } as const
@@ -256,6 +260,72 @@ function ReviewNeed({
     </Row>
   )
 }
+
+// TrustRow is a card whose agent can't start because its repo isn't
+// trusted for agents on that device (card #449, spawned agents §7 "The
+// pre-trust flow"): it says what trusting does, and Trust and start
+// records it (from this window only) and starts the agent.
+function TrustRow({
+  need,
+  now,
+  onOpen,
+}: {
+  need: Extract<Need, { kind: "trust" }>
+  now: Date
+  onOpen: (id: string) => void
+}) {
+  const c = need.card
+  const act = useAct()
+  const [info, setInfo] = useState<TrustInfo | null>(null)
+  useEffect(() => {
+    let live = true
+    AgentsService.TrustNeed(c.id)
+      .then((n) => live && setInfo(n ?? null))
+      .catch(() => live && setInfo(null))
+    return () => {
+      live = false
+    }
+  }, [c.id, c.cantStart])
+  const folder = info?.folder ?? (c.cantStart ?? "").slice(NOT_TRUSTED.length)
+  const where = (
+    <button
+      type="button"
+      className="font-mono tabular-nums underline-offset-2 hover:underline"
+      onClick={() => onOpen(c.id)}
+    >
+      {cardRef(c)}
+    </button>
+  )
+  return (
+    <Row kind="trust" where={where} at={need.at} now={now} title={plainLine(c.title)}>
+      <p className="text-sm break-words text-muted-foreground">
+        Can't start an agent: <span className="font-mono">{folder}</span> isn't trusted for agents
+        {info ? (info.here ? " on this computer" : ` on ${info.device}`) : ""}.
+        {info?.what ? ` ${info.what}` : ""}
+      </p>
+      <span className="flex flex-wrap items-center gap-1.5">
+        {info && !info.here ? (
+          <span className="text-[12.5px] text-muted-foreground">
+            Open Irori on {info.device} to trust it there.
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            disabled={act.busy || !!act.done}
+            onClick={() =>
+              void act.run(() => AgentsService.TrustAndStart(c.id), "Trusted. Starting its agent…")
+            }
+          >
+            {act.busy ? "Trusting…" : "Trust and start"}
+          </Button>
+        )}
+      </span>
+      <Said error={act.error} done={act.done} />
+    </Row>
+  )
+}
+
+type TrustInfo = { folder: string; device: string; here: boolean; what: string }
 
 // CardNeed is a card waiting on the person: its done check (Done, or Not
 // done with a reason) or each of its decisions (the options, recommended

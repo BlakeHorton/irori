@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { TaskState, withLive, workingNow, type AgentRef, type CardSummary } from "./cards"
-import { IDLE_LINE, needsOf, needsYou, rowState, toPerson } from "./needs"
+import { IDLE_LINE, needsOf, needsYou, rowState, toPerson, waitsOnTrust } from "./needs"
 import { State, type Delivery } from "./talk"
 
 const card = (c: Partial<CardSummary>): CardSummary =>
@@ -227,5 +227,23 @@ describe("what waits on the person (card #347)", () => {
     const r = got[0]
     expect(r.kind === "review" && r.cards.map((c) => c.id)).toEqual(["330", "334"])
     expect(r.at).toBe(Date.parse("2026-11-03T18:36:00Z"))
+  })
+})
+
+describe("trust (card #449)", () => {
+  test("a card whose agent can't start for trust is a Trust row", () => {
+    const t = card({ id: "t", cantStart: "not trusted: /r/api on dev1", state: TaskState.Submitted })
+    const other = card({ id: "o", cantStart: "no checkout of remote:x on dev1" })
+    expect(waitsOnTrust(t)).toBe(true)
+    expect(waitsOnTrust(other)).toBe(false)
+    expect(needsOf([t, other], []).map((n) => `${n.kind}:${n.id}`)).toEqual(["trust:t"])
+  })
+  test("a card already waiting on the person stays one row", () => {
+    const t = card({ id: "t", cantStart: "not trusted: /r on d", openBlockers: 1 })
+    expect(needsOf([t], []).map((n) => n.kind)).toEqual(["decision"])
+  })
+  test("a closed card has no trust row", () => {
+    const t = card({ id: "t", cantStart: "not trusted: /r on d", state: TaskState.Completed })
+    expect(needsOf([t], [])).toEqual([])
   })
 })

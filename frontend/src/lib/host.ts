@@ -267,6 +267,15 @@ export const NotesService = {
   CardWakeNotes: (taskId: string) => call(commands.cardWakeNotes(taskId)),
 }
 
+// AgentsService is the window's agents_* commands (card #449): Trust and
+// start for a card whose repo isn't trusted, and a board's permissions.
+export const AgentsService = {
+  TrustNeed: (taskId: string) => call(commands.agentsTrustNeed(taskId)),
+  TrustAndStart: (taskId: string) => call(commands.agentsTrustAndStart(taskId)),
+  Permissions: (boardId: string) => call(commands.agentsPermissions(boardId)),
+  SetPermissions: (p: B.AgentPermissions) => call(commands.agentsPermissionsSet(p)),
+}
+
 export const BoardsService = {
   List: () => call(commands.boardsList()),
   Create: (name: string, tag: string) => call(commands.boardsCreate(name, tag)),

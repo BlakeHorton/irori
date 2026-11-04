@@ -98,8 +98,19 @@ export function rowState(
 }
 
 // Need is one item of the Needs you list.
+// NOT_TRUSTED starts a card's cantStart when its agent couldn't start
+// because its repo isn't trusted for agents on that device (card #449).
+export const NOT_TRUSTED = "not trusted: "
+
+// waitsOnTrust says the card's agent can't start until the person trusts
+// its repo: a Trust and start row in Needs you.
+export function waitsOnTrust(c: CardSummary): boolean {
+  return !over(c) && !!c.cantStart?.startsWith(NOT_TRUSTED)
+}
+
 export type Need =
   | { kind: "check" | "decision"; id: string; at: number; card: CardSummary }
+  | { kind: "trust"; id: string; at: number; card: CardSummary }
   | { kind: "review"; id: string; at: number; pr: ReviewPr; cards: CardSummary[] }
   | { kind: "held"; id: string; at: number; delivery: Delivery }
 
@@ -119,7 +130,7 @@ export function toPerson(d: Delivery): boolean {
 const time = (s: string | undefined) => parseTime(s ?? "")?.getTime() ?? 0
 
 // needsOf is the Needs you list, newest first: every card waiting on the
-// person (a done check, else a decision), each PR waiting on their review
+// person (a done check, else a decision, else its repo's trust: card #449), each PR waiting on their review
 // once with every card on it (card #347), and every message Irori held for
 // them. An agent's message to the person is a DM in Talk now (card #390,
 // design b1), not a row here. held is the Held list.
@@ -134,6 +145,10 @@ export function needsOf(cards: CardSummary[], held: Delivery[]): Need[] {
       at: time(c.updatedAt),
       card: c,
     })
+  }
+  for (const c of cards) {
+    if (!waitsOnTrust(c) || needsYou(c)) continue
+    out.push({ kind: "trust", id: c.id, at: time(c.updatedAt), card: c })
   }
   const reviews = new Map<string, Extract<Need, { kind: "review" }>>()
   for (const c of cards) {
