@@ -189,7 +189,7 @@ impl Window {
                 ..RunningAgent::default()
             });
         }
-        out.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        out.sort_by_key(|r| std::cmp::Reverse(r.started_at));
         out
     }
 
