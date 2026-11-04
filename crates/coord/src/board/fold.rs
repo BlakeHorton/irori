@@ -82,7 +82,7 @@ const CLOCK_SKEW: Duration = Duration::from_secs(120);
 pub const SUB_BUFFER: usize = 64;
 
 /// The row prefixes coord folds.
-pub const FOLLOW_KINDS: [&str; 8] = [
+pub const FOLLOW_KINDS: [&str; 10] = [
     "task.",
     "lease.",
     "blocker.",
@@ -91,6 +91,9 @@ pub const FOLLOW_KINDS: [&str; 8] = [
     "review.",
     "wait.",
     "note.",
+    // The merge desk (card #415).
+    "repo.desk",
+    "desk.",
 ];
 
 /// Whether coord folds `kind`.
@@ -310,6 +313,8 @@ pub struct Fold {
     pub(crate) review_before_block: HashSet<String>,
     /// Each card's linked PRs as GitHub last said they stand (card #208).
     pub(crate) pr_states: super::prstate::PrStates,
+    /// Merge desks by repo key (card #415).
+    pub(crate) desks: BTreeMap<String, super::desk::Desk>,
 }
 
 /// `stolenKey`: resource, holder and acquiredAt (RFC3339Nano, UTC).
@@ -423,6 +428,7 @@ impl Fold {
             deleted: HashSet::new(),
             review_before_block: HashSet::new(),
             pr_states: Default::default(),
+            desks: BTreeMap::new(),
         }
     }
 
@@ -980,6 +986,12 @@ impl Fold {
             | kinds::NOTE_EDITED
             | kinds::NOTE_REMOVED => self.fold_note(ev, &at),
             kinds::PR_STATE => self.fold_pr_state(ev),
+            kinds::REPO_DESK
+            | kinds::DESK_PRS
+            | kinds::DESK_HOLD
+            | kinds::DESK_PAUSE
+            | kinds::DESK_OK
+            | kinds::DESK_RUN => self.fold_desk(ev),
             kinds::LEASE_RELEASED => {
                 let Some(p) = row::<LeaseReleasedRow>(&ev.payload) else {
                     return;
