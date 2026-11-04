@@ -44,6 +44,7 @@ pub mod deskwatch;
 pub mod devices;
 pub mod diag;
 pub mod events;
+pub mod helpertree;
 pub mod lockfile;
 pub mod members;
 mod meshnode;
