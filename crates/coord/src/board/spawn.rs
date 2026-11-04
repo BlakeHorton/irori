@@ -443,6 +443,7 @@ impl Fold {
             .values()
             .filter(|t| super::offers::needs_agent(t) && self.hands_out(t))
             .filter(|t| t.spawn_crashes < MAX_SPAWN_CRASHES)
+            .filter(|t| !self.waits_for_lead(t))
             .filter(|t| {
                 t.spawn_request()
                     .is_none_or(|s| !s.pending() || s.stale(&now))

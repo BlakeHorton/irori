@@ -35,6 +35,8 @@ pub(crate) struct CleanTask {
     pub repo_key: String,
     pub reason: String,
     pub parent: String,
+    /// A helper's part of its parent (spawned agents §3).
+    pub spawn: bool,
     /// The thread it was made from (card #155).
     pub from: String,
     /// The board in its space (card #392).
@@ -113,6 +115,7 @@ pub(crate) fn clean_new(by: &str, nt: &NewTask) -> Result<CleanTask> {
         blocked_by: nt.blocked_by.clone(),
         steps: new_steps(&steps),
         parent: String::new(),
+        spawn: false,
         from: String::new(),
         board: String::new(),
     })
@@ -171,6 +174,7 @@ impl Fold {
                 shared: ct.shared,
                 links: ct.links.clone(),
                 parent: ct.parent.clone(),
+                spawn: ct.spawn,
                 from: ct.from.clone(),
                 board: ct.board.clone(),
                 by: by.into(),
@@ -403,7 +407,19 @@ impl Fold {
         // completed directly: the person (window, ask_close), Irori's
         // sweeper, a parent completing with its subtasks (fold), and an
         // ask's outcome (above).
-        if s == COMPLETED && self.done_check && self.is_agent_key(&by) {
+        // Several agents on one card (spawned agents §3): a helper's part
+        // goes to its lead, and the lead's completed accepts it, so only
+        // the parent card asks the person.
+        let lead = if s == COMPLETED && self.is_agent_key(&by) {
+            self.lead_of(&t)
+        } else {
+            Vec::new()
+        };
+        if let Some(l) = lead.first().filter(|_| !lead.contains(&by)) {
+            let l = l.clone();
+            return self.ask_lead(&by, &t, &l, &note, files);
+        }
+        if s == COMPLETED && self.done_check && self.is_agent_key(&by) && lead.is_empty() {
             return self.ask_done(&by, &t, &note, files, need_proof);
         }
         if t.state == s && t.note == note {

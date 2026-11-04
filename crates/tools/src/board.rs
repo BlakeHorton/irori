@@ -767,6 +767,7 @@ pub(crate) fn steps_of(v: &[StepArg]) -> Vec<Step> {
             done: st.done,
             doing: st.doing,
             owner: st.owner.clone(),
+            spawn: st.spawn,
         })
         .collect()
 }
@@ -1717,6 +1718,11 @@ pub(crate) fn board_steps(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     };
     // Owners by name or key, as the board's coord knows them (card #86).
     let mut steps = steps_of(&a.steps("steps"));
+    let asked: Vec<String> = steps
+        .iter()
+        .filter(|st| st.spawn)
+        .map(|st| trim(&st.text).to_string())
+        .collect();
     let mut keys = vec![c.sender.key.clone()];
     for st in &steps {
         let o = trim(&st.owner);
@@ -1752,6 +1758,12 @@ pub(crate) fn board_steps(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         "{} has {n} steps, {d} done. Tick them with board_step as you go.{told}\n",
         t.short_ref()
     );
+    if asked
+        .iter()
+        .any(|x| !t.steps.iter().any(|st| st.spawn && st.text == *x))
+    {
+        b.push_str(SPAWN_REFUSED_TOOL);
+    }
     for st in &t.steps {
         let mark = if st.done {
             "[x]"
@@ -1760,11 +1772,14 @@ pub(crate) fn board_steps(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         } else {
             "[ ]"
         };
-        let owner = if st.owner.is_empty() {
+        let mut owner = if st.owner.is_empty() {
             String::new()
         } else {
             format!(" (owner: {})", names.who(&st.owner))
         };
+        if st.spawn {
+            owner.push_str(" (spawn)");
+        }
         let _ = writeln!(
             b,
             "- {mark} {} {}{owner}",
@@ -2407,12 +2422,17 @@ fn release_request(s: &Inner, c: &Caller, res: &str, why: &str) -> Option<String
 
 // --- board_split ---
 
+/// What a caller hears when its spawn marks were set aside (spawned
+/// agents §3): the edit itself went through.
+const SPAWN_REFUSED_TOOL: &str = "Your spawn marks were set aside: only the card's owner or their agents ask for helpers. The rest of the change went through.\n";
+
 const SUBTASK_FIELDS: &[(&str, Ty)] = &[
     ("title", Ty::Str),
     ("objective", Ty::Str),
     ("done_when", Ty::Str),
     ("steps", Ty::Strs),
     ("assign_to", Ty::Str),
+    ("spawn", Ty::Bool),
 ];
 
 const SPLIT_ARGS: &[(&str, Ty)] = &[
@@ -2439,6 +2459,7 @@ pub(crate) fn board_split(s: &Inner, c: &Caller, raw: &[u8]) -> String {
     }
     let mut subs = Vec::with_capacity(subtasks.len());
     let mut to = vec![String::new(); subtasks.len()];
+    let asked: Vec<bool> = subtasks.iter().map(|st| st.bool("spawn")).collect();
     for (i, st) in subtasks.iter().enumerate() {
         if trim(st.str("title")).is_empty() {
             return err_text(&format!("subtask {} needs a title.", i + 1));
@@ -2455,6 +2476,7 @@ pub(crate) fn board_split(s: &Inner, c: &Caller, raw: &[u8]) -> String {
             objective: trim(st.str("objective")).into(),
             done_criteria: trim(st.str("done_when")).into(),
             steps: st.strs("steps"),
+            spawn: st.bool("spawn"),
         });
     }
     // Subtasks go in the parent's log.
@@ -2473,11 +2495,15 @@ pub(crate) fn board_split(s: &Inner, c: &Caller, raw: &[u8]) -> String {
         "{} is a parent now; its progress and state follow its subtasks, and you keep holding it.",
         p.short_ref()
     );
+    if made.iter().zip(&asked).any(|(k, a)| *a && !k.spawn) {
+        b += &format!("\n{}", SPAWN_REFUSED_TOOL.trim_end());
+    }
     for (i, k) in made.iter().enumerate() {
         b += &format!(
-            "\nCreated {} {}.",
+            "\nCreated {} {}{}.",
             k.short_ref(),
-            quoted(&one_line(&k.title, MAX_CARD_TITLE), MAX_CARD_TITLE)
+            quoted(&one_line(&k.title, MAX_CARD_TITLE), MAX_CARD_TITLE),
+            if k.spawn { " (spawn)" } else { "" }
         );
         if to.get(i).is_none_or(|t| t.is_empty()) {
             continue;

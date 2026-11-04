@@ -1,0 +1,151 @@
+//! Several agents on one card (docs/design/spawned-agents.md §3, part 7):
+//! the `spawn` mark on a card's steps and on the subtasks a split makes,
+//! who may set it, and who closes a helper's part.
+//!
+//! A mark asks Irori for a helper on that part. Only the card's owner's
+//! person, or one of their agents, may set it: on a shared board anyone
+//! may edit a card's steps (card #320), and a mark from someone else would
+//! start an agent on the owner's machine. Every member's fold applies the
+//! same rule, by the writing device, so a row written straight to the log
+//! gets no further than a call does.
+//!
+//! A subtask split off marked is a helper's part. Its agent's completed
+//! goes to the parent's holder (the lead), not to the person: a card split
+//! four ways asks the person once, on the parent.
+
+use gocompat::time::GoTime;
+
+use super::MAX_OBJECTIVE;
+use super::error::Result;
+use super::fold::Fold;
+use super::types::*;
+use super::util::cut;
+
+/// The thread line's tail when a row's marks were set aside.
+pub(crate) const SPAWN_REFUSED: &str =
+    "its spawn marks were set aside: only the card's owner or their agents ask for helpers";
+
+/// A helper's question to its lead when it says its part is done.
+pub const PART_QUESTION: &str = "Part done: merge it and accept?";
+
+/// The context when the helper gave no proof.
+const PART_CONTEXT: &str = "The helper says its part is done. Merge its branch into the card's branch, then accept with board_status completed on this subtask, or say what is missing on its thread.";
+
+impl Fold {
+    /// Whether a row written by `device` may set spawn marks on card t.
+    /// Off a board every row is the person's own.
+    pub(crate) fn may_spawn_on(&self, t: &Task, device: &str) -> bool {
+        if !self.on_board {
+            return true;
+        }
+        let p = self.writer_person(device);
+        !p.is_empty() && p == self.owner_person(t)
+    }
+
+    /// Whether caller `by` may set spawn marks on card t now.
+    pub(crate) fn may_spawn_by(&self, t: &Task, by: &str) -> bool {
+        if !self.on_board {
+            return true;
+        }
+        let p = self.person_of(by);
+        !p.is_empty() && p == self.owner_person(t)
+    }
+
+    /// The lead of helper part t: its open parent's holders. Empty when t
+    /// isn't a marked part or nobody leads it, and then t's completed
+    /// works as any card's.
+    pub(crate) fn lead_of(&self, t: &Task) -> Vec<String> {
+        if !t.spawn || t.parent.is_empty() {
+            return Vec::new();
+        }
+        self.tasks
+            .get(&t.parent)
+            .filter(|p| !is_terminal(&p.state))
+            .map(|p| p.holders.clone())
+            .unwrap_or_default()
+    }
+
+    /// An unmarked subtask of a led card (§3): it isn't spawned on its own,
+    /// since the lead asks for the helpers it wants (a mark) or assigns it.
+    pub(crate) fn waits_for_lead(&self, t: &Task) -> bool {
+        !t.spawn
+            && !t.parent.is_empty()
+            && self
+                .tasks
+                .get(&t.parent)
+                .is_some_and(|p| !is_terminal(&p.state) && !p.holders.is_empty())
+    }
+
+    /// A helper's completed on its part: a question for the lead on the
+    /// subtask, with the helper's proof, in place of the person's done
+    /// check. An earlier one still open is closed first.
+    pub(crate) fn ask_lead(
+        &mut self,
+        by: &str,
+        t: &Task,
+        lead: &str,
+        note: &str,
+        files: Vec<FileRef>,
+    ) -> Result<Task> {
+        let earlier: Vec<String> = t
+            .blockers
+            .iter()
+            .filter(|b| b.open() && b.question == PART_QUESTION)
+            .map(|b| b.id.clone())
+            .collect();
+        for bid in earlier {
+            self.answer(
+                by,
+                &t.id,
+                &bid,
+                BlockerAnswer {
+                    text: "asked again: ready for the lead".into(),
+                    resolve: true,
+                    ..BlockerAnswer::default()
+                },
+            )?;
+        }
+        let t = self.open_task(&t.id)?.clone();
+        let cx = if note.is_empty() {
+            PART_CONTEXT.to_string()
+        } else {
+            cut(note, MAX_OBJECTIVE)
+        };
+        let now: GoTime = self.stamp();
+        let bb = Some(BlockedBy {
+            kind: BLOCKED_ON_AGENT.into(),
+            reference: lead.into(),
+        });
+        let (nt, _) = self.raise_locked(
+            by,
+            &t,
+            PART_QUESTION,
+            PART_QUESTION,
+            &cx,
+            Vec::new(),
+            bb,
+            false,
+            now,
+            Vec::new(),
+            files,
+            false,
+            false,
+        )?;
+        Ok(nt)
+    }
+}
+
+/// Keeps `was`'s marks on `steps`, by step id, for a writer who may not
+/// set them: it neither adds a mark nor drops one. True when it changed
+/// any.
+pub(crate) fn keep_marks(was: &[Step], steps: &mut [Step]) -> bool {
+    let mut changed = false;
+    for s in steps.iter_mut() {
+        let old = was.iter().any(|o| o.id == s.id && o.spawn);
+        if s.spawn != old {
+            s.spawn = old;
+            changed = true;
+        }
+    }
+    changed
+}

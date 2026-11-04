@@ -1080,6 +1080,14 @@ impl Fold {
         if self.on_board {
             self.origin.insert(p.task_id.clone(), ev.device_id.clone());
         }
+        // A helper's part (spawned agents §3): marked only by the parent
+        // owner's side.
+        task.spawn = p.spawn
+            && self
+                .tasks
+                .get(&p.parent)
+                .filter(|_| !p.parent.is_empty())
+                .is_some_and(|pt| self.may_spawn_on(pt, &ev.device_id));
         self.sync_pin(&mut task);
         self.tasks.insert(p.task_id.clone(), task);
         if !p.parent.is_empty() {

@@ -43,7 +43,7 @@ impl Fold {
     }
 
     /// The person whose device wrote a row, on a board.
-    fn writer_person(&self, device: &str) -> String {
+    pub(crate) fn writer_person(&self, device: &str) -> String {
         match (self.on_board, &self.dev_person) {
             (true, Some(dp)) => dp(device),
             _ => String::new(),

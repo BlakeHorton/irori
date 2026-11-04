@@ -302,9 +302,14 @@ impl Fold {
         }
         let t = self.open_task(id)?.clone();
         self.check_parent(id, "")?;
+        let may_spawn = self.may_spawn_by(&t, &by);
         let mut placed: Vec<String> = Vec::new();
         let mut made = Vec::with_capacity(subs.len());
+        let mut marks = Vec::with_capacity(subs.len());
         for s in &subs {
+            // A helper's part (spawned agents §3): asked for here, or a
+            // marked step moving to it.
+            let mut mark = s.spawn && may_spawn;
             let mut nt = NewTask {
                 title: s.title.clone(),
                 objective: s.objective.clone(),
@@ -323,6 +328,7 @@ impl Fold {
                         return Err(invalid(format!("step {txt} is given to two subtasks")));
                     }
                     placed.push(txt.clone());
+                    mark |= old.spawn;
                     nt.steps.push(Step {
                         text: old.text.clone(),
                         doing: old.doing,
@@ -336,6 +342,7 @@ impl Fold {
                 });
             }
             made.push(nt);
+            marks.push(mark);
         }
         let unplaced: Vec<String> = t
             .steps
@@ -354,6 +361,7 @@ impl Fold {
             let mut ct =
                 clean_new(&by, nt).map_err(|e: Error| e.prefixed(format!("subtask {}", i + 1)))?;
             ct.parent = id.into();
+            ct.spawn = marks[i];
             cleaned.push(ct);
         }
         let mut adopt_ids: Vec<String> = Vec::new();

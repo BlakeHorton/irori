@@ -28,6 +28,7 @@ fn step(text: &str) -> Step {
 fn st(id: &str, text: &str, done: bool, doing: bool) -> Step {
     Step {
         owner: String::new(),
+        spawn: false,
         id: id.into(),
         text: text.into(),
         done,

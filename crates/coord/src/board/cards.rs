@@ -285,6 +285,7 @@ pub(crate) fn new_steps(input: &[Step]) -> Vec<Step> {
             doing: s.doing,
             // board_create gives no owners; board_steps does (card #86).
             owner: String::new(),
+            spawn: false,
         })
         .collect()
 }
@@ -797,6 +798,12 @@ impl Fold {
                     *seq = (*seq).max(seq_of(&s.id, "s"));
                     ss.push(s.clone());
                 }
+                // Spawn marks only from the card's owner's side (§3).
+                let refused = {
+                    let t = &self.tasks[&p.task_id];
+                    !self.may_spawn_on(t, &ev.device_id)
+                        && super::parts::keep_marks(&t.steps, &mut ss)
+                };
                 let t = self.tasks.get_mut(&p.task_id).expect("checked");
                 let was = std::mem::replace(&mut t.steps, norm_steps(ss));
                 let when = at(p.at);
@@ -805,7 +812,10 @@ impl Fold {
                 take_up(t, &p.by);
                 sync_co_holders(t);
                 let (d, n) = t.progress();
-                let what = format!("{} ({d}/{n} done)", steps_change(&was, &t.steps));
+                let mut what = format!("{} ({d}/{n} done)", steps_change(&was, &t.steps));
+                if refused {
+                    what = format!("{what}; {}", super::parts::SPAWN_REFUSED);
+                }
                 let ti = Touch::of(t);
                 self.touch(ev, &ti, when, &p.by, &what, true, Vec::new());
                 task_id = p.task_id;
@@ -1833,6 +1843,7 @@ impl Fold {
                 t.short_ref()
             )));
         }
+        let may_spawn = self.may_spawn_by(&t, &by);
         let mut seq = self.step_seq.get(id).copied().unwrap_or(0);
         let mut used: Vec<String> = Vec::new();
         let mut out = Vec::with_capacity(input.len());
@@ -1853,7 +1864,11 @@ impl Fold {
                 sid = format!("s{seq}");
             }
             used.push(sid.clone());
+            // A mark stays once set (spawned agents §3); only the card's
+            // owner's side adds one.
+            let had = t.steps.iter().any(|o| o.id == sid && o.spawn);
             out.push(Step {
+                spawn: had || (s.spawn && may_spawn),
                 id: sid,
                 text: s.text.clone(),
                 done: s.done,

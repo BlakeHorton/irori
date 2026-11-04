@@ -1917,3 +1917,86 @@ fn an_owner_row_from_the_wrong_side_is_ignored() {
     assert_eq!(b.c.get_task(&t.id).unwrap().owner, "");
     assert_eq!(a.c.get_task(&t.id).unwrap().owner, "");
 }
+
+fn spawn_step(text: &str) -> Step {
+    Step {
+        text: text.into(),
+        spawn: true,
+        ..Step::default()
+    }
+}
+
+/// Part 7 (spawned agents §3): another person's agent can edit p1's
+/// card's steps, but its spawn marks are set aside, on both sides; p1's
+/// own agent sets one.
+#[test]
+fn another_persons_spawn_mark_on_a_card_is_refused() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let got =
+        b.c.set_steps(CARD2, &t.id, vec![spawn_step("tests")])
+            .unwrap();
+    assert_eq!(got.steps[0].text, "tests", "the edit goes through");
+    assert!(!got.steps[0].spawn, "the mark doesn't");
+    sync(&a, &b);
+    assert!(!a.c.get_task(&t.id).unwrap().steps[0].spawn);
+    // A row written straight to the log gets no further.
+    b.st.append(
+        CARD2,
+        kinds::TASK_STEPS,
+        &coord::rows::TaskStepsRow {
+            task_id: t.id.clone(),
+            steps: vec![Step {
+                id: "s1".into(),
+                ..spawn_step("tests")
+            }],
+            by: CARD2.into(),
+            at: fixed_now(),
+        },
+    )
+    .unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        assert!(!s.c.get_task(&t.id).unwrap().steps[0].spawn);
+    }
+    // The owner's agent marks it, and both sides agree.
+    a.c.set_steps(CARD1, &t.id, vec![spawn_step("tests")])
+        .unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        assert!(s.c.get_task(&t.id).unwrap().steps[0].spawn);
+    }
+    // p2's agent redoing the steps can't drop it either.
+    b.c.set_steps(
+        CARD2,
+        &t.id,
+        vec![Step {
+            text: "tests".into(),
+            ..Step::default()
+        }],
+    )
+    .unwrap();
+    sync(&a, &b);
+    assert!(a.c.get_task(&t.id).unwrap().steps[0].spawn);
+}
+
+#[test]
+fn another_persons_split_makes_no_helper_parts() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let r = b.c.split(
+        CARD2,
+        &t.id,
+        vec![NewSubtask {
+            title: "part".into(),
+            spawn: true,
+            ..NewSubtask::default()
+        }],
+        vec![],
+    );
+    let (_, made) = r.unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        assert!(!s.c.get_task(&made[0].id).unwrap().spawn);
+    }
+}

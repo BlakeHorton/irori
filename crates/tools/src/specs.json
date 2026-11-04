@@ -588,6 +588,10 @@
               "assign_to": {
                 "type": "string",
                 "description": "Optional: hand it to this agent (name or key)."
+              },
+              "spawn": {
+                "type": "boolean",
+                "description": "Optional: ask Irori for a helper agent on this subtask (only the card's owner or their agents)."
               }
             },
             "required": [
@@ -897,6 +901,10 @@
               "owner": {
                 "type": "string",
                 "description": "Optional: the agent doing this step (name or key). It co-holds the card until its steps are done."
+              },
+              "spawn": {
+                "type": "boolean",
+                "description": "Optional: ask Irori for a helper agent on this step (only the card's owner or their agents); once set it stays."
               }
             },
             "required": [

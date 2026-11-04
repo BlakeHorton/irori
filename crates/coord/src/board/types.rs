@@ -111,6 +111,10 @@ crate::go_struct! {
         /// The agent doing this step, a co-holder of the card while the
         /// step is open (card #86).
         pub owner: String = "owner" "omit",
+        /// The card's lead asks Irori for a helper on this step (spawned
+        /// agents §3). Only the card's author or the author's agents may
+        /// set it; once set it stays.
+        pub spawn: bool = "spawn" "omit",
     }
 }
 
@@ -441,6 +445,12 @@ pub struct Task {
     pub let_go: Option<(String, GoTime)>,
     #[serde(skip_serializing_if = "omit")]
     pub parent: String,
+    /// A helper's part (spawned agents §3): the subtask was split off
+    /// marked `spawn` by the parent's author or the author's agent. Its
+    /// agent's completed goes to the parent's holder (the lead), not to
+    /// the person.
+    #[serde(skip_serializing_if = "omit")]
+    pub spawn: bool,
     #[serde(skip_serializing_if = "omit")]
     pub subtasks: Vec<String>,
     /// The thread this card was made from (card #155).
@@ -1009,6 +1019,8 @@ pub struct NewSubtask {
     pub done_criteria: String,
     /// Step ids of the card being split (they move) or new step texts.
     pub steps: Vec<String>,
+    /// Asks for a helper on this subtask (spawned agents §3).
+    pub spawn: bool,
 }
 
 /// What a shared board's fold set aside: rows naming something the log
