@@ -556,6 +556,7 @@ impl Services {
         self.bind_spawns();
         self.end_finished();
         self.sweep_ending();
+        self.sweep_permission_waits();
         if self.inbox.policy().paused {
             return;
         }

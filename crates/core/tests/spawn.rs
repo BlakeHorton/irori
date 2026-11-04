@@ -293,3 +293,101 @@ fn the_boards_permission_choice_reaches_the_spawn() {
     assert!(rows.len() >= 2);
     assert!(rows.iter().all(|ev| ev.actor == "user"), "{rows:?}");
 }
+
+/// Card #449: a spawned agent stopped on a permission prompt (Claude Code's
+/// session file says `waiting`, `waitingFor: "permission prompt"`) puts one
+/// "Waiting for your permission" blocker on its card, on the person; once
+/// it's past the prompt the blocker resolves.
+#[test]
+fn a_spawned_agent_on_a_permission_prompt_waits_on_the_person() {
+    let r = Rig::new();
+    let work = tempfile::tempdir().unwrap();
+    let fake = Arc::new(Fake::default());
+    let me = r.core.device_id().to_string();
+    let person = format!("user:{me}");
+    let spawned = format!("{me}/{SPAWNED_SESS}");
+    let co = r.core.coord();
+    let sessions = r.claude.join("sessions");
+
+    r.core
+        .set_spawn_setting(SpawnSetting {
+            on: true,
+            ..SpawnSetting::default()
+        })
+        .unwrap();
+    let t = co
+        .create_task(
+            &person,
+            NewTask {
+                title: "Ship it".into(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    co.set_where(
+        &t.id,
+        Where {
+            who: r.key_a.clone(),
+            cwd: work.path().to_string_lossy().into(),
+            worktree: work.path().to_string_lossy().into(),
+            ..Where::default()
+        },
+    )
+    .unwrap();
+    r.core.set_spawner(Some(spawner(&fake, sessions.clone())));
+    wait_for(60, "the spawned agent bound to the card", || {
+        co.get_task(&t.id)
+            .is_some_and(|t| t.holders.contains(&spawned))
+    });
+    let name = fake.started.lock().unwrap()[0].name.clone();
+
+    let set_status = |status: &str, waiting_for: &str| {
+        let f = sessions.join("900003.json");
+        let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&f).unwrap()).unwrap();
+        m["status"] = status.into();
+        m["waitingFor"] = waiting_for.into();
+        m["updatedAt"] = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64)
+            .into();
+        std::fs::write(&f, serde_json::to_vec(&m).unwrap()).unwrap();
+    };
+    let waits = |co: &coord::Coord| -> Vec<coord::Blocker> {
+        co.get_task(&t.id)
+            .unwrap()
+            .blockers
+            .into_iter()
+            .filter(|b| b.open() && b.question.starts_with("Waiting for your permission"))
+            .collect()
+    };
+
+    set_status("waiting", "permission prompt");
+    wait_for(60, "the permission blocker", || {
+        r.core.set_spawn_cap(r.core.spawn_cap()).unwrap();
+        waits(co).len() == 1
+    });
+    let b = &waits(co)[0];
+    assert!(
+        b.question.contains(&name) || b.question.contains("Its agent"),
+        "{}",
+        b.question
+    );
+    assert_eq!(
+        b.on.as_ref().map(|o| o.kind.as_str()),
+        Some(coord::BLOCKED_ON_PERSON)
+    );
+    assert!(b.context.contains("Attach"), "{}", b.context);
+    // More sweeps don't raise a second one.
+    for _ in 0..3 {
+        r.core.set_spawn_cap(r.core.spawn_cap()).unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert_eq!(waits(co).len(), 1);
+
+    set_status("busy", "");
+    wait_for(60, "the permission blocker resolved", || {
+        r.core.set_spawn_cap(r.core.spawn_cap()).unwrap();
+        waits(co).is_empty()
+    });
+}
