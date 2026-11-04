@@ -301,7 +301,10 @@ export const talk = {
 // ---- hooks ------------------------------------------------------------------
 
 // useLatest runs load and keeps only the newest answer: calls are async and
-// can come back out of order.
+// can come back out of order. An answer equal to the one shown keeps the
+// state as it is (0.11.1): App reloads several lists on every board or
+// inbox change, several times a second while agents work, and each new
+// array re-rendered the whole window.
 export function useLatest<T>(load: () => Promise<T>, initial: T) {
   const [state, setState] = useState<{
     value: T
@@ -310,6 +313,7 @@ export function useLatest<T>(load: () => Promise<T>, initial: T) {
   }>({ value: initial, loading: true, error: null })
   const req = useRef(0)
   const mounted = useRef(true)
+  const shown = useRef<string | null>(null)
 
   useEffect(() => {
     mounted.current = true
@@ -323,14 +327,34 @@ export function useLatest<T>(load: () => Promise<T>, initial: T) {
     try {
       const value = await load()
       if (!mounted.current || n !== req.current) return
-      setState({ value, loading: false, error: null })
+      const same = sameAs(shown, value)
+      setState((s) =>
+        same && !s.loading && s.error === null
+          ? s
+          : { value, loading: false, error: null }
+      )
     } catch (err) {
       if (!mounted.current || n !== req.current) return
+      shown.current = null
       setState((s) => ({ ...s, loading: false, error: message(err) }))
     }
   }, [load])
 
   return { ...state, reload }
+}
+
+// sameAs says whether value serializes the same as the last one seen in
+// key, and remembers it. Values that can't be serialized never match.
+export function sameAs(key: { current: string | null }, value: unknown): boolean {
+  let next: string | null
+  try {
+    next = JSON.stringify(value) ?? null
+  } catch {
+    next = null
+  }
+  const same = next !== null && next === key.current
+  key.current = next
+  return same
 }
 
 export type InboxState = {

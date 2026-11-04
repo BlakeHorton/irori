@@ -65,7 +65,7 @@ import { ProfilePage } from "@/components/profile/profile-page"
 import { useMe } from "@/lib/profile"
 import { AllSpaces, Personal, cardInSpace, threadsSpace, useSpace } from "@/lib/spaces"
 import { NotificationsPage } from "@/components/notifications-page"
-import { unreadCount, useNotifications } from "@/lib/notifications"
+import { useNotifications, useUnreadNotifications } from "@/lib/notifications"
 import { go, Home, sameSection, sectionFromHash, type Section } from "@/lib/nav"
 import { CommandPalette, PaletteJump, paletteOpenKey } from "@/components/command-palette"
 import { isMac, useCommands } from "@/lib/commands"
@@ -208,7 +208,7 @@ export function App() {
   const [message, setMessage] = useState("")
   // The notification history (card #377): the sidebar's unread count and
   // the Notifications page.
-  const notifications = useNotifications()
+  const unreadNotifications = useUnreadNotifications()
   // The Held list: open, its tab, and the one sender it shows ("" = all).
   const [heldOpen, setHeldOpen] = useState(false)
   const [heldTab, setHeldTab] = useState<HeldTab>("waiting")
@@ -572,7 +572,7 @@ export function App() {
             .reduce((n, d) => n + deskQueue(inputsOf(d)).filter((l) => l.state === "outside").length, 0),
         }}
         onHeld={() => openHeld("")}
-        unread={unreadCount(notifications.list)}
+        unread={unreadNotifications}
         section={open ? null : section}
         notesWaiting={notesWaiting}
         boardsNeedYou={boardDecide.length}
@@ -707,10 +707,7 @@ export function App() {
           </Scroll>
         ) : section.kind === "notifications" ? (
           <Scroll>
-            <NotificationsPage
-              list={notifications.list}
-              loading={notifications.loading}
-              error={notifications.error}
+            <NotificationsLive
               now={now}
               onOpenCard={openCard}
               onOpenMessage={setMessage}
@@ -912,4 +909,13 @@ function Scroll({ children }: { children: ReactNode }) {
       {children}
     </div>
   )
+}
+
+// NotificationsLive is the Notifications page with its list, read only
+// while the page is open (0.11.1: the sidebar's badge reads a count).
+function NotificationsLive(
+  props: Omit<Parameters<typeof NotificationsPage>[0], "list" | "loading" | "error">
+) {
+  const { list, loading, error } = useNotifications()
+  return <NotificationsPage {...props} list={list} loading={loading} error={error} />
 }

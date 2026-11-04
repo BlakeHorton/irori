@@ -7,6 +7,7 @@
 // Field names follow §7's row schemas so the generated models drop in.
 
 import { useSyncExternalStore } from "react"
+import { sameAs } from "@/lib/talk"
 
 import { DeskService, Events } from "./host"
 import { inWails, parseTime } from "./irori"
@@ -472,11 +473,16 @@ listeners.add(() => {
   if (!inWails()) snapshot = [...sampleState()]
 })
 
+const shownDesks: { current: string | null } = { current: null }
+
 // refresh reads every desk from the window again.
 function refresh(): void {
   if (!inWails()) return
   DeskService.List()
     .then((list) => {
+      // An unchanged list keeps its snapshot, so App doesn't re-render on
+      // every board change (0.11.1).
+      if (sameAs(shownDesks, list ?? [])) return
       snapshot = (list ?? []).map(fromHost)
       for (const fn of listeners) fn()
     })

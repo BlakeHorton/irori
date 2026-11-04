@@ -199,6 +199,37 @@ export function useNotifications(): {
   return { list: value, loading, error, reload }
 }
 
+// useUnreadNotifications is the sidebar's badge: just the count, re-read
+// when notifications change or the window comes back (0.11.1; the whole
+// list used to be rebuilt on every card or inbox change for it).
+export function useUnreadNotifications(): number {
+  const load = useCallback(
+    async (): Promise<number> =>
+      inWails()
+        ? NotificationService.Unread()
+        : unreadCount(sampleNotifications()),
+    []
+  )
+  const { value, reload } = useLatest<number>(load, 0)
+  useEffect(() => {
+    void reload()
+    if (!inWails()) {
+      sampleListeners.add(reload)
+      return () => {
+        sampleListeners.delete(reload)
+      }
+    }
+    const off = Events.On(EventNotificationsChanged, () => void reload())
+    const onFocus = () => void reload()
+    window.addEventListener("focus", onFocus)
+    return () => {
+      off()
+      window.removeEventListener("focus", onFocus)
+    }
+  }, [reload])
+  return value
+}
+
 // readNotifications marks items read; none named reads them all.
 export async function readNotifications(keys: string[]): Promise<void> {
   if (inWails()) return NotificationService.Read(keys)
