@@ -356,6 +356,10 @@ impl Agent {
             }
             std::thread::sleep(Duration::from_millis(200));
         }
+        // A terminal session is handed asks and unheld cards only once the
+        // person turns on "Offer it cards" for it (card #453): this one
+        // stands in for an agent they did, as scenarios 1 and 2 need.
+        h.core.set_agent_offer(&a.key, true)?;
         Ok(a)
     }
 
