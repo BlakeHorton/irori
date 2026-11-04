@@ -132,6 +132,21 @@ pub struct TestBackend {
     pub talk: Arc<coord::talk::Talk>,
 }
 
+impl TestBackend {
+    /// How many rows of `kind` the store holds (card #452's tests).
+    #[allow(dead_code)]
+    pub fn st_rows(&self, kind: &str) -> usize {
+        self.st
+            .list(&store::Filter {
+                kinds: vec![kind.into()],
+                limit: store::MAX_LIST_LIMIT,
+                ..store::Filter::default()
+            })
+            .unwrap()
+            .len()
+    }
+}
+
 impl Backend for TestBackend {
     fn agents(&self) -> Vec<presence::AgentCard> {
         self.roster.cards()

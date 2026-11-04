@@ -121,6 +121,67 @@ pub fn record_gone(co: &Coord, m: &Message, to: &str) -> inbox::Result<String> {
     }
 }
 
+/// Spawned agents part 8 (card #452, spawned-agents.md §4 "Reaching an
+/// agent that has gone"): `m` went to `to`, a spawned agent that has
+/// finished, and names no card of its own. It goes on the card `to` was
+/// spawned for, marked gone and written by Irori, and the notice returned
+/// wakes that card's holders with it ("for <name>, who has finished").
+/// `None` when `to` was never spawned for a card (today's path: the
+/// person gets it). Nothing here ever asks for an agent: a message is no
+/// authorization (§7), so a card nobody holds keeps it on its thread for
+/// the next agent's brief.
+pub fn record_for_finished(
+    co: &Coord,
+    m: &Message,
+    to: &str,
+    name: &str,
+) -> inbox::Result<Option<(String, Notice)>> {
+    let Some(tid) = co.spawned_card(to) else {
+        return Ok(None);
+    };
+    let Some(t) = co.get_task(&tid) else {
+        return Ok(None);
+    };
+    let mut on_card = m.clone();
+    on_card.ref_ = format!("task:{tid}");
+    let r = Record {
+        gone: true,
+        writer: "irori".into(),
+        ..Record::default()
+    };
+    match record_on_card(co, &on_card, to, &r) {
+        Ok(_) => {}
+        Err(RecordError::NoCard) => return Ok(None),
+        Err(RecordError::Coord(e)) => return Err(InboxError::other(e.to_string())),
+    }
+    let who = if name.trim().is_empty() {
+        to
+    } else {
+        name.trim()
+    };
+    let mut holders: Vec<String> = t.holders.clone();
+    if holders.is_empty() && !t.holder.is_empty() {
+        holders.push(t.holder.clone());
+    }
+    holders.retain(|h| h != to && !h.is_empty());
+    let n = Notice {
+        kind: coord::NOTICE_COMMENT.into(),
+        task_id: tid.clone(),
+        reference: format!("task:{tid}"),
+        title: t.title.clone(),
+        to: holders,
+        by: inbox::SYSTEM_KEY.into(),
+        text: format!(
+            "A message for {who}, who has finished, landed on {}: {}",
+            t.short_ref(),
+            one_line(&m.text, 300)
+        ),
+        wake: true,
+        ..Notice::default()
+    };
+    Ok(Some((tid, n)))
+}
+
 /// The inbox's `on_passed` over `co`: this device let `m`'s delivery to
 /// `to` through its wake policy, so a held entry gets its text.
 pub fn record_passed(co: &Coord, m: &Message, to: &str) -> inbox::Result<()> {

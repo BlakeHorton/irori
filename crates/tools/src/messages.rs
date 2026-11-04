@@ -232,6 +232,14 @@ impl Inner {
         if let Some(tid) = card_for(self.b.coord(), &m.ref_) {
             return format!("{LEAD}on task:{}'s thread instead.", one_line(&tid, 80));
         }
+        // A spawned agent that has finished (card #452): the card it was
+        // spawned for, which wakes that card's holder.
+        if let Some(tid) = self.b.coord().spawned_card(&d.to) {
+            return format!(
+                "{LEAD}on task:{}'s thread instead, the card they were started for, and wakes whoever holds it.",
+                one_line(&tid, 80)
+            );
+        }
         if n.owner(&m.from.key) {
             return WAITS.into();
         }

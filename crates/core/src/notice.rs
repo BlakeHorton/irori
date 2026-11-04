@@ -18,8 +18,8 @@ use inbox::notice::NoticeResult;
 use inbox::{Delivery, Inbox, Sender};
 
 pub use tools::notice::{
-    Record, RecordError, card_for, held_on_card, inbox_notice, notice_err, record_gone,
-    record_on_card, record_passed,
+    Record, RecordError, card_for, held_on_card, inbox_notice, notice_err, record_for_finished,
+    record_gone, record_on_card, record_passed,
 };
 
 /// The inbox's `Stale` hook: a notice about an ask someone else took (or

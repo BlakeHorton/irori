@@ -910,6 +910,9 @@ impl Core {
 
         // The inbox's hooks reach coord and capture, which open after it.
         let coord_cell: Arc<OnceLock<Arc<Coord>>> = Arc::new(OnceLock::new());
+        // The inbox its own on_recipient_gone routes a notice through (card
+        // #452), weak so the inbox doesn't keep itself alive.
+        let inbox_cell: Arc<OnceLock<std::sync::Weak<Inbox>>> = Arc::new(OnceLock::new());
         // The Services, once built: the inbox's Notes hook reads notes from
         // every log (card #412).
         let services_cell: Arc<OnceLock<std::sync::Weak<Services>>> = Arc::new(OnceLock::new());
@@ -924,9 +927,36 @@ impl Core {
             is_owner: Some(is_owner.clone()),
             on_recipient_gone: Some({
                 let c = coord_cell.clone();
-                Arc::new(move |m: &inbox::Message, to: &str| match c.get() {
-                    Some(co) => notice::record_gone(co, m, to),
-                    None => Err(inbox::Error::sentinel(inbox::ErrorKind::NoCard)),
+                let ibc = inbox_cell.clone();
+                let an = agent_names.clone();
+                Arc::new(move |m: &inbox::Message, to: &str| {
+                    let Some(co) = c.get() else {
+                        return Err(inbox::Error::sentinel(inbox::ErrorKind::NoCard));
+                    };
+                    match notice::record_gone(co, m, to) {
+                        Err(e) if e.is(inbox::ErrorKind::NoCard) => {}
+                        r => return r,
+                    }
+                    // A spawned agent that has finished (card #452): its
+                    // messages land on the card it was spawned for and
+                    // wake that card's holders; nothing starts an agent.
+                    let name = an
+                        .seen()
+                        .into_iter()
+                        .find(|(k, _, _)| k == to)
+                        .map(|(_, n, _)| n)
+                        .unwrap_or_default();
+                    match notice::record_for_finished(co, m, to, &name)? {
+                        Some((tid, n)) => {
+                            if !n.to.is_empty()
+                                && let Some(ib) = ibc.get().and_then(|w| w.upgrade())
+                            {
+                                let _ = notice::route(&ib, &inbox::system_sender(), &n);
+                            }
+                            Ok(tid)
+                        }
+                        None => Err(inbox::Error::sentinel(inbox::ErrorKind::NoCard)),
+                    }
                 })
             }),
             on_passed: Some({
@@ -960,6 +990,7 @@ impl Core {
             Inbox::new(st.clone(), Arc::new(MeshAgents(roster.clone())), iopts)
                 .map_err(|e| fail(&st, other("inbox", e)))?,
         );
+        let _ = inbox_cell.set(Arc::downgrade(&ib));
         laps.lap("inbox");
 
         // The Services the private coord's busy hook reads the boards
