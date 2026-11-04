@@ -75,8 +75,8 @@ pub use desk::{
 pub use desk_person::DESK_NOTE_MAX;
 pub use error::{Error, ErrorKind, Result};
 pub use fold::{
-    FOLLOW_KINDS, Fold, LEFT_GONE, LEFT_REMOVED, MADE_KIND, REASON_CONFLICT, REASON_EXPIRED,
-    REASON_HOLDER_GONE, REASON_RELEASED, REASON_STOLEN, SUB_BUFFER, followed,
+    FOLLOW_KINDS, Fold, LEFT_FINISHED, LEFT_GONE, LEFT_REMOVED, MADE_KIND, REASON_CONFLICT,
+    REASON_EXPIRED, REASON_HOLDER_GONE, REASON_RELEASED, REASON_STOLEN, SUB_BUFFER, followed,
 };
 pub use links::{MAX_LINKS, link_label, parse_link, pr_link};
 pub use mention::{board_form, mention_into, without_mentioned};
@@ -334,6 +334,7 @@ impl Drop for Locked<'_> {
 pub struct Coord {
     f: Mutex<Fold>,
     stale: Arc<RwLock<fold::StaleMap>>,
+    spawned: Arc<RwLock<std::collections::HashSet<String>>>,
     board: bool,
 }
 
@@ -383,10 +384,12 @@ impl Coord {
 
     fn wrap(f: Fold) -> Coord {
         let stale = f.stale.clone();
+        let spawned = f.spawned_keys.clone();
         let board = f.on_board;
         Coord {
             f: Mutex::new(f),
             stale,
+            spawned,
             board,
         }
     }
@@ -1151,6 +1154,27 @@ impl Coord {
     /// there after the agent goes (card #452).
     pub fn spawned_card(&self, key: &str) -> Option<String> {
         self.lock().spawned_for(key).map(|s| s.task_id.clone())
+    }
+    /// Whether Irori started agent `key` for a card. Never takes coord's
+    /// lock, so the inbox may ask under its own.
+    pub fn is_spawned(&self, key: &str) -> bool {
+        self.spawned
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(key)
+    }
+    /// Irori ended agent `key` at `at` (it wrote its `agent.gone`): it
+    /// comes off its cards after [`ENDED_GRACE`], not the holder grace.
+    pub fn mark_ended(&self, key: &str, at: GoTime) {
+        let mut f = self.lock();
+        f.gone_rows.insert(key.to_string(), at);
+        f.ended_by_irori.insert(key.to_string());
+    }
+    /// Puts holderless card `id` back on the Board for an agent (card
+    /// #447's transition): Ok(false) when it is held, assigned, closed,
+    /// working, an open ask or a parent.
+    pub fn back_on_board(&self, by: &str, id: &str, why: &str) -> Result<bool> {
+        self.lock().back_on_board(by, id, why)
     }
     /// The spawned_for mark on agent `key`.
     pub fn spawned(&self, key: &str) -> Option<Spawned> {

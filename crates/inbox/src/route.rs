@@ -206,6 +206,8 @@ impl Inner {
         let mut out: Vec<String> = cards
             .iter()
             .filter(|(k, c)| c.repo_key == repo && self.reachable(k, now))
+            // An agent started for one card is no repo's front desk.
+            .filter(|(k, _)| !self.spawned_fn.as_ref().is_some_and(|f| f(k)))
             .map(|(k, _)| k.clone())
             .collect();
         let first = |k: &str| self.reach.get(k).map(|r| r.first_at).unwrap_or_default();

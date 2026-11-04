@@ -518,6 +518,8 @@ crate::go_struct! {
     #[derive(Debug, Clone, Default, PartialEq)]
     pub struct GoneKeyRow {
         pub key: String = "key",
+        /// "finished" when Irori ended a spawned agent (card #446).
+        pub reason: String = "reason" "omit",
     }
 }
 

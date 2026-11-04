@@ -382,3 +382,51 @@ fn a_finished_agent_between_crashes_breaks_the_run() {
     assert!(crash_question(&got).is_none(), "{:?}", got.blockers);
     assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
 }
+
+#[test]
+fn a_spawned_holder_ended_at_its_done_check_finishes_and_nobody_is_told() {
+    let mut e = Env::new();
+    e.c = e.reopen_with(Options {
+        done_check: true,
+        ..e.opts()
+    });
+    // Made by an agent that is still live: a plain holder going would send
+    // it "Nobody is on X any more".
+    let t = e.c.create_task(BOB, nt("Spawned and done")).unwrap();
+    e.ros.set(SPAWNED, "idle");
+    let g = e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap().unwrap();
+    e.c.bind_spawn(&t.id, g, SPAWNED).unwrap();
+    e.c.set_task_state(SPAWNED, &t.id, "completed", "done: tests pass")
+        .unwrap();
+    assert_eq!(e.c.get_task(&t.id).unwrap().state, BLOCKED, "a done check");
+    // End: Irori writes agent.gone before stop and rm.
+    e.st.append(
+        "irori",
+        kinds::AGENT_GONE,
+        &serde_json::json!({ "key": SPAWNED, "reason": "finished" }),
+    )
+    .unwrap();
+    e.c.mark_ended(SPAWNED, e.clk.now());
+    e.ros.set(SPAWNED, "");
+    let mut told = e.c.sweep_notices().unwrap();
+    e.clk.add(ENDED_GRACE + secs(1));
+    told.extend(e.c.sweep_notices().unwrap());
+    assert!(
+        told.iter().all(|n| n.kind != NOTICE_RETURNED),
+        "nobody is told the card is open again: {told:?}"
+    );
+    let after = e.c.get_task(&t.id).unwrap();
+    assert!(
+        after.holders.is_empty(),
+        "off the card within ENDED_GRACE: {after:?}"
+    );
+    assert!(after.returned.is_none());
+    assert_eq!(after.state, BLOCKED, "still waiting on the person's Done");
+    let left: Vec<coord::rows::TaskMemberRow> =
+        e.rows(kinds::TASK_LEFT).iter().map(payload).collect();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].reason, LEFT_FINISHED);
+    // Its mark stays after it went, and a replay reads the same.
+    assert_eq!(e.c.spawned_card(SPAWNED), Some(t.id.clone()));
+    assert_eq!(e.reopen().spawned_card(SPAWNED), Some(t.id.clone()));
+}

@@ -73,6 +73,10 @@ pub const LEFT_GONE: &str = "gone";
 /// A task.left reason: an owner removed the holder's person from the board
 /// (v0.5 §4.3).
 pub const LEFT_REMOVED: &str = "member_removed";
+/// A task.left reason: the agent Irori started for the card ended (card
+/// #446). Nobody is told the card is open again; the next agent starts
+/// from what is on it.
+pub const LEFT_FINISHED: &str = "finished";
 
 /// Which leases found lapsed at replay still get their expiry row.
 const LAPSED_WITHIN: Duration = Duration::from_secs(24 * 3600);
@@ -252,6 +256,12 @@ pub struct Fold {
     /// The spawned_for mark (card #446): the card each spawned agent was
     /// started for, kept after it goes.
     pub(crate) spawned: HashMap<String, super::spawn::Spawned>,
+    /// The keys in `spawned`, for readers that must not take coord's lock
+    /// (the inbox's front desk).
+    pub(crate) spawned_keys: Arc<RwLock<HashSet<String>>>,
+    /// Spawned agents Irori ended itself (End, or done): they leave their
+    /// card as finished, not gone (a crash).
+    pub(crate) ended_by_irori: HashSet<String>,
     /// (agent, card) pairs already told that the agent isn't answering
     /// (card #110), while it still isn't.
     pub(crate) mute_told: HashSet<(String, String)>,
@@ -400,6 +410,8 @@ impl Fold {
             first_absent: HashMap::new(),
             gone_rows: HashMap::new(),
             spawned: HashMap::new(),
+            spawned_keys: Arc::new(RwLock::new(HashSet::new())),
+            ended_by_irori: HashSet::new(),
             mute_told: HashSet::new(),
             idle_told: HashMap::new(),
             comments: HashMap::new(),
@@ -501,11 +513,15 @@ impl Fold {
                 if ev.device_id != self.dev {
                     continue;
                 }
-                let Some(k) = row::<GoneKeyRow>(&ev.payload).map(|r| r.key) else {
+                let Some(r) = row::<GoneKeyRow>(&ev.payload) else {
                     continue;
                 };
+                let k = r.key;
                 if k.is_empty() {
                     continue;
+                }
+                if ev.kind == kinds::AGENT_GONE && r.reason == "finished" {
+                    self.ended_by_irori.insert(k.clone());
                 }
                 if ev.kind == kinds::AGENT_GONE {
                     self.gone_rows.insert(k, gotime::hlc_wall(ev.hlc));
@@ -722,6 +738,9 @@ impl Fold {
                         } else {
                             t.spawn_crashes = 0;
                         }
+                    }
+                    if p.reason == LEFT_FINISHED {
+                        what = "finished: the agent Irori started for it ended".into();
                     }
                     if p.reason == LEFT_GONE {
                         what = "went away".into();

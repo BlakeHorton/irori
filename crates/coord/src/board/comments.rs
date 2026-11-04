@@ -10,7 +10,9 @@ use store::kinds;
 
 use super::cards::count_open;
 use super::error::{Result, bad_state, invalid, not_allowed, not_found};
-use super::fold::{Fold, LEFT_GONE, LEFT_REMOVED, RefusalRec, engaged, is_holder, may_record};
+use super::fold::{
+    Fold, LEFT_FINISHED, LEFT_GONE, LEFT_REMOVED, RefusalRec, engaged, is_holder, may_record,
+};
 use super::links::parse_link;
 use super::resource::{RESOURCE_PATH, Resource, conflicts, normalize_resource, parse_resource};
 use super::rows::*;
@@ -1580,6 +1582,10 @@ impl Fold {
         // merely missing for a restart. They come off their cards after
         // ENDED_GRACE (time to --resume), not the holder grace.
         let mut ended: HashSet<String> = self.gone_rows.keys().cloned().collect();
+        // An agent Irori ended (card #446) is ended once it is off the
+        // roster, even when its agent.gone came while presence still
+        // listed it.
+        ended.extend(self.ended_by_irori.iter().cloned());
         if let Some(r) = &self.roster {
             for a in r.agents() {
                 if crate::roster::answers(&a.status) {
@@ -1631,6 +1637,9 @@ impl Fold {
                     "went away"
                 };
                 let creator = t.created_by.clone();
+                // An agent Irori started for the card (card #446) finished:
+                // nobody is told to take it.
+                let finished = self.spawned_for(&h).is_some() && self.ended_by_irori.contains(&h);
                 let person =
                     last && (self.is_owner(&creator) || creator == h || !live.contains(&creator));
                 self.write(
@@ -1641,7 +1650,7 @@ impl Fold {
                         who: h.clone(),
                         by: SWEEPER.into(),
                         at: *now,
-                        reason: LEFT_GONE.into(),
+                        reason: if finished { LEFT_FINISHED } else { LEFT_GONE }.into(),
                         person,
                     },
                 )?;
@@ -1673,7 +1682,7 @@ impl Fold {
                     )?;
                 }
                 self.stop_crashed_spawns(&id, now)?;
-                if !person {
+                if !person && !finished {
                     out.push(Notice {
                         kind: NOTICE_RETURNED.into(),
                         task_id: id.clone(),

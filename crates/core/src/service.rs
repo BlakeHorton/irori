@@ -65,6 +65,7 @@ mod mirror;
 pub mod notes;
 mod notifications;
 pub mod spaces;
+pub mod spawn;
 pub mod spawn_permissions;
 pub use mirror::BoardReviewer;
 pub mod invites;
@@ -270,6 +271,9 @@ struct Services {
     secrets: Mutex<Vec<String>>,
     token: String,
     reviver: Arc<Mutex<Option<ReviveFn>>>,
+    /// Spawned agents (card #446): the window's spawner, the boards'
+    /// switches and the devices' caps.
+    spawn: spawn::SpawnState,
     hub: Hub,
     rearm: Arc<Kick>,
     /// This device's home server; `None` with [`Options::no_home`].
@@ -927,6 +931,10 @@ impl Core {
                 Arc::new(move |k: &str| c.get().map(|c| c.pr_owners(k)).unwrap_or_default())
             }),
             is_owner: Some(is_owner.clone()),
+            spawned: Some({
+                let c = coord_cell.clone();
+                Arc::new(move |k: &str| c.get().is_some_and(|co| co.is_spawned(k)))
+            }),
             on_recipient_gone: Some({
                 let c = coord_cell.clone();
                 let ibc = inbox_cell.clone();
@@ -999,6 +1007,8 @@ impl Core {
         // through (card #422), set once they exist; until then only the
         // private board counts.
         let svc_cell: Arc<OnceLock<Weak<Services>>> = Arc::new(OnceLock::new());
+        let spawn_state = spawn::SpawnState::default();
+        spawn::load_spawn(&st, &spawn_state);
         let co = Arc::new(
             Coord::new(
                 st.clone(),
@@ -1012,6 +1022,11 @@ impl Core {
                     is_owner: Some(is_owner.clone()),
                     revoked: Some(revoked.clone()),
                     done_check: true,
+                    // The private board's spawned-agent switch (card #446).
+                    spawning: Some({
+                        let on = spawn_state.on.clone();
+                        Arc::new(move || spawn::SpawnState::switch(&on, ""))
+                    }),
                     // A working card on a shared board counts here too:
                     // one card at a time across logs (card #422).
                     busy_elsewhere: Some({
@@ -1271,6 +1286,7 @@ impl Core {
             secrets: Mutex::new(Vec::new()),
             token: token.clone(),
             reviver,
+            spawn: spawn_state,
             hub: Hub::new(),
             rearm: Kick::new(),
             home,
@@ -2234,6 +2250,58 @@ impl Core {
         *self.s.reviver.lock().unwrap_or_else(|e| e.into_inner()) = f;
     }
 
+    /// Gives the Core the desktop app's spawner (card #446): `claude --bg`
+    /// for a card's agent, and stop and rm to end one. A headless Core has
+    /// none and starts no agent.
+    pub fn set_spawner(&self, s: Option<spawn::Spawner>) {
+        self.s.set_spawner(s);
+        self.s.asks_kick.kick();
+    }
+
+    /// A board's spawned-agent settings (`""`: the private board).
+    pub fn spawn_setting(&self, board_id: &str) -> spawn::SpawnSetting {
+        self.s.spawn_setting(board_id)
+    }
+
+    /// The person turns a board's spawned agents on or off: the app only,
+    /// never a tool.
+    pub fn set_spawn_setting(&self, s: spawn::SpawnSetting) -> Result<(), String> {
+        self.s.set_spawn_setting(s)
+    }
+
+    /// This device's cap on spawned agents.
+    pub fn spawn_cap(&self) -> i64 {
+        self.s.spawn_cap(&self.s.device.id)
+    }
+
+    /// The person sets this device's cap: the app only.
+    pub fn set_spawn_cap(&self, cap: i64) -> Result<(), String> {
+        self.s.set_spawn_cap(&self.s.device.id.clone(), cap)
+    }
+
+    /// The person's End on an agent Irori started: its hand-off, then
+    /// stop and rm.
+    pub fn end_spawned(&self, key: &str) -> Result<(), String> {
+        self.s.end_spawned(key)
+    }
+
+    /// The person asks for an agent on card `id` now, with `note` (their
+    /// comment) in its brief: "Start an agent with this" (§4). App only.
+    pub fn start_agent(&self, id: &str, note: &str) -> Result<(), String> {
+        self.s.start_agent(id, note)
+    }
+
+    /// The person's words for card `id`'s next spawned agent (a "Not
+    /// done", a blocker answer): quoted in its brief (card #447).
+    pub fn set_brief_answer(&self, id: &str, text: &str) {
+        self.s.set_brief_answer(id, text)
+    }
+
+    /// The person cancels card `id`'s starting agent.
+    pub fn cancel_spawn(&self, id: &str) -> Result<bool, String> {
+        self.s.cancel_spawn(id)
+    }
+
     /// Log rows appended or replicated from now on, with a resync signal
     /// (`Event::is_resync`) when the reader fell behind (Go
     /// `SubscribeEvents`; 256 slots, store.md §3.9).
@@ -3015,6 +3083,7 @@ impl Services {
     /// Hands out and on this device's asks, the private Board's and each
     /// shared board's, and tells the agents they went to.
     fn hand_out_asks(self: &Arc<Self>) {
+        self.sweep_spawns();
         let (asks, err) = self.coord.sweep_asks_partial(&self.ask_agents());
         for n in &asks {
             let from = if n.person {
@@ -3372,6 +3441,7 @@ impl Services {
         self.sweep_where();
         self.sweep_builds();
         let (ns, err) = self.coord.sweep_notices_partial();
+        self.sweep_spawns();
         let (asks, aerr) = self.coord.sweep_asks_partial(&self.ask_agents());
         for n in ns.iter().chain(asks.iter()) {
             let from = if n.person {

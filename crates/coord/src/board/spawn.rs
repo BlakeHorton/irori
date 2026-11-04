@@ -235,6 +235,10 @@ impl Fold {
             self.ignore(&ev.device_id);
             return;
         }
+        self.spawned_keys
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(p.key.clone());
         self.spawned.insert(
             p.key.clone(),
             Spawned {

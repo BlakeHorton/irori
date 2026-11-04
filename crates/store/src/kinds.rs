@@ -169,6 +169,12 @@ kinds! {
     /// subtask?, device, by, at}`. Agent `key` was started for card
     /// `taskId` and is never offered another; kept after it goes.
     TASK_SPAWNED = "task.spawned" => Replicated, Refuses;
+    /// A board's spawned-agent settings (card #446): `{boardId, on, by,
+    /// at}`, actor `user`; `""` is the private board. Set in the app only.
+    SPAWN_SET = "spawn.set" => Replicated, Refuses;
+    /// A device's cap on spawned agents (card #446): `{device, cap, by,
+    /// at}`, actor `user`.
+    SPAWN_CAP = "spawn.cap" => Replicated, Refuses;
     // capture
     CAPTURE_TURN = "capture.turn" => Replicated, Refuses;
     CAPTURE_EDIT = "capture.edit" => Replicated, Refuses;

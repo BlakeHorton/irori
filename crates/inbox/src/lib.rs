@@ -670,6 +670,9 @@ pub struct Options {
     pub stale: Option<StaleFn>,
     /// Runs under the inbox lock: it must not call the inbox.
     pub notes: Option<NotesFn>,
+    /// Whether Irori started agent `key` for one card (card #446): it is
+    /// never a repo's front desk. Runs under the inbox lock.
+    pub spawned: Option<KeyPredicate>,
     /// Test overrides; zero means the constant.
     pub unengaged_limit: Duration,
     pub gone_grace: Duration,

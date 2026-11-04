@@ -2157,6 +2157,8 @@ impl Services {
                     a.status == "idle"
                         && a.device_state != coord::roster::OFFLINE
                         && !m.keys.contains_key(&a.key)
+                        // Started for one card (card #446): no board's.
+                        && !self.coord.is_spawned(&a.key)
                         && (a.device_id == me
                             || a.device_id.is_empty()
                                 && irori_identity::owner::device_of(&a.key) == me)
