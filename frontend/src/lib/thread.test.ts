@@ -18,6 +18,7 @@ import {
   toolPhrase,
   ponderWord,
   PonderWords,
+  startAgentItem,
 } from "./thread"
 
 const otter = AgentRef({
@@ -536,5 +537,25 @@ describe("toolPhrase", () => {
     expect(workingLine([oak], [], live, new Date())?.text).toBe(
       "oak is searching files…"
     )
+  })
+})
+
+describe("Start an agent with this (card #452)", () => {
+  const it_ = (id: string, kind: string, status: string, blockerId?: string) => ({
+    id,
+    kind,
+    who: { status },
+    blockerId,
+  })
+  test("the person's latest comment offers it, never an answer or an agent's", () => {
+    expect(
+      startAgentItem([
+        it_("c1", "comment", "person"),
+        it_("c2", "comment", "idle"),
+        it_("c3", "comment", "person", "b1"),
+        it_("e1", "event", "person"),
+      ])
+    ).toBe("c1")
+    expect(startAgentItem([it_("c2", "comment", "idle")])).toBe("")
   })
 })

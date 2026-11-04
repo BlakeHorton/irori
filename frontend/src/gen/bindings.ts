@@ -80,6 +80,8 @@ export const commands = {
 	boardAsk: (text: string, repoKey: string, wake: boolean, boardId: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_ask", { text, repoKey, wake, boardId, mentions }),
 	boardAskWithFiles: (text: string, repoKey: string, wake: boolean, files: UploadFile[], boardId: string, mentions: Mention[]) => __TAURI_INVOKE<TaskResult>("board_ask_with_files", { text, repoKey, wake, files, boardId, mentions }),
 	boardAskAgain: (id: string) => __TAURI_INVOKE<null>("board_ask_again", { id }),
+	/**  "Start an agent with this" on the person's comment (card #452). */
+	boardStartAgent: (id: string, note: string) => __TAURI_INVOKE<null>("board_start_agent", { id, note }),
 	boardAskRepos: () => __TAURI_INVOKE<AskRepo[]>("board_ask_repos"),
 	boardMentionCandidates: () => __TAURI_INVOKE<MentionCandidate[]>("board_mention_candidates"),
 	boardCloseAsk: (id: string, note: string) => __TAURI_INVOKE<Task>("board_close_ask", { id, note }),

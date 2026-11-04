@@ -26,6 +26,8 @@ import {
   ThreadKind,
   visible,
   workingLine,
+  StartAgentOn,
+  startAgentItem,
 } from "@/lib/thread"
 import { useReducedMotion } from "@/lib/motion"
 import { cn } from "@/lib/utils"
@@ -99,6 +101,8 @@ export function Thread({
   // older than the first page, scrolled into view once (card #177).
   const focus = useContext(FocusComment)
   const holds = !!focus && items.some((it) => it.id === focus)
+  const startOn = useContext(StartAgentOn)
+  const startId = !inBlocker && cardId && startOn === cardId ? startAgentItem(items) : ""
   const paged = visible(items, showAll)
   const shown =
     holds && !paged.some((it) => it.id === focus) ? visible(items, true) : paged
@@ -157,6 +161,7 @@ export function Thread({
               item={it}
               now={now}
               inBlocker={inBlocker}
+              startable={it.id === startId}
             />
           </div>
         ))
@@ -231,12 +236,17 @@ function ThreadRow({
   item,
   now,
   inBlocker,
+  startable,
 }: {
   cardId?: string
   item: CardThreadItem
   now: Date
   inBlocker?: boolean
+  // "Start an agent with this" (card #452): the person's latest comment
+  // on a card with nobody on it.
+  startable?: boolean
 }) {
+  const [started, setStarted] = useState(false)
   const [full, setFull] = useState<CardMessage | null>(null)
   // Keep as note (card #413) on comments and blocker answers.
   const noteCard = useNoteCard()
@@ -524,6 +534,31 @@ function ThreadRow({
           >
             Modify
           </Button>
+        )}
+        {startable && cardId && !started && (
+          <Button
+            size="xs"
+            variant="outline"
+            className="justify-self-start"
+            disabled={busy}
+            title="Nobody is on this card: start an agent, with this comment in its brief"
+            onClick={() => {
+              setBusy(true)
+              setError(null)
+              cards
+                .startAgent(cardId, full?.text ?? item.text)
+                .then(() => setStarted(true))
+                .catch((err: unknown) => setError(errorText(err)))
+                .finally(() => setBusy(false))
+            }}
+          >
+            Start an agent with this
+          </Button>
+        )}
+        {started && (
+          <span className="text-[11px] text-muted-foreground">
+            Starting an agent with this comment in its brief.
+          </span>
         )}
         {noteCard && cardId === noteCard.id && !item.held && body && (
           <KeepAsNote

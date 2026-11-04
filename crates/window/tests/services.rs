@@ -837,3 +837,30 @@ fn merge_desk_settings_holds_pause_and_ok() {
     assert!(d.holds.is_empty());
     assert!(d.paused.is_none());
 }
+
+/// Card #452: "Start an agent with this" on the person's comment puts a
+/// card nobody is on back on the Board; a card with an agent on it is
+/// refused (spawned-agents §4).
+#[test]
+fn start_agent_with_a_comment() {
+    let r = Rig::new();
+    let co = r.w.core.coord();
+    let t = co
+        .create_task(
+            &r.w.core.user_sender().key,
+            coord::NewTask {
+                title: "Save slots".into(),
+                ..coord::NewTask::default()
+            },
+        )
+        .unwrap();
+    co.set_task_state(&r.w.core.user_sender().key, &t.id, "input_required", "")
+        .ok();
+    r.w.start_agent(&t.id, "keep the last three").unwrap();
+    assert_eq!(co.get_task(&t.id).unwrap().state, coord::SUBMITTED);
+
+    co.claim_task(&r.key_a, &t.id).unwrap();
+    let e = r.w.start_agent(&t.id, "again").unwrap_err();
+    assert!(e.contains("has an agent on it"), "{e}");
+    assert!(r.w.start_agent("no-such-card", "").is_err());
+}

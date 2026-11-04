@@ -351,6 +351,15 @@ impl Window {
             .map_err(|e| e.to_string())
     }
 
+    /// BoardService.StartAgent: "Start an agent with this" on the person's
+    /// comment on a card nobody is on (card #452, spawned-agents §4): the
+    /// card goes back on the Board with the comment in its next agent's
+    /// brief. Only from the app: a message or another agent's comment
+    /// never starts an agent (§7).
+    pub fn start_agent(&self, id: &str, note: &str) -> Result<(), String> {
+        self.core.start_agent(trim(id), note)
+    }
+
     /// BoardService.CloseAsk: an ask ends with nothing coming of it.
     pub fn close_ask(&self, id: &str, note: &str) -> Result<Task, String> {
         self.core

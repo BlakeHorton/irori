@@ -1176,8 +1176,20 @@ export function sampleCards(now: Date): CardDetail[] {
       id: "sample-card-24",
       title: "Roll limits in rough water",
       repoKey: "remote:github.com/sample-org/example-app",
-      working: [lark],
+      // lark raised the blocker and has since finished: nobody is on it.
+      working: [],
       updatedAt: at(9),
+      // Its agent finished and it waits on you: your comment offers
+      // "Start an agent with this" (card #452).
+      thread: [
+        CardThreadItem({
+          id: "sample-24-c1",
+          kind: "comment",
+          at: at(8),
+          who: sampleYou,
+          text: "Clamp at 30° for now; big waves can flip it once the sails are in.",
+        }),
+      ],
       parent: CardRef({
         id: "sample-card-20",
         short: "20",

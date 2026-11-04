@@ -1477,6 +1477,16 @@ export const cards = {
   },
 
   // askAgain is Wake them on an ask nobody took.
+  // startAgent is "Start an agent with this" on the person's comment
+  // (card #452): card id goes back on the Board with note in its next
+  // agent's brief.
+  async startAgent(id: string, note: string): Promise<void> {
+    if (inWails()) return BoardService.StartAgent(id, note)
+    const c = sampleCard(id)
+    c.state = TaskState.Submitted
+    sampleChanged()
+  },
+
   async askAgain(id: string): Promise<void> {
     if (inWails()) return BoardService.AskAgain(id)
     const c = sampleCard(id)

@@ -200,6 +200,8 @@ export const BoardService = {
     call(commands.boardResolveBlocker(taskId, blockerId, note, mentions)),
   MentionCandidates: () => call(commands.boardMentionCandidates()),
   AskAgain: (id: string) => done(commands.boardAskAgain(id)),
+  // "Start an agent with this" (card #452).
+  StartAgent: (id: string, note: string) => done(commands.boardStartAgent(id, note)),
   AskRepos: () => call(commands.boardAskRepos()),
   CloseAsk: (id: string, note: string) => call(commands.boardCloseAsk(id, note)),
   Close: (id: string, state: string, note: string) => call(commands.boardClose(id, state, note)),

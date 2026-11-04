@@ -476,6 +476,13 @@ pub async fn board_mention_candidates(w: W<'_>) -> R<Vec<MentionCandidate>> {
     Ok(w.mention_candidates())
 }
 
+/// "Start an agent with this" on the person's comment (card #452).
+#[tauri::command]
+#[specta::specta]
+pub async fn board_start_agent(w: W<'_>, id: String, note: String) -> R<()> {
+    w.start_agent(&id, &note)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn board_ask_again(w: W<'_>, id: String) -> R<()> {
@@ -1400,6 +1407,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             board_ask,
             board_ask_with_files,
             board_ask_again,
+            board_start_agent,
             board_ask_repos,
             board_mention_candidates,
             board_close_ask,

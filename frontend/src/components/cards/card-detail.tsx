@@ -37,6 +37,7 @@ import {
   over,
   overLabel,
   percent,
+  Holding,
   TaskState,
   type AgentRef,
   type AnswerResult,
@@ -65,6 +66,7 @@ import {
   blockerTone,
   heardLine,
   LiveRoster,
+  StartAgentOn,
 } from "@/lib/thread"
 import { cn } from "@/lib/utils"
 import {
@@ -102,6 +104,18 @@ type Answered = { question: string; answer: string; told: Told; to: AgentRef }
 // person's answer may be a pasted log (card #265), and the blocker's thread
 // shows all of it.
 const GistChars = 200
+// startable says the person's comment on this card may "Start an agent
+// with this" (card #452, spawned-agents §4): their own board's card,
+// open, not an ask, and nobody on it.
+function startable(d: CardDetail): boolean {
+  if (d.tag || d.onBoard || d.ask) return false
+  if (d.state === TaskState.Completed || d.state === TaskState.Canceled || d.state === TaskState.Failed)
+    return false
+  // Nobody at all: a holder shown gone may still be on the card until
+  // Irori takes it off, and the Core refuses a card with an agent on it.
+  return d.holder.state === Holding.HoldNobody
+}
+
 function gist(s: string): string {
   const l = plainLine(s)
   return l.length > GistChars ? `${l.slice(0, GistChars - 1)}…` : l
@@ -485,6 +499,7 @@ export function CardPage({
         <TerminalCard cardId={detail.id} />
         <Card className="gap-0 py-0!">
           <Section title="Thread" last>
+            <StartAgentOn.Provider value={startable(detail) ? detail.id : ""}>
             <Thread
               cardId={detail.id}
               items={detail.thread}
@@ -501,6 +516,7 @@ export function CardPage({
                 <CommentBox cardId={detail.id} noFiles={!!detail.onBoard} />
               }
             />
+            </StartAgentOn.Provider>
           </Section>
         </Card>
         </div>

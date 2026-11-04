@@ -20,6 +20,23 @@ import { parseTime } from "./irori"
 // #177): the thread that holds it shows it, scrolled into view.
 export const FocusComment = createContext("")
 
+// StartAgentOn is the card whose thread offers "Start an agent with this"
+// on the person's latest comment (card #452, spawned-agents §4): a card on
+// their own board, open, not an ask, with nobody on it. "" offers none.
+export const StartAgentOn = createContext("")
+
+// startAgentItem is the comment that offers it: the person's latest
+// comment on the thread (not a blocker answer), or "".
+export function startAgentItem(
+  items: readonly { id: string; kind: string; who: { status: string }; blockerId?: string | null }[]
+): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]
+    if (it.kind === "comment" && it.who.status === "person" && !it.blockerId) return it.id
+  }
+  return ""
+}
+
 // threadEntryId is a thread entry's element id, for scrolling to it.
 export function threadEntryId(id: string): string {
   return `thread-entry-${id}`
