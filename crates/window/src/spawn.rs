@@ -55,7 +55,17 @@ pub struct SpawnSpec {
     pub settings: Option<PathBuf>,
     /// Where the brief file goes.
     pub brief_dir: PathBuf,
+    /// A brief the caller already wrote (the Core does, card #446): used as
+    /// is, `brief` is ignored, and its folder is the one `--add-dir` names.
+    pub brief_file: Option<PathBuf>,
+    /// The first prompt; default [`prompt_for`] the brief file. It must name
+    /// no shell metacharacter, as it reaches `claude.cmd` on Windows.
+    pub prompt: Option<String>,
 }
+
+/// Characters that never go on a spawn's command line: `cmd.exe` would act
+/// on them when `claude` is `claude.cmd`.
+const UNSAFE: &[char] = &['"', '%', '&', '|', '^', '<', '>', '\n', '\r', '!'];
 
 /// A started agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,18 +104,31 @@ pub(crate) fn spawn_in(bin: &Path, spec: &SpawnSpec, t: &TrustSet) -> Result<Spa
         return Err(format!("{} isn't a folder", spec.cwd.display()));
     }
     trusted_in(t, &spec.cwd)?;
-    std::fs::create_dir_all(&spec.brief_dir)
-        .map_err(|e| format!("make {}: {e}", spec.brief_dir.display()))?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let brief_file = spec.brief_dir.join(format!("{}-{stamp}.md", spec.name));
-    std::fs::write(&brief_file, &spec.brief)
-        .map_err(|e| format!("write {}: {e}", brief_file.display()))?;
+    let brief_file = match &spec.brief_file {
+        Some(f) if f.is_file() => f.clone(),
+        Some(f) => return Err(format!("no brief at {}", f.display())),
+        None => {
+            std::fs::create_dir_all(&spec.brief_dir)
+                .map_err(|e| format!("make {}: {e}", spec.brief_dir.display()))?;
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            let f = spec.brief_dir.join(format!("{}-{stamp}.md", spec.name));
+            std::fs::write(&f, &spec.brief).map_err(|e| format!("write {}: {e}", f.display()))?;
+            f
+        }
+    };
+    let prompt = spec
+        .prompt
+        .clone()
+        .unwrap_or_else(|| prompt_for(&brief_file));
+    if prompt.trim().is_empty() || prompt.starts_with('-') || prompt.contains(UNSAFE) {
+        return Err("the first prompt can't go on a command line as it is".into());
+    }
     let mut cmd = std::process::Command::new(bin);
     cmd.args(&args)
-        .arg(prompt_for(&brief_file))
+        .arg(prompt)
         .current_dir(&spec.cwd)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -123,6 +146,51 @@ pub(crate) fn spawn_in(bin: &Path, spec: &SpawnSpec, t: &TrustSet) -> Result<Spa
             output: text,
         }),
         None => Err(format!("claude --bg printed no session id: {text}")),
+    }
+}
+
+/// Ends a spawned session (card #446's `EndFn`): `claude stop`, then
+/// `claude rm`, which removes its `-w` worktree only when that is clean and
+/// otherwise keeps it and says why. Right after `stop` the worktree's lock can
+/// still name the exiting process, so `rm` is retried for a few seconds.
+/// `Ok` carries what `rm` printed ("kept …" when it kept the worktree).
+pub fn end(id: &str) -> Result<String, String> {
+    end_with(&find_claude()?, id, Duration::from_secs(8))
+}
+
+pub(crate) fn end_with(bin: &Path, id: &str, patience: Duration) -> Result<String, String> {
+    let id = id.trim();
+    if id.len() < 8 || id.starts_with('-') || !id.chars().all(|c| c == '-' || c.is_ascii_hexdigit())
+    {
+        return Err(format!("not a session id: {id:?}"));
+    }
+    let call = |verb: &str| {
+        let mut cmd = std::process::Command::new(bin);
+        cmd.args([verb, id])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        hide_console(&mut cmd);
+        run(cmd)
+    };
+    let (_, stopped) = call("stop")?;
+    let deadline = Instant::now() + patience;
+    loop {
+        let (ok, text) = call("rm")?;
+        let locked = text.contains("still running");
+        if ok && !(locked && Instant::now() < deadline) {
+            return Ok(text);
+        }
+        if !locked && text.contains("kept") {
+            return Ok(text);
+        }
+        if !ok && !locked {
+            return Err(format!("claude rm {id}: {text} (stop said: {stopped})"));
+        }
+        if Instant::now() >= deadline {
+            return Ok(text);
+        }
+        std::thread::sleep(Duration::from_millis(500));
     }
 }
 
@@ -174,14 +242,18 @@ fn check(spec: &SpawnSpec) -> Result<Vec<String>, String> {
     }
     if let Some(s) = &spec.settings {
         let t = s.to_string_lossy();
-        if !s.is_file() || t.contains(['"', '%', '&', '|', '^', '<', '>', '\n']) {
+        if !s.is_file() || t.contains(UNSAFE) {
             return Err(format!("not a usable settings file: {}", s.display()));
         }
         a.push("--settings".into());
         a.push(t.into_owned());
     }
-    let b = spec.brief_dir.to_string_lossy();
-    if b.is_empty() || b.contains(['"', '%', '&', '|', '^', '<', '>', '\n']) {
+    let dir = match &spec.brief_file {
+        Some(f) => f.parent().map(Path::to_path_buf).unwrap_or_default(),
+        None => spec.brief_dir.clone(),
+    };
+    let b = dir.to_string_lossy();
+    if b.is_empty() || b.contains(UNSAFE) {
         return Err(format!(
             "the brief folder {b:?} can't be named on a command line"
         ));
@@ -622,6 +694,75 @@ mod tests {
             got.brief_file.display()
         );
         println!("{}", got.output);
+    }
+
+    #[test]
+    fn a_ready_brief_is_used_as_is_and_its_folder_added() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = base.join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        let briefs = base.join("core-briefs");
+        std::fs::create_dir_all(&briefs).unwrap();
+        let f = briefs.join("card-446.md");
+        std::fs::write(&f, "written by the Core").unwrap();
+        let bin = fake_claude(&base);
+        let spec = SpawnSpec {
+            cwd: repo.clone(),
+            name: "card-446".into(),
+            permission_mode: "default".into(),
+            brief_file: Some(f.clone()),
+            prompt: Some(format!("Read {} and do what it says.", f.display())),
+            ..Default::default()
+        };
+        let got = spawn_in(&bin, &spec, &cfg(&base, &[&repo])).unwrap();
+        assert_eq!(got.brief_file, f);
+        let argv = std::fs::read_to_string(base.join("argv.txt")).unwrap();
+        let lines: Vec<&str> = argv.lines().collect();
+        assert_eq!(&lines[..2], ["--add-dir", briefs.to_str().unwrap()]);
+        assert_eq!(
+            *lines.last().unwrap(),
+            format!("Read {} and do what it says.", f.display())
+        );
+        let bad = SpawnSpec {
+            prompt: Some("do it & calc".into()),
+            ..spec.clone()
+        };
+        assert!(spawn_in(&bin, &bad, &cfg(&base, &[&repo])).is_err());
+    }
+
+    /// `end`: stop, then rm, retried while the lock still names the exiting
+    /// process, and "kept" (a dirty worktree) is not a failure.
+    #[cfg(unix)]
+    #[test]
+    fn end_stops_then_removes_and_retries_a_locked_rm() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let bin = base.join("claude");
+        let log = base.join("calls.txt");
+        let n = base.join("n");
+        std::fs::write(
+            &bin,
+            format!(
+                "#!/bin/sh\necho \"$1 $2\" >> '{log}'\nif [ \"$1\" = rm ]; then\n  if [ ! -f '{n}' ]; then touch '{n}'; echo 'kept x — A Claude Code lock on the worktree names a process that is still running'; exit 1; fi\n  echo 'removed x'\nfi\nexit 0\n",
+                log = log.display(),
+                n = n.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let out = end_with(&bin, "0a1b2c3d", Duration::from_secs(5)).unwrap();
+        assert!(out.contains("removed"), "{out}");
+        let calls = std::fs::read_to_string(&log).unwrap();
+        assert_eq!(
+            calls.lines().collect::<Vec<_>>(),
+            ["stop 0a1b2c3d", "rm 0a1b2c3d", "rm 0a1b2c3d"]
+        );
+        assert!(
+            end_with(&bin, "--help", Duration::ZERO).is_err(),
+            "never a flag"
+        );
     }
 
     fn card(name: &str, sid: &str) -> presence::AgentCard {
