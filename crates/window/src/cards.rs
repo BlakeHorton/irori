@@ -297,6 +297,12 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "is_zero_f")]
     #[specta(optional, type = i64)]
     pub pin_rank: f64,
+    /// Why the agent Irori tried to start for this card couldn't start (the
+    /// failed spawn request's reason, card #446/#449); empty while one is
+    /// requested or bound. A `not trusted: ` reason gets Trust and start.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub cant_start: String,
     /// Where the card sits on the Board's canvas (card #93), once placed.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
@@ -1095,6 +1101,11 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
         pin_rank: t.pin_rank,
         paused: t.paused,
         main_red: coord::main_red_test(t).unwrap_or_default().to_string(),
+        cant_start: t
+            .spawn_request()
+            .filter(|sp| sp.op == coord::SPAWN_FAILED)
+            .map(|sp| sp.reason.clone())
+            .unwrap_or_default(),
         ..CardSummary::default()
     };
     if let Some(r) = &t.rollup {

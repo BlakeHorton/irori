@@ -81,6 +81,11 @@ fn an_untrusted_repo_waits_on_the_person_then_starts() {
     });
     assert!(started.lock().unwrap().is_empty());
 
+    // The card says why, for Needs you and the working line.
+    let cs = w.cards();
+    let c = cs.iter().find(|c| c.id == t.id).expect("the card");
+    assert!(c.cant_start.starts_with(NOT_TRUSTED), "{:?}", c.cant_start);
+
     // The window shows what trusting does, for the repo's root, here.
     let need = w.agents_trust_need(&t.id).unwrap().expect("a trust need");
     let root = repo.to_string_lossy().into_owned();

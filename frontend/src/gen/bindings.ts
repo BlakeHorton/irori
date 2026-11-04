@@ -878,6 +878,12 @@ export type CardSummary = {
 	/**  The person paused the card (card #207). */
 	paused?: boolean,
 	pinRank?: number,
+	/**
+	 *  Why the agent Irori tried to start for this card couldn't start (the
+	 *  failed spawn request's reason, card #446/#449); empty while one is
+	 *  requested or bound. A `not trusted: ` reason gets Trust and start.
+	 */
+	cantStart?: string,
 	/**  Where the card sits on the Board's canvas (card #93), once placed. */
 	pos?: CanvasPos | null,
 	/**
