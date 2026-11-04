@@ -14,17 +14,19 @@ export type { AgentsSettings }
 
 // sampleAgents is the preview's private board: chosen and on, or with
 // ?spawn=first on by default and not yet chosen, so Home shows the
-// first-run notice.
-export const sampleAgents: AgentsSettings = {
-  boardId: "",
-  on: true,
-  chosen: previewFlag("spawn") !== "first",
-  model: "sonnet",
-  effort: "medium",
-  models: ["sonnet", "opus", "haiku"],
-  efforts: ["low", "medium", "high", "xhigh", "max"],
-  defaultModel: "sonnet",
-  defaultEffort: "medium",
+// first-run notice. A function, so tests (no window) can import this file.
+export function sampleAgents(): AgentsSettings {
+  return {
+    boardId: "",
+    on: true,
+    chosen: previewFlag("spawn") !== "first",
+    model: "sonnet",
+    effort: "medium",
+    models: ["sonnet", "opus", "haiku"],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+    defaultModel: "sonnet",
+    defaultEffort: "medium",
+  }
 }
 
 const modelNames: Record<string, string> = {
@@ -60,7 +62,7 @@ export const effortLabel = (v: string, def: string) =>
 // keeping the last good settings when a save fails.
 export function useAgents(open: boolean, boardId = "") {
   const [s, setS] = useState<AgentsSettings | null>(() =>
-    inWails() ? null : { ...sampleAgents, boardId },
+    inWails() ? null : { ...sampleAgents(), boardId },
   )
   const [error, setError] = useState("")
   useEffect(() => {
@@ -104,4 +106,11 @@ export function useAgents(open: boolean, boardId = "") {
     [boardId],
   )
   return { settings: s, error, set }
+}
+
+// endAgent ends an agent Irori started (card #448): its hand-off on the
+// card, then stop and rm. The preview has nothing to end.
+export async function endAgent(key: string): Promise<void> {
+  if (!inWails()) return
+  await AgentsService.End(key)
 }

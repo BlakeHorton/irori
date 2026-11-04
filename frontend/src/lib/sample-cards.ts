@@ -301,7 +301,56 @@ export function sampleCards(now: Date): CardDetail[] {
       ]
     : []
 
+  // Card #448: ?spawn=states shows the spawned-agent card lines: one
+  // agent working a card Irori started it for (End on its page, "for #64"
+  // in its hover), one starting, one waiting on the cap, one that can't
+  // start (PREVIEW.md).
+  const spawn =
+    new URLSearchParams(window.location.search).get("spawn") === "states"
+      ? [
+          card({
+            id: "sample-card-spawn-on",
+            short: "64",
+            title: "Retry the upload on a dropped connection",
+            goal: "An agent Irori started for this card is on it.",
+            working: [AgentRef({ ...heron, spawned: true, status: "busy" })],
+            updatedAt: at(3),
+          }),
+          card({
+            id: "sample-card-spawn-starting",
+            short: "65",
+            title: "Explain the cache eviction in the README",
+            goal: "Starting an agent.",
+            state: TaskState.Submitted,
+            working: [],
+            starting: "This PC",
+            updatedAt: at(1),
+          }),
+          card({
+            id: "sample-card-spawn-cap",
+            short: "66",
+            title: "Bump the icon set",
+            goal: "Waiting for a slot.",
+            state: TaskState.Submitted,
+            working: [],
+            atCap: "This PC",
+            updatedAt: at(1),
+          }),
+          card({
+            id: "sample-card-spawn-cant",
+            short: "67",
+            title: "Port the build script to Windows",
+            goal: "No checkout here.",
+            state: TaskState.Submitted,
+            working: [],
+            cantStart: "no checkout of remote:github.com/you/app-repo on sample-device",
+            updatedAt: at(1),
+          }),
+        ]
+      : []
+
   return [
+    ...spawn,
     ...red,
     longWait,
     idleUnnamed,

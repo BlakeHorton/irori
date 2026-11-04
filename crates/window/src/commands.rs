@@ -1303,6 +1303,13 @@ pub async fn agents_set(w: W<'_>, change: AgentsChange) -> R<AgentsSettings> {
     w.agents_set(change)
 }
 
+/// The person ends an agent Irori started: its hand-off, then stop and rm.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_end(w: W<'_>, key: String) -> R<()> {
+    blocking(&w, move |w| w.agents_end(&key)).await
+}
+
 // ---- merge desks (card #417) ----------------------------------------------
 
 /// Every merge desk in the person's log.
@@ -1598,6 +1605,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             term_list,
             agents_settings,
             agents_set,
+            agents_end,
             desk_list,
             desk_set,
             desk_hold,

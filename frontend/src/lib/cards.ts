@@ -659,6 +659,8 @@ function summary(c: CardDetail): CardSummary {
     waitTask: c.waitTask,
     mainRed: c.mainRed,
     cantStart: c.cantStart,
+    starting: c.starting,
+    atCap: c.atCap,
     reviewPr: c.reviewPr,
     working: c.working,
     watching: c.watching,

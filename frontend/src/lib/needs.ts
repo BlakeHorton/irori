@@ -3,6 +3,7 @@
 // its row, and every other card is one compact row in one of four
 // states. Pure, so the order and the words are tested without a window.
 
+import { spawnLine } from "./spawn-line"
 import {
   askLine,
   busy,
@@ -88,8 +89,13 @@ export function rowState(
       state: "working",
       line: `${job.map(displayName).slice(0, 2).join(", ")} running a background job`,
     }
-  if (!c.working.length || c.holder.state === Holding.HoldNobody)
+  if (!c.working.length || c.holder.state === Holding.HoldNobody) {
+    // Card #448: an agent Irori is starting, a device at its cap, or why
+    // one can't start, instead of "nobody".
+    const sp = spawnLine(c)
+    if (sp) return { state: "waiting", line: sp.text[0].toUpperCase() + sp.text.slice(1) }
     return { state: "waiting", line: "Nobody has it yet" }
+  }
   const w = workLabel(c)
   if (w === "not picked up" || w === "offered")
     return { state: "waiting", line: w === "offered" ? "Offered" : "Not picked up" }

@@ -33,6 +33,7 @@ import { ownedBy, ownerFilter, type OwnerMember } from "@/lib/owners"
 import { presenceLine, type SummaryMember } from "@/lib/boards"
 import { stateDot } from "@/lib/devices"
 import { cardMatches, matching } from "@/lib/search"
+import { spawnLine, type SpawnLine } from "@/lib/spawn-line"
 import { cn } from "@/lib/utils"
 import {
   AskLine,
@@ -551,7 +552,7 @@ function CardTile({
             Lease conflict
           </Badge>
         )}
-        {!closed && !openAsk(card) && nobodyOn(card) && (
+        {!closed && !openAsk(card) && nobodyOn(card) && !card.starting && (
           <Badge
             variant="warning"
             title="The agent on it went away; nobody is working it"
@@ -666,6 +667,8 @@ function CardTile({
           </>
         ) : closed ? null : openAsk(card) ? (
           <span>you asked the room</span>
+        ) : spawnLine(card) ? (
+          <SpawnText line={spawnLine(card)!} />
         ) : card.returned ? (
           <span>nobody on it: {displayName(card.returned)} went away</span>
         ) : (
@@ -984,6 +987,8 @@ function SubtaskDetailRow({
       <Faces who={who} />
       <span className="truncate">{displayName(who[0])}</span>
     </span>
+  ) : spawnLine(card) ? (
+    <SpawnText line={spawnLine(card)!} />
   ) : (
     <span className="text-warning">nobody on it</span>
   )
@@ -1114,5 +1119,15 @@ function MasonryGrid({
         </div>
       ))}
     </section>
+  )
+}
+
+// SpawnText is a card's spawn state where "nobody on it" would be (card
+// #448): starting an agent, waiting on a device's cap, or can't start.
+function SpawnText({ line }: { line: SpawnLine }) {
+  return (
+    <span className={line.tone === "warn" ? "text-warning" : undefined}>
+      {line.text}
+    </span>
   )
 }

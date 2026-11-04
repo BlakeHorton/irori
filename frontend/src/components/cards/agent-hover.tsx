@@ -113,6 +113,10 @@ function AgentSummary({
     if (w) (w.assigned ? offered : holding).push(c)
     else if (c.watching.some((r) => r.key === who.key)) watching.push(c)
   }
+  // Irori started it for one card (card #448): the roster says which.
+  const spawnedFor = cards.find((c) =>
+    c.working.some((r) => r.key === who.key && r.spawned),
+  )
   const tint = deviceVar(who.color)
   const device = who.device || who.where
   const state = gone
@@ -166,6 +170,11 @@ function AgentSummary({
         {who.where && who.device && who.where !== who.device && (
           <div className="truncate text-xs text-muted-foreground">
             {plainLine(who.where)}
+          </div>
+        )}
+        {spawnedFor && (
+          <div className="truncate text-xs text-muted-foreground">
+            Irori started it for #{spawnedFor.short}
           </div>
         )}
         </div>

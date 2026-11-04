@@ -83,6 +83,17 @@ impl Window {
         )
     }
 
+    /// The person's End on an agent Irori started (card #448, sa-2): its
+    /// hand-off, then stop and rm. Only on the device it runs on until
+    /// part 11 sends end requests across devices.
+    pub fn agents_end(&self, key: &str) -> Result<(), String> {
+        let dev = key.split_once('/').map_or("", |(d, _)| d);
+        if dev != self.core.device_id() {
+            return Err("End it from the device it runs on".into());
+        }
+        self.core.end_spawned(key)
+    }
+
     /// The person changes a board's switch, model or effort.
     pub fn agents_set(&self, c: AgentsChange) -> Result<AgentsSettings, String> {
         let board_id = c.board_id.clone();

@@ -61,6 +61,11 @@ pub struct AgentRef {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub steps: Vec<String>,
+    /// Irori started it for this card (card #448): the card shows End, not
+    /// Revive, and the roster says "for #N".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub spawned: bool,
     /// The hand-off note it was offered the card with (card #85).
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
@@ -303,6 +308,16 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub cant_start: String,
+    /// The device an agent is starting on for this card ("This PC" or its
+    /// name), while Irori's spawn request waits for it (card #448).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub starting: String,
+    /// The device whose cap holds this card back: it needs an agent, but
+    /// that device already runs as many as it may (card #448).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub at_cap: String,
     /// Where the card sits on the Board's canvas (card #93), once placed.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
@@ -750,6 +765,10 @@ pub(crate) struct People {
     others: BTreeMap<String, String>,
     /// Agents' own faces by name key (card #407).
     faces: HashMap<String, String>,
+    /// Live agents Irori started for a card (card #448).
+    spawned: std::collections::HashSet<String>,
+    /// Cards that need an agent while this device is at its cap.
+    at_cap: std::collections::HashSet<String>,
 }
 
 /// The other people's colours on this screen (card #385): every person
@@ -851,6 +870,19 @@ impl Window {
         p.colors = c.device_colors();
         p.others = place_others(&p.persons, &p.board, &p.colors);
         p.faces = c.agent_avatars();
+        {
+            let co = c.coord();
+            p.spawned = p
+                .by_key
+                .keys()
+                .filter(|k| co.is_spawned(k))
+                .cloned()
+                .collect();
+            let (running, cap) = c.spawn_slots();
+            if c.spawn_setting("").on && running >= cap {
+                p.at_cap = co.cards_to_spawn().into_iter().map(|t| t.id).collect();
+            }
+        }
         let mut live = 0;
         p.names = c.device_labels().into_iter().collect();
         for d in c.certified_devices() {
@@ -910,6 +942,7 @@ impl People {
     /// One key as the window shows it, with its face (card #407).
     pub(crate) fn ref_(&self, key: &str) -> AgentRef {
         let mut r = self.ref_plain(key);
+        r.spawned = self.spawned.contains(key);
         // Another person's agent wears the face its board card carries;
         // never one of this person's faces that shares its name.
         let theirs = !self.by_key.contains_key(key) && self.board.contains_key(key);
@@ -1106,6 +1139,16 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
             .filter(|sp| sp.op == coord::SPAWN_FAILED)
             .map(|sp| sp.reason.clone())
             .unwrap_or_default(),
+        starting: t
+            .spawn_request()
+            .filter(|sp| sp.pending())
+            .map(|sp| p.where_(&sp.device))
+            .unwrap_or_default(),
+        at_cap: if p.at_cap.contains(&t.id) {
+            p.where_(&p.self_id)
+        } else {
+            String::new()
+        },
         ..CardSummary::default()
     };
     if let Some(r) = &t.rollup {

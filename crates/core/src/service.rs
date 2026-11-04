@@ -2307,6 +2307,12 @@ impl Core {
         self.s.spawn_cap(&self.s.device.id)
     }
 
+    /// This device's spawned agents (live, and starting) and its cap, for
+    /// the card line "waiting: the PC is at its cap" (card #448).
+    pub fn spawn_slots(&self) -> (i64, i64) {
+        (self.s.spawned_here(), self.s.spawn_cap(&self.s.device.id))
+    }
+
     /// The person sets this device's cap: the app only.
     pub fn set_spawn_cap(&self, cap: i64) -> Result<(), String> {
         self.s.set_spawn_cap(&self.s.device.id.clone(), cap)

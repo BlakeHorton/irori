@@ -68,6 +68,7 @@ import {
   LiveRoster,
   StartAgentOn,
 } from "@/lib/thread"
+import { endAgent } from "@/lib/agents"
 import { cn } from "@/lib/utils"
 import {
   AskLine,
@@ -2023,7 +2024,7 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
             {w.status === "gone" ? (
               <>
                 <span>gone</span>
-                <Revive who={w} gone={gone} />
+                {!w.spawned && <Revive who={w} gone={gone} />}
               </>
             ) : role === "working" && w.steps?.length ? (
               <span title="Owns these steps: on the card until they're done">
@@ -2044,7 +2045,10 @@ function People({ detail, gone }: { detail: CardDetail; gone: GoneSession[] }) {
                   </span>
                 )
               ) : (
-                <PersonStatus card={detail} who={w} />
+                <>
+                  <PersonStatus card={detail} who={w} />
+                  {w.spawned && <EndAgent who={w} />}
+                </>
               )
             ) : (
               <span>watching</span>
@@ -2098,6 +2102,32 @@ function PersonStatus({ card, who }: { card: CardDetail; who: AgentRef }) {
     )
   if (over(card)) return null
   return <span>on it</span>
+}
+
+// EndAgent ends an agent Irori started for this card (card #448, sa-2):
+// it writes its hand-off on the card first, then Irori stops and removes
+// it. Only on the device it runs on, until part 11.
+function EndAgent({ who }: { who: AgentRef }) {
+  const [done, setDone] = useState(false)
+  if (done) return <span>ending</span>
+  if (who.where !== "This PC")
+    return <span title="End it from the device it runs on">started by Irori</span>
+  return (
+    <ConfirmButton
+      label="End"
+      question={
+        <>
+          End {name(who)}? It writes where it left off on this card first,
+          then Irori stops it and removes its session.
+        </>
+      }
+      confirmLabel="End"
+      onConfirm={async () => {
+        await endAgent(who.key)
+        setDone(true)
+      }}
+    />
+  )
 }
 
 // Revive runs claude --bg --resume for a gone agent's session after a

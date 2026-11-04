@@ -278,6 +278,8 @@ export const commands = {
 	agentsSettings: (boardId: string) => __TAURI_INVOKE<AgentsSettings>("agents_settings", { boardId }),
 	/**  The person changes them: the app only, never a tool. */
 	agentsSet: (change: AgentsChange) => __TAURI_INVOKE<AgentsSettings>("agents_set", { change }),
+	/**  The person ends an agent Irori started: its hand-off, then stop and rm. */
+	agentsEnd: (key: string) => __TAURI_INVOKE<null>("agents_end", { key }),
 	/**  Every merge desk in the person's log. */
 	deskList: () => __TAURI_INVOKE<DeskView[]>("desk_list"),
 	/**  The person sets up or changes a repo's merge desk. */
@@ -365,6 +367,11 @@ export type AgentRef = {
 	 *  rather than a holder (card #86).
 	 */
 	steps?: string[],
+	/**
+	 *  Irori started it for this card (card #448): the card shows End, not
+	 *  Revive, and the roster says "for #N".
+	 */
+	spawned?: boolean,
 	/**  The hand-off note it was offered the card with (card #85). */
 	handoff?: string,
 	device?: string,
@@ -921,6 +928,16 @@ export type CardSummary = {
 	 *  requested or bound. A `not trusted: ` reason gets Trust and start.
 	 */
 	cantStart?: string,
+	/**
+	 *  The device an agent is starting on for this card ("This PC" or its
+	 *  name), while Irori's spawn request waits for it (card #448).
+	 */
+	starting?: string,
+	/**
+	 *  The device whose cap holds this card back: it needs an agent, but
+	 *  that device already runs as many as it may (card #448).
+	 */
+	atCap?: string,
 	/**  Where the card sits on the Board's canvas (card #93), once placed. */
 	pos?: CanvasPos | null,
 	/**

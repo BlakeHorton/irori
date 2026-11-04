@@ -717,7 +717,7 @@ impl Services {
     }
 
     /// Spawned agents live on this device, and requests starting here.
-    fn spawned_here(&self) -> i64 {
+    pub(crate) fn spawned_here(&self) -> i64 {
         let me = self.device.id.as_str();
         let live = self
             .presence
