@@ -2,13 +2,14 @@
 //! --bg` (it writes a live session file the way Claude Code does, and End
 //! removes it): a card posted on the private board with spawning on gets
 //! one agent, started with an explicit permission mode and its brief in a
-//! file; the agent is bound to the card once presence lists it; at its
-//! done check it is ended (agent.gone first, then stop and rm) and leaves
+//! file; the agent is bound to the card once presence lists it; after its
+//! done check's grace it is ended (agent.gone first, then stop and rm) and leaves
 //! the card as finished, with nobody told the card is open again.
 
 mod common;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use common::*;
@@ -52,7 +53,20 @@ fn spawner(f: &Arc<Fake>, sessions: PathBuf) -> Spawner {
 
 #[test]
 fn a_card_gets_its_own_agent_which_ends_at_its_done_check() {
-    let r = Rig::new();
+    // The clock runs ahead on demand, past the done check's grace.
+    let skew = Arc::new(AtomicI64::new(0));
+    let sk = skew.clone();
+    let r = Rig::with(move |o| {
+        o.now = Some(Arc::new(move || {
+            let d = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap();
+            gocompat::time::GoTime::unix(
+                d.as_secs() as i64 + sk.load(Ordering::SeqCst),
+                i64::from(d.subsec_nanos()),
+            )
+        }));
+    });
     let work = tempfile::tempdir().unwrap();
     let fake = Arc::new(Fake::default());
     let me = r.core.device_id().to_string();
@@ -135,6 +149,13 @@ fn a_card_gets_its_own_agent_which_ends_at_its_done_check() {
         "done: the parser handles them",
     )
     .unwrap();
+    // It stays for the grace (a quick "Not done" reaches it, card #447),
+    // then Irori ends it.
+    skew.fetch_add(
+        irori_core::spawn::DONE_GRACE.as_secs() as i64 + 10,
+        Ordering::SeqCst,
+    );
+    r.core.set_spawn_cap(r.core.spawn_cap()).unwrap();
     wait_for(60, "the agent ended", || {
         fake.ended
             .lock()

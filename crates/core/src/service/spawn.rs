@@ -279,6 +279,12 @@ pub(crate) fn spawn_permissions(
 /// anyway, saying so on the card (decision 6 (a)).
 pub const HANDOFF_WAIT: Duration = Duration::from_secs(120);
 
+/// How long a spawned agent stays after raising its done check (§2
+/// "Completed", decision 17 (b); card #447): a quick "Not done" reaches the
+/// same session. After it the agent is ended; a later "Not done" puts the
+/// card back on the Board and a fresh agent starts with his words.
+pub const DONE_GRACE: Duration = Duration::from_secs(300);
+
 /// The line Irori leaves when an agent ends without a hand-off.
 pub const NO_HANDOFF: &str = "The agent Irori started for this card ended without a hand-off: read the thread and Where for what it did.";
 
@@ -621,7 +627,8 @@ impl Services {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(&t.id)
-            .cloned();
+            .cloned()
+            .or_else(|| self.answer_on_card(t, &comments));
         let brief = build_brief(t, &comments, &named, &|_| None, answer.as_deref());
         let perms = spawn_permissions(&self.spawn_setting(""), "", &t.repo_key, &brief);
         let ask = SpawnAsk {
@@ -694,6 +701,21 @@ impl Services {
         }
     }
 
+    /// The person's newest answer on one of card t's items since its last
+    /// agent was asked for (card #447): a "Not done" on its done check, a
+    /// blocker answer, or their words on the crash question. Whichever way
+    /// it was given (window, API, phone), the fresh agent reads it.
+    fn answer_on_card(&self, t: &Task, comments: &[coord::Comment]) -> Option<String> {
+        let since = t.spawn_request().map(|s| s.at);
+        comments
+            .iter()
+            .filter(|c| !c.blocker_id.is_empty() && self.chain.is_owner(&c.by))
+            .filter(|c| since.as_ref().is_none_or(|s| !before(&c.at, s)))
+            .filter(|c| c.text != coord::CRASHED_START && !c.text.trim().is_empty())
+            .max_by_key(|c| c.at.unix_nano())
+            .map(|c| c.text.clone())
+    }
+
     /// The folder card t's agent starts in: the card's own checkout here,
     /// else this device's checkout of its repo.
     fn spawn_folder(&self, t: &Task) -> Option<String> {
@@ -763,8 +785,17 @@ impl Services {
             let Some(t) = self.coord.get_task(&m.task_id) else {
                 continue;
             };
-            let done_check =
-                t.state == BLOCKED && t.blockers.iter().any(|b| b.open() && b.done_check);
+            // Its done check waits on the person, unanswered, past the
+            // grace (card #447). A "Not done" answer is the agent's to act
+            // on, so it stays.
+            let now = (self.now)();
+            let done_check = t.state == BLOCKED
+                && t.blockers.iter().any(|b| {
+                    b.open()
+                        && b.done_check
+                        && b.status != coord::BLOCKER_ANSWERED
+                        && at_least(&now, &b.at, DONE_GRACE)
+                });
             if done_check || coord::is_terminal(&t.state) || !t.holders.contains(&a.key) {
                 self.begin_end(&a.key);
             }
