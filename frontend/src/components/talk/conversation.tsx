@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 
 import { MentionTextarea } from "@/components/common/mention-textarea"
+import { AgentsNowToggle } from "@/components/common/agents-now-toggle"
 import { RichText } from "@/components/common/rich-text"
 import { Face } from "@/components/cards/faces"
 import { AgentCards } from "@/components/cards/agent-hover"
@@ -33,6 +34,7 @@ import {
 import { AgentRef } from "@/lib/models"
 import { threads as threadsApi } from "@/lib/cards"
 import { composing, type Mention } from "@/lib/mentions"
+import { useAgentsNow } from "@/lib/agents-now"
 import { parseTime, plainLine } from "@/lib/irori"
 import { errorText } from "@/lib/talk"
 import { LiveRoster } from "@/lib/thread"
@@ -448,6 +450,10 @@ function Composer({ conv, other }: { conv: Conversation; other?: Member }) {
   const [mentions, setMentions] = useState<Mention[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A channel post carries the "Agents answer now" toggle (card #391); a DM
+  // always wakes the other side, so it keeps the default.
+  const agentsNow = useAgentsNow(mentions)
+  const channel = conv.kind === "channel"
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     const body = text.trim()
@@ -455,9 +461,11 @@ function Composer({ conv, other }: { conv: Conversation; other?: Member }) {
     setBusy(true)
     setError(null)
     try {
-      await talkApi.post(conv.convId, body, agentsNowFor(mentionKinds(mentions)))
+      const now = channel ? agentsNow.on : agentsNowFor(mentionKinds(mentions))
+      await talkApi.post(conv.convId, body, now)
       setText("")
       setMentions([])
+      agentsNow.reset()
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -492,7 +500,8 @@ function Composer({ conv, other }: { conv: Conversation; other?: Member }) {
           readOnly={busy}
           aria-busy={busy}
         />
-        <div className="flex h-9 shrink-0 items-center">
+        <div className="flex h-9 shrink-0 items-center gap-2">
+          {channel && <AgentsNowToggle on={agentsNow.on} onChange={agentsNow.set} disabled={busy} />}
           <Button type="submit" size="sm" disabled={busy || !text.trim()}>
             {busy ? "Sending…" : "Send"}
           </Button>
