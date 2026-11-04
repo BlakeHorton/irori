@@ -79,6 +79,20 @@ fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// The main checkout of the repo `dir` is in (a linked worktree's too).
+pub fn main_root(dir: &Path) -> Option<PathBuf> {
+    let common = git(
+        dir,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .ok()?;
+    let common = PathBuf::from(common);
+    if common.file_name().is_some_and(|n| n == ".git") {
+        return common.parent().map(Path::to_path_buf);
+    }
+    None
+}
+
 fn has_ref(repo: &Path, r: &str) -> bool {
     git(
         repo,

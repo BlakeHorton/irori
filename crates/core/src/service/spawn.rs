@@ -719,6 +719,14 @@ impl Services {
     /// The folder card t's agent starts in: the card's own checkout here,
     /// else this device's checkout of its repo.
     fn spawn_folder(&self, t: &Task) -> Option<String> {
+        if t.spawn
+            && let Some(p) = self
+                .coord
+                .get_task(&t.parent)
+                .filter(|_| !t.parent.is_empty())
+        {
+            return self.helper_folder(t, &p);
+        }
         if let Some(w) = &t.where_
             && irori_identity::owner::device_of(&w.who) == self.device.id
             && !w.cwd.is_empty()
@@ -730,6 +738,49 @@ impl Services {
             return None;
         }
         self.capture.repo_roots(&t.repo_key).into_iter().next()
+    }
+
+    /// A helper's part (spawned agents §3, part 7): its own worktree,
+    /// branched from the lead's card branch in this device's checkout of
+    /// the repo, so it starts from the lead's plan. None (and a log line)
+    /// when the card has no branch yet or git refuses: a helper never
+    /// starts in the lead's folder.
+    fn helper_folder(&self, t: &Task, p: &Task) -> Option<String> {
+        let branch = p.where_.as_ref().map(|w| w.branch.as_str()).unwrap_or("");
+        let repo_key = if p.repo_key.is_empty() {
+            &t.repo_key
+        } else {
+            &p.repo_key
+        };
+        // This device's checkout of the repo, else the one the lead works
+        // in here (its main checkout, not the lead's worktree).
+        let lead_here = p.where_.as_ref().filter(|w| {
+            irori_identity::owner::device_of(&w.who) == self.device.id && !w.cwd.is_empty()
+        });
+        let root = self
+            .capture
+            .repo_roots(repo_key)
+            .into_iter()
+            .next()
+            .map(PathBuf::from)
+            .or_else(|| lead_here.and_then(|w| crate::helpertree::main_root(Path::new(&w.cwd))));
+        let Some(root) = root else {
+            logf(format_args!(
+                "spawn {}: helper worktree: no checkout of {repo_key} here",
+                t.short_ref()
+            ));
+            return None;
+        };
+        match crate::helpertree::make(&root, branch, &t.short_ref()) {
+            Ok(h) => Some(h.path.to_string_lossy().into_owned()),
+            Err(e) => {
+                logf(format_args!(
+                    "spawn {}: helper worktree: {e}",
+                    t.short_ref()
+                ));
+                None
+            }
+        }
     }
 
     fn write_brief(&self, id: &str, generation: i64, text: &str) -> Result<PathBuf, String> {
@@ -856,10 +907,12 @@ impl Services {
         let Some(t) = self.coord.get_task(&m.task_id) else {
             return false;
         };
-        if t.blockers
-            .iter()
-            .any(|b| b.done_check && b.raised_by == key && !before(&b.at, &m.at))
-        {
+        // Its done check's proof, or a helper's proof to its lead (§3).
+        if t.blockers.iter().any(|b| {
+            (b.done_check || b.question == coord::PART_QUESTION)
+                && b.raised_by == key
+                && !before(&b.at, &m.at)
+        }) {
             return true;
         }
         self.coord
