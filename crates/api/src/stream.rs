@@ -54,7 +54,14 @@ pub(crate) fn attach(h: &Handler) -> Resp {
             return http::error(400, "bad session id");
         }
         let key = format!("{}/{session}", s.b.device().id);
-        let Some(named) = name_event(s, &key) else {
+        // Card #433: an attach for a session presence doesn't list (its
+        // session file was unreadable when last read) looks again first.
+        let named = name_event(s, &key).or_else(|| {
+            s.b.revive_agent(&key)
+                .then(|| name_event(s, &key))
+                .flatten()
+        });
+        let Some(named) = named else {
             return http::error(
                 404,
                 &format!(
@@ -79,6 +86,7 @@ pub(crate) fn attach(h: &Handler) -> Resp {
             kicked: Default::default(),
             appends: attach::mod_at_least(&q.get("mod"), attach::APPEND_SINCE),
             named: Mutex::new(named),
+            revived: Mutex::new(None),
         }
     } else if !member.is_empty() && session.is_empty() {
         let Some(m) = s.b.member_by_secret(&member) else {
@@ -98,6 +106,7 @@ pub(crate) fn attach(h: &Handler) -> Resp {
             kicked: Default::default(),
             appends: false,
             named: Mutex::new(Event::default()),
+            revived: Mutex::new(None),
         }
     } else {
         return http::error(400, "pass exactly one of session or member");
@@ -191,9 +200,18 @@ fn serve(
                 // Catch up on a dropped notification (slow subscriber).
                 wake(s, ib, st, out, false)?;
                 send_append(s, ib, st, out, false)?;
-                if st.path == inbox::path::MOD
-                    && let Some(ev) = name_event(s, &st.key)
-                {
+                // Card #433: the stream is alive, so the session's
+                // process is; a session presence lost looks again.
+                let ev = if st.path == inbox::path::MOD {
+                    name_event(s, &st.key).or_else(|| {
+                        s.b.revive_agent(&st.key)
+                            .then(|| name_event(s, &st.key))
+                            .flatten()
+                    })
+                } else {
+                    None
+                };
+                if let Some(ev) = ev {
                     let mut named = st.named.lock().unwrap_or_else(|e| e.into_inner());
                     if ev.name != named.name
                         || ev.name_source != named.name_source

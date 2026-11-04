@@ -341,6 +341,79 @@ fn test_record_replicates_a_mode_learned_later() {
     );
 }
 
+/// Card #433: a card whose agent.seen row never landed after it went (the
+/// Added change was dropped, or its append failed on a full disk) gets an
+/// agent.seen on its next change, not an agent.status another device
+/// drops for a card it doesn't hold; so the other devices list it again.
+#[test]
+fn test_record_rewrites_seen_after_a_lost_added() {
+    let r = Rig::new();
+    let me = r.core.device_id().to_string();
+    let key = format!("{me}/dddddddd-4444-4444-8444-000000000433");
+    let card = presence::AgentCard {
+        key: key.clone(),
+        device_id: me.clone(),
+        agent: "claude".into(),
+        name: "gudgeon".into(),
+        status: "idle".into(),
+        ..presence::AgentCard::default()
+    };
+    let mut gone = card.clone();
+    gone.status = "gone".into();
+    let mut busy = card.clone();
+    busy.status = "busy".into();
+    let q = gocompat::sub::Queue::new(8);
+    for (kind, c) in [
+        (presence::ChangeKind::Added, card.clone()),
+        (presence::ChangeKind::Removed, gone),
+        // Its Added back never reached the record loop.
+        (presence::ChangeKind::Updated, busy.clone()),
+        (presence::ChangeKind::Updated, busy),
+    ] {
+        assert!(q.push(presence::Change { kind, card: c }));
+    }
+    q.close();
+    r.core.record_from(&q);
+
+    let rows: Vec<String> = r
+        .core
+        .events(&Filter {
+            kinds: vec![
+                kinds::AGENT_SEEN.into(),
+                kinds::AGENT_STATUS.into(),
+                kinds::AGENT_GONE.into(),
+            ],
+            limit: store::MAX_LIST_LIMIT,
+            ..Filter::default()
+        })
+        .unwrap()
+        .into_iter()
+        .filter(|e| String::from_utf8_lossy(&e.payload).contains(&key))
+        .map(|e| e.kind)
+        .collect();
+    assert_eq!(
+        rows,
+        [kinds::AGENT_SEEN, kinds::AGENT_GONE, kinds::AGENT_SEEN],
+        "rows for the card"
+    );
+
+    // Another device folding this log lists it, busy.
+    let other = coord::roster::Roster::new(coord::roster::Options {
+        store: r.core.store().clone(),
+        self_id: "other-device".into(),
+        local: None,
+        liveness: None,
+        revoked: None,
+    })
+    .unwrap();
+    let c = other
+        .agents()
+        .into_iter()
+        .find(|c| c.key == key)
+        .expect("another device doesn't list the card");
+    assert_eq!(c.status, "busy");
+}
+
 /// The live loop turns the rig's sessions into agent.seen rows, the
 /// replicated card stripped of what means nothing on another machine.
 #[test]

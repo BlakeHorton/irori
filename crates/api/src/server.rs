@@ -12,7 +12,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use http_body_util::BodyExt;
@@ -456,13 +456,14 @@ impl Handler<'_> {
                 return None;
             }
             let mut snd = st.sender.clone();
-            if let Some(c) = self
-                .s
-                .b
-                .agents()
-                .into_iter()
-                .find(|c| c.key == snd.key && !c.name.is_empty())
-            {
+            let mut card = self.s.b.agents().into_iter().find(|c| c.key == snd.key);
+            // Card #433: a call from an attached session presence doesn't
+            // list brings it back if its process lives, before the call
+            // runs (so a board_join sees it live).
+            if card.is_none() && st.revive_due() && self.s.b.revive_agent(&snd.key) {
+                card = self.s.b.agents().into_iter().find(|c| c.key == snd.key);
+            }
+            if let Some(c) = card.filter(|c| !c.name.is_empty()) {
                 snd.name = c.name; // a renamed session sends under its new name
             }
             return Some(Caller {
@@ -543,6 +544,26 @@ pub(crate) struct Stream {
     pub appends: bool,
     /// The name event last sent (or the hello's).
     pub named: Mutex<attach::Event>,
+    /// When a call through this stream last asked presence to look again
+    /// for its unlisted session (card #433).
+    pub revived: Mutex<Option<Instant>>,
+}
+
+/// How often one attach stream's calls may ask presence to look again.
+const REVIVE_EVERY: Duration = Duration::from_secs(2);
+
+impl Stream {
+    /// Whether this stream may ask presence to look again now (at most once
+    /// per [`REVIVE_EVERY`]), noting the ask.
+    pub fn revive_due(&self) -> bool {
+        let mut at = self.revived.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        if at.is_some_and(|t| now.duration_since(t) < REVIVE_EVERY) {
+            return false;
+        }
+        *at = Some(now);
+        true
+    }
 }
 
 #[derive(Default)]

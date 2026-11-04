@@ -977,3 +977,76 @@ fn last_tool_is_the_tool_running_now() {
         "a subagent's tool isn't the session's"
     );
 }
+
+/// Card #433: a session file that is still there but can't be read (a
+/// truncated write on a full disk) keeps its session while the process
+/// lives; a dead process or a deleted file still means gone.
+#[test]
+fn unreadable_session_file_keeps_a_live_session() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path();
+    let alive = Arc::new(AtomicBool::new(true));
+    let (mut o, _) = test_opts(dir, false);
+    let a = alive.clone();
+    o.live = Some(Arc::new(move |pid, _| {
+        pid != 4243 || a.load(Ordering::SeqCst)
+    }));
+    let w = Watcher::new(o);
+    let p = write_session(
+        dir,
+        json!({"pid": 4243, "sessionId": "gudgeon", "cwd": "/w", "status": "idle"}),
+    );
+    w.rescan();
+    let sub = w.subscribe();
+    let listed = |w: &Watcher| w.snapshot().iter().any(|c| c.session_id == "gudgeon");
+    assert!(listed(&w), "never listed");
+
+    for bad in [&b"{\"pid\":"[..], b"", b"\0\0\0\0"] {
+        std::fs::write(&p, bad).unwrap();
+        w.rescan();
+        assert!(listed(&w), "{bad:?}: dropped while the process lives");
+    }
+    assert!(
+        drain(&sub).iter().all(|c| c.kind != ChangeKind::Removed),
+        "an unreadable file read as gone"
+    );
+
+    // The file reads again: its new status is an update, not a new card.
+    write_session(
+        dir,
+        json!({"pid": 4243, "sessionId": "gudgeon", "cwd": "/w", "status": "busy"}),
+    );
+    w.rescan();
+    let got = drain(&sub);
+    assert!(
+        got.len() == 1 && got[0].kind == ChangeKind::Updated && got[0].card.status == "busy",
+        "{got:?}"
+    );
+
+    // Unreadable and the process ended: gone.
+    std::fs::write(&p, b"{").unwrap();
+    alive.store(false, Ordering::SeqCst);
+    w.rescan();
+    assert!(!listed(&w), "a dead process stayed listed");
+    let got = drain(&sub);
+    assert!(
+        got.len() == 1 && got[0].kind == ChangeKind::Removed,
+        "{got:?}"
+    );
+    // Its cache went with it: alive again, still unreadable, still gone.
+    alive.store(true, Ordering::SeqCst);
+    w.rescan();
+    assert!(!listed(&w), "came back from a stale cache");
+
+    // A deleted file is gone even while the process lives.
+    write_session(
+        dir,
+        json!({"pid": 4243, "sessionId": "gudgeon", "cwd": "/w", "status": "idle"}),
+    );
+    w.rescan();
+    assert!(listed(&w));
+    std::fs::remove_file(&p).unwrap();
+    w.rescan();
+    assert!(!listed(&w), "a deleted session file stayed listed");
+}

@@ -47,6 +47,20 @@ struct ScanState {
     tails: HashMap<String, TailCache>,
     sessions: HashMap<String, Session>,
     repos: HashMap<String, String>,
+    /// The last session read from each session file, by file name (card
+    /// #433). A file that is still there but can't be read or parsed (a
+    /// truncated write on a full disk) keeps its session while that
+    /// process lives, rather than reading as gone.
+    files: HashMap<String, Session>,
+}
+
+/// What reading one session file found.
+enum Read {
+    Ok(Box<Session>),
+    /// The file is not there: the session ended (or never was).
+    Missing,
+    /// The file is there but can't be opened or parsed now.
+    Bad,
 }
 
 /// Published cards and subscribers (Go: guarded by mu).
@@ -246,31 +260,51 @@ impl Inner {
         let mut seen: HashMap<String, Session> = HashMap::new();
         let mut cwds: HashSet<String> = HashSet::new();
         let dir = gocompat::filepath::join(&[self.opts.claude_dir.as_str(), "sessions"]);
-        let mut names: Vec<String> = match std::fs::read_dir(&dir) {
-            Ok(rd) => rd
-                .flatten()
-                .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect(),
-            Err(_) => Vec::new(),
+        // A dir that can't be listed now (it hasn't moved; the disk is
+        // full or busy) keeps every cached session whose process lives.
+        let (mut names, listed): (Vec<String>, bool) = match std::fs::read_dir(&dir) {
+            Ok(rd) => (
+                rd.flatten()
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect(),
+                true,
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Vec::new(), true),
+            Err(_) => (st.files.keys().cloned().collect(), false),
         };
         names.sort();
+        let mut files: HashMap<String, Session> = HashMap::new();
         for name in names {
             if !is_session_file(&name) {
                 continue;
             }
             let path = gocompat::filepath::join(&[dir.as_str(), &name]);
-            let Some(s) = self.read_session_file(&path) else {
-                continue;
+            let read = if listed {
+                self.read_session_file(&path)
+            } else {
+                Read::Bad
+            };
+            let s = match read {
+                Read::Ok(s) => *s,
+                Read::Missing => continue,
+                // Unreadable now: the session last read from it, while its
+                // process lives (the liveness check below).
+                Read::Bad => match st.files.get(&name) {
+                    Some(s) => s.clone(),
+                    None => continue,
+                },
             };
             if !(self.live)(s.pid, s.proc_start) {
                 continue;
             }
+            files.insert(name, s.clone());
             cwds.insert(s.cwd.clone());
             let c = self.card(&mut st, &s);
             seen.insert(s.id.clone(), s);
             next.insert(c.key.clone(), c);
         }
+        st.files = files;
         st.tails.retain(|id, _| seen.contains_key(id));
         st.sessions = seen;
         st.repos.retain(|cwd, _| cwds.contains(cwd));
@@ -303,9 +337,17 @@ impl Inner {
         lock(&self.scan).sessions.values().map(|s| s.pid).collect()
     }
 
-    fn read_session_file(&self, path: &str) -> Option<Session> {
-        let f = (self.open)(Path::new(path)).ok()?;
-        read_session(f)
+    fn read_session_file(&self, path: &str) -> Read {
+        match (self.open)(Path::new(path)) {
+            Ok(f) => read_session(f).map_or(Read::Bad, |s| Read::Ok(Box::new(s))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Read::Missing,
+            Err(_) => Read::Bad,
+        }
+    }
+
+    /// Whether session `id` is listed now.
+    pub(crate) fn has_session(&self, id: &str) -> bool {
+        lock(&self.scan).sessions.contains_key(id)
     }
 
     /// Go `card`: the roster entry for a live session, refreshing its tail.

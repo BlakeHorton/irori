@@ -16,6 +16,10 @@ use crate::session::is_session_file;
 use crate::transcript::{base_name, transcript_id};
 use crate::watcher::{Inner, Watcher};
 
+/// How often an unlisted session's transcript activity may force a full
+/// scan (card #433).
+const UNKNOWN_EVERY: Duration = Duration::from_secs(10);
+
 /// One file event (Go `fswatch.Event`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FsEvent {
@@ -81,6 +85,10 @@ struct Loop {
     exited_tx: mpsc::Sender<()>,
     full: bool,
     dirty: HashSet<String>,
+    /// When a transcript of a session that isn't listed last asked for a
+    /// full scan (card #433), so a busy unlisted transcript asks at most
+    /// once per [`UNKNOWN_EVERY`] (subagent transcripts are never listed).
+    unknown_at: Option<Instant>,
 }
 
 async fn next_event(src: &mut Option<FsSource>) -> Option<FsEvent> {
@@ -108,6 +116,7 @@ impl Watcher {
             exited_tx,
             full: false,
             dirty: HashSet::new(),
+            unknown_at: None,
         };
         l.start_watchers();
         x.scan();
@@ -151,6 +160,13 @@ impl Watcher {
                         l.full = true;
                         due = true;
                     } else if let Some(id) = transcript_id(&e.path) {
+                        // A session that writes its transcript but isn't
+                        // listed (its session file was unreadable when last
+                        // scanned) is read again in full (card #433).
+                        // Subagent transcripts (deeper down) never are.
+                        if top_transcript(&e.path) && !x.has_session(&id) && l.unknown_due() {
+                            l.full = true;
+                        }
                         l.dirty.insert(id);
                         due = true;
                     },
@@ -189,7 +205,31 @@ impl Watcher {
     }
 }
 
+/// Whether `path` is a session's own transcript, `projects/<slug>/<id>.jsonl`
+/// (not a subagent's, further down).
+fn top_transcript(path: &str) -> bool {
+    Path::new(path)
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .is_some_and(|n| n == "projects")
+}
+
 impl Loop {
+    /// Whether an unlisted session's transcript may ask for a full scan
+    /// now (at most once per [`UNKNOWN_EVERY`]).
+    fn unknown_due(&mut self) -> bool {
+        let now = Instant::now();
+        if self
+            .unknown_at
+            .is_some_and(|t| now.duration_since(t) < UNKNOWN_EVERY)
+        {
+            return false;
+        }
+        self.unknown_at = Some(now);
+        true
+    }
+
     /// SafetyInterval while both watchers run, else Interval.
     fn period(&self) -> Duration {
         if self.sessions.is_some() && self.projects.is_some() {

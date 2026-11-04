@@ -32,6 +32,13 @@ pub trait Backend: Send + Sync + 'static {
     fn member_by_secret(&self, secret: &str) -> Option<Member>;
     /// That key's member stream opened (true) or closed (false).
     fn member_stream(&self, key: &str, open: bool);
+    /// Activity from this device's attached Claude session `key` while it
+    /// isn't listed: look again, and list it if its process lives (card
+    /// #433). Whether it is listed afterwards.
+    fn revive_agent(&self, key: &str) -> bool {
+        let _ = key;
+        false
+    }
     /// The pairing flow and the runtime it runs on (Go `Pairing()`), for
     /// the joining side's routes (`/v1/pair/*`); `None` answers 503.
     fn pairing(&self) -> Option<(irori_pair::Pairer, tokio::runtime::Handle)> {
@@ -100,6 +107,9 @@ impl Backend for Core {
     }
     fn member_stream(&self, key: &str, open: bool) {
         Core::member_stream(self, key, open)
+    }
+    fn revive_agent(&self, key: &str) -> bool {
+        Core::revive_agent(self, key)
     }
     fn pairing(&self) -> Option<(irori_pair::Pairer, tokio::runtime::Handle)> {
         Some((Core::pairing(self).clone(), self.pairing_runtime().clone()))

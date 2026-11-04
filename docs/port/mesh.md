@@ -179,7 +179,7 @@ All of these are written as `MarshalIndent(v, "", "  ")` (two spaces; Go sorts m
 ### 3.4 Presence (agent sessions)
 | Rule | Value | Ref |
 |---|---|---|
-| Session files | `<ClaudeDir>/sessions/<digits>.json` only; **never open `*.key`**; read ≤64 KiB; invalid JSON → skip (no repair) | session.go:12, 37-94 |
+| Session files | `<ClaudeDir>/sessions/<digits>.json` only; **never open `*.key`**; read ≤64 KiB; invalid JSON → skip (no repair). **Deviation (card #433):** a file that is still there but can't be opened or parsed (a truncated write on a full disk) keeps the session last read from it while its process lives; a missing file still ends the session. Limit: a session never read while Irori ran (Irori started or restarted while the file was already bad) has nothing cached, so it stays unlisted, and tool calls, keepalives and hellos from it can't revive it, until the file reads again | session.go:12, 37-94; watcher.rs `Read::Bad` |
 | Fields | pid, sessionId, cwd, name, nameSource, status, kind, entrypoint, version, peerFeatures, startedAt(ms), max(updatedAt,statusUpdatedAt)(ms), procStart (string digits / lstart text / number) | session.go:52-94 |
 | Liveness | Windows: FILETIME ticks, slack 10,000,000 (=1 s); macOS: lstart→unix s, slack 2 s, ignore procStart > 2^36; other: pid only | live_windows.go:7-28; live_darwin.go:12-36; live_other.go:9 |
 | lstart | `"Mon Jan _2 15:04:05 2006"` UTC after collapsing spaces; year<2000 rejected | session.go:132-141 |

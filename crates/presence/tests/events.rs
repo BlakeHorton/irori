@@ -338,3 +338,41 @@ fn os_exit_wait_stops_and_fires() {
         assert!(exit(i64::from(c.id()), Box::new(|| {})).is_none());
     }
 }
+
+/// Card #433: a session whose file was unreadable when last scanned (so
+/// it isn't listed) and then writes its transcript is read again in full,
+/// without waiting for a session-file event or the safety scan.
+#[tokio::test(flavor = "multi_thread")]
+async fn transcript_of_an_unlisted_session_rescans() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path();
+    let cwd = r"C:\work\unlisted";
+    let id = "0b1c2d3e-0000-4000-8000-0000000004a3";
+    std::fs::create_dir_all(dir.join("sessions")).unwrap();
+    write_session(dir, json!({"pid": 40, "sessionId": "sentinel"}));
+    let p = dir.join("sessions").join("43.json");
+    std::fs::write(&p, b"{\"pid\":").unwrap();
+    let (mut o, _) = event_opts(dir, HOUR, HOUR);
+    let fw = FakeWatch::new();
+    fw.install(&mut o);
+    let w = Watcher::new(o);
+    let sub = w.subscribe();
+    let r = run_watcher(&w);
+    await_change(&sub, "Added sentinel", is(ChangeKind::Added, "sentinel")).await;
+    assert!(!w.snapshot().iter().any(|c| c.session_id == id));
+
+    // The file reads again, but no session-file event arrives; only the
+    // transcript moves.
+    write_session(dir, json!({"pid": 43, "sessionId": id, "cwd": cwd}));
+    let tp = dir
+        .join("projects")
+        .join(presence::slug(cwd))
+        .join(format!("{id}.jsonl"));
+    append_file(&tp, &assistant_row("2026-10-26T10:00:00Z", "still here"));
+    fw.src("projects").send(FsEvent {
+        path: tp.to_string_lossy().into_owned(),
+        overflow: false,
+    });
+    await_change(&sub, "Added unlisted", is(ChangeKind::Added, id)).await;
+    r.stop().await;
+}

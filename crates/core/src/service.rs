@@ -1928,6 +1928,28 @@ impl Core {
     pub fn presence(&self) -> &Arc<presence::Watcher> {
         &self.s.presence
     }
+
+    /// Activity from this device's Claude session `key` (an attach stream's
+    /// hello or keepalive, a tool call through its attach secret) while
+    /// presence doesn't list it: presence reads the session files again now
+    /// (card #433). A session whose process lives comes back (its Added
+    /// change writes `agent.seen`, so every device lists it again); one
+    /// whose process ended stays gone. Whether it is listed afterwards.
+    pub fn revive_agent(&self, key: &str) -> bool {
+        let listed = |p: &presence::Watcher| p.snapshot().iter().any(|c| c.key == key);
+        if listed(&self.s.presence) {
+            return true;
+        }
+        if irori_identity::owner::device_of(key) != self.s.device.id {
+            return false;
+        }
+        self.s.presence.rescan();
+        let ok = listed(&self.s.presence);
+        if ok {
+            logf(format_args!("presence: {key} is active again; listed"));
+        }
+        ok
+    }
     pub fn names(&self) -> &Arc<Namer> {
         &self.s.names
     }
@@ -2895,55 +2917,84 @@ impl Services {
 
     /// Go `record`: status rows only when status, name, name source or
     /// permission mode changed, the mode riding on the status row.
+    ///
+    /// Card #433: other devices list a card only from its `agent.seen` row
+    /// (an `agent.status` for a card they don't hold is dropped), so a key
+    /// whose `agent.seen` never landed (the append failed on a full disk,
+    /// or the Added change was dropped from a full queue) gets one on its
+    /// next change instead of a status row.
     fn record(&self, mut next: impl FnMut() -> Option<presence::Change>) {
         let mut last: std::collections::HashMap<String, presence::AgentCard> =
             std::collections::HashMap::new();
+        // Keys whose agent.seen row is in the log since they were last gone.
+        let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
         while let Some(ch) = next() {
             let card = ch.card;
+            let key = card.key.clone();
             let res = match ch.kind {
                 presence::ChangeKind::Added => {
-                    last.insert(card.key.clone(), card.clone());
+                    last.insert(key.clone(), card.clone());
                     self.names_kick.kick();
-                    self.store
-                        .append("irori", kinds::AGENT_SEEN, &self.row_card(card))
+                    let r = self
+                        .store
+                        .append("irori", kinds::AGENT_SEEN, &self.row_card(card));
+                    if r.is_ok() {
+                        written.insert(key);
+                    }
+                    r.map(|_| ())
                 }
                 presence::ChangeKind::Updated => {
-                    let prev = last.insert(card.key.clone(), card.clone());
-                    if let Some(p) = &prev
-                        && p.status == card.status
-                        && p.name == card.name
-                        && p.name_source == card.name_source
-                        && p.permission_mode == card.permission_mode
-                    {
-                        continue;
-                    }
+                    let prev = last.insert(key.clone(), card.clone());
                     if let Some(p) = &prev
                         && (p.name != card.name || p.name_source != card.name_source)
                     {
                         self.names_kick.kick();
                     }
-                    self.store.append(
-                        "irori",
-                        kinds::AGENT_STATUS,
-                        &AgentStatus {
-                            key: &card.key,
-                            name: &card.name,
-                            name_source: &card.name_source,
-                            permission_mode: &card.permission_mode,
-                            status: &card.status,
-                        },
-                    )
+                    if !written.contains(&key) {
+                        let r = self
+                            .store
+                            .append("irori", kinds::AGENT_SEEN, &self.row_card(card));
+                        if r.is_ok() {
+                            written.insert(key);
+                        }
+                        r.map(|_| ())
+                    } else {
+                        if let Some(p) = &prev
+                            && p.status == card.status
+                            && p.name == card.name
+                            && p.name_source == card.name_source
+                            && p.permission_mode == card.permission_mode
+                        {
+                            continue;
+                        }
+                        self.store
+                            .append(
+                                "irori",
+                                kinds::AGENT_STATUS,
+                                &AgentStatus {
+                                    key: &card.key,
+                                    name: &card.name,
+                                    name_source: &card.name_source,
+                                    permission_mode: &card.permission_mode,
+                                    status: &card.status,
+                                },
+                            )
+                            .map(|_| ())
+                    }
                 }
                 presence::ChangeKind::Removed => {
-                    last.remove(&card.key);
-                    self.store.append(
-                        "irori",
-                        kinds::AGENT_GONE,
-                        &AgentGone {
-                            key: &card.key,
-                            reason: &card.status,
-                        },
-                    )
+                    last.remove(&key);
+                    written.remove(&key);
+                    self.store
+                        .append(
+                            "irori",
+                            kinds::AGENT_GONE,
+                            &AgentGone {
+                                key: &card.key,
+                                reason: &card.status,
+                            },
+                        )
+                        .map(|_| ())
                 }
             };
             if let Err(e) = res {

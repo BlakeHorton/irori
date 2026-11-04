@@ -64,7 +64,12 @@ pub fn write_session(dir: &Path, file: &str, id: &str, name: &str, cwd: &Path, m
 
 impl Rig {
     pub fn new() -> Rig {
-        Rig::build(None)
+        Rig::build(None, |_| {})
+    }
+
+    /// The rig with `edit` applied to the Core's options first.
+    pub fn with(edit: impl Fn(&mut Options)) -> Rig {
+        Rig::build(None, edit)
     }
 
     /// The rig after `seed` ran on a first Core over the same data dir and
@@ -72,11 +77,11 @@ impl Rig {
     /// write them before capture.New) are in the log when the served Core
     /// starts.
     pub fn seeded(seed: impl FnOnce(&Core)) -> Rig {
-        Rig::build(Some(Box::new(seed)))
+        Rig::build(Some(Box::new(seed)), |_| {})
     }
 
     #[allow(clippy::type_complexity)]
-    fn build(seed: Option<Box<dyn FnOnce(&Core) + '_>>) -> Rig {
+    fn build(seed: Option<Box<dyn FnOnce(&Core) + '_>>, edit: impl Fn(&mut Options)) -> Rig {
         let (d, c, w) = (
             tempfile::tempdir().unwrap(),
             tempfile::tempdir().unwrap(),
@@ -88,15 +93,16 @@ impl Rig {
         write_session(&sessions, "900001.json", SESS_A, "alpha", w.path(), now);
         write_session(&sessions, "900002.json", SESS_B, "beta", w.path(), now);
         let start = || {
-            Core::start(Options {
+            let mut o = Options {
                 data_dir: d.path().to_path_buf(),
                 claude_dir: c.path().to_path_buf(),
                 version: "0.2.0-test".into(),
                 headless: true,
                 keystore: Some(Box::new(irori_identity::keystore::FileKeystore)),
                 ..Options::default()
-            })
-            .unwrap()
+            };
+            edit(&mut o);
+            Core::start(o).unwrap()
         };
         if let Some(seed) = seed {
             let first = start();
