@@ -417,10 +417,9 @@ export function useNotesWaiting(): number {
 }
 
 // wakeNotes is what card_wake_notes says the card's agents got on wake
-// (card #412), [] until the window has it.
+// (card #412).
 export async function wakeNotes(taskId: string): Promise<WakeNote[]> {
   if (inWails()) {
-    if (!NotesService.wakeAvailable()) return []
     return (await NotesService.CardWakeNotes(taskId)) as WakeNote[]
   }
   return sampleWake(taskId)
