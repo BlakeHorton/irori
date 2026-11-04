@@ -158,6 +158,17 @@ kinds! {
     NOTIFICATION_POSTED = "notification.posted" => Replicated, Refuses;
     /// The person read notifications (card #377): `{keys, at}`.
     NOTIFICATION_READ = "notification.read" => Replicated, Refuses;
+    /// A spawned agent for a card (spawned agents §2, card #446):
+    /// `{taskId, gen, step?, subtask?, op: requested|failed|canceled,
+    /// device, repoKey, folder, worktree?, model, effort, permissionMode,
+    /// name, reason?, by, at}`. The newest `gen` per card (and part) wins;
+    /// a pending request keeps the card out of hand-out. The private log
+    /// only until shared boards spawn (slice 11).
+    TASK_SPAWN = "task.spawn" => Replicated, Refuses;
+    /// The spawned_for mark (card #446): `{taskId, key, gen, step?,
+    /// subtask?, device, by, at}`. Agent `key` was started for card
+    /// `taskId` and is never offered another; kept after it goes.
+    TASK_SPAWNED = "task.spawned" => Replicated, Refuses;
     // capture
     CAPTURE_TURN = "capture.turn" => Replicated, Refuses;
     CAPTURE_EDIT = "capture.edit" => Replicated, Refuses;

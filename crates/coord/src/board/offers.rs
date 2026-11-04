@@ -63,6 +63,12 @@ pub struct Unoffered {
 /// private, not an ask and not a parent, and not waiting on other work
 /// (card #397).
 pub(crate) fn offerable(t: &Task) -> bool {
+    needs_agent(t) && !t.spawn_pending()
+}
+
+/// [`offerable`] before its spawn check (card #446): the card needs an
+/// agent, whether one is starting for it or not.
+pub(crate) fn needs_agent(t: &Task) -> bool {
     t.state == SUBMITTED
         && t.holders.is_empty()
         && t.assigned.is_empty()
@@ -151,7 +157,24 @@ impl Fold {
     /// shared card, a card someone assigned to `by`, and a person are let
     /// through.
     pub(crate) fn check_free(&self, by: &str, t: &Task) -> Result<()> {
-        if t.shared || contains(&t.assigned, by) || self.is_owner(by) {
+        if self.is_owner(by) {
+            return Ok(());
+        }
+        // An agent started for a card takes only that card and its
+        // subtasks (card #446).
+        if let Some(s) = self.spawned_for(by)
+            && !self.spawned_may_take(by, t)
+        {
+            return Err(Error::raw(
+                ErrorKind::NotAllowed,
+                format!(
+                    "coord: you were started for {} and take only that card: leave {} for another agent.",
+                    self.ref_of(&s.task_id),
+                    t.short_ref()
+                ),
+            ));
+        }
+        if t.shared || contains(&t.assigned, by) {
             return Ok(());
         }
         // A working card in another log (card #422) counts as one here.
@@ -238,6 +261,7 @@ impl Fold {
                 || out.contains(&a.key)
                 || elsewhere.contains(&a.key)
                 || self.busy_anywhere(&a.key)
+                || !self.spawned_may_take(&a.key, t)
             {
                 continue;
             }
@@ -268,6 +292,7 @@ impl Fold {
                     && a.status == "idle"
                     && a.device_state != crate::roster::OFFLINE
                     && !self.busy_anywhere(&a.key)
+                    && self.spawned_for(&a.key).is_none()
             })
             .collect();
         let mut cards: Vec<&Task> = self
@@ -459,7 +484,7 @@ impl Fold {
     /// Whether this device runs card t's hand-out: on the private board,
     /// a card its agents posted; on a shared board, a card it made (card
     /// #174).
-    fn hands_out(&self, t: &Task) -> bool {
+    pub(crate) fn hands_out(&self, t: &Task) -> bool {
         if self.on_board {
             return self.origin.get(&t.id) == Some(&self.dev);
         }
@@ -469,9 +494,15 @@ impl Fold {
     /// The agents card t may go to (card #174): on a shared board set to
     /// the author's agents, those of the member who made it; else all.
     fn offer_pool(&self, t: &Task, agents: &[AgentCard]) -> Vec<AgentCard> {
+        // A spawned agent serves only the card it was started for (§6).
+        let agents: Vec<AgentCard> = agents
+            .iter()
+            .filter(|a| self.spawned_may_take(&a.key, t))
+            .cloned()
+            .collect();
         let any = self.open_cards_any.as_ref().is_some_and(|f| f());
         let (true, false, Some(kp)) = (self.on_board, any, &self.key_person) else {
-            return agents.to_vec();
+            return agents;
         };
         let author = kp(&t.created_by);
         if author.is_empty() {
@@ -522,11 +553,15 @@ impl Fold {
         // Cards posted here that never had a hand-out (posted before 0.7.1,
         // put back on the Board by Irori, or with their offer row lost) go
         // out too (card #110), as if just posted.
+        // On a spawning board a card that needs an agent gets its own
+        // (card #446): the Core asks for it, nothing is handed out here.
+        let spawning = self.spawning_on();
         let mut ids: Vec<(GoTime, String)> = self
             .tasks
             .values()
             .filter(|t| {
-                (t.live_offer().is_some() || (t.offer.is_none() && offerable(t)))
+                !spawning
+                    && (t.live_offer().is_some() || (t.offer.is_none() && offerable(t)))
                     && self.hands_out(t)
             })
             .map(|t| (t.created_at, t.id.clone()))

@@ -631,6 +631,47 @@ crate::go_struct! {
 }
 
 crate::go_struct! {
+    /// task.spawn (card #446): a request to start an agent for a card, or
+    /// its end as failed or canceled. `gen` counts the card's requests;
+    /// only the newest is acted on.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskSpawnRow {
+        pub task_id: String = "taskId",
+        pub generation: i64 = "gen",
+        pub step: String = "step" "omit",
+        pub subtask: String = "subtask" "omit",
+        pub op: String = "op",
+        pub device: String = "device",
+        pub repo_key: String = "repoKey" "omit",
+        pub folder: String = "folder" "omit",
+        pub worktree: String = "worktree" "omit",
+        pub model: String = "model" "omit",
+        pub effort: String = "effort" "omit",
+        pub permission_mode: String = "permissionMode",
+        pub name: String = "name" "omit",
+        pub reason: String = "reason" "omit",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    /// task.spawned (card #446): agent `key` was started for card
+    /// `taskId` (the spawned_for mark).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskSpawnedRow {
+        pub task_id: String = "taskId",
+        pub key: String = "key",
+        pub generation: i64 = "gen",
+        pub step: String = "step" "omit",
+        pub subtask: String = "subtask" "omit",
+        pub device: String = "device",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
     /// task.comment.edited (card #105): the person's new text for their
     /// comment, written before any agent read it.
     #[derive(Debug, Clone, Default, PartialEq)]

@@ -37,10 +37,15 @@ mod placed;
 mod prstate;
 mod threads;
 pub use offers::{IdleReport, OFFER_HANDED, OFFER_PASSED, OFFER_WAITING, Unoffered};
+pub use spawn::{
+    PERMISSION_MODES, SPAWN_CANCELED, SPAWN_FAILED, SPAWN_GRACE, SPAWN_REQUESTED, Spawn, SpawnAsk,
+    Spawned,
+};
 mod resource;
 mod review;
 pub mod rows;
 mod short;
+mod spawn;
 mod subtasks;
 mod tasks;
 mod types;
@@ -256,6 +261,11 @@ pub struct Options {
     /// (card #174); `None` or false: only to the author's own. Read when
     /// the hand-out runs, so a change to the setting applies at once.
     pub open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Whether this log's cards get a spawned agent each instead of an
+    /// idle one (spawned agents §6, card #446): the board's switch, set in
+    /// the app only. Read when the hand-out runs. `None` or false: idle
+    /// agents, as before.
+    pub spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// On a board, the names of the live leases this person's agents hold
     /// on their private board (card #339). Named leases never show on a
     /// board, so a board card's external wait that names some held ones is
@@ -1127,6 +1137,46 @@ impl Coord {
     /// why (card #341): Home's "N agents idle, no open work" line.
     pub fn idle_report(&self, agents: &[AgentCard]) -> IdleReport {
         self.lock().idle_report(agents)
+    }
+
+    // ---- spawned agents (card #446) ----
+
+    /// The card agent `key` was started for, if Irori spawned it; still
+    /// there after the agent goes (card #452).
+    pub fn spawned_card(&self, key: &str) -> Option<String> {
+        self.lock().spawned_for(key).map(|s| s.task_id.clone())
+    }
+    /// The spawned_for mark on agent `key`.
+    pub fn spawned(&self, key: &str) -> Option<Spawned> {
+        self.lock().spawned_for(key).cloned()
+    }
+    /// Writes card `a.task_id`'s next spawn request; Ok(None) when one is
+    /// pending already or the card no longer needs an agent.
+    pub fn request_spawn(&self, by: &str, a: SpawnAsk) -> Result<Option<i64>> {
+        self.lock().request_spawn(by, a)
+    }
+    /// Ends request `generation` of card `id` (its own part) as failed or
+    /// canceled with `reason`.
+    pub fn end_spawn(
+        &self,
+        by: &str,
+        id: &str,
+        generation: i64,
+        op: &str,
+        reason: &str,
+    ) -> Result<bool> {
+        self.lock()
+            .end_spawn(by, id, ("", ""), generation, op, reason)
+    }
+    /// Binds agent `key` to request `generation` of card `id`: the mark, and the
+    /// card assigned to it.
+    pub fn bind_spawn(&self, id: &str, generation: i64, key: &str) -> Result<bool> {
+        self.lock().bind_spawn(id, generation, ("", ""), key)
+    }
+    /// The cards this device hands out that need an agent now and have
+    /// none starting (or one starting past [`SPAWN_GRACE`]), oldest first.
+    pub fn cards_to_spawn(&self) -> Vec<Task> {
+        self.lock().cards_to_spawn()
     }
     /// The inbox's Stale hook for a card Irori handed out (card #82): the
     /// note to close a hand-out notice to `to` with once the card went to

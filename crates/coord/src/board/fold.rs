@@ -215,6 +215,8 @@ pub struct Fold {
     pub(crate) person: String,
     /// See [`super::Options::open_cards_any`].
     pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// See [`super::Options::spawning`].
+    pub(crate) spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::outside_leases`].
     pub(crate) outside_leases: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
     /// "task/blocker" of external waits on this person's private leases
@@ -245,6 +247,9 @@ pub struct Fold {
     /// went before the Core restarted counts as absent since then, not
     /// since the restart (card #110; #81 stayed held across restarts).
     pub(crate) gone_rows: HashMap<String, GoTime>,
+    /// The spawned_for mark (card #446): the card each spawned agent was
+    /// started for, kept after it goes.
+    pub(crate) spawned: HashMap<String, super::spawn::Spawned>,
     /// (agent, card) pairs already told that the agent isn't answering
     /// (card #110), while it still isn't.
     pub(crate) mute_told: HashSet<(String, String)>,
@@ -371,6 +376,7 @@ impl Fold {
             person,
             key_person: o.key_person,
             open_cards_any: o.open_cards_any,
+            spawning: o.spawning,
             outside_leases: o.outside_leases,
             outside_waits: Default::default(),
             origin: HashMap::new(),
@@ -390,6 +396,7 @@ impl Fold {
             held: BTreeMap::new(),
             first_absent: HashMap::new(),
             gone_rows: HashMap::new(),
+            spawned: HashMap::new(),
             mute_told: HashSet::new(),
             idle_told: HashMap::new(),
             comments: HashMap::new(),
@@ -842,6 +849,8 @@ impl Fold {
             kinds::TASK_PLACED => self.fold_placed(ev),
             kinds::TASK_COMMENT_EDITED => self.fold_comment_edited(ev, &at),
             kinds::TASK_OFFERED => self.fold_offered(ev, &at),
+            kinds::TASK_SPAWN => self.fold_spawn(ev, &at),
+            kinds::TASK_SPAWNED => self.fold_spawned(ev, &at),
             // Where the work is (card #137): no thread line and no
             // updated_at, so a commit doesn't reorder the grid.
             kinds::TASK_WHERE => {

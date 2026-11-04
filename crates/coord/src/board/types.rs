@@ -416,6 +416,10 @@ pub struct Task {
     /// Irori's hand-out of this unheld card (card #82).
     #[serde(skip_serializing_if = "omit")]
     pub offer: Option<Offer>,
+    /// Its spawn requests, one per part (card #446): the card's own and
+    /// any for a step or subtask.
+    #[serde(skip)]
+    pub spawns: Vec<super::spawn::Spawn>,
     /// Where the holder's work is (card #137), kept after it stops so
     /// whoever takes the card over can find it.
     #[serde(rename = "where", skip_serializing_if = "omit")]

@@ -1,0 +1,289 @@
+//! Card #446 (spawned agents §2, §6, §7): a card on a spawning board gets
+//! a `task.spawn` request keyed by card with a gen; while it is pending the
+//! card is handed to nobody and repeated kicks write no second request; the
+//! agent bound to it carries the spawned_for mark and is never offered
+//! another card; rows that no one of this person's could write are ignored.
+
+mod common;
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use common::*;
+use coord::roster::AgentCard;
+use coord::rows::TaskSpawnRow;
+use coord::*;
+use gocompat::time::GoTime;
+use store::kinds;
+
+const SPAWNED: &str = "dev-a/spawned-session";
+const SWEEPER_KEY: &str = "irori";
+
+fn nt(title: &str) -> NewTask {
+    NewTask {
+        title: title.into(),
+        objective: "why it matters".into(),
+        ..NewTask::default()
+    }
+}
+
+fn idle(key: &str, since_min: i64) -> AgentCard {
+    let at = GoTime::unix(fixed_now().secs - 60 * (60 - since_min), 0);
+    AgentCard {
+        key: key.into(),
+        device_id: "dev-a".into(),
+        status: "idle".into(),
+        updated_at: at,
+        last_activity: at,
+        ..AgentCard::default()
+    }
+}
+
+/// A coord over e's store with the board's switch read from `on`.
+fn spawning(e: &Env, on: &Arc<AtomicBool>) -> Coord {
+    let f = on.clone();
+    e.reopen_with(Options {
+        spawning: Some(Arc::new(move || f.load(Ordering::SeqCst))),
+        ..e.opts()
+    })
+}
+
+fn ask(id: &str) -> SpawnAsk {
+    SpawnAsk {
+        task_id: id.into(),
+        device: "dev-a".into(),
+        folder: "/repo".into(),
+        permission_mode: "bypassPermissions".into(),
+        name: "for-1".into(),
+        ..SpawnAsk::default()
+    }
+}
+
+fn spawn_rows(e: &Env) -> Vec<TaskSpawnRow> {
+    e.rows(kinds::TASK_SPAWN)
+        .iter()
+        .map(|ev| payload::<TaskSpawnRow>(ev))
+        .collect()
+}
+
+#[test]
+fn a_spawning_board_hands_nothing_out_and_lists_the_card_to_spawn() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    e.c = spawning(&e, &on);
+    let t = e.c.create_task(USER, nt("Port the parser")).unwrap();
+    let agents = vec![idle(BOB, 20), idle(CAROL, 10)];
+    let out = e.c.sweep_asks(&agents).unwrap();
+    assert!(out.is_empty(), "no hand-out on a spawning board: {out:?}");
+    assert!(e.c.get_task(&t.id).unwrap().offer.is_none());
+    assert_eq!(ids(&e.c.cards_to_spawn()), [t.id.clone()]);
+    // Off: the card goes to a free agent as before, and nothing spawns.
+    on.store(false, Ordering::SeqCst);
+    assert!(e.c.cards_to_spawn().is_empty());
+    let out = e.c.sweep_asks(&agents).unwrap();
+    assert_eq!(out.len(), 1, "{out:?}");
+}
+
+#[test]
+fn repeated_kicks_never_spawn_twice() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    e.c = spawning(&e, &on);
+    let t = e.c.create_task(USER, nt("One agent")).unwrap();
+    assert_eq!(e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap(), Some(1));
+    for _ in 0..5 {
+        assert_eq!(e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap(), None);
+        e.c.sweep_asks(&[idle(BOB, 20)]).unwrap();
+    }
+    assert_eq!(spawn_rows(&e).len(), 1);
+    assert!(e.c.cards_to_spawn().is_empty(), "pending: not listed again");
+    // Past the grace a spawn that never showed is asked for again, gen 2.
+    e.clk.add(SPAWN_GRACE + secs(1));
+    assert_eq!(ids(&e.c.cards_to_spawn()), [t.id.clone()]);
+    assert_eq!(e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap(), Some(2));
+}
+
+#[test]
+fn a_pending_request_keeps_the_card_from_any_free_agent() {
+    // Spawning off on this coord: the plain hand-out still runs, and the
+    // pending request alone must keep the card out of it (a terminal agent
+    // with Offer it cards, or another device's sweep).
+    let e = Env::new();
+    let t = e.c.create_task(USER, nt("Starting")).unwrap();
+    e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap();
+    let out = e.c.sweep_asks(&[idle(BOB, 20), idle(CAROL, 10)]).unwrap();
+    assert!(out.is_empty(), "{out:?}");
+    let t = e.c.get_task(&t.id).unwrap();
+    assert!(t.spawn_pending());
+    assert!(t.live_offer().is_none());
+    want_err(
+        e.c.offer_card(USER, &t.id, &[idle(BOB, 20)]),
+        ErrorKind::BadState,
+    );
+}
+
+#[test]
+fn every_spawn_names_a_permission_mode() {
+    let e = Env::new();
+    let t = e.c.create_task(USER, nt("Mode")).unwrap();
+    let mut a = ask(&t.id);
+    a.permission_mode = String::new();
+    want_err(
+        e.c.request_spawn(SWEEPER_KEY, a.clone()),
+        ErrorKind::BadState,
+    );
+    a.permission_mode = "inherit".into();
+    want_err(e.c.request_spawn(SWEEPER_KEY, a), ErrorKind::BadState);
+    assert!(spawn_rows(&e).is_empty());
+}
+
+#[test]
+fn binding_marks_the_agent_and_assigns_it_the_card() {
+    let e = Env::new();
+    let t = e.c.create_task(USER, nt("Bind")).unwrap();
+    let g = e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap().unwrap();
+    assert!(e.c.bind_spawn(&t.id, g, SPAWNED).unwrap());
+    let t = e.c.get_task(&t.id).unwrap();
+    assert_eq!(t.holders, [SPAWNED]);
+    assert_eq!(t.assigned, [SPAWNED]);
+    assert!(!t.spawn_pending());
+    assert_eq!(e.c.spawned_card(SPAWNED), Some(t.id.clone()));
+    // A replay keeps the mark, and so does the agent going.
+    let c = e.reopen();
+    assert_eq!(c.spawned_card(SPAWNED), Some(t.id.clone()));
+    assert_eq!(c.get_task(&t.id).unwrap().holders, [SPAWNED]);
+}
+
+#[test]
+fn a_spawned_agent_is_never_offered_a_second_card() {
+    let e = Env::new();
+    let first = e.c.create_task(USER, nt("Its card")).unwrap();
+    let g =
+        e.c.request_spawn(SWEEPER_KEY, ask(&first.id))
+            .unwrap()
+            .unwrap();
+    e.c.bind_spawn(&first.id, g, SPAWNED).unwrap();
+    // Its card is waiting on Stephen's done check: BLOCKED, so busy_with
+    // no longer counts it, and only the mark keeps it out.
+    e.c.set_task_state(SPAWNED, &first.id, "completed", "done: proof")
+        .unwrap();
+    let other = e.c.create_task(ALICE, nt("Another card")).unwrap();
+    let spawned_idle = idle(SPAWNED, 59);
+    let n =
+        e.c.offer_card(ALICE, &other.id, &[spawned_idle.clone()])
+            .unwrap();
+    assert!(n.to.is_empty(), "offered a spawned agent: {n:?}");
+    let out = e.c.sweep_asks(&[spawned_idle.clone()]).unwrap();
+    assert!(out.is_empty(), "{out:?}");
+    let r = e.c.idle_report(&[spawned_idle.clone()]);
+    assert_eq!(r.idle, 0, "a spawned agent is not a free one");
+    // An ask goes to no spawned agent either.
+    let (a, n) =
+        e.c.post_ask(
+            USER,
+            NewAsk {
+                text: "a question".into(),
+                ..NewAsk::default()
+            },
+            &[spawned_idle],
+        )
+        .unwrap();
+    assert!(!n.to.contains(&SPAWNED.to_string()), "{n:?} for {}", a.id);
+    // And it can't take one itself.
+    want_err(e.c.claim_task(SPAWNED, &other.id), ErrorKind::NotAllowed);
+}
+
+#[test]
+fn a_spawned_agent_may_take_its_own_cards_subtasks() {
+    let e = Env::new();
+    let t = e.c.create_task(USER, nt("Lead")).unwrap();
+    let g = e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap().unwrap();
+    e.c.bind_spawn(&t.id, g, SPAWNED).unwrap();
+    let sub =
+        e.c.create_task(
+            SPAWNED,
+            NewTask {
+                title: "part".into(),
+                objective: "a part".into(),
+                parent: t.id.clone(),
+                ..NewTask::default()
+            },
+        )
+        .unwrap();
+    e.c.claim_task(SPAWNED, &sub.id).unwrap();
+}
+
+#[test]
+fn rows_no_one_of_this_person_could_write_are_ignored() {
+    let e = Env::new();
+    let t = e.c.create_task(USER, nt("Guarded")).unwrap();
+    // dev-b writing as dev-a's agent: not its key to write for.
+    let row = TaskSpawnRow {
+        task_id: t.id.clone(),
+        generation: 1,
+        op: SPAWN_REQUESTED.into(),
+        device: "dev-a".into(),
+        permission_mode: "bypassPermissions".into(),
+        by: ALICE.into(),
+        at: fixed_now(),
+        ..TaskSpawnRow::default()
+    };
+    e.remote(
+        "dev-b",
+        1,
+        hlc_at(fixed_now()),
+        ALICE,
+        kinds::TASK_SPAWN,
+        &row,
+    );
+    assert!(!e.c.get_task(&t.id).unwrap().spawn_pending());
+    // The person's key written by an agent's actor: not the person.
+    let row = TaskSpawnRow {
+        by: USER.into(),
+        ..row
+    };
+    e.remote(
+        "dev-b",
+        2,
+        hlc_at(fixed_now()) + 1,
+        "dev-b/x",
+        kinds::TASK_SPAWN,
+        &row,
+    );
+    assert!(!e.c.get_task(&t.id).unwrap().spawn_pending());
+    // A mark for someone's agent from the wrong device does nothing.
+    let mark = coord::rows::TaskSpawnedRow {
+        task_id: t.id.clone(),
+        key: BOB.into(),
+        generation: 1,
+        device: "dev-a".into(),
+        by: CAROL.into(),
+        at: fixed_now(),
+        ..Default::default()
+    };
+    e.remote(
+        "dev-b",
+        3,
+        hlc_at(fixed_now()) + 2,
+        CAROL,
+        kinds::TASK_SPAWNED,
+        &mark,
+    );
+    assert_eq!(e.c.spawned_card(BOB), None);
+}
+
+#[test]
+fn a_comment_never_spawns() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    e.c = spawning(&e, &on);
+    let t = e.c.create_task(USER, nt("Talked about")).unwrap();
+    e.c.claim_task(BOB, &t.id).unwrap();
+    e.c.add_comment(ALICE, &t.id, "@bob run this", false)
+        .unwrap();
+    assert!(
+        e.c.cards_to_spawn().is_empty(),
+        "a held card needs no agent"
+    );
+    assert!(spawn_rows(&e).is_empty());
+}

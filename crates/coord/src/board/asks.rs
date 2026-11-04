@@ -995,6 +995,12 @@ impl Fold {
     /// known, this one, as before.
     fn ask_owner(&self, roster: &[AgentCard]) -> String {
         let dev_of = |a: &AgentCard| cmp_or_dev(&a.device_id, owner::device_of(&a.key)).to_string();
+        // A spawned agent runs only its own card (card #446): it doesn't
+        // make its device one that hands out asks.
+        let roster: Vec<&AgentCard> = roster
+            .iter()
+            .filter(|a| self.spawned_for(&a.key).is_none())
+            .collect();
         if roster.iter().any(|a| dev_of(a) == self.dev) {
             return self.dev.clone();
         }
@@ -1064,7 +1070,12 @@ impl Fold {
         let mut since: HashMap<String, GoTime> = HashMap::new();
         for a in roster {
             let dev = cmp_or_dev(&a.device_id, owner::device_of(&a.key));
-            if a.key.is_empty() || a.key == SWEEPER || self.is_owner(&a.key) || a.status != "idle" {
+            if a.key.is_empty()
+                || a.key == SWEEPER
+                || self.is_owner(&a.key)
+                || a.status != "idle"
+                || self.spawned_for(&a.key).is_some()
+            {
                 continue;
             }
             if a.device_state == "offline" {

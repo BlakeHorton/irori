@@ -1,0 +1,444 @@
+//! Spawned agents for cards (docs/design/spawned-agents.md §2, §6, §7;
+//! card #446): the `task.spawn` request rows, keyed by card (and part)
+//! with a `generation`, and the `task.spawned` mark that binds an agent to the
+//! card it was started for.
+//!
+//! A pending request keeps its card out of hand-out ([`super::offers`]'s
+//! `offerable`), so repeated kicks never start two agents and no free
+//! agent is handed the card while its own starts. A marked agent is never
+//! offered another card: every place that picks an idle agent asks
+//! [`Fold::spawned_for`]. The mark outlives the agent (card #452 reads it
+//! after `agent.gone`).
+
+use std::time::Duration;
+
+use gocompat::time::GoTime;
+use irori_identity::owner;
+use store::{Event, kinds};
+
+use super::error::{Result, bad_state};
+use super::fold::Fold;
+use super::rows::*;
+use super::types::*;
+use super::util::{SWEEPER, caller, contains};
+use crate::gotime;
+
+/// A request's ops.
+pub const SPAWN_REQUESTED: &str = "requested";
+pub const SPAWN_FAILED: &str = "failed";
+pub const SPAWN_CANCELED: &str = "canceled";
+
+/// How long a request waits for its agent to show in presence before the
+/// next request may replace it, so a spawn that died before presence saw
+/// it doesn't hold its card forever (the next ask is generation + 1).
+pub const SPAWN_GRACE: Duration = Duration::from_secs(180);
+
+/// The permission modes a spawn may pass (§7). One is always passed.
+pub const PERMISSION_MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "default", "plan"];
+
+/// A card's newest spawn request for one part (the card itself when
+/// `step` and `subtask` are empty).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Spawn {
+    pub generation: i64,
+    pub step: String,
+    pub subtask: String,
+    pub op: String,
+    pub device: String,
+    pub repo_key: String,
+    pub folder: String,
+    pub worktree: String,
+    pub model: String,
+    pub effort: String,
+    pub permission_mode: String,
+    pub name: String,
+    pub reason: String,
+    pub by: String,
+    pub at: GoTime,
+    /// The agent bound to this request, once presence listed it.
+    pub key: String,
+}
+
+impl Spawn {
+    /// Waiting for its agent: requested and not bound yet.
+    pub fn pending(&self) -> bool {
+        self.op == SPAWN_REQUESTED && self.key.is_empty()
+    }
+
+    /// Pending past [`SPAWN_GRACE`] at `now`: a new request may replace it.
+    pub fn stale(&self, now: &GoTime) -> bool {
+        self.pending() && gotime::at_least(now, &self.at, SPAWN_GRACE)
+    }
+
+    fn part(&self) -> (&str, &str) {
+        (&self.step, &self.subtask)
+    }
+}
+
+/// The mark on an agent started for a card.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Spawned {
+    pub task_id: String,
+    pub generation: i64,
+    pub step: String,
+    pub subtask: String,
+    pub device: String,
+    pub at: GoTime,
+}
+
+/// What the Core asks for when it starts an agent for a card.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpawnAsk {
+    pub task_id: String,
+    pub step: String,
+    pub subtask: String,
+    pub device: String,
+    pub repo_key: String,
+    pub folder: String,
+    pub worktree: String,
+    pub model: String,
+    pub effort: String,
+    pub permission_mode: String,
+    pub name: String,
+}
+
+impl Task {
+    /// The card's own spawn request (no step or subtask), if any.
+    pub fn spawn_request(&self) -> Option<&Spawn> {
+        self.spawns
+            .iter()
+            .find(|s| s.step.is_empty() && s.subtask.is_empty())
+    }
+
+    /// Whether the card's own agent is starting.
+    pub fn spawn_pending(&self) -> bool {
+        self.spawn_request().is_some_and(Spawn::pending)
+    }
+}
+
+impl Fold {
+    /// The card agent `key` was started for, if it was spawned; kept
+    /// after the agent goes.
+    pub(crate) fn spawned_for(&self, key: &str) -> Option<&Spawned> {
+        self.spawned.get(key)
+    }
+
+    /// Whether `key` may be handed card t: never a spawned agent, except
+    /// its own card and that card's subtasks (§6).
+    pub(crate) fn spawned_may_take(&self, key: &str, t: &Task) -> bool {
+        match self.spawned_for(key) {
+            None => true,
+            Some(s) => s.task_id == t.id || t.parent == s.task_id,
+        }
+    }
+
+    /// Whether a `task.spawn`/`task.spawned` row came from someone who may
+    /// start an agent here (§7): Irori's own sweep, the person, or one of
+    /// the person's agents writing from its own device; on a shared board
+    /// only the card's author's person.
+    pub(crate) fn spawn_writer_ok(&self, ev: &Event, by: &str, task_id: &str) -> bool {
+        if by.is_empty() {
+            return false;
+        }
+        let who_ok = if ev.actor == SWEEPER {
+            by == SWEEPER
+        } else if self.is_owner(by) {
+            self.person_actor(ev)
+        } else {
+            owner::may_write(by, &ev.device_id)
+        };
+        if !who_ok {
+            return false;
+        }
+        if !self.on_board {
+            return true;
+        }
+        let (Some(kp), Some(dp)) = (&self.key_person, &self.dev_person) else {
+            return false;
+        };
+        let Some(t) = self.tasks.get(task_id) else {
+            return false;
+        };
+        let author = kp(&t.created_by);
+        !author.is_empty() && author == dp(&ev.device_id) && (by == SWEEPER || kp(by) == author)
+    }
+
+    pub(crate) fn fold_spawn(&mut self, ev: &Event, at: &dyn Fn(GoTime) -> GoTime) {
+        let Some(p) = row::<TaskSpawnRow>(&ev.payload) else {
+            return;
+        };
+        if !self.spawn_writer_ok(ev, &p.by, &p.task_id) {
+            self.ignore(&ev.device_id);
+            return;
+        }
+        let Some(t) = self.tasks.get_mut(&p.task_id) else {
+            return;
+        };
+        let s = Spawn {
+            generation: p.generation,
+            step: p.step,
+            subtask: p.subtask,
+            op: p.op,
+            device: p.device,
+            repo_key: p.repo_key,
+            folder: p.folder,
+            worktree: p.worktree,
+            model: p.model,
+            effort: p.effort,
+            permission_mode: p.permission_mode,
+            name: p.name,
+            reason: p.reason,
+            by: p.by,
+            at: at(p.at),
+            key: String::new(),
+        };
+        match t.spawns.iter_mut().find(|o| o.part() == s.part()) {
+            // Only a newer generation moves a request on; its own generation may end it.
+            Some(o)
+                if s.generation > o.generation
+                    || (s.generation == o.generation && s.op != SPAWN_REQUESTED) =>
+            {
+                let key = if s.generation == o.generation {
+                    o.key.clone()
+                } else {
+                    String::new()
+                };
+                *o = Spawn { key, ..s };
+            }
+            Some(_) => return,
+            None => t.spawns.push(s),
+        }
+        let holder = t.holder.clone();
+        self.note(Change {
+            kind: TASK_CHANGED.into(),
+            task_id: p.task_id,
+            holder,
+            ..Change::default()
+        });
+    }
+
+    pub(crate) fn fold_spawned(&mut self, ev: &Event, at: &dyn Fn(GoTime) -> GoTime) {
+        let Some(p) = row::<TaskSpawnedRow>(&ev.payload) else {
+            return;
+        };
+        if p.key.is_empty() || !self.spawn_writer_ok(ev, &p.by, &p.task_id) {
+            self.ignore(&ev.device_id);
+            return;
+        }
+        self.spawned.insert(
+            p.key.clone(),
+            Spawned {
+                task_id: p.task_id.clone(),
+                generation: p.generation,
+                step: p.step.clone(),
+                subtask: p.subtask.clone(),
+                device: p.device.clone(),
+                at: at(p.at),
+            },
+        );
+        let Some(t) = self.tasks.get_mut(&p.task_id) else {
+            return;
+        };
+        if let Some(s) = t
+            .spawns
+            .iter_mut()
+            .find(|s| s.generation == p.generation && s.step == p.step && s.subtask == p.subtask)
+        {
+            s.key = p.key.clone();
+        }
+        let holder = t.holder.clone();
+        self.note(Change {
+            kind: TASK_CHANGED.into(),
+            task_id: p.task_id,
+            holder,
+            ..Change::default()
+        });
+    }
+
+    /// Writes a request for card `a.task_id`'s agent, the card's next
+    /// generation. Ok(None) when one is pending already (no double spawn under
+    /// repeated kicks) or the card no longer needs an agent.
+    pub(crate) fn request_spawn(&mut self, by: &str, a: SpawnAsk) -> Result<Option<i64>> {
+        let by = caller(by)?;
+        if !PERMISSION_MODES.contains(&a.permission_mode.as_str()) {
+            return Err(bad_state(format!(
+                "a spawn needs an explicit permission mode, not {:?}",
+                a.permission_mode
+            )));
+        }
+        let now = self.stamp();
+        let t = self.open_task(&a.task_id)?;
+        let mine = t
+            .spawns
+            .iter()
+            .find(|s| s.step == a.step && s.subtask == a.subtask);
+        if mine.is_some_and(|s| s.pending() && !s.stale(&now)) {
+            return Ok(None);
+        }
+        let card = a.step.is_empty() && a.subtask.is_empty();
+        if card && !super::offers::needs_agent(t) {
+            return Ok(None);
+        }
+        let generation = mine.map(|s| s.generation).unwrap_or(0) + 1;
+        let actor = if by == SWEEPER {
+            SWEEPER.to_string()
+        } else {
+            self.actor_for(&by)
+        };
+        self.write_as(
+            &actor,
+            kinds::TASK_SPAWN,
+            &TaskSpawnRow {
+                task_id: a.task_id,
+                generation,
+                step: a.step,
+                subtask: a.subtask,
+                op: SPAWN_REQUESTED.into(),
+                device: a.device,
+                repo_key: a.repo_key,
+                folder: a.folder,
+                worktree: a.worktree,
+                model: a.model,
+                effort: a.effort,
+                permission_mode: a.permission_mode,
+                name: a.name,
+                reason: String::new(),
+                by,
+                at: now,
+            },
+        )?;
+        Ok(Some(generation))
+    }
+
+    /// Ends request `generation` for card `id`'s part as failed or canceled, with
+    /// the reason the card shows. Ok(false) when it isn't the newest.
+    pub(crate) fn end_spawn(
+        &mut self,
+        by: &str,
+        id: &str,
+        part: (&str, &str),
+        generation: i64,
+        op: &str,
+        reason: &str,
+    ) -> Result<bool> {
+        let by = caller(by)?;
+        if op != SPAWN_FAILED && op != SPAWN_CANCELED {
+            return Err(bad_state(format!("{op:?} doesn't end a spawn")));
+        }
+        let t = self.open_task(id)?;
+        let Some(s) = t
+            .spawns
+            .iter()
+            .find(|s| s.part() == part && s.generation == generation)
+            .cloned()
+        else {
+            return Ok(false);
+        };
+        let actor = if by == SWEEPER {
+            SWEEPER.to_string()
+        } else {
+            self.actor_for(&by)
+        };
+        let now = self.stamp();
+        self.write_as(
+            &actor,
+            kinds::TASK_SPAWN,
+            &TaskSpawnRow {
+                task_id: id.into(),
+                generation,
+                step: s.step,
+                subtask: s.subtask,
+                op: op.into(),
+                device: s.device,
+                permission_mode: s.permission_mode,
+                reason: reason.into(),
+                by,
+                at: now,
+                ..TaskSpawnRow::default()
+            },
+        )?;
+        Ok(true)
+    }
+
+    /// Binds agent `key` to request `generation` of card `id` once presence
+    /// lists it: the spawned_for mark, then the card assigned to it (which
+    /// keeps it out of hand-out and lets `check_free` through, §2).
+    pub(crate) fn bind_spawn(
+        &mut self,
+        id: &str,
+        generation: i64,
+        part: (&str, &str),
+        key: &str,
+    ) -> Result<bool> {
+        let t = self.open_task(id)?;
+        let Some(s) = t
+            .spawns
+            .iter()
+            .find(|s| s.part() == part && s.generation == generation)
+            .cloned()
+        else {
+            return Ok(false);
+        };
+        if s.op != SPAWN_REQUESTED || !s.key.is_empty() {
+            return Ok(s.key == key);
+        }
+        let now = self.stamp();
+        self.write_as(
+            SWEEPER,
+            kinds::TASK_SPAWNED,
+            &TaskSpawnedRow {
+                task_id: id.into(),
+                key: key.into(),
+                generation,
+                step: s.step.clone(),
+                subtask: s.subtask.clone(),
+                device: s.device.clone(),
+                by: SWEEPER.into(),
+                at: now,
+            },
+        )?;
+        if s.step.is_empty() && s.subtask.is_empty() {
+            let t = &self.tasks[id];
+            if !contains(&t.holders, key) {
+                self.write_as(
+                    SWEEPER,
+                    kinds::TASK_ASSIGNED,
+                    &TaskAssignedRow {
+                        task_id: id.into(),
+                        to: key.into(),
+                        by: SWEEPER.into(),
+                        at: now,
+                        note: String::new(),
+                    },
+                )?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// Whether this log spawns an agent per card (the board's switch).
+    pub(crate) fn spawning_on(&self) -> bool {
+        self.spawning.as_ref().is_some_and(|f| f())
+    }
+
+    /// The cards this device hands out that need an agent and have none
+    /// starting, oldest first; none while the board doesn't spawn.
+    pub(crate) fn cards_to_spawn(&self) -> Vec<Task> {
+        if !self.spawning_on() {
+            return Vec::new();
+        }
+        let now = self.stamp();
+        let mut v: Vec<Task> = self
+            .tasks
+            .values()
+            .filter(|t| super::offers::needs_agent(t) && self.hands_out(t))
+            .filter(|t| {
+                t.spawn_request()
+                    .is_none_or(|s| !s.pending() || s.stale(&now))
+            })
+            .cloned()
+            .collect();
+        v.sort_by(|a, b| gotime::cmp(&a.created_at, &b.created_at).then_with(|| a.id.cmp(&b.id)));
+        v
+    }
+}
