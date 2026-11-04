@@ -73,8 +73,38 @@ struct Exe {
     lines: mpsc::Receiver<String>,
 }
 
+/// Runs the freshly built binary once, untimed. macOS checks a newly
+/// linked executable on its first launch, and for this ~200 MB debug
+/// binary under load that took 19 s (card #430): past [`Exe::line`]'s
+/// 15 s, so the outage line or the hello seemed late though Irori was not.
+fn warm_exe() {
+    static WARM: std::sync::Once = std::sync::Once::new();
+    WARM.call_once(|| {
+        // An unknown flag exits at once (code 1) without starting anything;
+        // `--version` would start the app. Capped so it can't hang a run.
+        let home = tempfile::tempdir().unwrap();
+        let mut c = Command::new(env!("CARGO_BIN_EXE_irori"))
+            .args(["attach", "--bogus"])
+            .env("IRORI_HOME", home.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn irori attach --bogus");
+        let start = std::time::Instant::now();
+        while c.try_wait().unwrap().is_none() {
+            if start.elapsed() > Duration::from_secs(120) {
+                let _ = c.kill();
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    });
+}
+
 impl Exe {
     fn spawn(home: &Path, session: &str) -> Exe {
+        warm_exe();
         let mut child = Command::new(env!("CARGO_BIN_EXE_irori"))
             .args([
                 "attach",
