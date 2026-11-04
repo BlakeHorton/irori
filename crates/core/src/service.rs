@@ -734,9 +734,11 @@ fn set_avatar(
         .map_err(|e| e.to_string())?;
     if s.faces.apply(&ev) {
         s.hub.publish(CoreEvent::Devices);
-        // Shared boards' agent cards carry the new face.
-        s.sync_card_status();
     }
+    // Shared boards' agent cards carry the new face. Always: the store's
+    // subscriber may have folded the row first, and it writes no cards
+    // when the row is its own, so a skipped sync here lost the face.
+    s.sync_card_status();
     Ok(())
 }
 
@@ -1692,6 +1694,9 @@ impl Core {
                     } else if ev.kind == coord::avatar::KIND {
                         if s.faces.apply(&ev) {
                             s.hub.publish(CoreEvent::Devices);
+                            // A face picked on another of the person's
+                            // devices reaches this device's board cards.
+                            s.sync_card_status();
                         }
                     } else if ev.kind == coord::devcolor::PERSON_KIND
                         || ev.kind == coord::person_avatar::KIND
