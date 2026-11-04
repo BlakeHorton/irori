@@ -1325,6 +1325,7 @@ export function CommentBox({
     >
       <div className="flex items-start gap-1.5">
       <MentionTextarea
+        card={cardId}
         autoSize
         voice
         value={text}
@@ -1586,6 +1587,7 @@ function BlockerItem({
         {...attach.drop}
       >
         <MentionTextarea
+          card={cardId}
           autoSize
           voice
           rows={1}
@@ -1780,6 +1782,7 @@ function BlockerItem({
       {resolving && (
         <form className="flex gap-1.5" onSubmit={markResolved}>
           <MentionTextarea
+            card={cardId}
             autoSize
             voice
             rows={1}

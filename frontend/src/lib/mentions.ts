@@ -20,6 +20,63 @@ export type MentionCandidate = {
   cwd: string
   repo: string
   board?: string
+  // A "the agent on #N" row (card #452, spawned-agents §4): the agent
+  // holding card ref (#N, or tag#N on a shared board) now. Picking it
+  // mentions that agent, so the row reads by the card, not the name.
+  card?: string
+}
+
+// agentOnLabel is a card row's words in the picker.
+export function agentOnLabel(card: string): string {
+  return `the agent on ${card}`
+}
+
+// A card the picker may offer "the agent on" for: its ref, and its
+// holder as the window knows it.
+export type HeldCard = {
+  id: string
+  short: string
+  tag?: string
+  holder: { who: AgentRef; state: string }
+}
+
+// agentOnRows are the "the agent on #N" rows: one per card an agent
+// holds and is live on (not the person, not gone), with the card the box
+// sits on (here) first. The holder's own row from cands is reused so its
+// device and colour show the same.
+export function agentOnRows(
+  cards: readonly HeldCard[],
+  cands: readonly MentionCandidate[],
+  here = ""
+): MentionCandidate[] {
+  const rows: { here: boolean; n: number; c: MentionCandidate }[] = []
+  for (const c of cards) {
+    const who = c.holder.who
+    if (!c.short || !who?.key || who.key.startsWith("user:")) continue
+    if (c.holder.state === "person" || c.holder.state === "gone" || c.holder.state === "nobody")
+      continue
+    if (isGone(who)) continue
+    const known = cands.find((x) => x.who.key === who.key && !x.card)
+    rows.push({
+      here: c.id === here,
+      n: Number(c.short) || 0,
+      c: {
+        who: known?.who ?? who,
+        cwd: known?.cwd ?? "",
+        repo: known?.repo ?? "",
+        board: known?.board,
+        card: `${c.tag ?? ""}#${c.short}`,
+      },
+    })
+  }
+  rows.sort((a, b) => Number(b.here) - Number(a.here) || b.n - a.n)
+  return rows.map((r) => r.c)
+}
+
+// rowName is what a row is found by and shows as: its name, or for a card
+// row "the agent on #N".
+export function rowName(c: MentionCandidate): string {
+  return c.card ? agentOnLabel(c.card) : c.who.name
 }
 
 // MentionBoard is the shared board (its id) the boxes inside sit on, ""
@@ -101,21 +158,33 @@ export function filterCandidates(
   query: string
 ): MentionCandidate[] {
   const q = bare(query).toLowerCase()
+  // A card row is found by "the agent on #N", by "#N" and by N, never by
+  // the holder's name (its own row is there for that).
+  const matches = (c: MentionCandidate) =>
+    c.card
+      ? agentOnLabel(c.card).toLowerCase().includes(q) ||
+        (q.length > 0 && c.card.toLowerCase().replace(/^.*#/, "").startsWith(q.replace(/^#/, "")))
+      : c.who.name.toLowerCase().includes(q)
   const rank = (c: MentionCandidate) => {
-    const n = c.who.name.toLowerCase()
+    const n = rowName(c).toLowerCase()
     return [
       isGone(c.who) ? 1 : 0,
-      n.startsWith(q) ? 0 : 1,
+      // With nothing typed, the card rows lead: on a card's box the first
+      // is "the agent on" this card (sa-4).
+      q ? 0 : c.card ? 0 : 1,
+      n.startsWith(q) || (c.card && q.startsWith("#")) ? 0 : 1,
       c.who.device ? 1 : 0,
     ]
   }
   return cands
-    .filter((c) => c.who.name.toLowerCase().includes(q))
-    .map((c) => ({ c, r: rank(c) }))
+    .filter(matches)
+    .map((c, i) => ({ c, i, r: rank(c) }))
     .sort((a, b) => {
       for (let i = 0; i < a.r.length; i++)
         if (a.r[i] !== b.r[i]) return a.r[i] - b.r[i]
-      return a.c.who.name.localeCompare(b.c.who.name)
+      // Card rows keep agentOnRows' order (this card first).
+      if (a.c.card && b.c.card) return a.i - b.i
+      return rowName(a.c).localeCompare(rowName(b.c))
     })
     .slice(0, MaxRows)
     .map((x) => x.c)

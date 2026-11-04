@@ -38,6 +38,9 @@ import {
   settle,
   settleRange,
   tokenAt,
+  agentOnLabel,
+  agentOnRows,
+  rowName,
   MentionBoard,
   type Mention,
   type MentionCandidate,
@@ -57,6 +60,9 @@ type Props = Omit<ComponentProps<typeof Textarea>, "value" | "onChange"> & {
   // Voice input (card #240): a mic button right after the box (a sibling,
   // so the site lays it out in its row). Hidden where there's no engine.
   voice?: boolean
+  // The card the box is on: its "the agent on #N" row comes first (card
+  // #452, sa-4).
+  card?: string
 }
 
 // MentionTextarea is a Textarea with the @ picker (card #77,
@@ -75,6 +81,7 @@ export function MentionTextarea({
   candidates: given,
   disabledMentions,
   voice,
+  card,
   onKeyDown,
   onBlur,
   onFocus,
@@ -97,11 +104,15 @@ export function MentionTextarea({
   const loaded = useMentionCandidates(!given && wanted)
   const board = useContext(MentionBoard)
   const all = given ?? loaded
-  const cands = useMemo(() => boardRows(all, board), [all, board])
-  const names = useMemo(() => cands.map((c) => c.who.name), [cands])
-
   // The # picker (card #114): the window's live cards. An "@" token wins.
   const ctx = useContext(AgentCards)
+  // Each card an agent is live on also offers "the agent on #N" (card
+  // #452): picking it mentions whoever holds that card now.
+  const cands = useMemo(() => {
+    const own = boardRows(all, board)
+    return [...own, ...boardRows(agentOnRows(ctx?.cards ?? [], own, card), board)]
+  }, [all, board, ctx?.cards, card])
+  const names = useMemo(() => cands.map(rowName), [cands])
   const cardCands = useMemo<(CardCandidate & { status: RefStatus })[]>(
     () =>
       (ctx?.cards ?? [])
@@ -413,7 +424,7 @@ export function MentionTextarea({
             ) : (
               agentRows.map((c, i) => (
                 <MentionRow
-                  key={c.who.key}
+                  key={`${c.card ?? ""}@${c.who.key}`}
                   id={`${listId}-${i}`}
                   row={c}
                   active={i === shown}
@@ -496,9 +507,9 @@ function MentionRow({
           gone && "line-through"
         )}
       >
-        {plainLine(who.name)}
+        {plainLine(row.card ? agentOnLabel(row.card) : who.name)}
       </span>
-      {who.where && (
+      {who.where && !row.card && (
         <span
           className="shrink-0 font-mono text-[10.5px] text-muted-foreground"
           style={tint ? { color: tint } : undefined}
@@ -509,7 +520,9 @@ function MentionRow({
       <span className="ml-auto min-w-0 truncate text-right font-mono text-[10.5px] text-muted-foreground">
         {gone
           ? "gone"
-          : [statusWord(who.status), plainLine(place)].filter(Boolean).join(" · ")}
+          : row.card
+            ? [plainLine(who.name), statusWord(who.status)].filter(Boolean).join(" · ")
+            : [statusWord(who.status), plainLine(place)].filter(Boolean).join(" · ")}
       </span>
     </div>
   )

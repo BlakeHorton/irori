@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test"
 import { AgentRef } from "../gen/models"
 import {
   addMention,
+  agentOnRows,
+  rowName,
   boardRows,
   cardRefs,
   localRef,
@@ -437,5 +439,44 @@ describe("boardRows", () => {
       "person:blake",
       "agent:c1",
     ])
+  })
+})
+
+describe("the agent on #N (card #452, spawned-agents §4)", () => {
+  const fern = cand("dev/fern", "fern")
+  const clover = cand("dev/clover", "clover")
+  const card = (id: string, short: string, who: MentionCandidate["who"], state = "active", tag?: string) => ({
+    id,
+    short,
+    tag,
+    holder: { who, state },
+  })
+  const cards = [
+    card("c57", "57", clover.who),
+    card("c61", "61", fern.who),
+    card("c62", "62", AgentRef({ key: "user:me", name: "You", status: "person" }), "person"),
+    card("c63", "63", AgentRef({ key: "dev/gone", name: "sorrel", status: "gone" }), "gone"),
+    card("c70", "4", fern.who, "active", "wind"),
+  ]
+
+  test("one row per card a live agent holds; this card first, then newest", () => {
+    const rows = agentOnRows(cards, [fern, clover], "c61")
+    expect(rows.map((r) => r.card)).toEqual(["#61", "#57", "wind#4"])
+    expect(rows.map(rowName)).toEqual(["the agent on #61", "the agent on #57", "the agent on wind#4"])
+    expect(rows[0].who.key).toBe("dev/fern")
+  })
+
+  test("with nothing typed the card rows lead; typing a name finds the name's row", () => {
+    const all = [fern, clover, ...agentOnRows(cards, [fern, clover], "c61")]
+    expect(rowName(filterCandidates(all, "")[0])).toBe("the agent on #61")
+    expect(filterCandidates(all, "fer").map(rowName)).toEqual(["fern"])
+  })
+
+  test("#N, N and the words find a card row", () => {
+    const all = [fern, clover, ...agentOnRows(cards, [fern, clover])]
+    expect(filterCandidates(all, "#57").map(rowName)).toEqual(["the agent on #57"])
+    expect(filterCandidates(all, "57").map(rowName)).toEqual(["the agent on #57"])
+    expect(filterCandidates(all, "the agent on #6").map(rowName)).toEqual(["the agent on #61"])
+    expect(tokenAt("ask @the agent on #6", 20, all.map(rowName))).toEqual({ start: 4, query: "the agent on #6" })
   })
 })
