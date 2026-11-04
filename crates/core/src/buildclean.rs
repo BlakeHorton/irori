@@ -105,7 +105,19 @@ pub fn clear(worktree: &Path, idle: Duration, now: SystemTime) -> Result<Cleared
         }
         locks.push(f);
     }
-    fs::rename(&target, &aside).map_err(|e| format!("{}: {e}", target.display()))?;
+    // Windows refuses to rename a folder while any file in it is open, our
+    // lock handles included, so there the locks are only a check: release
+    // them and move at once. A build that starts in between holds files open
+    // and the rename is refused; that is a kept build, not an error.
+    #[cfg(windows)]
+    drop(std::mem::take(&mut locks));
+    match fs::rename(&target, &aside) {
+        Ok(()) => {}
+        Err(e) if cfg!(windows) && e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Ok(Cleared::Kept("in use"));
+        }
+        Err(e) => return Err(format!("{}: {e}", target.display())),
+    }
     drop(locks);
     fs::remove_dir_all(&aside).map_err(|e| format!("{}: {e}", aside.display()))?;
     Ok(Cleared::Gone)
