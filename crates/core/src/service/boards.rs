@@ -1443,6 +1443,27 @@ impl Services {
                             })
                         })
                     }),
+                    // Who takes work the board hands out (card #453): the
+                    // board's agent:<cardId> is the person's session by
+                    // this board's card map; theirs takes it only with
+                    // "Offer it cards" on and never when Irori started it.
+                    // Another member's agent maps to none: their device
+                    // decides whether it offers it here.
+                    offers: Some({
+                        let (s, bw) = (Arc::downgrade(self), Arc::downgrade(&b));
+                        Arc::new(move |key: &str| {
+                            let (Some(s), Some(b)) = (s.upgrade(), bw.upgrade()) else {
+                                return false;
+                            };
+                            let Some(card) = key.strip_prefix(AGENT_ACTOR_PREFIX) else {
+                                return true;
+                            };
+                            let Some(agent) = lock(&b.maps).by_id.get(card).cloned() else {
+                                return true;
+                            };
+                            !s.coord.is_spawned(&agent) && s.agent_offered(&agent)
+                        })
+                    }),
                     // The other boards in this space (card #392), read from
                     // the log itself: a card on one shows its tag.
                     board_tag: Some({
@@ -2208,6 +2229,9 @@ impl Services {
                         && !m.keys.contains_key(&a.key)
                         // Started for one card (card #446): no board's.
                         && !self.coord.is_spawned(&a.key)
+                        // A terminal agent only with "Offer it cards" on
+                        // (card #453).
+                        && self.agent_offered(&a.key)
                         && (a.device_id == me
                             || a.device_id.is_empty()
                                 && irori_identity::owner::device_of(&a.key) == me)
@@ -2491,7 +2515,7 @@ impl super::Core {
             let br = b.coord().idle_report(&s.board_ask_agents(&b));
             for mut u in br.unoffered {
                 if br.idle == 0 {
-                    u.why = "nobody on this board is free".into();
+                    u.why = "nobody on this board takes offered cards".into();
                 }
                 r.unoffered.push(u);
             }

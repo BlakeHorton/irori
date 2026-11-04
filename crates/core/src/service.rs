@@ -1059,6 +1059,20 @@ impl Core {
                         let def = spawn_state.private_default.clone();
                         Arc::new(move || spawn::SpawnState::switch(&on, &def, ""))
                     }),
+                    // A terminal agent takes unheld cards, asks and threads
+                    // only with the person's "Offer it cards" on (card
+                    // #453); a spawned agent's rule is the coord's.
+                    offers: Some({
+                        let offers = spawn_state.offers.clone();
+                        Arc::new(move |key: &str| {
+                            offers
+                                .read()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .get(key)
+                                .copied()
+                                .unwrap_or(false)
+                        })
+                    }),
                     // A working card on a shared board counts here too:
                     // one card at a time across logs (card #422).
                     busy_elsewhere: Some({

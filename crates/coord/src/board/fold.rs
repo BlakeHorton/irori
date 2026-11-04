@@ -223,6 +223,8 @@ pub struct Fold {
     pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::spawning`].
     pub(crate) spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// See [`super::Options::offers`].
+    pub(crate) offers: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
     /// See [`super::Options::agents_per_card`].
     pub(crate) agents_per_card: Option<Arc<dyn Fn() -> i64 + Send + Sync>>,
     /// See [`super::Options::outside_leases`].
@@ -394,6 +396,7 @@ impl Fold {
             key_person: o.key_person,
             open_cards_any: o.open_cards_any,
             spawning: o.spawning,
+            offers: o.offers,
             agents_per_card: o.agents_per_card,
             outside_leases: o.outside_leases,
             outside_waits: Default::default(),

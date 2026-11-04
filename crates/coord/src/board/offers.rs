@@ -261,7 +261,7 @@ impl Fold {
                 || out.contains(&a.key)
                 || elsewhere.contains(&a.key)
                 || self.busy_anywhere(&a.key)
-                || !self.spawned_may_take(&a.key, t)
+                || !self.may_hand_to(&a.key, t)
             {
                 continue;
             }
@@ -292,7 +292,7 @@ impl Fold {
                     && a.status == "idle"
                     && a.device_state != crate::roster::OFFLINE
                     && !self.busy_anywhere(&a.key)
-                    && self.spawned_for(&a.key).is_none()
+                    && self.takes_handout(&a.key)
             })
             .collect();
         let mut cards: Vec<&Task> = self
@@ -316,6 +316,8 @@ impl Fold {
                 skip.push(t.created_by.clone());
                 let pool = self.offer_pool(t, agents);
                 let why = if idle.is_empty() {
+                    // Idle agents the person didn't offer cards to are left
+                    // out of idle (card #453).
                     "no agent is free".to_string()
                 } else if !self.free_for(t, &pool, &skip).is_empty() {
                     "a free agent is there: the next sweep hands it out".to_string()
@@ -363,7 +365,14 @@ impl Fold {
         }
         let now = self.stamp();
         let skip = vec![by.clone()];
-        let free = self.free_for(&t, roster, &skip);
+        // On a board with spawning on, Irori starts an agent for the card
+        // (cards_to_spawn) and the sweep hands nothing out there: handing
+        // it to an idle agent too would put two on it (card #453).
+        let free = if self.spawning_on() {
+            Vec::new()
+        } else {
+            self.free_for(&t, roster, &skip)
+        };
         let row = match free.first() {
             Some(pick) => TaskOfferedRow {
                 to: pick.clone(),
@@ -465,11 +474,11 @@ impl Fold {
                 self.touch(ev, &ti, when, &gone, "passed it on", false, Vec::new());
             }
             OFFER_WAITING if !gone.is_empty() => {
-                let what = "passed it on; no agent is free, so it goes to the next one to go idle";
+                let what = "passed it on; no agent is free, so it waits for the next one that takes offered cards";
                 self.touch(ev, &ti, when, &gone, what, false, Vec::new());
             }
             OFFER_WAITING => {
-                let what = "no agent is free: it goes to the next one to go idle";
+                let what = "no agent is free: it waits for the next one that takes offered cards";
                 self.touch(ev, &ti, when, SWEEPER, what, false, Vec::new());
             }
             _ => {}
@@ -497,7 +506,7 @@ impl Fold {
         // A spawned agent serves only the card it was started for (§6).
         let agents: Vec<AgentCard> = agents
             .iter()
-            .filter(|a| self.spawned_may_take(&a.key, t))
+            .filter(|a| self.may_hand_to(&a.key, t))
             .cloned()
             .collect();
         let any = self.open_cards_any.as_ref().is_some_and(|f| f());

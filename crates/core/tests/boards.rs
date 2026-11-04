@@ -1833,6 +1833,42 @@ fn a_subtask_that_cant_go_stops_the_family() {
 /// includes the person's own idle agents when the person is on that
 /// board").
 #[test]
+fn a_board_card_skips_an_idle_agent_not_offered_cards() {
+    // Card #453: a terminal agent the person didn't offer cards to isn't
+    // put on a board to be handed one.
+    let r = Rig::new();
+    let c = &r.core;
+    let b1 = c.create_board("Wind", "wind").unwrap();
+    let caller = tools::Caller {
+        sender: inbox::Sender::new(&r.key_a, "alpha", "claude"),
+        path: String::new(),
+    };
+    let out = c
+        .tools()
+        .call(
+            &caller,
+            "board_create",
+            &serde_json::to_vec(&serde_json::json!({"title": "Three Dolphins", "board": "wind"}))
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(out.contains("Created wind#1"), "{out}");
+    for _ in 0..5 {
+        c.sweep_coord().ok();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(
+        !c.board_roster(&b1).iter().any(|a| c.private_key(&a.key) == r.key_b),
+        "beta was put on the board"
+    );
+    assert!(
+        !r.notices_to(&r.key_b).iter().any(|d| d.message.text.contains("handed it to you")),
+        "beta was handed it"
+    );
+    assert!(!c.agent_offered(&r.key_b));
+}
+
+#[test]
 fn a_board_card_reaches_an_idle_agent_not_on_the_board() {
     let r = Rig::new();
     let c = &r.core;
@@ -1842,7 +1878,8 @@ fn a_board_card_reaches_an_idle_agent_not_on_the_board() {
         path: String::new(),
     };
     // alpha posts it, so alpha is on the board and never gets its own card;
-    // beta has never touched the board.
+    // beta has never touched the board. Beta takes offered cards (#453).
+    c.set_agent_offer(&r.key_b, true).unwrap();
     let out = c
         .tools()
         .call(
@@ -1934,6 +1971,9 @@ fn a_working_card_on_a_shared_board_keeps_the_agent_off_private_hand_outs() {
     wait_for(10, "presence lists gamma", || {
         c.local_agents().iter().any(|a| a.key == key_c)
     });
+    // Both take offered cards (#453): alpha is left out only for wind#1.
+    c.set_agent_offer(&r.key_a, true).unwrap();
+    c.set_agent_offer(&key_c, true).unwrap();
 
     // beta posts a private card unheld: alpha is busy on wind#1, so gamma
     // is handed it.

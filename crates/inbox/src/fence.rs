@@ -130,7 +130,7 @@ pub fn fence(token: &str, reminder: bool, msgs: &[Delivery], overflow: &[String]
         .iter()
         .any(|d| d.message.notice && is_offer(&d.message.reason))
     {
-        sb.push_str("A message marked offer=\"true\" is a card on the Irori Board that Irori handed to you, the free agent idle longest: nobody else has it. Take it with the irori board_join tool and its ref, and start. If you can't take it on now, call board_leave with its ref (or skip the message) and it goes to the next free agent; ending your turn without taking it does the same.\n");
+        sb.push_str("A message marked offer=\"true\" is a card on the Irori Board that Irori handed to you, the agent taking offered cards idle longest: nobody else has it. Take it with the irori board_join tool and its ref, and start. If you can't take it on now, call board_leave with its ref (or skip the message) and it goes to the next agent that takes offered cards; ending your turn without taking it does the same.\n");
     }
     if msgs.iter().any(|d| is_wind_down(&d.message)) {
         sb.push_str(WIND_DOWN_HOW);

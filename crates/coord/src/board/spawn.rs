@@ -32,6 +32,10 @@ pub const SPAWN_CANCELED: &str = "canceled";
 /// next request may replace it, so a spawn that died before presence saw
 /// it doesn't hold its card forever (the next ask is generation + 1).
 pub const SPAWN_GRACE: Duration = Duration::from_secs(180);
+/// How long a card whose spawn failed (not trusted, no folder, the spawner
+/// refused) waits before Irori asks again, unless the card changes first
+/// (card #464): every sweep retrying wrote two replicated rows each 5s.
+pub const SPAWN_RETRY: Duration = Duration::from_secs(600);
 
 /// Spawned agents of one card that may crash in a row before its spawning
 /// stops and the person is asked (§2 "Crash", card #447).
@@ -135,6 +139,23 @@ impl Fold {
 
     /// Whether `key` may be handed card t: never a spawned agent, except
     /// its own card and that card's subtasks (§6).
+    /// Whether Irori may hand agent `key` work nobody gave it (card #453):
+    /// not a spawned agent (it serves only its card), and a terminal agent
+    /// only with the person's "Offer it cards" on.
+    pub(crate) fn takes_handout(&self, key: &str) -> bool {
+        self.spawned_for(key).is_none() && self.offers.as_ref().is_none_or(|f| f(key))
+    }
+
+    /// Whether Irori may hand card t to agent `key`: a spawned agent only
+    /// its own card and its subtasks, any other agent per
+    /// [`Fold::takes_handout`].
+    pub(crate) fn may_hand_to(&self, key: &str, t: &Task) -> bool {
+        match self.spawned_for(key) {
+            Some(s) => s.task_id == t.id || t.parent == s.task_id,
+            None => self.offers.as_ref().is_none_or(|f| f(key)),
+        }
+    }
+
     pub(crate) fn spawned_may_take(&self, key: &str, t: &Task) -> bool {
         match self.spawned_for(key) {
             None => true,
@@ -451,6 +472,13 @@ impl Fold {
             .filter(|t| {
                 t.spawn_request()
                     .is_none_or(|s| !s.pending() || s.stale(&now))
+            })
+            .filter(|t| {
+                t.spawn_request().is_none_or(|s| {
+                    s.op != SPAWN_FAILED
+                        || gotime::at_least(&now, &s.at, SPAWN_RETRY)
+                        || gotime::before(&s.at, &t.updated_at)
+                })
             })
             .cloned()
             .collect();

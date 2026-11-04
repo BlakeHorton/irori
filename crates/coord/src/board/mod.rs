@@ -43,7 +43,7 @@ pub use offers::{IdleReport, OFFER_HANDED, OFFER_PASSED, OFFER_WAITING, Unoffere
 pub use parts::{DEFAULT_AGENTS_PER_CARD, MAX_AGENTS_PER_CARD, PART_QUESTION};
 pub use spawn::{
     CRASHED_QUESTION, CRASHED_START, MAX_SPAWN_CRASHES, PERMISSION_MODES, SPAWN_CANCELED,
-    SPAWN_FAILED, SPAWN_GRACE, SPAWN_REQUESTED, Spawn, SpawnAsk, Spawned,
+    SPAWN_FAILED, SPAWN_GRACE, SPAWN_REQUESTED, SPAWN_RETRY, Spawn, SpawnAsk, Spawned,
 };
 mod resource;
 mod review;
@@ -273,6 +273,13 @@ pub struct Options {
     /// the app only. Read when the hand-out runs. `None` or false: idle
     /// agents, as before.
     pub spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Whether an agent Irori didn't start (a terminal agent, spawned
+    /// agents §5) takes work Irori hands out: unheld cards, asks and
+    /// threads (card #453). Only when the person turned on "Offer it
+    /// cards" for it; everything else reaches it only when given (assign,
+    /// a mention, its own board_join or ask_claim). Read when the hand-out
+    /// runs. `None`: every agent does, as before.
+    pub offers: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
     /// The board's "Agents per card" (spawned agents §3, part 7): how many
     /// agents a card may have at once, its lead and helpers, unless the
     /// card sets its own. `None` or below 1: [`DEFAULT_AGENTS_PER_CARD`].
@@ -1184,6 +1191,12 @@ impl Coord {
     pub fn spawned_card(&self, key: &str) -> Option<String> {
         self.lock().spawned_for(key).map(|s| s.task_id.clone())
     }
+    /// Whether this log's cards get a spawned agent each (its spawning
+    /// switch, card #446).
+    pub fn spawning(&self) -> bool {
+        self.lock().spawning_on()
+    }
+
     /// Whether Irori started agent `key` for a card. Never takes coord's
     /// lock, so the inbox may ask under its own.
     pub fn is_spawned(&self, key: &str) -> bool {

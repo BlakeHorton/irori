@@ -902,8 +902,11 @@ pub(crate) fn board_create(s: &Inner, c: &Caller, raw: &[u8]) -> String {
                     t = nt;
                 }
             }
+            Ok(_) if co.spawning() => {
+                out += " Irori starts an agent for it.";
+            }
             Ok(_) => {
-                out += " No agent is free now: Irori hands it to the next one to go idle. Take it yourself with board_join only if you hold no card in progress; board_assign it when one agent is clearly the right one.";
+                out += " No agent takes offered cards now: it waits for one the person offers cards to. Take it yourself with board_join only if you hold no card in progress; board_assign it when one agent is clearly the right one.";
             }
             Err(_) => {
                 out += " Take it up with board_join, or hand it over with board_assign.";
@@ -1274,7 +1277,8 @@ fn main_red_line(s: &Inner, c: &Caller, co: &coord::Coord, rt: &Task, made: bool
                 s.told(&s.tell(&inbox::system_sender(), offer), &n)
             );
         }
-        _ => out += " No agent is free now: Irori hands it to the next one to go idle.",
+        _ if co.spawning() => out += " Irori starts an agent for it.",
+        _ => out += " No agent takes offered cards now: it waits for one the person offers cards to.",
     }
     out
 }
