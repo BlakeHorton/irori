@@ -78,6 +78,7 @@ export function Thread({
     agents: readonly AgentRef[]
     over?: boolean
     working?: readonly AgentRef[]
+    jobs?: readonly AgentRef[]
   }
 }) {
   const [showAll, setShowAll] = useState(false)
@@ -91,7 +92,7 @@ export function Thread({
     const id = window.setTimeout(() => setTick((n) => n + 1), StoppedGrace + 100)
     return () => window.clearTimeout(id)
   }, [watching, live])
-  const status = on ? workingLine(on.agents, items, live, new Date(), on.over, on.working)
+  const status = on ? workingLine(on.agents, items, live, new Date(), on.over, on.working, on.jobs)
     : null
   // A comment a notification opened the card at: shown even when it is
   // older than the first page, scrolled into view once (card #177).

@@ -91,6 +91,51 @@ describe("idle with no reason given", () => {
   })
 })
 
+// Card #431: a holder between turns with a background job running is
+// Claude Code's "shell": it reads as running a job, not "not working".
+describe("a holder running a background job", () => {
+  const holder = (w: Record<string, unknown> = {}) => ({
+    key: "dev/s1",
+    name: "wonton",
+    status: "shell",
+    live: true,
+    where: "This PC",
+    idleSince: "2026-11-02T10:05:00Z",
+    ...w,
+  })
+  const held = (c: Partial<CardSummary> = {}, w: Record<string, unknown> = {}) =>
+    card({
+      working: [holder(w)] as CardSummary["working"],
+      holder: { state: "idle", who: holder(w), others: 0 } as CardSummary["holder"],
+      ...c,
+    })
+  const late = Date.parse("2026-11-02T11:00:00Z")
+
+  test("shell: running a background job, even long after the turn ended", () => {
+    expect(rowState(held(), late)).toEqual({
+      state: "working",
+      line: "wonton running a background job",
+    })
+  })
+  test("idle: still not working on it now", () => {
+    expect(rowState(held({}, { status: "idle" }), Date.parse("2026-11-02T10:06:00Z"))).toEqual({
+      state: "waiting",
+      line: "wonton, not working on it now",
+    })
+  })
+  test("a card waiting on the person, or in review, says that instead", () => {
+    expect(rowState(held({ openBlockers: 1, blockerQuestion: "Which?" }), late).state).toBe("needs")
+    expect(rowState(held({ state: TaskState.InReview }), late)).toEqual({
+      state: "waiting",
+      line: "In review",
+    })
+  })
+  test("only taken-up, live, online holders count", () => {
+    expect(rowState(held({}, { offline: true }), late).line).not.toContain("background")
+    expect(rowState(held({}, { live: false, status: "gone" }), late).line).not.toContain("background")
+  })
+})
+
 describe("rowState", () => {
   test("the four states", () => {
     expect(rowState(card({ openBlockers: 1, blockerQuestion: "Steam or relay?" }))).toEqual({

@@ -1936,8 +1936,13 @@ export function busy(c: {
   openBlockers: number
   working: readonly AgentRef[]
 }): boolean {
-  // In review (card #191): the work waits on its review, so its holder is
-  // free and nothing spins.
+  return workable(c) && c.working.some(agentBusy)
+}
+
+// workable says a card can be worked on now: not over, not waiting on the
+// person (its input, a blocker) and not in review (card #191: the work
+// waits on its review, so its holder is free and nothing spins).
+function workable(c: { state: string; openBlockers: number }): boolean {
   switch (c.state) {
     case TaskState.Completed:
     case TaskState.Canceled:
@@ -1946,8 +1951,7 @@ export function busy(c: {
     case TaskState.InReview:
       return false
   }
-  if (c.openBlockers > 0) return false
-  return c.working.some(agentBusy)
+  return c.openBlockers <= 0
 }
 
 // agentBusy says this agent, one of a card's holders, is working right now:
@@ -1955,6 +1959,34 @@ export function busy(c: {
 // the roster. busy is any holder of a card that can be worked on.
 export function agentBusy(w: AgentRef): boolean {
   return w.status === "busy" && w.live && !w.offline && !w.assigned
+}
+
+// RunningJobStatus is the roster status Claude Code gives a session that
+// is between turns with a background job still running (a background Bash
+// or agent): idle, but not done (card #431).
+export const RunningJobStatus = "shell"
+
+// agentRunningJob says this holder is between turns with a background job
+// running: live, online, taken up, and "shell" in the roster.
+export function agentRunningJob(w: AgentRef): boolean {
+  return w.status === RunningJobStatus && w.live && !w.offline && !w.assigned
+}
+
+// runningJobNow is who holds the card and is running a background job
+// between turns (card #431), on a card that can be worked on and that no
+// holder is busy on (busy wins: it is working now). None otherwise.
+export function runningJobNow(c: {
+  state: string
+  openBlockers: number
+  working: readonly AgentRef[]
+}): AgentRef[] {
+  if (busy(c) || !workable(c)) return []
+  const seen = new Set<string>()
+  return c.working.filter((w) => {
+    if (!agentRunningJob(w) || seen.has(w.key)) return false
+    seen.add(w.key)
+    return true
+  })
 }
 
 // withLive is the card with its agents' roster status as of now (card

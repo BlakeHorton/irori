@@ -456,6 +456,46 @@ describe("working line on a card page (card #317)", () => {
   test("nobody working by the card's rule: no working line, though the roster says busy", () => {
     expect(workingLine([oak], [], busyRoster, new Date(), false, [])).toBeNull()
   })
+  // Card #431: the card's rule gives who runs a background job between turns.
+  test("a holder running a background job: says so, not stopped or nothing", () => {
+    const shell = new Map([["mac/oak", { status: "shell", updatedAt: "" }]])
+    expect(workingLine([oak], [], shell, new Date(), false, [], [oak])).toEqual({
+      text: "oak is running a background job…",
+      tone: "working",
+      who: "oak",
+      verb: "is",
+      doing: "running a background job",
+    })
+    expect(workingLine([oak], [], shell, new Date(), false, [], [])).toBeNull()
+  })
+})
+
+describe("working line for a background job (card #431)", () => {
+  const oak = AgentRef({ key: "mac/oak", name: "oak", status: "idle", live: true })
+  const you = AgentRef({ key: "user:me", name: "You", status: "person", live: true })
+  const t0 = new Date("2026-11-03T05:00:00Z")
+  const comment = CardThreadItem({
+    id: "c1",
+    kind: "comment",
+    who: you,
+    text: "how's it going?",
+    at: t0.toISOString(),
+    heardBy: ["mac/oak"],
+  })
+  const later = new Date(t0.getTime() + 60_000)
+  const roster = (status: string) =>
+    new Map([["mac/oak", { status, updatedAt: new Date(t0.getTime() + 5_000).toISOString() }]])
+  test("shell after the person's comment: running a background job, not stopped", () => {
+    expect(workingLine([oak], [comment], roster("shell"), later)?.text).toBe(
+      "oak is running a background job…"
+    )
+  })
+  test("idle after the person's comment: stopped without replying, as before", () => {
+    expect(workingLine([oak], [comment], roster("idle"), later)).toEqual({
+      text: "oak stopped without replying",
+      tone: "stopped",
+    })
+  })
 })
 
 describe("ponderWord", () => {

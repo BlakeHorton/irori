@@ -6,6 +6,7 @@ import {
   BlockerState,
   displayName,
   namesLine,
+  RunningJobStatus,
   type AgentRef,
   type CardBlocker,
   type CardThreadItem,
@@ -279,7 +280,11 @@ export function workingLine(
   // page passes workingNow, card #317), so its line agrees with the page's
   // working row and Home's Agent progress. Left out, any agent on the
   // thread busy in the live roster counts (an ask's taker, card #299).
-  working?: readonly AgentRef[]
+  working?: readonly AgentRef[],
+  // jobs: who the card's rule says is running a background job between
+  // turns (runningJobNow, card #431), given with working. Left out, any
+  // agent on the thread "shell" in the live roster counts.
+  jobs?: readonly AgentRef[]
 ): WorkingLine | null {
   if (over) return null
   const seen = new Set<string>()
@@ -305,6 +310,17 @@ export function workingLine(
       verb,
       doing,
     }
+  }
+
+  // Card #431: no turn running, but a holder's background job is (Claude
+  // Code's "shell"): it isn't stopped, and it isn't idle.
+  const running =
+    jobs ?? (working ? [] : on.filter((a) => status(a) === RunningJobStatus))
+  if (running.length) {
+    const who = names(running)
+    const verb = running.length > 1 ? "are" : "is"
+    const doing = "running a background job"
+    return { text: `${who} ${verb} ${doing}…`, tone: "working", who, verb, doing }
   }
 
   // The person's latest comment, and whether anyone answered it since.

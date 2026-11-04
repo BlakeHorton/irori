@@ -26,6 +26,7 @@ import {
   namesLine,
   withLive,
   workingNow,
+  runningJobNow,
   BlockerState,
   busy,
   cards,
@@ -194,6 +195,7 @@ export function CardPage({
   const now_ = withLive(detail, live)
   const spinning = busy(now_)
   const workers = workingNow(now_)
+  const jobs = runningJobNow(now_)
   // Links already on screen (a PR's, an open blocker's or one of its
   // answers') aren't listed again on the side.
   const shownLinks = new Set(
@@ -473,6 +475,7 @@ export function CardPage({
                 agents: detail.working,
                 over: over(detail),
                 working: workers,
+                jobs,
               }}
               composer={
                 <CommentBox cardId={detail.id} noFiles={!!detail.onBoard} />
@@ -491,9 +494,12 @@ export function CardPage({
 // Motion), by the same busy rule as Home, so the two never disagree.
 // Nothing while nobody is.
 function WorkingRow({ card }: { card: CardSummary }) {
-  const who = workingNow(card)
+  const busyNow = workingNow(card)
+  // Card #431: between turns, but a background job it started still runs.
+  const who = busyNow.length ? busyNow : runningJobNow(card)
   if (!who.length) return null
   const names = namesLine(who.map(displayName))
+  const doing = busyNow.length ? "working on this card now" : "running a background job"
   return (
     <p
       role="status"
@@ -502,7 +508,7 @@ function WorkingRow({ card }: { card: CardSummary }) {
       <Spinner className="size-4" />
       <span className="min-w-0 truncate">
         <span className="font-semibold">{names}</span>{" "}
-        {who.length > 1 ? "are" : "is"} working on this card now
+        {who.length > 1 ? "are" : "is"} {doing}
       </span>
     </p>
   )

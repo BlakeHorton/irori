@@ -12,6 +12,7 @@ import {
   openAsk,
   over,
   overLabel,
+  runningJobNow,
   TaskState,
   workLabel,
   type CardSummary,
@@ -80,6 +81,13 @@ export function rowState(
     .slice(0, 2)
     .join(", ")
   if (busy(c)) return { state: "working", line: who ? `${who} working` : "Working" }
+  // Card #431: between turns, but a background job it started still runs.
+  const job = runningJobNow(c)
+  if (job.length)
+    return {
+      state: "working",
+      line: `${job.map(displayName).slice(0, 2).join(", ")} running a background job`,
+    }
   if (!c.working.length || c.holder.state === Holding.HoldNobody)
     return { state: "waiting", line: "Nobody has it yet" }
   const w = workLabel(c)

@@ -46,6 +46,10 @@ export const sampleAgents = {
   otter: agent("sample01-synthetic-session", "sample-otter", "busy"),
   heron: agent("sample02-synthetic-session", "sample-heron", "idle"),
   badger: agent("sample03-synthetic-session", "sample-badger", "busy"),
+  // sample-mink ended its turn with a background job still running
+  // (Claude Code's "shell", card #431). Not in the sample roster, so the
+  // card keeps this status.
+  mink: agent("sample05-synthetic-session", "sample-mink", "shell"),
   // sample-wren is on the sample's paired MacBook, which is offline, so its
   // face shows the device chip greyed.
   wren: AgentRef({
@@ -141,7 +145,7 @@ export function sampleCards(now: Date): CardDetail[] {
   if (new URLSearchParams(window.location.search).has("empty")) return []
   const at = (min: number) =>
     new Date(now.getTime() - min * 60000).toISOString()
-  const { otter, heron, badger, wren, lark } = sampleAgents
+  const { otter, heron, badger, wren, lark, mink } = sampleAgents
   const card = (c: Partial<CardDetail>): CardDetail => {
     const st = c.steps ?? []
     const open = (c.blockers ?? []).filter((b) => !b.resolved)
@@ -250,10 +254,26 @@ export function sampleCards(now: Date): CardDetail[] {
     ]),
   })
 
+  // Card #431: held, its holder between turns with a background job
+  // running (Home: "sample-mink running a background job").
+  const runningJob = card({
+    id: "sample-card-job",
+    short: "54",
+    title: "Clear the old build caches",
+    goal: "Free disk on the Mac: delete stale target/ dirs.",
+    working: [AgentRef({ ...mink, idleSince: at(30) })],
+    updatedAt: at(30),
+    steps: steps([
+      ["List the stale dirs", true],
+      ["Delete them", false, true],
+    ]),
+  })
+
   return [
     longWait,
     idleUnnamed,
     namedWait,
+    runningJob,
     // Asks (board.md "Asks"): the person's prompts to the room. One the
     // agents heard and nobody took yet, one sample-heron took and is
     // talking through.
