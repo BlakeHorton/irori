@@ -537,6 +537,14 @@ fn test_specs() {
             sp.name,
             own.len()
         );
+        // Claude Code shows a tool only its first 4,096 characters until the
+        // model loads it through tool search (card #445).
+        assert!(
+            d.chars().count() < 4096,
+            "{} description is {} characters; Claude Code cuts it at 4,096",
+            sp.name,
+            d.chars().count()
+        );
         let sch: serde_json::Value = serde_json::from_slice(&sp.input_schema.0)
             .unwrap_or_else(|e| panic!("{} schema: {e}", sp.name));
         assert!(
