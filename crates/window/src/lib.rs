@@ -62,7 +62,6 @@ pub mod ready;
 pub mod roster;
 pub mod seams;
 pub mod settings;
-pub mod spawn_permissions;
 pub mod stop;
 pub mod talk;
 pub mod terms;

@@ -67,6 +67,7 @@ pub use crate::service::boards::{
 pub use crate::service::invites::{InviteStatus, InviteWatchFn};
 pub use crate::service::notes::{CardWakeNote, SCOPE_MINE, ScopedNote};
 pub use crate::service::spaces::{SpaceBoard, fold_space_boards};
+pub use crate::service::spawn_permissions;
 pub use crate::service::{
     BoardReviewer, Core, HomeEdit, NO_HOME_SERVER, NowFn, Options, ReviveFn, StartError,
 };

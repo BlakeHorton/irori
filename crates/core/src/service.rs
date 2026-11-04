@@ -65,6 +65,7 @@ mod mirror;
 pub mod notes;
 mod notifications;
 pub mod spaces;
+pub mod spawn_permissions;
 pub use mirror::BoardReviewer;
 pub mod invites;
 mod talk;
