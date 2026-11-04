@@ -18,7 +18,7 @@ import {
   type CardBlocker,
   type CardSummary,
 } from "@/lib/cards"
-import { plainLine, relativeTime } from "@/lib/irori"
+import { inWails, plainLine, relativeTime } from "@/lib/irori"
 import { AgentsService } from "@/lib/host"
 import { NOT_TRUSTED, type Need } from "@/lib/needs"
 import { answerable } from "@/lib/thread"
@@ -276,17 +276,21 @@ function TrustRow({
 }) {
   const c = need.card
   const act = useAct()
-  const [info, setInfo] = useState<TrustInfo | null>(null)
+  const host = inWails()
+  const [asked, setAsked] = useState<TrustInfo | null>(null)
   useEffect(() => {
+    if (!host) return
     let live = true
     AgentsService.TrustNeed(c.id)
-      .then((n) => live && setInfo(n ?? null))
-      .catch(() => live && setInfo(null))
+      .then((n) => live && setAsked(n ?? null))
+      .catch(() => live && setAsked(null))
     return () => {
       live = false
     }
-  }, [c.id, c.cantStart])
-  const folder = info?.folder ?? (c.cantStart ?? "").slice(NOT_TRUSTED.length)
+  }, [host, c.id, c.cantStart])
+  // Without the host (the preview) the reason is all there is.
+  const info = host ? asked : trustFromReason(c.cantStart ?? "")
+  const folder = info?.folder ?? trustFromReason(c.cantStart ?? "").folder
   const where = (
     <button
       type="button"
@@ -319,6 +323,9 @@ function TrustRow({
             {act.busy ? "Trusting…" : "Trust and start"}
           </Button>
         )}
+        <Button size="sm" variant="ghost" onClick={() => onOpen(c.id)}>
+          Open card
+        </Button>
       </span>
       <Said error={act.error} done={act.done} />
     </Row>
@@ -326,6 +333,20 @@ function TrustRow({
 }
 
 type TrustInfo = { folder: string; device: string; here: boolean; what: string }
+
+// trustFromReason reads `not trusted: <folder> on <device>` (the failed
+// spawn's reason) when the host can't be asked.
+export function trustFromReason(reason: string): TrustInfo {
+  const rest = reason.startsWith(NOT_TRUSTED) ? reason.slice(NOT_TRUSTED.length) : reason
+  const at = rest.lastIndexOf(" on ")
+  const folder = at > 0 ? rest.slice(0, at) : rest
+  return {
+    folder,
+    device: "this computer",
+    here: true,
+    what: `Claude Code will run agents in ${folder} on this computer without asking you first. It's the trust Claude Code asks for the first time you open a folder.`,
+  }
+}
 
 // CardNeed is a card waiting on the person: its done check (Done, or Not
 // done with a reason) or each of its decisions (the options, recommended

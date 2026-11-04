@@ -1382,6 +1382,19 @@ export function sampleCards(now: Date): CardDetail[] {
       owner: "sample-person-left",
       updatedAt: at(300),
     }),
+    // An agent Irori couldn't start: its repo isn't trusted for agents on
+    // this computer (card #449), so Needs you shows Trust and start.
+    card({
+      id: "sample-card-trust",
+      short: "19",
+      title: "Add rate limiting to the upload endpoint",
+      repoKey: "remote:github.com/sample-org/example-api",
+      goal: "Uploads over 20 a minute from one key get a 429.",
+      state: TaskState.Submitted,
+      working: [],
+      cantStart: "not trusted: /Users/you/projects/example-api on this-mac",
+      updatedAt: at(2),
+    }),
     card({
       id: "sample-card-10",
       title: "Write up the boat desync repro",
