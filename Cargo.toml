@@ -83,10 +83,10 @@ irori-tools = { path = "crates/tools" }
 irori-window = { path = "crates/window" }
 irori-voice = { path = "crates/voice" }
 irori-term = { path = "crates/term" }
-# suzuri's terminal core (inline-terminals.md section 3, card #369). Pinned to
-# a rust-suzuri rev until suzuri PR #96 merges, then to a suzuri tag; keep it
-# and the portable-pty patch below at the same commit (section 9).
-rsz-term = { git = "https://github.com/StephenSHorton/rust-suzuri", rev = "813b8e1" }
+# suzuri's terminal core (inline-terminals.md section 3, card #369), at a
+# suzuri term tag; keep it, the portable-pty patch below and frontend's
+# suzuri-view on the same tag (section 9).
+rsz-term = { git = "https://github.com/StephenSHorton/suzuri", tag = "term-v0.10.0" }
 irori-toast = { path = "crates/toast" }
 irori-notify = { path = "crates/notify" }
 irori-update = { path = "crates/update" }
@@ -186,4 +186,4 @@ whisper-rs-sys = { git = "https://github.com/StephenSHorton/whisper-rs", branch 
 netdev = { path = "vendor/netdev" }
 # suzuri's ConPTY flags for portable-pty (inline-terminals.md S-1; S0 #365
 # showed the git patch finds vendor/portable-pty). Same rev as rsz-term.
-portable-pty = { git = "https://github.com/StephenSHorton/rust-suzuri", rev = "813b8e1" }
+portable-pty = { git = "https://github.com/StephenSHorton/suzuri", tag = "term-v0.10.0" }
