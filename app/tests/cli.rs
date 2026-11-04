@@ -29,6 +29,24 @@ fn unknown_command_like_go() {
     );
 }
 
+/// `--version` and `-V` print like `irori version` and exit 0 (#435),
+/// instead of opening a window that never exits.
+#[test]
+fn version_flags_print_and_exit() {
+    let home = tempfile::tempdir().unwrap();
+    let (code, want, _) = run(&["version"], home.path());
+    assert_eq!(code, 0);
+    assert!(want.starts_with("irori "), "{want}");
+    for flag in ["--version", "-V"] {
+        let (code, out, err) = run(&[flag], home.path());
+        assert_eq!(
+            (code, out.as_str(), err.as_str()),
+            (0, want.as_str(), ""),
+            "{flag}"
+        );
+    }
+}
+
 #[test]
 fn events_without_a_core() {
     let home = tempfile::tempdir().unwrap();

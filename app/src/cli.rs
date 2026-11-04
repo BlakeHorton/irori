@@ -6,9 +6,12 @@
 /// Every role Go knows, in the order its unknown-command error lists them.
 pub const ROLES: &str = "gui, serve, mcp, attach, events, pair, node, version";
 
-/// Go's split of `os.Args[1:]` into the role and its arguments.
+/// Go's split of `os.Args[1:]` into the role and its arguments. The one
+/// exception: a leading `--version` or `-V` is the version role, so it
+/// prints and exits instead of opening a window (#435).
 pub fn split(args: &[String]) -> (&str, &[String]) {
     match args.first() {
+        Some(a) if a == "--version" || a == "-V" => ("version", &args[1..]),
         Some(a) if !a.is_empty() && !a.starts_with('-') => (a.as_str(), &args[1..]),
         _ => ("", args),
     }
@@ -53,6 +56,11 @@ mod tests {
         // An empty first argument is no role, as in Go.
         let a = v(&["", "serve"]);
         assert_eq!(split(&a), ("", &a[..]));
+        // `--version` and `-V` are the version role, never the window.
+        let a = v(&["--version"]);
+        assert_eq!(split(&a), ("version", &a[1..]));
+        let a = v(&["-V"]);
+        assert_eq!(split(&a), ("version", &a[1..]));
     }
 
     #[test]
