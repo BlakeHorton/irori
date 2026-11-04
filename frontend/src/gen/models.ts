@@ -8,6 +8,8 @@ export type AddressKind = B.AddressKind
 export type AgentCard = B.AgentCard
 export type AgentPermissions = B.AgentPermissions
 export type AgentRef = B.AgentRef
+export type AgentsChange = B.AgentsChange
+export type AgentsSettings = B.AgentsSettings
 export type AnswerResult = B.AnswerResult
 export type Ask = B.Ask
 export type AskRepo = B.AskRepo
@@ -157,6 +159,16 @@ export function AgentPermissions(p: Partial<B.AgentPermissions> = {}): B.AgentPe
 /** AgentRef with Go's zero values for every field left out. */
 export function AgentRef(p: Partial<B.AgentRef> = {}): B.AgentRef {
   return { "key": "", "name": "", "status": "", "live": false, "where": "", ...p } as B.AgentRef
+}
+
+/** AgentsChange with Go's zero values for every field left out. */
+export function AgentsChange(p: Partial<B.AgentsChange> = {}): B.AgentsChange {
+  return { ...p } as B.AgentsChange
+}
+
+/** AgentsSettings with Go's zero values for every field left out. */
+export function AgentsSettings(p: Partial<B.AgentsSettings> = {}): B.AgentsSettings {
+  return { "boardId": "", "on": false, "chosen": false, "model": "", "effort": "", "models": [], "efforts": [], "defaultModel": "", "defaultEffort": "", ...p } as B.AgentsSettings
 }
 
 /** AnswerResult with Go's zero values for every field left out. */
