@@ -1,0 +1,346 @@
+//! The permissions a spawned agent starts with (card #449,
+//! docs/design/spawned-agents.md §7 "Permission mode", §13 decision 8 (c),
+//! §14 part 5).
+//!
+//! Every spawn passes `--permission-mode`, since without it the agent
+//! inherits the caller's (bypass on both machines). The board's choice is
+//! set in the app only, never by a tool (decision 23):
+//! - [`Choice::Limited`]: `acceptEdits` plus a dedicated `--settings` file
+//!   with allow rules for the repo's checks, git and the irori tools, and
+//!   deny rules for what must never run;
+//! - [`Choice::EditsOnly`]: `acceptEdits` alone, so any shell command
+//!   prompts;
+//! - [`Choice::Bypass`]: `bypassPermissions`, refused on a shared board
+//!   and whenever another person's text is in the brief. There it falls
+//!   back to [`Choice::Limited`], deny rules included.
+//!
+//! Claude Code's allow rules are prefix matches, so "git, but never push
+//! to main" is a deny rule, not an allow rule with an exception.
+
+use serde_json::json;
+
+pub const ACCEPT_EDITS: &str = "acceptEdits";
+pub const BYPASS: &str = "bypassPermissions";
+
+/// The board's permission choice (§13.8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Choice {
+    /// (a), the recommended default.
+    #[default]
+    Limited,
+    /// (b).
+    EditsOnly,
+    /// (c), guarded.
+    Bypass,
+}
+
+/// How a repo's work reaches main (§7 "Merge and push policy, per repo").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MergePolicy {
+    /// The lead opens a PR (the merge desk): nobody pushes to main.
+    #[default]
+    PullRequest,
+    /// The lead rebases and pushes to main (Irori).
+    StraightToMain,
+}
+
+/// A board's permission setting: the choice and the rules the person added
+/// in Settings › Agents (the repo's build and test commands, as Claude
+/// Code rules such as `Bash(cargo test:*)`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BoardPermissions {
+    pub choice: Choice,
+    pub allow: Vec<String>,
+    pub deny: Vec<String>,
+}
+
+/// What one spawn is started with.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpawnPermissions {
+    /// `--permission-mode`.
+    pub mode: &'static str,
+    /// The `--settings` file's contents, when the choice has limits.
+    pub settings: Option<serde_json::Value>,
+    /// Why a bypass choice wasn't used for this spawn, for the card.
+    pub fell_back: Option<&'static str>,
+}
+
+impl SpawnPermissions {
+    /// Whether the receive decisions treat this agent as a bypass session
+    /// (§7 "The brief is data"): bypass itself, or shell commands on its
+    /// allow list, either of which lets it act on another person's row.
+    pub fn counts_as_bypass(&self) -> bool {
+        self.mode == BYPASS
+            || self.settings.as_ref().is_some_and(|s| {
+                s["permissions"]["allow"].as_array().is_some_and(|a| {
+                    a.iter()
+                        .any(|r| r.as_str().is_some_and(|r| r.starts_with("Bash")))
+                })
+            })
+    }
+}
+
+/// The spawn this card is getting.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Spawn {
+    /// The card is on a board shared with other people.
+    pub shared_board: bool,
+    /// The brief quotes text written by someone other than the person
+    /// (on the private board, too: a pasted line from another member).
+    pub others_text: bool,
+    pub merge: MergePolicy,
+    /// The card's lead (or its only agent), the one that merges.
+    pub lead: bool,
+}
+
+pub const SHARED_BOARD: &str = "bypass is never used on a shared board";
+pub const OTHERS_TEXT: &str = "bypass is never used when the brief has another person's text";
+
+/// The permissions for `spawn` under the board's `p`.
+pub fn spawn_permissions(p: &BoardPermissions, spawn: Spawn) -> SpawnPermissions {
+    let refused = if spawn.shared_board {
+        Some(SHARED_BOARD)
+    } else if spawn.others_text {
+        Some(OTHERS_TEXT)
+    } else {
+        None
+    };
+    match (p.choice, refused) {
+        (Choice::Bypass, None) => SpawnPermissions {
+            mode: BYPASS,
+            settings: None,
+            fell_back: None,
+        },
+        (Choice::EditsOnly, _) => SpawnPermissions {
+            mode: ACCEPT_EDITS,
+            settings: Some(settings(&[], &deny_rules(p, spawn))),
+            fell_back: None,
+        },
+        (Choice::Bypass, why @ Some(_)) | (Choice::Limited, why) => SpawnPermissions {
+            mode: ACCEPT_EDITS,
+            settings: Some(settings(&allow_rules(p, spawn), &deny_rules(p, spawn))),
+            fell_back: if p.choice == Choice::Bypass {
+                why
+            } else {
+                None
+            },
+        },
+    }
+}
+
+fn settings(allow: &[String], deny: &[String]) -> serde_json::Value {
+    json!({ "permissions": { "allow": allow, "deny": deny } })
+}
+
+/// The allow rules for a limited spawn: the irori tools, staging and
+/// committing, pushing (the deny rules keep main out), a PR where the repo
+/// merges through one, and the board's own rules.
+fn allow_rules(p: &BoardPermissions, spawn: Spawn) -> Vec<String> {
+    let mut out: Vec<String> = [
+        "mcp__irori",
+        "Bash(git status:*)",
+        "Bash(git diff:*)",
+        "Bash(git log:*)",
+        "Bash(git add:*)",
+        "Bash(git commit:*)",
+        "Bash(git fetch:*)",
+        "Bash(git rebase:*)",
+        "Bash(git push:*)",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    if spawn.merge == MergePolicy::PullRequest {
+        out.push("Bash(gh pr create:*)".into());
+    }
+    for r in &p.allow {
+        let r = r.trim();
+        if !r.is_empty() && !out.iter().any(|o| o == r) {
+            out.push(r.to_string());
+        }
+    }
+    out
+}
+
+/// What must never run, whatever the allow list says: force pushes,
+/// `rm -rf`, and pushing to main unless this is the lead on a
+/// straight-to-main repo.
+fn deny_rules(p: &BoardPermissions, spawn: Spawn) -> Vec<String> {
+    let mut out: Vec<String> = [
+        "Bash(git push --force:*)",
+        "Bash(git push -f:*)",
+        "Bash(git push --force-with-lease:*)",
+        "Bash(rm -rf:*)",
+        "Bash(rm -fr:*)",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    let main_ok = spawn.merge == MergePolicy::StraightToMain && spawn.lead;
+    if !main_ok {
+        for r in [
+            "Bash(git push origin main:*)",
+            "Bash(git push origin HEAD:main:*)",
+            "Bash(git push origin master:*)",
+            "Bash(git push origin HEAD:master:*)",
+        ] {
+            out.push(r.into());
+        }
+    }
+    for r in &p.deny {
+        let r = r.trim();
+        if !r.is_empty() && !out.iter().any(|o| o == r) {
+            out.push(r.to_string());
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn board(choice: Choice) -> BoardPermissions {
+        BoardPermissions {
+            choice,
+            allow: vec!["Bash(cargo test:*)".into(), " ".into()],
+            deny: vec!["Bash(cargo publish:*)".into()],
+        }
+    }
+
+    fn list(s: &SpawnPermissions, which: &str) -> Vec<String> {
+        s.settings.as_ref().unwrap()["permissions"][which]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn every_spawn_names_a_mode_and_none_inherits() {
+        for choice in [Choice::Limited, Choice::EditsOnly, Choice::Bypass] {
+            for shared_board in [false, true] {
+                for others_text in [false, true] {
+                    let s = spawn_permissions(
+                        &board(choice),
+                        Spawn {
+                            shared_board,
+                            others_text,
+                            ..Default::default()
+                        },
+                    );
+                    assert!(s.mode == ACCEPT_EDITS || s.mode == BYPASS, "{s:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bypass_only_on_the_private_board_with_only_his_text() {
+        let b = board(Choice::Bypass);
+        let s = spawn_permissions(&b, Spawn::default());
+        assert_eq!(
+            (s.mode, s.settings.is_none(), s.fell_back),
+            (BYPASS, true, None)
+        );
+
+        let s = spawn_permissions(
+            &b,
+            Spawn {
+                shared_board: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(s.mode, ACCEPT_EDITS);
+        assert_eq!(s.fell_back, Some(SHARED_BOARD));
+        // The fallback keeps the board's rules, deny rules included.
+        assert!(list(&s, "deny").contains(&"Bash(cargo publish:*)".to_string()));
+        assert!(list(&s, "deny").contains(&"Bash(git push origin main:*)".to_string()));
+        assert!(list(&s, "allow").contains(&"Bash(cargo test:*)".to_string()));
+
+        let s = spawn_permissions(
+            &b,
+            Spawn {
+                others_text: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!((s.mode, s.fell_back), (ACCEPT_EDITS, Some(OTHERS_TEXT)));
+        assert!(s.counts_as_bypass(), "shell rules on the allow list");
+    }
+
+    #[test]
+    fn edits_only_allows_no_shell_but_still_denies() {
+        let s = spawn_permissions(&board(Choice::EditsOnly), Spawn::default());
+        assert_eq!(s.mode, ACCEPT_EDITS);
+        assert!(list(&s, "allow").is_empty());
+        assert!(list(&s, "deny").contains(&"Bash(rm -rf:*)".to_string()));
+        assert!(!s.counts_as_bypass());
+    }
+
+    #[test]
+    fn main_is_pushed_only_by_the_lead_of_a_straight_to_main_repo() {
+        let b = board(Choice::Limited);
+        let denies_main = |spawn| {
+            list(&spawn_permissions(&b, spawn), "deny")
+                .contains(&"Bash(git push origin HEAD:main:*)".to_string())
+        };
+        assert!(denies_main(Spawn::default()), "a PR repo");
+        assert!(
+            denies_main(Spawn {
+                lead: true,
+                ..Default::default()
+            }),
+            "a PR repo's lead"
+        );
+        assert!(
+            denies_main(Spawn {
+                merge: MergePolicy::StraightToMain,
+                ..Default::default()
+            }),
+            "a helper"
+        );
+        assert!(!denies_main(Spawn {
+            merge: MergePolicy::StraightToMain,
+            lead: true,
+            ..Default::default()
+        }));
+        // A PR repo's agents may open one; a straight-to-main repo's don't need to.
+        let allow = |spawn| list(&spawn_permissions(&b, spawn), "allow");
+        assert!(allow(Spawn::default()).contains(&"Bash(gh pr create:*)".to_string()));
+        assert!(
+            !allow(Spawn {
+                merge: MergePolicy::StraightToMain,
+                ..Default::default()
+            })
+            .contains(&"Bash(gh pr create:*)".to_string())
+        );
+        // Force pushes are denied for everyone.
+        assert!(
+            list(
+                &spawn_permissions(
+                    &b,
+                    Spawn {
+                        merge: MergePolicy::StraightToMain,
+                        lead: true,
+                        ..Default::default()
+                    }
+                ),
+                "deny"
+            )
+            .contains(&"Bash(git push --force:*)".to_string())
+        );
+    }
+
+    #[test]
+    fn the_boards_rules_are_added_once_and_blanks_dropped() {
+        let mut b = board(Choice::Limited);
+        b.allow.push("Bash(git add:*)".into());
+        let s = spawn_permissions(&b, Spawn::default());
+        let allow = list(&s, "allow");
+        assert_eq!(allow.iter().filter(|r| *r == "Bash(git add:*)").count(), 1);
+        assert!(allow.iter().all(|r| !r.trim().is_empty()));
+        assert!(allow.contains(&"mcp__irori".to_string()));
+    }
+}

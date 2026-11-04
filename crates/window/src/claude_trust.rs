@@ -16,6 +16,12 @@
 //! agents reach (tools, core) can't call it: they don't depend on this
 //! one.
 //!
+//! Which folder to pass: the main repo's root, not a worktree's path.
+//! On Claude Code 2.1.318 a git repo needs its own entry (a trusted parent
+//! doesn't count), a git worktree follows its main repo's entry, and a
+//! folder outside git inherits from its parents (card #445's live checks).
+//! Part 1's `trust_root(dir)` finds that root.
+//!
 //! The edit keeps every other byte: only the levels on the way to the key
 //! are parsed (as ordered maps of raw JSON), and everything else is
 //! written back exactly as it was read.
