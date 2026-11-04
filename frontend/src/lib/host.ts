@@ -268,8 +268,11 @@ export const NotesService = {
 }
 
 // AgentsService is the window's agents_* commands (card #449): Trust and
-// start for a card whose repo isn't trusted, and a board's permissions.
+// start for a card whose repo isn't trusted, and a board's permissions;
+// and (card #448) a board's spawning switch, model and effort.
 export const AgentsService = {
+  Settings: (boardId: string) => call(commands.agentsSettings(boardId)),
+  Set: (change: B.AgentsChange) => call(commands.agentsSet(change)),
   TrustNeed: (taskId: string) => call(commands.agentsTrustNeed(taskId)),
   TrustAndStart: (taskId: string) => call(commands.agentsTrustAndStart(taskId)),
   Permissions: (boardId: string) => call(commands.agentsPermissions(boardId)),
@@ -405,11 +408,6 @@ export const TermService = {
 }
 
 // Merge desks (card #417).
-export const AgentsService = {
-  Settings: (boardId: string) => call(commands.agentsSettings(boardId)),
-  Set: (change: B.AgentsChange) => call(commands.agentsSet(change)),
-}
-
 export const DeskService = {
   List: () => call(commands.deskList()),
   Set: (s: B.DeskSettings) => done(commands.deskSet(s)),
