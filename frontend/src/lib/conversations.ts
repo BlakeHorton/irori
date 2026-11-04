@@ -216,6 +216,32 @@ function sampleState(): SampleConv[] {
       readUpTo: "sample-dm-otter-badger-p2",
     },
   ]
+  // Many more, as a busy week leaves them (card #463): DMs with agents
+  // that have gone, and agent↔agent DMs the person only reads.
+  for (let i = 1; i <= 14; i++) {
+    const id = `sample-dm-gone-${i}`
+    const key = `sample-gone-${i}`
+    sample.push({
+      ...TalkConversation({ convId: id, kind: "dm", name: key, members: [you, a(key, `gone-${i}`)] }),
+      posts: [post(id, 1, key, 400 + i * 60, `Card #${300 + i} is on main. Going idle.`)],
+      readUpTo: `${id}-p1`,
+    })
+  }
+  for (let i = 1; i <= 24; i++) {
+    const id = `sample-dm-aa-${i}`
+    const x = `sample-aa-${i}`
+    sample.push({
+      ...TalkConversation({
+        convId: id,
+        kind: "dm",
+        name: `${x} ↔ sample-otter`,
+        members: [a(x, `agent-${i}`), a(otter, "sample-otter")],
+        readOnly: true,
+      }),
+      posts: [post(id, 1, x, 60 + i * 30, `Rebased #${400 + i} onto yours.`)],
+      readUpTo: "",
+    })
+  }
   return sample
 }
 

@@ -7,7 +7,9 @@
 
 import { useContext, useState, type ReactNode } from "react"
 import {
+  ChevronDownIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
   EyeIcon,
   HashIcon,
   MessageSquareTextIcon,
@@ -33,6 +35,13 @@ import { parseTime, plainLine, relativeTime } from "@/lib/irori"
 import { useNarrow } from "@/lib/media"
 import { errorText } from "@/lib/talk"
 import { cn } from "@/lib/utils"
+import {
+  dmSections,
+  sectionRows,
+  unreadIn,
+  useFolds,
+  type SectionKey,
+} from "@/lib/talk-sections"
 import {
   ThreadCards,
   ThreadView,
@@ -108,6 +117,52 @@ export function TalkPage({
   const conv = current ? undefined : conversations.find((c) => c.convId === open)
   const { channels, dms } = listed(conversations.filter((c) => convMatches(c, query)))
   const [adding, setAdding] = useState<"" | "channel" | "dm">("")
+  const liveRoster = useContext(LiveRoster)
+  const sections = dmSections(dms, (c) => {
+    const other = dmWith(c)
+    return other.length > 0 && other.every((m) => statusOf(m, liveRoster) === "gone")
+  })
+  const [isFolded, toggleFold] = useFolds()
+  // Search looks through everything, folded or not.
+  const searching = !!query.trim()
+  const folded = (k: SectionKey) => !searching && isFolded(k)
+  const [allShown, setAllShown] = useState<Partial<Record<SectionKey, boolean>>>({})
+  const convRows = (k: SectionKey, items: Conv[]) =>
+    sectionRows(items, folded(k), open, searching || !!allShown[k])
+  const convSection = (k: SectionKey, label: string, items: Conv[], empty: string, extra?: ReactNode, add?: { onAdd: () => void; label: string }) => {
+    const { rows, hidden } = convRows(k, items)
+    return (
+      <Group
+        label={label}
+        count={items.length}
+        unread={unreadIn(items)}
+        folded={folded(k)}
+        onToggle={searching ? undefined : () => toggleFold(k)}
+        onAdd={add?.onAdd}
+        addLabel={add?.label}
+      >
+        {extra}
+        {items.length === 0 && !extra && !folded(k) && (
+          <p className="px-2 py-1 text-[12px] text-muted-foreground">{empty}</p>
+        )}
+        {rows.map((c) => (
+          <ConvItem key={c.convId} c={c} current={c.convId === open} onClick={() => onOpen(c.convId)} />
+        ))}
+        {hidden > 0 && !folded(k) && (
+          <button
+            type="button"
+            className="px-2 py-0.5 text-left text-[11px] text-muted-foreground hover:text-ink"
+            onClick={() => setAllShown({ ...allShown, [k]: true })}
+          >
+            Show {hidden} more
+          </button>
+        )}
+      </Group>
+    )
+  }
+  const liveThreads = folded("threads")
+    ? live.filter((t) => t.id === open || needsYou(t))
+    : live
 
   const list = (
     <nav
@@ -136,15 +191,21 @@ export function TalkPage({
           <SquarePenIcon className="size-4" aria-hidden />
         </button>
       </div>
-      <Group label={`Threads${live.length > 0 ? ` · ${live.length} open` : ""}`}>
-        {live.length === 0 && (
+      <Group
+        label="Threads"
+        count={live.length}
+        unread={live.filter(needsYou).length}
+        folded={folded("threads")}
+        onToggle={searching ? undefined : () => toggleFold("threads")}
+      >
+        {live.length === 0 && !folded("threads") && (
           <p className="px-2 py-1 text-[12px] text-muted-foreground">
             {query.trim()
               ? "No open thread matches."
               : "No open threads. Start one with the pen above."}
           </p>
         )}
-        {live.map((t) => (
+        {liveThreads.map((t) => (
           <ThreadItem
             key={t.id}
             t={t}
@@ -154,26 +215,27 @@ export function TalkPage({
           />
         ))}
       </Group>
-      <Group label="Channels" onAdd={() => setAdding(adding === "channel" ? "" : "channel")} addLabel="New channel">
-        {adding === "channel" && (
+      {convSection(
+        "channels",
+        "Channels",
+        channels,
+        searching ? "No channel matches." : "No channels yet. Make one with +.",
+        adding === "channel" ? (
           <NewChannel
             onDone={(id) => {
               setAdding("")
               if (id) onOpen(id)
             }}
           />
-        )}
-        {channels.length === 0 && adding !== "channel" && (
-          <p className="px-2 py-1 text-[12px] text-muted-foreground">
-            {query.trim() ? "No channel matches." : "No channels yet. Make one with +."}
-          </p>
-        )}
-        {channels.map((c) => (
-          <ConvItem key={c.convId} c={c} current={c.convId === open} onClick={() => onOpen(c.convId)} />
-        ))}
-      </Group>
-      <Group label="Direct messages" onAdd={() => setAdding(adding === "dm" ? "" : "dm")} addLabel="New direct message">
-        {adding === "dm" && (
+        ) : undefined,
+        { onAdd: () => setAdding(adding === "channel" ? "" : "channel"), label: "New channel" }
+      )}
+      {convSection(
+        "dms",
+        "Direct messages",
+        sections.yours,
+        searching ? "No direct message matches." : "No direct messages. Start one with +.",
+        adding === "dm" ? (
           <NewDm
             agents={agents}
             onDone={(id) => {
@@ -181,11 +243,13 @@ export function TalkPage({
               if (id) onOpen(id)
             }}
           />
-        )}
-        {dms.map((c) => (
-          <ConvItem key={c.convId} c={c} current={c.convId === open} onClick={() => onOpen(c.convId)} />
-        ))}
-      </Group>
+        ) : undefined,
+        { onAdd: () => setAdding(adding === "dm" ? "" : "dm"), label: "New direct message" }
+      )}
+      {sections.gone.length > 0 &&
+        convSection("gone", "With agents that have gone", sections.gone, "")}
+      {sections.agents.length > 0 &&
+        convSection("agents", "Agents talking", sections.agents, "")}
       {resolved.length > 0 && (
         <div className="mt-auto grid gap-0.5 pt-3">
           <button
@@ -267,21 +331,60 @@ export function TalkPage({
   )
 }
 
+// Group is one section of the list. With onToggle its name folds it; a
+// folded section shows its count and how many have something new.
 function Group({
   label,
   children,
   onAdd,
   addLabel,
+  count,
+  unread = 0,
+  folded = false,
+  onToggle,
 }: {
   label: string
   children: ReactNode
   onAdd?: () => void
   addLabel?: string
+  count?: number
+  unread?: number
+  folded?: boolean
+  onToggle?: () => void
 }) {
+  const Chevron = folded ? ChevronRightIcon : ChevronDownIcon
+  const name = (
+    <>
+      {onToggle && <Chevron className="size-3 shrink-0" aria-hidden />}
+      <span className="truncate">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className="font-normal tabular-nums normal-case">· {count}</span>
+      )}
+      {folded && unread > 0 && (
+        <span
+          className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground tabular-nums normal-case"
+          title={`${unread} with something new`}
+        >
+          {unread} new
+        </span>
+      )}
+    </>
+  )
   return (
     <div className="grid gap-0.5">
       <h2 className="flex items-center px-2 pt-3 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-        {label}
+        {onToggle ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!folded}
+            className="flex min-w-0 items-center gap-1 rounded uppercase hover:text-ink"
+          >
+            {name}
+          </button>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1">{name}</span>
+        )}
         {onAdd && (
           <button
             type="button"
