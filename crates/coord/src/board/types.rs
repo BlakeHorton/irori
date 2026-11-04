@@ -420,6 +420,11 @@ pub struct Task {
     /// any for a step or subtask.
     #[serde(skip)]
     pub spawns: Vec<super::spawn::Spawn>,
+    /// How many of its spawned agents went away in a row without
+    /// finishing (card #447): a crash. Two stop its spawning until the
+    /// person says to start another; a person's state row clears it.
+    #[serde(skip)]
+    pub spawn_crashes: u32,
     /// Where the holder's work is (card #137), kept after it stops so
     /// whoever takes the card over can find it.
     #[serde(rename = "where", skip_serializing_if = "omit")]

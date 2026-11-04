@@ -710,6 +710,16 @@ impl Fold {
                     if p.reason == LEFT_REMOVED {
                         what = "was taken off: their person left the board".into();
                     }
+                    // A spawned agent of this card that went away without
+                    // finishing crashed (card #447); any other leave of
+                    // one breaks the run.
+                    if self.spawned.get(&p.who).is_some_and(|m| m.task_id == t.id) {
+                        if p.reason == LEFT_GONE {
+                            t.spawn_crashes += 1;
+                        } else {
+                            t.spawn_crashes = 0;
+                        }
+                    }
                     if p.reason == LEFT_GONE {
                         what = "went away".into();
                         if t.holders.is_empty() {
@@ -1161,6 +1171,11 @@ impl Fold {
                 ..Outcome::default()
             });
             self.close_ask_fold(&mut t, o, RowPos::of(ev));
+        }
+        // The person's say on the card (an answer putting it back, a
+        // reopen) clears a run of crashed spawns (card #447).
+        if self.person_row(ev, &p.by) {
+            t.spawn_crashes = 0;
         }
         t.state = p.state.clone();
         t.note = p.note.clone();

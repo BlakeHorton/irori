@@ -62,7 +62,7 @@ fn ask(id: &str) -> SpawnAsk {
 fn spawn_rows(e: &Env) -> Vec<TaskSpawnRow> {
     e.rows(kinds::TASK_SPAWN)
         .iter()
-        .map(|ev| payload::<TaskSpawnRow>(ev))
+        .map(payload::<TaskSpawnRow>)
         .collect()
 }
 
@@ -76,7 +76,7 @@ fn a_spawning_board_hands_nothing_out_and_lists_the_card_to_spawn() {
     let out = e.c.sweep_asks(&agents).unwrap();
     assert!(out.is_empty(), "no hand-out on a spawning board: {out:?}");
     assert!(e.c.get_task(&t.id).unwrap().offer.is_none());
-    assert_eq!(ids(&e.c.cards_to_spawn()), [t.id.clone()]);
+    assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
     // Off: the card goes to a free agent as before, and nothing spawns.
     on.store(false, Ordering::SeqCst);
     assert!(e.c.cards_to_spawn().is_empty());
@@ -99,7 +99,7 @@ fn repeated_kicks_never_spawn_twice() {
     assert!(e.c.cards_to_spawn().is_empty(), "pending: not listed again");
     // Past the grace a spawn that never showed is asked for again, gen 2.
     e.clk.add(SPAWN_GRACE + secs(1));
-    assert_eq!(ids(&e.c.cards_to_spawn()), [t.id.clone()]);
+    assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
     assert_eq!(e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap(), Some(2));
 }
 
@@ -170,12 +170,12 @@ fn a_spawned_agent_is_never_offered_a_second_card() {
     let other = e.c.create_task(ALICE, nt("Another card")).unwrap();
     let spawned_idle = idle(SPAWNED, 59);
     let n =
-        e.c.offer_card(ALICE, &other.id, &[spawned_idle.clone()])
+        e.c.offer_card(ALICE, &other.id, std::slice::from_ref(&spawned_idle))
             .unwrap();
     assert!(n.to.is_empty(), "offered a spawned agent: {n:?}");
-    let out = e.c.sweep_asks(&[spawned_idle.clone()]).unwrap();
+    let out = e.c.sweep_asks(std::slice::from_ref(&spawned_idle)).unwrap();
     assert!(out.is_empty(), "{out:?}");
-    let r = e.c.idle_report(&[spawned_idle.clone()]);
+    let r = e.c.idle_report(std::slice::from_ref(&spawned_idle));
     assert_eq!(r.idle, 0, "a spawned agent is not a free one");
     // An ask goes to no spawned agent either.
     let (a, n) =
@@ -286,4 +286,99 @@ fn a_comment_never_spawns() {
         "a held card needs no agent"
     );
     assert!(spawn_rows(&e).is_empty());
+}
+
+// ---- card #447: a card whose spawned agents crash stops spawning ----
+
+/// Spawns agent `key` for card `id` and lets it crash: it drops off the
+/// roster and return_gone takes it off the card.
+fn spawn_and_crash(e: &Env, id: &str, key: &str) {
+    let g = e.c.request_spawn(SWEEPER_KEY, ask(id)).unwrap().unwrap();
+    assert!(e.c.bind_spawn(id, g, key).unwrap());
+    e.c.claim_task(key, id).unwrap();
+    e.ros.set(key, "");
+    e.c.sweep_notices().unwrap();
+    e.clk.add(HOLDER_GRACE + std::time::Duration::from_secs(1));
+    e.c.sweep_notices().unwrap();
+    assert!(e.c.get_task(id).unwrap().holders.is_empty());
+}
+
+fn crash_question(t: &Task) -> Option<&Blocker> {
+    t.blockers
+        .iter()
+        .find(|b| b.open() && b.question == CRASHED_QUESTION)
+}
+
+#[test]
+fn one_crash_spawns_again_from_left_off() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    e.c = spawning(&e, &on);
+    let t = e.c.create_task(USER, nt("Crashy")).unwrap();
+    spawn_and_crash(&e, &t.id, "dev-a/first");
+    let got = e.c.get_task(&t.id).unwrap();
+    assert_eq!(got.state, SUBMITTED, "{got:?}");
+    assert!(crash_question(&got).is_none());
+    assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
+}
+
+#[test]
+fn two_crashes_in_a_row_stop_spawning_and_ask_the_person() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    e.c = spawning(&e, &on);
+    let t = e.c.create_task(USER, nt("Kills its agent")).unwrap();
+    spawn_and_crash(&e, &t.id, "dev-a/first");
+    spawn_and_crash(&e, &t.id, "dev-a/second");
+    let got = e.c.get_task(&t.id).unwrap();
+    let q = crash_question(&got).expect("the person is asked").clone();
+    assert_eq!(got.state, BLOCKED);
+    assert!(e.c.cards_to_spawn().is_empty(), "no third spawn on its own");
+    // A replay agrees, and a later sweep doesn't ask twice.
+    e.c.sweep_notices().unwrap();
+    let c = e.reopen_with(Options {
+        spawning: Some(Arc::new(|| true)),
+        ..e.opts()
+    });
+    assert!(c.cards_to_spawn().is_empty());
+    let t2 = c.get_task(&t.id).unwrap();
+    assert_eq!(
+        t2.blockers
+            .iter()
+            .filter(|b| b.open() && b.question == CRASHED_QUESTION)
+            .count(),
+        1
+    );
+    // The person says start another: it is back on the Board and spawns.
+    e.c.answer(
+        USER,
+        &t.id,
+        &q.id,
+        BlockerAnswer {
+            pick: 1,
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    let got = e.c.get_task(&t.id).unwrap();
+    assert_eq!(got.state, SUBMITTED, "{got:?}");
+    assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
+}
+
+#[test]
+fn a_finished_agent_between_crashes_breaks_the_run() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    e.c = spawning(&e, &on);
+    let t = e.c.create_task(USER, nt("Mostly fine")).unwrap();
+    spawn_and_crash(&e, &t.id, "dev-a/first");
+    // The next one leaves on its own (a hand-off), not a crash.
+    let g = e.c.request_spawn(SWEEPER_KEY, ask(&t.id)).unwrap().unwrap();
+    e.c.bind_spawn(&t.id, g, "dev-a/second").unwrap();
+    e.c.claim_task("dev-a/second", &t.id).unwrap();
+    e.c.leave("dev-a/second", &t.id, "dev-a/second").unwrap();
+    spawn_and_crash(&e, &t.id, "dev-a/third");
+    let got = e.c.get_task(&t.id).unwrap();
+    assert!(crash_question(&got).is_none(), "{:?}", got.blockers);
+    assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
 }

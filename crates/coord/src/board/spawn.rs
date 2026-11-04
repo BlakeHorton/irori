@@ -33,6 +33,16 @@ pub const SPAWN_CANCELED: &str = "canceled";
 /// it doesn't hold its card forever (the next ask is generation + 1).
 pub const SPAWN_GRACE: Duration = Duration::from_secs(180);
 
+/// Spawned agents of one card that may crash in a row before its spawning
+/// stops and the person is asked (§2 "Crash", card #447).
+pub const MAX_SPAWN_CRASHES: u32 = 2;
+
+/// The question the person is asked then.
+pub const CRASHED_QUESTION: &str = "Its agent crashed twice in a row: start another?";
+
+/// The person's way on from it (their own words go into the next brief).
+pub const CRASHED_START: &str = "Start another agent";
+
 /// The permission modes a spawn may pass (§7). One is always passed.
 pub const PERMISSION_MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "default", "plan"];
 
@@ -432,6 +442,7 @@ impl Fold {
             .tasks
             .values()
             .filter(|t| super::offers::needs_agent(t) && self.hands_out(t))
+            .filter(|t| t.spawn_crashes < MAX_SPAWN_CRASHES)
             .filter(|t| {
                 t.spawn_request()
                     .is_none_or(|s| !s.pending() || s.stale(&now))

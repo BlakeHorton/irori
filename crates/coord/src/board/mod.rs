@@ -38,8 +38,8 @@ mod prstate;
 mod threads;
 pub use offers::{IdleReport, OFFER_HANDED, OFFER_PASSED, OFFER_WAITING, Unoffered};
 pub use spawn::{
-    PERMISSION_MODES, SPAWN_CANCELED, SPAWN_FAILED, SPAWN_GRACE, SPAWN_REQUESTED, Spawn, SpawnAsk,
-    Spawned,
+    CRASHED_QUESTION, CRASHED_START, MAX_SPAWN_CRASHES, PERMISSION_MODES, SPAWN_CANCELED,
+    SPAWN_FAILED, SPAWN_GRACE, SPAWN_REQUESTED, Spawn, SpawnAsk, Spawned,
 };
 mod resource;
 mod review;

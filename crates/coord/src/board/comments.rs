@@ -1672,6 +1672,7 @@ impl Fold {
                         &format!("the person answered and the agent working it {went}"),
                     )?;
                 }
+                self.stop_crashed_spawns(&id, now)?;
                 if !person {
                     out.push(Notice {
                         kind: NOTICE_RETURNED.into(),
@@ -1692,6 +1693,49 @@ impl Fold {
                 }
             }
         }
+        Ok(())
+    }
+}
+
+impl Fold {
+    /// On a card whose spawned agents crashed [`MAX_SPAWN_CRASHES`] times
+    /// in a row, stops its spawning by asking the person (§2 "Crash", card
+    /// #447): a card that kills its agent doesn't loop. Their answer puts
+    /// it back on the Board (back_on_board) and clears the run.
+    pub(crate) fn stop_crashed_spawns(&mut self, id: &str, now: &GoTime) -> Result<()> {
+        let Some(t) = self.tasks.get(id).cloned() else {
+            return Ok(());
+        };
+        if t.spawn_crashes < super::spawn::MAX_SPAWN_CRASHES
+            || is_terminal(&t.state)
+            || t.blockers
+                .iter()
+                .any(|b| b.open() && b.question == super::spawn::CRASHED_QUESTION)
+        {
+            return Ok(());
+        }
+        self.raise_locked(
+            SWEEPER,
+            &t,
+            "",
+            super::spawn::CRASHED_QUESTION,
+            "The last two agents started for this card went away before finishing. Irori won't start another until you say so: start one, or say in your own words what to try, and it goes in the next agent's brief.",
+            vec![BlockerOption {
+                answer: super::spawn::CRASHED_START.into(),
+                why: "A fresh agent picks it up from Where and Left off.".into(),
+                by: SWEEPER.into(),
+                at: *now,
+                recommended: true,
+                link: None,
+            }],
+            None,
+            false,
+            *now,
+            Vec::new(),
+            Vec::new(),
+            false,
+            false,
+        )?;
         Ok(())
     }
 }
