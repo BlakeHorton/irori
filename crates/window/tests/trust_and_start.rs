@@ -137,3 +137,28 @@ fn a_card_not_waiting_on_trust_is_left_alone() {
     assert!(w.trust_and_start_in(&file, &t.id).is_err());
     assert!(!file.exists(), "nothing written");
 }
+
+/// Settings › Agents' permissions round-trip and leave the switch alone.
+#[test]
+fn a_boards_agent_permissions_round_trip() {
+    let r = Rig::new();
+    let w = &r.w;
+    w.core
+        .set_spawn_setting(SpawnSetting {
+            on: true,
+            ..SpawnSetting::default()
+        })
+        .unwrap();
+    let mut p = w.agents_permissions("");
+    assert_eq!(p.permission, "", "bypass, guarded, until he picks");
+    p.permission = "limited".into();
+    p.allow = vec!["Bash(cargo test:*)".into()];
+    p.merge
+        .insert("remote:github.com/me/irori".into(), "main".into());
+    let got = w.agents_permissions_set(p.clone()).unwrap();
+    assert_eq!(got, p);
+    assert!(w.core.spawn_setting("").on, "the switch stays on");
+    p.permission = "anything".into();
+    assert!(w.agents_permissions_set(p).is_err());
+    assert_eq!(w.agents_permissions("").permission, "limited");
+}

@@ -6,6 +6,7 @@ import type * as B from "./bindings"
 export type Address = B.Address
 export type AddressKind = B.AddressKind
 export type AgentCard = B.AgentCard
+export type AgentPermissions = B.AgentPermissions
 export type AgentRef = B.AgentRef
 export type AnswerResult = B.AnswerResult
 export type Ask = B.Ask
@@ -146,6 +147,11 @@ export function Address(p: Partial<B.Address> = {}): B.Address {
 /** AgentCard with Go's zero values for every field left out. */
 export function AgentCard(p: Partial<B.AgentCard> = {}): B.AgentCard {
   return { "key": "", "deviceId": "", "agent": "", "sessionId": "", "pid": 0, "name": "", "title": "", "cwd": "", "status": "", "sessionKind": "", "entrypoint": "", "version": "", "peerFeatures": null, "startedAt": "", "updatedAt": "", "lastActivity": "", "lastText": "", "transcript": "", "repoKey": "", "permissionMode": "", ...p } as B.AgentCard
+}
+
+/** AgentPermissions with Go's zero values for every field left out. */
+export function AgentPermissions(p: Partial<B.AgentPermissions> = {}): B.AgentPermissions {
+  return { "boardId": "", "permission": "", "allow": [], "deny": [], "merge": {}, ...p } as B.AgentPermissions
 }
 
 /** AgentRef with Go's zero values for every field left out. */

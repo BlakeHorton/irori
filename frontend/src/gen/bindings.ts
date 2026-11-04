@@ -184,6 +184,10 @@ export const commands = {
 	 *  device, then starts its agent. The only path that writes trust.
 	 */
 	agentsTrustAndStart: (taskId: string) => __TAURI_INVOKE<TrustStarted>("agents_trust_and_start", { taskId }),
+	/**  A board's agent permissions (card #449): `""` is the private board. */
+	agentsPermissions: (boardId: string) => __TAURI_INVOKE<AgentPermissions>("agents_permissions", { boardId }),
+	/**  The person sets a board's agent permissions, from Settings › Agents. */
+	agentsPermissionsSet: (permissions: AgentPermissions) => __TAURI_INVOKE<AgentPermissions>("agents_permissions_set", { permissions }),
 	cardWakeNotes: (taskId: string) => __TAURI_INVOKE<WakeNoteView[]>("card_wake_notes", { taskId }),
 	boardsInvite: (boardId: string) => __TAURI_INVOKE<InviteStatus>("boards_invite", { boardId }),
 	boardsJoinInvite: (link: string) => __TAURI_INVOKE<InviteStatus>("boards_join_invite", { link }),
@@ -317,6 +321,24 @@ export type AgentCard = {
 	/**  The tool the session is running now (card #299). */
 	lastTool?: string,
 	deviceState?: string,
+};
+
+/**
+ *  A board's agent permissions as Settings › Agents edits them (card #449,
+ *  decision 8): the choice, extra rules, and how each repo reaches main.
+ */
+export type AgentPermissions = {
+	/**  `""` for the private board. */
+	boardId: string,
+	/**
+	 *  `limited`, `edits` or `bypass`; `""` is bypass, still refused on a
+	 *  shared board and when the brief has another person's text.
+	 */
+	permission: string,
+	allow: string[],
+	deny: string[],
+	/**  Repo key → `pr` or `main`. */
+	merge: { [key in string]: string },
 };
 
 /**  Someone on a card, as the window shows them. */

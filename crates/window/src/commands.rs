@@ -902,6 +902,26 @@ pub async fn agents_trust_need(
     blocking(&w, move |w| w.agents_trust_need(&task_id)).await
 }
 
+/// A board's agent permissions (card #449): `""` is the private board.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_permissions(
+    w: W<'_>,
+    board_id: String,
+) -> R<crate::agents_trust::AgentPermissions> {
+    blocking(&w, move |w| Ok(w.agents_permissions(&board_id))).await
+}
+
+/// The person sets a board's agent permissions, from Settings › Agents.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_permissions_set(
+    w: W<'_>,
+    permissions: crate::agents_trust::AgentPermissions,
+) -> R<crate::agents_trust::AgentPermissions> {
+    blocking(&w, move |w| w.agents_permissions_set(permissions)).await
+}
+
 /// The person's Trust and start: trusts the card's repo for agents on this
 /// device, then starts its agent. The only path that writes trust.
 #[tauri::command]
@@ -1483,6 +1503,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             note_remove,
             agents_trust_need,
             agents_trust_and_start,
+            agents_permissions,
+            agents_permissions_set,
             card_wake_notes,
             boards_invite,
             boards_join_invite,

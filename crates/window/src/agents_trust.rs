@@ -47,6 +47,22 @@ pub struct TrustStarted {
     pub already: bool,
 }
 
+/// A board's agent permissions as Settings › Agents edits them (card #449,
+/// decision 8): the choice, extra rules, and how each repo reaches main.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPermissions {
+    /// `""` for the private board.
+    pub board_id: String,
+    /// `limited`, `edits` or `bypass`; `""` is bypass, still refused on a
+    /// shared board and when the brief has another person's text.
+    pub permission: String,
+    pub allow: Vec<String>,
+    pub deny: Vec<String>,
+    /// Repo key → `pr` or `main`.
+    pub merge: std::collections::BTreeMap<String, String>,
+}
+
 /// The words the confirm shows (§7 point 2).
 pub fn what_trust_does(folder: &str, device: &str) -> String {
     format!(
@@ -111,6 +127,26 @@ impl Window {
             device,
             here,
         }))
+    }
+
+    /// A board's agent permissions.
+    pub fn agents_permissions(&self, board_id: &str) -> AgentPermissions {
+        let s = self.core.spawn_setting(board_id);
+        AgentPermissions {
+            board_id: board_id.to_string(),
+            permission: s.permission,
+            allow: s.allow,
+            deny: s.deny,
+            merge: s.merge,
+        }
+    }
+
+    /// The person sets a board's agent permissions (the app only, never a
+    /// tool); the board's switch and other spawn settings stay.
+    pub fn agents_permissions_set(&self, p: AgentPermissions) -> Result<AgentPermissions, String> {
+        self.core
+            .set_spawn_permissions(&p.board_id, &p.permission, p.allow, p.deny, p.merge)?;
+        Ok(self.agents_permissions(&p.board_id))
     }
 
     /// The person's Trust and start: records trust for the card's repo on
