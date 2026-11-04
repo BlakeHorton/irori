@@ -1026,7 +1026,8 @@ impl Core {
                     // The private board's spawned-agent switch (card #446).
                     spawning: Some({
                         let on = spawn_state.on.clone();
-                        Arc::new(move || spawn::SpawnState::switch(&on, ""))
+                        let def = spawn_state.private_default.clone();
+                        Arc::new(move || spawn::SpawnState::switch(&on, &def, ""))
                     }),
                     // A working card on a shared board counts here too:
                     // one card at a time across logs (card #422).
@@ -2262,6 +2263,22 @@ impl Core {
     /// A board's spawned-agent settings (`""`: the private board).
     pub fn spawn_setting(&self, board_id: &str) -> spawn::SpawnSetting {
         self.s.spawn_setting(board_id)
+    }
+
+    /// The desktop app turns the private board's spawning on by default
+    /// (card #448, decision 1 (a)): only where agents can be started. A
+    /// switch he set wins either way.
+    pub fn set_spawn_default_on(&self, on: bool) {
+        self.s
+            .spawn
+            .private_default
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+        self.s.asks_kick.kick();
+    }
+
+    /// Whether he has set board `board_id`'s switch himself.
+    pub fn spawn_switch_set(&self, board_id: &str) -> bool {
+        self.s.spawn.switch_set(board_id)
     }
 
     /// The person turns a board's spawned agents on or off: the app only,

@@ -18,6 +18,10 @@ pub struct AgentsSettings {
     pub board_id: String,
     /// Irori starts an agent for each card instead of waiting for a free one.
     pub on: bool,
+    /// He has set the switch himself; until then it is the default (on
+    /// for the private board in the app), and Home shows the first-run
+    /// notice.
+    pub chosen: bool,
     /// What a spawn passes: the board's pick, or the default.
     pub model: String,
     pub effort: String,
@@ -42,10 +46,11 @@ pub struct AgentsChange {
     pub effort: Option<String>,
 }
 
-pub(crate) fn view(s: &SpawnSetting) -> AgentsSettings {
+pub(crate) fn view(s: &SpawnSetting, chosen: bool) -> AgentsSettings {
     AgentsSettings {
         board_id: s.board_id.clone(),
         on: s.on,
+        chosen,
         model: s.model().into(),
         effort: s.effort().into(),
         models: spawn::MODELS.iter().map(|m| (*m).into()).collect(),
@@ -72,7 +77,10 @@ pub(crate) fn apply(mut s: SpawnSetting, c: AgentsChange) -> SpawnSetting {
 impl Window {
     /// Settings › Agents for a board (`""`: the private board).
     pub fn agents_settings(&self, board_id: &str) -> AgentsSettings {
-        view(&self.core.spawn_setting(board_id))
+        view(
+            &self.core.spawn_setting(board_id),
+            self.core.spawn_switch_set(board_id),
+        )
     }
 
     /// The person changes a board's switch, model or effort.
@@ -107,7 +115,7 @@ mod tests {
 
     #[test]
     fn nothing_picked_shows_sonnet_at_medium() {
-        let v = view(&SpawnSetting::default());
+        let v = view(&SpawnSetting::default(), false);
         assert_eq!((v.model.as_str(), v.effort.as_str(), v.on), ("sonnet", "medium", false));
         assert_eq!(v.models[0], "sonnet");
     }

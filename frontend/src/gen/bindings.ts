@@ -399,6 +399,12 @@ export type AgentsSettings = {
 	boardId: string,
 	/**  Irori starts an agent for each card instead of waiting for a free one. */
 	on: boolean,
+	/**
+	 *  He has set the switch himself; until then it is the default (on
+	 *  for the private board in the app), and Home shows the first-run
+	 *  notice.
+	 */
+	chosen: boolean,
 	/**  What a spawn passes: the board's pick, or the default. */
 	model: string,
 	effort: string,

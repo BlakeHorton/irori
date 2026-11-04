@@ -369,6 +369,9 @@ fn start_core(
         })));
     }
     core.set_spawner(Some(spawner()));
+    // Spawning is on by default for the private board where agents can
+    // start (card #448, decision 1 (a)); his own switch wins.
+    core.set_spawn_default_on(true);
     app.manage(core.clone());
     app.manage(window.clone());
     wire_window(app, &window);

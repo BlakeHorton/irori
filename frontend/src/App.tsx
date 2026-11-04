@@ -54,6 +54,7 @@ import { nameLookup, SystemKey, useGone, useHeld, useInbox } from "@/lib/talk"
 import { deskOn, deskQueue, inputsOf, useDesks } from "@/lib/desk"
 import { DeskPage } from "@/components/desk/desk-page"
 import { openSettings } from "@/components/settings/settings-menu"
+import { SpawnNotice } from "@/components/home/spawn-notice"
 import { UpdateBanner } from "@/updater"
 import { useBoardView } from "@/components/canvas/switch"
 import { BoardHeaderBar, BoardPage } from "@/components/boards/board-page"
@@ -751,6 +752,7 @@ export function App() {
             header={
               <>
                 <MainRedLines reds={mainReds(cards)} onOpen={openCard} />
+                <SpawnNotice />
                 <AskBox onThread={startedThread} board={threadsSpace(space)} />
                 <IdleLine text={idleLine(idle)} />
               </>

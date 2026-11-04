@@ -433,3 +433,24 @@ fn model_and_effort_are_kept_and_checked() {
     }
     assert_eq!(r.core.spawn_setting("").model(), "opus", "a refused row changes nothing");
 }
+
+/// Card #448, decision 1 (a): in the app the private board's spawning is
+/// on until he sets it; other boards and a headless Core stay off, and
+/// his own switch wins.
+#[test]
+fn the_private_board_spawns_by_default_in_the_app() {
+    let r = Rig::new();
+    assert!(!r.core.spawn_setting("").on, "headless: off");
+    r.core.set_spawn_default_on(true);
+    assert!(r.core.spawn_setting("").on, "the app: on");
+    assert!(!r.core.spawn_switch_set(""), "not his choice yet");
+    assert!(!r.core.spawn_setting("some-board").on, "other boards: off");
+    r.core
+        .set_spawn_setting(SpawnSetting {
+            on: false,
+            ..SpawnSetting::default()
+        })
+        .unwrap();
+    assert!(r.core.spawn_switch_set(""));
+    assert!(!r.core.spawn_setting("").on, "his off wins");
+}

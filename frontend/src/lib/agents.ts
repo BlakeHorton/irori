@@ -8,12 +8,17 @@ import { useCallback, useEffect, useState } from "react"
 import type { AgentsChange, AgentsSettings } from "../gen/bindings"
 import { AgentsService } from "./host"
 import { inWails } from "./irori"
+import { previewFlag } from "./preview"
 
 export type { AgentsSettings }
 
+// sampleAgents is the preview's private board: chosen and on, or with
+// ?spawn=first on by default and not yet chosen, so Home shows the
+// first-run notice.
 export const sampleAgents: AgentsSettings = {
   boardId: "",
-  on: false,
+  on: true,
+  chosen: previewFlag("spawn") !== "first",
   model: "sonnet",
   effort: "medium",
   models: ["sonnet", "opus", "haiku"],
@@ -83,6 +88,7 @@ export function useAgents(open: boolean, boardId = "") {
             ? {
                 ...x,
                 on: c.on ?? x.on,
+                chosen: x.chosen || c.on != null,
                 model: c.model ?? x.model,
                 effort: c.effort ?? x.effort,
               }

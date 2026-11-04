@@ -487,18 +487,30 @@ pub(crate) struct SpawnState {
     pub answers: Mutex<HashMap<String, String>>,
     /// The cleanup after a start ran for the installed spawner (card #447).
     pub cleaned: std::sync::atomic::AtomicBool,
+    /// The private board's switch when he hasn't set it (card #448,
+    /// decision 1 (a)): on in the desktop app, which can start agents; off
+    /// in a headless Core and in tests.
+    pub private_default: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SpawnState {
     /// The private board's switch, for its coord's `Options::spawning`.
-    pub fn switch(on: &Arc<RwLock<HashMap<String, SpawnSetting>>>, board_id: &str) -> bool {
-        on.read()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(board_id)
-            .is_some_and(|s| s.on)
+    pub fn switch(
+        on: &Arc<RwLock<HashMap<String, SpawnSetting>>>,
+        private_default: &std::sync::atomic::AtomicBool,
+        board_id: &str,
+    ) -> bool {
+        match on.read().unwrap_or_else(|e| e.into_inner()).get(board_id) {
+            Some(s) => s.on,
+            None => {
+                board_id.is_empty()
+                    && private_default.load(std::sync::atomic::Ordering::Relaxed)
+            }
+        }
     }
 
-    /// Board `board_id`'s stored setting, or its default (off).
+    /// Board `board_id`'s stored setting, or its default: off, except the
+    /// private board in the app (card #448).
     pub fn setting(&self, board_id: &str) -> SpawnSetting {
         self.on
             .read()
@@ -507,8 +519,19 @@ impl SpawnState {
             .cloned()
             .unwrap_or_else(|| SpawnSetting {
                 board_id: board_id.into(),
+                on: Self::switch(&self.on, &self.private_default, board_id),
                 ..SpawnSetting::default()
             })
+    }
+
+    /// Whether he has set board `board_id`'s switch himself (else it is
+    /// the default, which the first-run notice explains).
+    pub fn switch_set(&self, board_id: &str) -> bool {
+        self.on
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(board_id)
+            .is_some()
     }
 }
 
