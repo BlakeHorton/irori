@@ -174,6 +174,8 @@ kinds! {
     /// `{color, at}`, actor `user`: the person's colour on shared boards
     /// (card #385); boards learn it from member.profile.
     PERSON_COLOR = "person.color" => Replicated, Refuses;
+    /// `{name, avatar}`: an agent's face, kept by its name (card #407).
+    AGENT_AVATAR = "agent.avatar" => Replicated, Refuses;
     // devname (card #184)
     DEVICE_NAME = "device.name" => Replicated, Refuses;
     // v0.5 shared boards: board logs only

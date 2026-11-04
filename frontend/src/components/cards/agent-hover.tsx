@@ -1,3 +1,4 @@
+import { LiveFace } from "@/components/cards/bot-face"
 import {
   createContext,
   useContext,
@@ -127,7 +128,17 @@ function AgentSummary({
           : "idle"
   return (
     <>
-      <div className="grid grid-cols-1 gap-0.5">
+      <div className="flex min-w-0 items-center gap-3">
+        {who.status !== "person" && (
+          // The agent's face, live (card #407): it thinks while working and
+          // follows the pointer.
+          <LiveFace
+            who={who}
+            tint={tint || "var(--color-primary)"}
+            size={52}
+          />
+        )}
+        <div className="grid min-w-0 grid-cols-1 gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-medium">{displayName(who)}</span>
           <span
@@ -157,6 +168,7 @@ function AgentSummary({
             {plainLine(who.where)}
           </div>
         )}
+        </div>
       </div>
       <CardList label="Holding" cards={holding} onOpen={onOpen} />
       <CardList label="Offered" cards={offered} onOpen={onOpen} />

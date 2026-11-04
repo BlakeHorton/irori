@@ -105,8 +105,9 @@ const SINCE_GO: [&str; 21] = [
 
 /// Kinds added after the Go port that board logs refuse: the person's own
 /// rows (device names, card #184; a card's pause, card #207; Talk read
-/// cursors, card #389).
-const SINCE_GO_REFUSED: [&str; 5] = [
+/// cursors, card #389; agents' faces, card #407).
+const SINCE_GO_REFUSED: [&str; 6] = [
+    kinds::AGENT_AVATAR,
     kinds::DEVICE_NAME,
     kinds::TASK_ARCHIVED,
     kinds::TASK_PAUSED,

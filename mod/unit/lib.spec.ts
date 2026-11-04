@@ -14,6 +14,7 @@ import {
   describePolicy,
   editPolicy,
   heldReminder,
+  faceReminder,
   nextBackoff,
   titleToSet,
   parseArgs,
@@ -258,5 +259,13 @@ describe('Pause (card #207)', () => {
     expect(pausedFromBoard(board, me, [{ ref: '#7', by: 'Stephen' }])).toEqual([{ ref: '#7', by: 'Stephen' }])
     expect(pausedFromBoard(board, me)).toEqual([{ ref: '#7', by: 'The person' }])
     expect(pausedFromBoard(undefined, me)).toEqual([])
+  })
+})
+
+describe('faceReminder', () => {
+  test('nudges only an agent with no face of its own', () => {
+    expect(faceReminder("You (libra) have no face of your own yet; the app shows a default one. Set one with avatar.")).toContain('avatar tool')
+    expect(faceReminder('Your face (libra): {}')).toBe('')
+    expect(faceReminder(undefined)).toBe('')
   })
 })

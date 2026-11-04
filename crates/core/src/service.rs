@@ -234,6 +234,8 @@ struct Services {
     colors: coord::devcolor::Picks,
     /// The person's own colour on shared boards (card #385).
     person_color: coord::devcolor::PersonPick,
+    /// Agents' faces by name (card #407).
+    faces: coord::avatar::Faces,
     /// The person's names for their devices (card #184).
     device_names: coord::devname::Names,
     /// Talk's channels, DMs and read cursors (card #389).
@@ -337,6 +339,12 @@ impl tools::Backend for ToolsView {
     fn known_names(&self) -> std::collections::BTreeMap<String, String> {
         self.0.note_agent_names();
         self.0.agent_names.all()
+    }
+    fn avatar(&self, name: &str) -> String {
+        self.0.faces.get(name)
+    }
+    fn set_avatar(&self, name: &str, face: Option<&coord::avatar::Avatar>) -> Result<(), String> {
+        set_avatar(&self.0, name, face)
     }
     fn capture(&self) -> Option<&capture::Capture> {
         Some(&self.0.capture)
@@ -648,6 +656,36 @@ struct DeviceColor<'a> {
     device_id: &'a str,
 }
 
+/// Writes an `agent.avatar` row and folds it straight away.
+fn set_avatar(
+    s: &Services,
+    name: &str,
+    face: Option<&coord::avatar::Avatar>,
+) -> Result<(), String> {
+    let name = coord::avatar::name_key(name);
+    if name.is_empty() {
+        return Err("a face needs an agent name".into());
+    }
+    let json = face.map(coord::avatar::to_json).unwrap_or_default();
+    let ev = s
+        .store
+        .append(
+            "irori",
+            coord::avatar::KIND,
+            &coord::avatar::RowOut {
+                avatar: &json,
+                name: &name,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    if s.faces.apply(&ev) {
+        s.hub.publish(CoreEvent::Devices);
+        // Shared boards' agent cards carry the new face.
+        s.sync_card_status();
+    }
+    Ok(())
+}
+
 /// The `person.color` payload (card #385).
 #[derive(Serialize)]
 struct PersonColor<'a> {
@@ -949,8 +987,9 @@ impl Core {
             blob::Files::open(dir.join("files")).map_err(|e| fail(&st, other("attachments", e)))?;
         let colors = coord::devcolor::Picks::new();
         let person_color = coord::devcolor::PersonPick::new();
+        let faces = coord::avatar::Faces::new();
         let colors_sub = Arc::new(st.subscribe());
-        load_colors(&st, &colors, &person_color);
+        load_colors(&st, &colors, &person_color, &faces);
         let device_names = coord::devname::Names::new();
         load_device_names(&st, &device_names);
         let talk = Arc::new(coord::talk::Talk::new(Some(st.clone()), {
@@ -1116,6 +1155,7 @@ impl Core {
             asks_kick: Kick::new(),
             colors,
             person_color,
+            faces,
             device_names,
             talk,
             files,
@@ -1451,7 +1491,7 @@ impl Core {
                 let _reg = reg;
                 while let Some(ev) = sub.recv() {
                     if ev.is_resync() {
-                        load_colors(&s.store, &s.colors, &s.person_color);
+                        load_colors(&s.store, &s.colors, &s.person_color, &s.faces);
                         load_device_names(&s.store, &s.device_names);
                         s.follow_person_name();
                         s.hub.publish(CoreEvent::Devices);
@@ -1467,6 +1507,10 @@ impl Core {
                         s.hub.publish(CoreEvent::Talk);
                     } else if ev.kind == coord::devcolor::KIND {
                         s.colors.apply(&ev);
+                    } else if ev.kind == coord::avatar::KIND {
+                        if s.faces.apply(&ev) {
+                            s.hub.publish(CoreEvent::Devices);
+                        }
                     } else if ev.kind == coord::devcolor::PERSON_KIND {
                         // The pick reaches every shared board on the
                         // person's member.profile (card #385).
@@ -2153,6 +2197,22 @@ impl Core {
             .map_err(|e| e.to_string())
     }
 
+    /// Agents' faces by name key (card #407): validated open-bot-avatar
+    /// JSON.
+    pub fn agent_avatars(&self) -> std::collections::HashMap<String, String> {
+        self.s.faces.all()
+    }
+
+    /// Keeps an agent name's face, or clears it (`None`). Agents set their
+    /// own through the avatar tool.
+    pub fn set_agent_avatar(
+        &self,
+        name: &str,
+        face: Option<&coord::avatar::Avatar>,
+    ) -> Result<(), String> {
+        set_avatar(&self.s, name, face)
+    }
+
     /// The person's own colour on shared boards, "" when they haven't
     /// picked one (card #385).
     pub fn person_color(&self) -> String {
@@ -2402,11 +2462,17 @@ fn load_device_names(st: &Store, names: &coord::devname::Names) {
     }
 }
 
-fn load_colors(st: &Store, colors: &coord::devcolor::Picks, person: &coord::devcolor::PersonPick) {
+fn load_colors(
+    st: &Store,
+    colors: &coord::devcolor::Picks,
+    person: &coord::devcolor::PersonPick,
+    faces: &coord::avatar::Faces,
+) {
     let mut f = Filter {
         kinds: vec![
             coord::devcolor::KIND.into(),
             coord::devcolor::PERSON_KIND.into(),
+            coord::avatar::KIND.into(),
         ],
         limit: store::MAX_LIST_LIMIT,
         ..Filter::default()
@@ -2416,6 +2482,7 @@ fn load_colors(st: &Store, colors: &coord::devcolor::Picks, person: &coord::devc
         for ev in &evs {
             colors.apply(ev);
             person.apply(ev);
+            faces.apply(ev);
         }
         if (evs.len() as i64) < f.limit {
             return;

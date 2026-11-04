@@ -46,6 +46,7 @@
 
 mod args;
 mod attachments;
+mod avatar;
 mod board;
 mod capturetools;
 mod explore;
@@ -241,6 +242,14 @@ pub trait Backend: Send + Sync {
     fn talk(&self) -> Option<&Arc<coord::talk::Talk>> {
         None
     }
+    /// The face kept for an agent name (card #407), "" for none.
+    fn avatar(&self, _name: &str) -> String {
+        String::new()
+    }
+    /// Keeps (or with `None` clears) an agent name's face.
+    fn set_avatar(&self, _name: &str, _face: Option<&coord::avatar::Avatar>) -> Result<(), String> {
+        Err("faces aren't kept here".into())
+    }
 }
 
 /// The clock the tools read.
@@ -277,7 +286,8 @@ const CALLER_READS: [&str; 8] = [
 ];
 
 fn handlers() -> HashMap<&'static str, Handler> {
-    let list: [(&'static str, Handler); 50] = [
+    let list: [(&'static str, Handler); 51] = [
+        ("avatar", avatar::avatar),
         ("agents", observe::agents),
         ("events", observe::events),
         ("send", messages::send),

@@ -651,7 +651,17 @@ function CardTile({
         )}
         {card.working.length > 0 ? (
           <>
-            <Faces who={card.working} max={FACES_MAX} />
+            <Faces
+              who={card.working}
+              max={FACES_MAX}
+              look={
+                card.openBlockers > 0
+                  ? "you"
+                  : (card.waitingOn ?? 0) > 0
+                    ? "down"
+                    : undefined
+              }
+            />
             {label && <span>{label}</span>}
           </>
         ) : closed ? null : openAsk(card) ? (

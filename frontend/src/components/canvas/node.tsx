@@ -3,6 +3,7 @@
 // can't put React inside a node, so they write their own text from the
 // same fields (stepsText) in matching colours.
 
+import { BotFace } from "@/components/cards/bot-face"
 import { FACES_MAX, Faces } from "@/components/cards/faces"
 import {
   ProgressBar,
@@ -119,13 +120,19 @@ export function AgentBody({ n }: { n: AgentNode }) {
       }}
       title={n.agent.where || n.label}
     >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{
-          background:
-            n.live || n.person ? "var(--success)" : "var(--muted-foreground)",
-        }}
-      />
+      {n.person ? (
+        <span
+          className="size-2 shrink-0 rounded-full"
+          style={{ background: "var(--success)" }}
+        />
+      ) : (
+        // The agent's face (card #407), still, in its colour.
+        <BotFace
+          who={n.agent}
+          tint={tint}
+          className="-ml-1.5 flex size-5 shrink-0 [&>svg]:size-full"
+        />
+      )}
       <span className="truncate">{n.person ? "you" : n.label}</span>
     </div>
   )

@@ -30,6 +30,7 @@ import {
 import { SettingsMenu } from "@/components/settings/settings-menu"
 import { Badge } from "@/components/ui/badge"
 import { agentCounts } from "@/lib/agent-counts"
+import { AgentStrip } from "@/components/cards/agent-strip"
 import { useCommands } from "@/lib/commands"
 import type { BoardSummary } from "@/lib/boards"
 import type { CardSummary } from "@/lib/cards"
@@ -412,6 +413,7 @@ export function AppSidebar({
               </Badge>
             )}
           </div>
+          <AgentStrip agents={agents} />
         </section>
       )}
 

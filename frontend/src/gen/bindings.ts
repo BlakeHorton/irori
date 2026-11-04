@@ -160,6 +160,8 @@ export const commands = {
 	devicesColors: () => __TAURI_INVOKE<string[]>("devices_colors"),
 	devicesSetDeviceColor: (deviceId: string, color: string) => __TAURI_INVOKE<null>("devices_set_device_color", { deviceId, color }),
 	devicesPersonColor: () => __TAURI_INVOKE<string>("devices_person_color"),
+	/**  Agents' own faces by name key (card #407): open-bot-avatar JSON. */
+	devicesAgentAvatars: () => __TAURI_INVOKE<{ [key in string]: string }>("devices_agent_avatars"),
 	devicesSetPersonColor: (color: string) => __TAURI_INVOKE<null>("devices_set_person_color", { color }),
 	devicesRenameDevice: (deviceId: string, name: string) => __TAURI_INVOKE<string>("devices_rename_device", { deviceId, name }),
 	devicesAddDevice: (role: string) => __TAURI_INVOKE<PairStatus>("devices_add_device", { role }),
@@ -285,6 +287,11 @@ export type AgentRef = {
 	 *  turns to "Idle, no reason given" after a while).
 	 */
 	idleSince?: string | null,
+	/**
+	 *  The agent's own face, open-bot-avatar JSON (card #407); "" wears
+	 *  the default for its name.
+	 */
+	avatar?: string,
 };
 
 /**  Answer's reply: the card after the answer, and who heard. */

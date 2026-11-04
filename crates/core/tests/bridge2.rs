@@ -788,3 +788,28 @@ fn a_persons_colour_pick_reaches_the_other_side() {
         bobs(t.a()).as_deref() == Some("")
     });
 }
+
+/// Card #407: Bob's agent picks a face. Its card on the shared board
+/// carries it, so Alice's Core shows Bob's agent with that face, checked.
+#[test]
+fn an_agents_face_reaches_a_friend_on_a_shared_board() {
+    let t = two_people();
+    let b1 = t.b().board_key(&t.board, &t.rb.key_a).unwrap();
+    let name = t
+        .b()
+        .mesh_agents()
+        .into_iter()
+        .find(|a| a.key == t.rb.key_a)
+        .map(|a| a.name)
+        .unwrap();
+    let v = serde_json::json!({"version":1,"id":"kettle","name":"Kettle","body":{"path":"M20 30 H80 V85 H20 Z"},"eyes":{"x":50,"y":55,"spacing":16,"scale":1}});
+    let face = coord::avatar::check(&v).unwrap();
+    t.b().set_agent_avatar(&name, Some(&face)).unwrap();
+    wait_for(30, "alice sees bob's agent's face", || {
+        t.sync();
+        t.a()
+            .board_agents()
+            .into_iter()
+            .any(|a| a.key == b1 && a.avatar.contains("\"id\":\"kettle\""))
+    });
+}

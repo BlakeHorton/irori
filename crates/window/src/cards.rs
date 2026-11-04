@@ -86,6 +86,11 @@ pub struct AgentRef {
     #[serde(skip_serializing_if = "GoTime::is_zero")]
     #[specta(type = Option<ts::Time>, optional)]
     pub idle_since: GoTime,
+    /// The agent's own face, open-bot-avatar JSON (card #407); "" wears
+    /// the default for its name.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub avatar: String,
 }
 
 /// Done steps over all steps; total 0 means no bar.
@@ -723,6 +728,8 @@ pub(crate) struct People {
     /// their pick, nudged off this person's device colours and off each
     /// other.
     others: BTreeMap<String, String>,
+    /// Agents' own faces by name key (card #407).
+    faces: HashMap<String, String>,
 }
 
 /// The other people's colours on this screen (card #385): every person
@@ -805,6 +812,7 @@ impl Window {
         p.known = c.known_agent_names();
         p.colors = c.device_colors();
         p.others = place_others(&p.persons, &p.board, &p.colors);
+        p.faces = c.agent_avatars();
         let mut live = 0;
         p.names = c.device_labels().into_iter().collect();
         for d in c.certified_devices() {
@@ -861,7 +869,23 @@ impl People {
         out
     }
 
+    /// One key as the window shows it, with its face (card #407).
     pub(crate) fn ref_(&self, key: &str) -> AgentRef {
+        let mut r = self.ref_plain(key);
+        // Another person's agent wears the face its board card carries;
+        // never one of this person's faces that shares its name.
+        let theirs = !self.by_key.contains_key(key) && self.board.contains_key(key);
+        if r.status != "person" && !theirs {
+            r.avatar = self
+                .faces
+                .get(&coord::avatar::name_key(&r.name))
+                .cloned()
+                .unwrap_or_default();
+        }
+        r
+    }
+
+    fn ref_plain(&self, key: &str) -> AgentRef {
         if key == "irori" {
             return AgentRef {
                 key: key.into(),
@@ -968,6 +992,7 @@ impl People {
                 format!("{}'s agent", a.person)
             };
             r.color = self.others.get(&a.person_id).cloned().unwrap_or_default();
+            r.avatar = a.avatar.clone();
             return r;
         }
         r.where_ = self.where_(&dev);
@@ -2643,6 +2668,7 @@ mod tests {
                 person_id: "blake".into(),
                 person: "Blake".into(),
                 person_color: "pink".into(),
+                avatar: String::new(),
             },
         );
         p.others = place_others(&p.persons, &p.board, &p.colors);

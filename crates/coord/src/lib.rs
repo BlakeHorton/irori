@@ -13,6 +13,7 @@
 //! | [`talk`] | (Rust only, card #389) | channels, DMs and read cursors |
 
 pub mod approvals;
+pub mod avatar;
 pub mod board;
 pub mod decision;
 pub mod devcolor;

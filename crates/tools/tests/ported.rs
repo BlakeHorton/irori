@@ -457,6 +457,7 @@ fn test_specs() {
         "talk_list",
         "talk_join",
         "talk_leave",
+        "avatar",
     ];
     for n in want {
         assert!(

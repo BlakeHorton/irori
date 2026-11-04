@@ -167,6 +167,9 @@ pub struct BoardAgent {
     pub person_id: String,
     /// The member's name on the board, "" when unknown.
     pub person: String,
+    /// The agent's face as its card carries it, checked (card #407); ""
+    /// for the default.
+    pub avatar: String,
     /// The member's own colour pick on their member.profile, "" for none
     /// (card #385); the window places it beside the viewer's devices.
     pub person_color: String,
@@ -194,6 +197,10 @@ pub(crate) struct BoardCard {
     pub kind: String,
     pub person_id: String,
     pub status: String,
+    /// The agent's face (card #407), open-bot-avatar JSON; "" for the
+    /// default. Readers keep it only after coord::avatar::check.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub avatar: String,
 }
 
 /// A `board_cards` row: which session a board's agent card is (§2.4). It is
@@ -1646,6 +1653,7 @@ impl Services {
             kind,
             person_id: self.person_id(),
             status: card_status(Some(&card.status)).into(),
+            avatar: self.faces.get(&card.name),
         };
         // The mapping first: a card whose session nobody knows is worse
         // than a mapping to a card that failed to append (it is retried).
@@ -1693,11 +1701,14 @@ impl Services {
                 let Some(card) = m.cards.get(&id) else {
                     continue;
                 };
-                if card.status == status {
+                // The agent's face travels with its card (card #407).
+                let avatar = self.faces.get(&card.name);
+                if card.status == status && card.avatar == avatar {
                     continue;
                 }
                 let row = BoardCard {
                     status: status.into(),
+                    avatar,
                     ..card.clone()
                 };
                 match b.store.append(
@@ -2350,16 +2361,25 @@ impl super::Core {
                 .into_iter()
                 .map(|p| (p.person_id, p.name))
                 .collect();
-            let person_of: HashMap<String, String> = lock(&b.maps)
-                .cards
-                .iter()
-                .map(|(id, c)| (format!("{AGENT_ACTOR_PREFIX}{id}"), c.person_id.clone()))
-                .collect();
+            let (person_of, face_of): (HashMap<String, String>, HashMap<String, String>) = {
+                let m = lock(&b.maps);
+                (
+                    m.cards
+                        .iter()
+                        .map(|(id, c)| (format!("{AGENT_ACTOR_PREFIX}{id}"), c.person_id.clone()))
+                        .collect(),
+                    m.cards
+                        .iter()
+                        .map(|(id, c)| (format!("{AGENT_ACTOR_PREFIX}{id}"), c.avatar.clone()))
+                        .collect(),
+                )
+            };
             for a in roster_of(&self.s, &b) {
                 let person_id = person_of.get(&a.key).cloned().unwrap_or_default();
                 out.push(BoardAgent {
                     person: people.get(&person_id).cloned().unwrap_or_default(),
                     person_color: b.verifier.profile_color(&person_id),
+                    avatar: checked_face(face_of.get(&a.key).map(String::as_str).unwrap_or("")),
                     key: a.key,
                     name: a.name,
                     status: a.status,
@@ -2430,4 +2450,17 @@ pub(crate) fn card_status(presence: Option<&str>) -> &'static str {
         Some("idle") | Some(coord::roster::NOT_ANSWERING) => "idle",
         Some(_) => "active",
     }
+}
+
+/// A face from a board row, kept only when it passes coord::avatar::check
+/// (card #407): a friend's board never hands the window anything else.
+fn checked_face(raw: &str) -> String {
+    if raw.is_empty() {
+        return String::new();
+    }
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| coord::avatar::check(&v).ok())
+        .map(|a| coord::avatar::to_json(&a))
+        .unwrap_or_default()
 }

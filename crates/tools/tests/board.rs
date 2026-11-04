@@ -2350,3 +2350,17 @@ fn test_board_create_waits_on_a_card() {
         "handed out twice: {ns:?}"
     );
 }
+
+/// Card #407: an agent's face through the avatar tool. A bad face is
+/// refused with why; the test backend keeps none, so setting one says so.
+#[test]
+fn the_avatar_tool_checks_a_face_before_keeping_it() {
+    let h = new_harness();
+    let bad = h.call(&call_a(), "avatar", r#"{"avatar":{"version":1,"id":"x","name":"X","body":{"path":"<svg/>"},"eyes":{"x":50,"y":50,"spacing":15,"scale":1}}}"#);
+    assert!(
+        bad.contains("isn't valid") && bad.contains("body.path"),
+        "{bad}"
+    );
+    let none = h.call(&call_a(), "avatar", "{}");
+    assert!(none.contains("no face of your own yet"), "{none}");
+}

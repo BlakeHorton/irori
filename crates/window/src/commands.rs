@@ -823,6 +823,13 @@ pub async fn devices_set_device_color(w: W<'_>, device_id: String, color: String
     w.set_device_color(&device_id, &color)
 }
 
+/// Agents' own faces by name key (card #407): open-bot-avatar JSON.
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_agent_avatars(w: W<'_>) -> R<std::collections::BTreeMap<String, String>> {
+    Ok(w.core.agent_avatars().into_iter().collect())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn devices_person_color(w: W<'_>) -> R<String> {
@@ -1262,6 +1269,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             devices_colors,
             devices_set_device_color,
             devices_person_color,
+            devices_agent_avatars,
             devices_set_person_color,
             devices_rename_device,
             devices_add_device,

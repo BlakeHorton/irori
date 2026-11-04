@@ -843,6 +843,19 @@ fn test_device_colors() {
     });
 }
 
+/// Agent faces (card #407): a checked face is kept by name, lower case,
+/// and an empty one goes back to the default.
+#[test]
+fn test_agent_avatars() {
+    let r = Rig::new();
+    let v = serde_json::json!({"version":1,"id":"box","name":"Box","body":{"path":"M20 20 H80 V80 H20 Z"},"eyes":{"x":50,"y":46,"spacing":15,"scale":1}});
+    let face = coord::avatar::check(&v).unwrap();
+    r.core.set_agent_avatar("Libra", Some(&face)).unwrap();
+    assert!(r.core.agent_avatars()["libra"].contains("\"id\":\"box\""));
+    r.core.set_agent_avatar("libra", None).unwrap();
+    assert!(!r.core.agent_avatars().contains_key("libra"));
+}
+
 /// Device names (card #184): this device starts as its computer's name;
 /// a rename is a `device.name` row that wins at once, is cleaned to one
 /// short line, tells the window (devices:changed), and "" goes back.

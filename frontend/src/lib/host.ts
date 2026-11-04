@@ -246,6 +246,7 @@ export const DevicesService = {
   SetDeviceColor: (deviceId: string, color: string) => done(commands.devicesSetDeviceColor(deviceId, color)),
   PersonColor: () => call(commands.devicesPersonColor()),
   SetPersonColor: (color: string) => done(commands.devicesSetPersonColor(color)),
+  AgentAvatars: () => call(commands.devicesAgentAvatars()),
   RenameDevice: (deviceId: string, name: string) => call(commands.devicesRenameDevice(deviceId, name)),
   AddDevice: (role: string) => call(commands.devicesAddDevice(role)),
   JoinWithCode: (code: string, server: string) => call(commands.devicesJoinWithCode(code, server)),

@@ -1,14 +1,15 @@
 import type { CSSProperties } from "react"
 import { UserIcon } from "lucide-react"
-import { minidenticon } from "minidenticons"
 import { AgentHover } from "@/components/cards/agent-hover"
+import { BotFace } from "@/components/cards/bot-face"
+import type { Look } from "@/lib/avatars"
 import { Avatar, AvatarBadge } from "@/components/ui/avatar"
 import { deviceVar, displayName, type AgentRef } from "@/lib/cards"
 import { cn } from "@/lib/utils"
 
-// Face is one agent (or the person) on a card (card #79): a 5x5 pixel
-// identicon drawn from the agent's key, so an agent keeps its face for
-// as long as it lives. A working face wears its device's colour once there
+// Face is one agent (or the person) on a card (card #79): an
+// open-bot-avatar face (card #407), its own or the default for its name,
+// so an agent keeps its face on every device. A working face wears its device's colour once there
 // are two devices (card #22), so the colour says which device it is on;
 // with one device it is blue. A watcher is grey; the person is a user
 // icon in their device's colour (card #108). A live working agent gets the green dot; a gone one, or one on
@@ -25,6 +26,7 @@ export function Face({
   noDot,
   noHover,
   inline,
+  look,
   className,
 }: {
   who: AgentRef
@@ -32,6 +34,8 @@ export function Face({
   noDot?: boolean
   noHover?: boolean
   inline?: boolean
+  // Where the face looks (card #407): at you, or down while it waits.
+  look?: Look
   className?: string
 }) {
   const person = who.status === "person"
@@ -69,7 +73,11 @@ export function Face({
         {person ? (
           <UserIcon className="size-full" strokeWidth={2.5} aria-hidden />
         ) : (
-          <Pixels cells={cells(who.key)} full />
+          <BotFace
+            who={who}
+            tint={tint || "var(--color-primary)"}
+            className="flex size-full [&>svg]:size-full"
+          />
         )}
       </span>
     )
@@ -79,8 +87,12 @@ export function Face({
     <Avatar
       size="sm"
       className={cn(
-        // A dim square outline frames every face (card #104).
-        "size-[26px] rounded-none after:rounded-none after:border after:border-muted-foreground/35 after:mix-blend-normal dark:after:mix-blend-normal",
+        // A dim square outline frames the person's icon (card #104); an
+        // agent's face is its own shape (card #407).
+        "size-[26px] rounded-none after:rounded-none after:mix-blend-normal dark:after:mix-blend-normal",
+        person
+          ? "after:border after:border-muted-foreground/35"
+          : "after:border-0",
         (gone || who.offline) && "opacity-55",
         who.conflict && "ring-2 ring-warning",
         className
@@ -102,15 +114,21 @@ export function Face({
           <UserIcon className="size-5" strokeWidth={2.25} aria-hidden />
         </span>
       ) : (
-        <span
+        // An open-bot-avatar face (card #407): a still SVG in the agent's
+        // colour, grey while it only watches; thinking while it works.
+        <BotFace
+          who={who}
+          tint={
+            watching
+              ? "var(--muted-foreground)"
+              : tint || "var(--color-primary)"
+          }
+          look={watching ? undefined : look}
           className={cn(
-            "flex size-full items-center justify-center",
-            watching ? "text-muted-foreground/70" : "text-primary"
+            "flex size-full items-center justify-center [&>svg]:size-full",
+            (gone || who.offline) && "grayscale"
           )}
-          style={tint ? { color: tint } : undefined}
-        >
-          <Identicon seed={who.key} />
-        </span>
+        />
       )}
       {!watching && !noDot && who.live && !who.offline && !person && (
         <AvatarBadge className="-right-0.5 -bottom-0.5 bg-success" />
@@ -118,66 +136,6 @@ export function Face({
     </Avatar>
   )
   return noHover ? face : <AgentHover who={who} trigger={face} />
-}
-
-// fnv1a is a 32-bit FNV-1a hash: minidenticons' own hash leaves near
-// keys (sample-wren) with three or four lit squares.
-function fnv1a(str: string): number {
-  let h = 0x811c9dc5
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return h >>> 0
-}
-
-// cells are the lit squares of a seed's identicon, read from
-// minidenticons' SVG but hashed with fnv1a, so they don't match
-// minidenticon(key) on its own hash. A pattern too sparse
-// to read as a face (under 8 squares) is drawn again from a salted seed.
-const cellCache = new Map<string, [number, number][]>()
-function cells(seed: string): [number, number][] {
-  let c = cellCache.get(seed)
-  if (!c) {
-    for (let salt = 0; salt < 8; salt++) {
-      const svg = minidenticon(salt ? `${seed}#${salt}` : seed, 0, 0, fnv1a)
-      c = [...svg.matchAll(/x="(\d+)" y="(\d+)"/g)].map(
-        (m) => [Number(m[1]), Number(m[2])] as [number, number]
-      )
-      if (c.length >= 8) break
-    }
-    cellCache.set(seed, c!)
-  }
-  return c!
-}
-
-// Identicon draws the seed's 5x5 pattern.
-function Identicon({ seed }: { seed: string }) {
-  return <Pixels cells={cells(seed)} />
-}
-
-// Pixels draws a 5x5 pattern in currentColor at 4px a square, so it
-// stays crisp at 20px.
-function Pixels({
-  cells,
-  full,
-}: {
-  cells: [number, number][]
-  full?: boolean
-}) {
-  return (
-    <svg
-      viewBox="0 0 5 5"
-      className={full ? "size-full" : "size-5"}
-      fill="currentColor"
-      shapeRendering="crispEdges"
-      aria-hidden
-    >
-      {cells.map(([x, y]) => (
-        <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} />
-      ))}
-    </svg>
-  )
 }
 
 // FACES_MAX is how many faces a tile's working or watching row shows
@@ -191,10 +149,12 @@ export function Faces({
   who,
   watching,
   max,
+  look,
 }: {
   who: AgentRef[]
   watching?: boolean
   max?: number
+  look?: Look
 }) {
   const over = max !== undefined && who.length > max
   const shown = over ? who.slice(0, Math.max(max - 1, 1)) : who
@@ -202,7 +162,7 @@ export function Faces({
   return (
     <span className="flex min-w-0 items-center gap-1">
       {shown.map((w) => (
-        <Face key={w.key} who={w} watching={watching} />
+        <Face key={w.key} who={w} watching={watching} look={look} />
       ))}
       {rest.length > 0 && (
         <span
