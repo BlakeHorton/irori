@@ -1112,17 +1112,24 @@ impl Fold {
     }
 
     /// Who decides a question on a shared board (card #264): a person
-    /// blocker that names nobody is for the person of whoever raised it,
-    /// so it shows under that person's Needs a decision and as "Waiting on
+    /// blocker that names nobody (a done check too) is for the card's
+    /// owner's person (#429), or whoever raised it when the owner is
+    /// unknown, so it shows under that person's Needs a decision and as "Waiting on
     /// <name>" for the board's other members. Off a board it stays "".
-    fn decider_default(&self, by: &str, nb: &mut Option<BlockedBy>) {
+    fn decider_default(&self, by: &str, t: &Task, nb: &mut Option<BlockedBy>) {
         let Some(b) = nb.as_mut() else {
             return;
         };
         if b.kind != BLOCKED_ON_PERSON || !b.reference.is_empty() {
             return;
         }
-        let p = self.person_of(by);
+        // The card's owner decides (card #429): the person who made it, or
+        // whose agent did. Another person's agent finishing it, or asking
+        // on it, doesn't make it that agent's person's to handle.
+        let mut p = self.person_of(&t.created_by);
+        if p.is_empty() {
+            p = self.person_of(by);
+        }
         if !p.is_empty() {
             b.reference = format!("{}{p}", kinds::PERSON_ACTOR_PREFIX);
         }
@@ -1152,7 +1159,7 @@ impl Fold {
             ));
         }
         let mut nb = self.check_blocker(bb.as_ref(), &t.id)?;
-        self.decider_default(by, &mut nb);
+        self.decider_default(by, t, &mut nb);
         let same_q = open_with_question(t, q);
         if let Some(i) = same_q
             && t.state == BLOCKED
@@ -1190,7 +1197,7 @@ impl Fold {
                 kind: BLOCKED_ON_PERSON.into(),
                 reference: String::new(),
             });
-            self.decider_default(by, &mut nb);
+            self.decider_default(by, t, &mut nb);
         }
         let mut row_b = BlockerRow {
             id: self.next_blocker_id(&t.id),

@@ -1137,7 +1137,7 @@ impl Inner {
             [] => {
                 let names: Vec<String> = people.iter().map(|p| q(&one_line(&p.name, 40))).collect();
                 Err(err_text(&format!(
-                    "for: nobody on {} is named {}; {}. Leave for out when the question is for your own person.",
+                    "for: nobody on {} is named {}; {}. Leave for out when the question is for the card's owner.",
                     one_line(&b.name, 60),
                     q(&one_line(v, 40)),
                     if names.is_empty() {

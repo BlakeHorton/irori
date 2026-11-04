@@ -1350,24 +1350,77 @@ fn needs(s: &Side, viewer: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_question_on_a_board_is_for_the_raisers_person_by_default() {
+fn a_question_on_a_board_is_for_the_cards_owner_by_default() {
     let (a, b, _) = two_people();
+    // p1 made the card; p2's agent asks without saying who decides: it is
+    // for p1, the owner (#429), not p2.
     let t = shared_card(&a, &b);
-    // p2's agent asks without saying who decides: it is for p2.
     let (_, item) = ask(&b, CARD2, &t.id, "Which colour?", None).unwrap();
-    assert_eq!(item.on, for_person(P2));
+    assert_eq!(item.on, for_person(P1));
     sync(&a, &b);
     let on_a = a.c.get_task(&t.id).unwrap();
     assert_eq!(
         on_a.open_blockers()[0].on,
-        for_person(P2),
+        for_person(P1),
         "both folds agree"
     );
-    assert_eq!(needs(&b, P2), vec![t.id.clone()], "it needs p2");
-    assert!(needs(&a, P1).is_empty(), "and not p1");
-    // An explicit "person" with no one named is the raiser's person too.
-    let (_, item) = ask(&a, CARD1, &t.id, "Ship it?", for_person("")).unwrap();
+    assert_eq!(needs(&a, P1), vec![t.id.clone()], "it needs p1");
+    assert!(needs(&b, P2).is_empty(), "and not p2");
+    // An explicit "person" with no one named is the owner too.
+    let (_, item) = ask(&b, CARD2, &t.id, "Ship it?", for_person("")).unwrap();
     assert_eq!(item.on, for_person(P1));
+    // The owner's own agent asks: still the owner.
+    let (_, item) = ask(&a, CARD1, &t.id, "Rename it?", None).unwrap();
+    assert_eq!(item.on, for_person(P1));
+    // for still names someone else.
+    let (_, item) = ask(&b, CARD2, &t.id, "Blake's call?", for_person(P2)).unwrap();
+    assert_eq!(item.on, for_person(P2));
+}
+
+/// #429: p2's agent finishing p1's card asks p1 "Is this done?", not p2.
+#[test]
+fn a_done_check_on_a_board_goes_to_the_cards_owner() {
+    let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
+    let a = side_full("dev-a", P1, &owners, true, None, None);
+    let b = side_full("dev-b", P2, &owners, true, None, None);
+    a.st.append(
+        P1,
+        kinds::BOARD_CREATED,
+        &raw(r#"{"boardId":"b","creator":{"personId":"p1"},"name":"wind","tag":"wind"}"#),
+    )
+    .unwrap();
+    a.st.append(
+        P1,
+        kinds::BOARD_MEMBER_ADDED,
+        &raw(r#"{"personId":"p2","role":"member"}"#),
+    )
+    .unwrap();
+    pull(&a, &b);
+    b.st.append(
+        CARD2,
+        kinds::AGENT_CARD,
+        &raw(r#"{"cardId":"c2","personId":"p2","status":"active"}"#),
+    )
+    .unwrap();
+    sync(&a, &b);
+    let t = a.c.create_task(P1, nt("p1's card", "")).unwrap();
+    sync(&a, &b);
+    b.c.claim_task(CARD2, &t.id).unwrap();
+    let got =
+        b.c.set_task_state(CARD2, &t.id, COMPLETED, "shipped")
+            .unwrap();
+    let check = got
+        .blockers
+        .iter()
+        .find(|x| x.open() && x.done_check)
+        .expect("a done check");
+    assert_eq!(check.on, for_person(P1));
+    sync(&a, &b);
+    assert_eq!(needs(&a, P1), vec![t.id.clone()], "the owner decides Done");
+    assert!(
+        needs(&b, P2).is_empty(),
+        "not the person whose agent did it"
+    );
 }
 
 #[test]

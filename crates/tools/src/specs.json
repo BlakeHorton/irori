@@ -770,7 +770,7 @@
         },
         "for": {
           "type": "string",
-          "description": "Optional, on a shared board's card: who decides, by their name as the board shows it (or their person: key). It shows under their Needs a decision and as waiting on them for the board's other people; anyone can still answer. Default: your own person."
+          "description": "Optional, on a shared board's card: who decides, by their name as the board shows it (or their person: key). It shows under their Needs a decision and as waiting on them for the board's other people; anyone can still answer. Default: the card's owner (the person who made it)."
         }
       },
       "required": [
