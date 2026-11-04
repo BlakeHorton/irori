@@ -708,6 +708,7 @@ export function App() {
         ) : section.kind === "notifications" ? (
           <Scroll>
             <NotificationsLive
+              unreadTotal={unreadNotifications}
               now={now}
               onOpenCard={openCard}
               onOpenMessage={setMessage}

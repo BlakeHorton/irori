@@ -1,4 +1,4 @@
-import { Identicon } from "@/components/cards/faces"
+import { faceColor, Identicon } from "@/components/cards/faces"
 import { AgentRef } from "@/gen/models"
 import { deviceVar } from "@/lib/cards"
 import { useDevices } from "@/lib/devices"
@@ -51,7 +51,7 @@ export function AgentStrip({ agents }: { agents: RosterAgent[] }) {
           >
             <span
               className="block size-7"
-              style={{ color: deviceVar(who.color) || "var(--color-primary)" }}
+              style={{ color: faceColor(a.status, deviceVar(who.color)) }}
             >
               <Identicon seed={who.key} full />
             </span>

@@ -38,6 +38,8 @@ export function Face({
   const person = who.status === "person"
   const gone = who.status === "gone"
   const tint = !watching ? deviceVar(who.color) : ""
+  // A face that isn't answering is amber, as #407's faces were.
+  const quiet = !person && !watching && who.status === "unresponsive"
   const name = displayName(who)
   const title = [
     name,
@@ -55,13 +57,21 @@ export function Face({
       <span
         className={cn(
           "inline-flex size-3.5 shrink-0 items-center justify-center",
-          person || gone ? "text-muted-foreground" : "text-ink",
+          person || gone
+            ? "text-muted-foreground"
+            : quiet
+              ? "text-warning"
+              : "text-ink",
           "transition-colors group-hover/row:text-(--face-tint) hover:text-(--face-tint)",
           (gone || who.offline) && "opacity-55",
           className
         )}
         style={
-          { "--face-tint": tint || "var(--color-primary)" } as CSSProperties
+          {
+            "--face-tint": quiet
+              ? "var(--color-warning)"
+              : tint || "var(--color-primary)",
+          } as CSSProperties
         }
         title={noHover || person ? title : undefined}
         aria-label={title}
@@ -108,7 +118,13 @@ export function Face({
             "flex size-full items-center justify-center",
             watching ? "text-muted-foreground/70" : "text-primary"
           )}
-          style={tint ? { color: tint } : undefined}
+          style={
+            quiet
+              ? { color: "var(--color-warning)" }
+              : tint
+                ? { color: tint }
+                : undefined
+          }
         >
           <Identicon seed={who.key} />
         </span>
@@ -150,6 +166,14 @@ function cells(seed: string): [number, number][] {
     cellCache.set(seed, c!)
   }
   return c!
+}
+
+// faceColor is an agent face's colour outside a Face: amber while it
+// isn't answering, else its tint, else blue.
+export function faceColor(status: string, tint: string): string {
+  return status === "unresponsive"
+    ? "var(--color-warning)"
+    : tint || "var(--color-primary)"
 }
 
 // Identicon draws the seed's 5x5 pattern; full fills its box (the strip,

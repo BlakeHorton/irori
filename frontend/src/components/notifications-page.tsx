@@ -39,6 +39,7 @@ const PageSize = 30
 
 export function NotificationsPage({
   list,
+  unreadTotal,
   loading,
   error,
   now,
@@ -46,6 +47,9 @@ export function NotificationsPage({
   onOpenMessage,
 }: {
   list: Notification[]
+  // Every unread item, the ones past the listed newest too (0.11.1), so
+  // Mark all read can clear what the badge counts.
+  unreadTotal?: number
   loading: boolean
   error: string | null
   now: Date
@@ -106,7 +110,7 @@ export function NotificationsPage({
             type="button"
             size="sm"
             variant="ghost"
-            disabled={unread === 0}
+            disabled={unread === 0 && !unreadTotal}
             onClick={() => void readNotifications([]).catch(() => {})}
           >
             Mark all read

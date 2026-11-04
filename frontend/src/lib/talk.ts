@@ -345,7 +345,10 @@ export function useLatest<T>(load: () => Promise<T>, initial: T) {
 
 // sameAs says whether value serializes the same as the last one seen in
 // key, and remembers it. Values that can't be serialized never match.
-export function sameAs(key: { current: string | null }, value: unknown): boolean {
+export function sameAs(
+  key: { current: string | null },
+  value: unknown
+): boolean {
   let next: string | null
   try {
     next = JSON.stringify(value) ?? null

@@ -1,4 +1,4 @@
-import { Identicon } from "@/components/cards/faces"
+import { faceColor, Identicon } from "@/components/cards/faces"
 import {
   createContext,
   useContext,
@@ -137,7 +137,7 @@ function AgentSummary({
           // The agent's identicon, big (0.11.1: still, no animation).
           <span
             className="size-[52px] shrink-0"
-            style={{ color: tint || "var(--color-primary)" }}
+            style={{ color: faceColor(who.status, tint) }}
           >
             <Identicon seed={who.key} full />
           </span>
