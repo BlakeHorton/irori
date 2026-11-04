@@ -413,6 +413,12 @@ pub fn trusted(dir: &Path) -> Result<(), String> {
     trusted_in(&TrustSet::load(), dir)
 }
 
+/// [`trusted`] as a yes or no, for the Core's `Spawner { trusted }` seam
+/// (card #446): the Core checks before it spawns and writes the reason.
+pub fn trust_ok(dir: &Path) -> bool {
+    trusted(dir).is_ok()
+}
+
 pub(crate) fn trusted_in(t: &TrustSet, dir: &Path) -> Result<(), String> {
     let (ok, folder) = match trust_root(dir) {
         Some(root) => (t.has(&root.to_string_lossy()), root),
