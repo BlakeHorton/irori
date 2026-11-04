@@ -274,6 +274,7 @@ export const AgentsService = {
   Settings: (boardId: string) => call(commands.agentsSettings(boardId)),
   Set: (change: B.AgentsChange) => call(commands.agentsSet(change)),
   End: (key: string) => done(commands.agentsEnd(key)),
+  Running: () => call(commands.agentsRunning()),
   TrustNeed: (taskId: string) => call(commands.agentsTrustNeed(taskId)),
   TrustAndStart: (taskId: string) => call(commands.agentsTrustAndStart(taskId)),
   Permissions: (boardId: string) => call(commands.agentsPermissions(boardId)),

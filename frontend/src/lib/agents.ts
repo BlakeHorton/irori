@@ -5,12 +5,12 @@
 
 import { useCallback, useEffect, useState } from "react"
 
-import type { AgentsChange, AgentsSettings } from "../gen/bindings"
+import type { AgentsChange, AgentsSettings, RunningAgent } from "../gen/bindings"
 import { AgentsService } from "./host"
 import { inWails } from "./irori"
 import { previewFlag } from "./preview"
 
-export type { AgentsSettings }
+export type { AgentsSettings, RunningAgent }
 
 // sampleAgents is the preview's private board: chosen and on, or with
 // ?spawn=first on by default and not yet chosen, so Home shows the
@@ -113,4 +113,64 @@ export function useAgents(open: boolean, boardId = "") {
 export async function endAgent(key: string): Promise<void> {
   if (!inWails()) return
   await AgentsService.End(key)
+}
+
+// sampleRunning is the preview's Running agents list: two working, one
+// on another device, one starting.
+function sampleRunning(): RunningAgent[] {
+  const now = Date.now()
+  const row = (p: Partial<RunningAgent>): RunningAgent => ({
+    key: "",
+    name: "",
+    status: "busy",
+    cardId: "",
+    cardShort: "",
+    cardTitle: "",
+    device: "This PC",
+    here: true,
+    model: "sonnet",
+    effort: "medium",
+    startedAt: now,
+    ...p,
+  })
+  return [
+    row({ status: "starting", cardId: "c65", cardShort: "#65", cardTitle: "Explain the cache eviction in the README", startedAt: now - 20_000 }),
+    row({ key: "dev/heron", name: "heron", cardId: "c64", cardShort: "#64", cardTitle: "Retry the upload on a dropped connection", startedAt: now - 6 * 60_000 }),
+    row({ key: "dev/finch", name: "finch", status: "idle", cardId: "c61", cardShort: "#61", cardTitle: "Bump the icon set", model: "opus", effort: "high", startedAt: now - 25 * 60_000 }),
+    row({ key: "pc/wren", name: "wren", cardId: "c58", cardShort: "#58", cardTitle: "Port the build script to Windows", device: "PC", here: false, startedAt: now - 40 * 60_000 }),
+  ]
+}
+
+// useRunning lists the agents Irori started, and the ones starting,
+// refreshed every few seconds while open.
+export function useRunning(open: boolean) {
+  const [rows, setRows] = useState<RunningAgent[]>(() => (inWails() ? [] : sampleRunning()))
+  const [error, setError] = useState("")
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (!open || !inWails()) return
+    let live = true
+    const load = () =>
+      AgentsService.Running().then(
+        (v) => live && (setRows(v), setError("")),
+        (e: Error) => live && setError(e.message),
+      )
+    void load()
+    const id = window.setInterval(load, 4000)
+    return () => {
+      live = false
+      window.clearInterval(id)
+    }
+  }, [open, tick])
+  const refresh = useCallback(() => setTick((t) => t + 1), [])
+  return { rows, error, refresh }
+}
+
+// runningSince says how long ago an agent was asked for: "just now",
+// "6 min", "2 h".
+export function runningSince(at: number, now: number): string {
+  const m = Math.floor((now - at) / 60_000)
+  if (m < 1) return "just now"
+  if (m < 60) return `${m} min`
+  return `${Math.floor(m / 60)} h`
 }

@@ -4,12 +4,22 @@
 // start with. Only you set these, here; no agent's tool can. The rest of
 // sa-6 (permissions, caps, limits, cost) arrives with parts 5, 6 and 12.
 
-import { useId } from "react"
+import { useId, useState } from "react"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { PermissionsSection } from "@/components/settings/agent-permissions"
 import { Switch } from "@/components/ui/switch"
-import { effortLabel, modelLabel, useAgents } from "@/lib/agents"
+import { Badge } from "@/components/ui/badge"
+import {
+  effortLabel,
+  endAgent,
+  modelLabel,
+  runningSince,
+  useAgents,
+  useRunning,
+  type RunningAgent,
+} from "@/lib/agents"
+import { ConfirmButton } from "@/components/common/confirm-button"
 
 export function AgentsPane({ open }: { open: boolean }) {
   const { settings: s, error, set } = useAgents(open)
@@ -77,8 +87,103 @@ export function AgentsPane({ open }: { open: boolean }) {
           />
         </div>
       </section>
+      <RunningSection open={open} />
       <PermissionsSection open={open} />
       {error && <p className="text-[12.5px] text-destructive">{error}</p>}
     </div>
+  )
+}
+
+// RunningSection lists every agent Irori started that is still running,
+// and the cards one is starting for (card #448): its card, device, model
+// and End. Attach and Logs come with part 12.
+function RunningSection({ open }: { open: boolean }) {
+  const { rows, error, refresh } = useRunning(open)
+  const [now] = useState(() => Date.now())
+  return (
+    <section className="grid gap-2">
+      <h3 className="text-sm font-medium text-ink">
+        Running agents{rows.length > 0 && ` · ${rows.length}`}
+      </h3>
+      <p className="text-[12.5px] text-muted-foreground">
+        Agents Irori started for your cards. End asks one to write where it
+        left off on its card, then stops it.
+      </p>
+      {rows.length === 0 ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          {error ? `Could not load: ${error}` : "None running."}
+        </p>
+      ) : (
+        <ul className="grid divide-y divide-border rounded-md border border-border">
+          {rows.map((r) => (
+            <RunningRow
+              key={r.key || `starting-${r.cardId}`}
+              r={r}
+              now={now}
+              onEnded={refresh}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function RunningRow({
+  r,
+  now,
+  onEnded,
+}: {
+  r: RunningAgent
+  now: number
+  onEnded: () => void
+}) {
+  const [ending, setEnding] = useState(false)
+  const starting = r.status === "starting"
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-[13px]">
+      <span className="grid min-w-0 gap-0.5">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-medium text-ink">
+            {starting ? "Starting…" : r.name}
+          </span>
+          <Badge
+            variant={starting ? "info" : r.status === "busy" ? "success" : "slate"}
+            className="h-4 px-1.5 text-[10.5px]"
+          >
+            {starting ? "starting" : r.status === "busy" ? "working" : r.status}
+          </Badge>
+        </span>
+        <span className="truncate text-xs text-muted-foreground">
+          {r.cardShort} {r.cardTitle}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">
+          {r.device} · {r.model} · {r.effort} · {runningSince(r.startedAt ?? now, now)}
+        </span>
+      </span>
+      {ending ? (
+        <span className="text-xs text-muted-foreground">ending</span>
+      ) : starting ? null : r.here ? (
+        <ConfirmButton
+          label="End"
+          question={
+            <>
+              End {r.name} on {r.cardShort}? It writes where it left off on
+              the card first, then Irori stops it and removes its session.
+            </>
+          }
+          confirmLabel="End"
+          onConfirm={async () => {
+            await endAgent(r.key)
+            setEnding(true)
+            onEnded()
+          }}
+        />
+      ) : (
+        <span className="text-xs text-muted-foreground" title="End it from the device it runs on">
+          on {r.device}
+        </span>
+      )}
+    </li>
   )
 }

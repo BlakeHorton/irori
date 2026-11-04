@@ -280,6 +280,8 @@ export const commands = {
 	agentsSet: (change: AgentsChange) => __TAURI_INVOKE<AgentsSettings>("agents_set", { change }),
 	/**  The person ends an agent Irori started: its hand-off, then stop and rm. */
 	agentsEnd: (key: string) => __TAURI_INVOKE<null>("agents_end", { key }),
+	/**  Every agent Irori started that is still running, or is starting. */
+	agentsRunning: () => __TAURI_INVOKE<RunningAgent[]>("agents_running"),
 	/**  Every merge desk in the person's log. */
 	deskList: () => __TAURI_INVOKE<DeskView[]>("desk_list"),
 	/**  The person sets up or changes a repo's merge desk. */
@@ -1723,6 +1725,30 @@ export type Rollup = {
 export type RosterChange = {
 	change: Change,
 	agents: AgentCard[],
+};
+
+/**
+ *  One agent Irori started, or is starting, for a card (card #448): a row
+ *  of Settings › Agents' Running agents list.
+ */
+export type RunningAgent = {
+	/**  The agent's key; `""` while it is still starting. */
+	key: string,
+	name: string,
+	/**  starting, busy, idle, unresponsive. */
+	status: string,
+	cardId: string,
+	/**  `#N`. */
+	cardShort: string,
+	cardTitle: string,
+	/**  "This PC" or the device's name. */
+	device: string,
+	/**  It runs here, so End works from this window. */
+	here: boolean,
+	model: string,
+	effort: string,
+	/**  When Irori asked for it, in ms. */
+	startedAt: number | null,
 };
 
 /**

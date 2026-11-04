@@ -104,6 +104,7 @@ export type ReviewPr = B.ReviewPr
 export type ReviewerChoice = B.ReviewerChoice
 export type Rollup = B.Rollup
 export type RosterChange = B.RosterChange
+export type RunningAgent = B.RunningAgent
 export type Scope = B.Scope
 export type SendResult = B.SendResult
 export type Sender = B.Sender
@@ -594,6 +595,11 @@ export function Rollup(p: Partial<B.Rollup> = {}): B.Rollup {
 /** RosterChange with Go's zero values for every field left out. */
 export function RosterChange(p: Partial<B.RosterChange> = {}): B.RosterChange {
   return { "change": Change(), "agents": [], ...p } as B.RosterChange
+}
+
+/** RunningAgent with Go's zero values for every field left out. */
+export function RunningAgent(p: Partial<B.RunningAgent> = {}): B.RunningAgent {
+  return { "key": "", "name": "", "status": "", "cardId": "", "cardShort": "", "cardTitle": "", "device": "", "here": false, "model": "", "effort": "", "startedAt": null, ...p } as B.RunningAgent
 }
 
 /** Sender with Go's zero values for every field left out. */

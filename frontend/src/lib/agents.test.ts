@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { effortLabel, modelLabel } from "./agents"
+import { effortLabel, modelLabel, runningSince } from "./agents"
 
 describe("Settings › Agents labels", () => {
   test("the default is marked, the rest named", () => {
@@ -11,5 +11,13 @@ describe("Settings › Agents labels", () => {
   })
   test("an unknown value shows as itself", () => {
     expect(modelLabel("fable", "sonnet")).toBe("fable")
+  })
+})
+
+describe("runningSince", () => {
+  test("minutes, then hours", () => {
+    expect(runningSince(0, 30_000)).toBe("just now")
+    expect(runningSince(0, 6 * 60_000)).toBe("6 min")
+    expect(runningSince(0, 130 * 60_000)).toBe("2 h")
   })
 })

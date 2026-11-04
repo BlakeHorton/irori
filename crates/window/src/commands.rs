@@ -15,7 +15,7 @@ use specta::Type;
 use tauri::State;
 
 use crate::Window;
-use crate::agents::{AgentsChange, AgentsSettings};
+use crate::agents::{AgentsChange, AgentsSettings, RunningAgent};
 use crate::attachments::AttachmentInfo;
 use crate::board::{AnswerResult, AskRepo, CommentResult, TaskResult, UploadFile};
 use crate::boards::{BoardSettings, BoardSummary, SharePreview};
@@ -1303,6 +1303,13 @@ pub async fn agents_set(w: W<'_>, change: AgentsChange) -> R<AgentsSettings> {
     w.agents_set(change)
 }
 
+/// Every agent Irori started that is still running, or is starting.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_running(w: W<'_>) -> R<Vec<RunningAgent>> {
+    blocking(&w, move |w| Ok(w.agents_running())).await
+}
+
 /// The person ends an agent Irori started: its hand-off, then stop and rm.
 #[tauri::command]
 #[specta::specta]
@@ -1606,6 +1613,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             agents_settings,
             agents_set,
             agents_end,
+            agents_running,
             desk_list,
             desk_set,
             desk_hold,
