@@ -669,5 +669,12 @@ fn spawner() -> irori_core::spawn::Spawner {
         }),
         end: Arc::new(|id: &str| spawn::end(id).map(|_| ())),
         trusted: Arc::new(|p: &std::path::Path| spawn::trust_ok(p)),
+        list: Some(Arc::new(|| {
+            spawn::list_agents().map(|v| {
+                v.into_iter()
+                    .map(|(session_id, live)| irori_core::spawn::ClaudeAgent { session_id, live })
+                    .collect()
+            })
+        })),
     }
 }

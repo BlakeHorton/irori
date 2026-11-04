@@ -194,6 +194,49 @@ pub(crate) fn end_with(bin: &Path, id: &str, patience: Duration) -> Result<Strin
     }
 }
 
+/// Claude Code's agents on this device, finished ones included (card
+/// #447's restart cleanup): `claude agents --json --all`. Each is its
+/// session id and whether it still runs.
+pub fn list_agents() -> Result<Vec<(String, bool)>, String> {
+    let mut cmd = std::process::Command::new(find_claude()?);
+    cmd.args(["agents", "--json", "--all"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    hide_console(&mut cmd);
+    let out = cmd.output().map_err(|e| format!("claude agents: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("claude agents exited with {}", out.status));
+    }
+    parse_agents(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Parses `claude agents --json --all`: an array of agents, each with a
+/// `sessionId`; a running one has a `pid`, and a finished `--bg` one a
+/// `state` of done or failed.
+pub fn parse_agents(json: &str) -> Result<Vec<(String, bool)>, String> {
+    let v: serde_json::Value =
+        serde_json::from_str(json.trim()).map_err(|e| format!("claude agents: {e}"))?;
+    let list = match &v {
+        serde_json::Value::Array(a) => a.clone(),
+        serde_json::Value::Object(o) => o
+            .get("agents")
+            .and_then(|a| a.as_array())
+            .cloned()
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    Ok(list
+        .iter()
+        .filter_map(|a| {
+            let id = a.get("sessionId")?.as_str()?.to_string();
+            let state = a.get("state").and_then(|s| s.as_str()).unwrap_or("");
+            let live =
+                a.get("pid").is_some_and(|p| !p.is_null()) && !matches!(state, "done" | "failed");
+            Some((id, live))
+        })
+        .collect())
+}
+
 /// The fixed first prompt: it names the brief file and nothing else.
 pub fn prompt_for(brief_file: &Path) -> String {
     format!(
@@ -437,6 +480,30 @@ pub(crate) fn trusted_in(t: &TrustSet, dir: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn claude_agents_json_gives_sessions_and_whether_they_run() {
+        let got = parse_agents(
+            r#"[
+  {"id":"31d4b3cd","cwd":"/r","kind":"background","startedAt":1,"sessionId":"31d4b3cd-ded7-4c48-8f15-a7bbd8b90af9","name":"probe","state":"failed"},
+  {"pid":12301,"cwd":"/h","kind":"interactive","startedAt":2,"sessionId":"e0e01949-5ac0-4312-a44c-85938569a94e","name":"salvia","status":"idle"},
+  {"pid":12302,"kind":"background","sessionId":"aa","state":"working","status":"busy"},
+  {"kind":"background","sessionId":"bb","state":"done"},
+  {"name":"no session"}
+]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            got,
+            [
+                ("31d4b3cd-ded7-4c48-8f15-a7bbd8b90af9".to_string(), false),
+                ("e0e01949-5ac0-4312-a44c-85938569a94e".to_string(), true),
+                ("aa".to_string(), true),
+                ("bb".to_string(), false),
+            ]
+        );
+        assert!(parse_agents("not json").is_err());
+    }
     use super::*;
 
     fn cfg(dir: &Path, trusted: &[&Path]) -> TrustSet {

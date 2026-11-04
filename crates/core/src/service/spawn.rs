@@ -83,6 +83,17 @@ pub type EndFn = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 /// a trusted parent, §7).
 pub type TrustFn = Arc<dyn Fn(&Path) -> bool + Send + Sync>;
 
+/// One of Claude Code's own agents as `claude agents --json --all` lists
+/// it (card #447): its session, and whether it is still running.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ClaudeAgent {
+    pub session_id: String,
+    pub live: bool,
+}
+
+/// Lists Claude Code's agents on this device, finished ones included.
+pub type ListFn = Arc<dyn Fn() -> Result<Vec<ClaudeAgent>, String> + Send + Sync>;
+
 /// The window's spawner (part 1). The headless Core has none, and spawns
 /// nothing.
 #[derive(Clone)]
@@ -90,7 +101,13 @@ pub struct Spawner {
     pub spawn: SpawnFn,
     pub end: EndFn,
     pub trusted: TrustFn,
+    /// `claude agents --json --all`, for the cleanup after a restart; `None`
+    /// skips it.
+    pub list: Option<ListFn>,
 }
+
+/// The line on a card whose spawned agent was found gone at start.
+pub const RESTARTED: &str = "The agent Irori started for this card stopped with the restart. Irori starts a fresh one from Where and Left off.";
 
 /// Why a card got no agent; the request's failed row carries it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -418,6 +435,8 @@ pub(crate) struct SpawnState {
     /// brief and dropped once it started (a "Not done", a blocker answer,
     /// "Start an agent with this").
     pub answers: Mutex<HashMap<String, String>>,
+    /// The cleanup after a start ran for the installed spawner (card #447).
+    pub cleaned: std::sync::atomic::AtomicBool,
 }
 
 impl SpawnState {
@@ -488,6 +507,10 @@ fn spawn_name(t: &Task, generation: i64) -> String {
 impl Services {
     /// The window's spawner; `None` spawns nothing.
     pub(crate) fn set_spawner(&self, s: Option<Spawner>) {
+        // A spawner installed (the app's start) cleans up once (card #447).
+        self.spawn
+            .cleaned
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         *self.spawn.spawner.lock().unwrap_or_else(|e| e.into_inner()) = s;
     }
 
@@ -583,6 +606,7 @@ impl Services {
     pub(crate) fn sweep_spawns(&self) {
         let rows = self.store.as_ref();
         load_spawn(rows, &self.spawn);
+        self.clean_after_start();
         self.bind_spawns();
         self.end_finished();
         self.sweep_ending();
@@ -838,6 +862,77 @@ impl Services {
 
     /// Binds each request started here to its session once presence
     /// lists it (by name, §2).
+    /// The cleanup after a start (§2 "Restart of the spawning device", card
+    /// #447), once per installed spawner: `--bg` agents end with the
+    /// machine, so each agent Irori started here that Claude Code no longer
+    /// runs is ended the usual way (agent.gone "finished", then `claude
+    /// rm`). It leaves its card as finished, not as a crash, and the card
+    /// picks up from Where and Left off with a fresh agent.
+    fn clean_after_start(&self) {
+        use std::sync::atomic::Ordering;
+        let Some(list) = self
+            .spawn
+            .spawner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .and_then(|s| s.list.clone())
+        else {
+            return;
+        };
+        if self.spawn.cleaned.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let agents = match list() {
+            Ok(a) => a,
+            Err(e) => {
+                logf(format_args!("spawn cleanup: claude agents: {e}"));
+                self.spawn.cleaned.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
+        let me = self.device.id.clone();
+        let mut keys: Vec<String> = agents
+            .iter()
+            .map(|a| format!("{me}/{}", a.session_id))
+            .collect();
+        let open = self.open_cards();
+        for t in &open {
+            keys.extend(t.holders.iter().chain(t.assigned.iter()).cloned());
+        }
+        keys.sort();
+        keys.dedup();
+        for k in keys {
+            if irori_identity::owner::device_of(&k) != me {
+                continue;
+            }
+            let Some(m) = self.coord.spawned(&k) else {
+                continue;
+            };
+            let sess = session_of(&k);
+            if agents.iter().any(|a| a.session_id == sess && a.live) {
+                continue;
+            }
+            let listed = agents.iter().any(|a| a.session_id == sess);
+            let holds = open
+                .iter()
+                .any(|t| t.id == m.task_id && (t.holders.contains(&k) || t.assigned.contains(&k)));
+            if !listed && !holds {
+                continue;
+            }
+            if holds
+                && let Err(e) = self
+                    .coord
+                    .add_comment(SWEEPER, &m.task_id, RESTARTED, false)
+            {
+                logf(format_args!("spawn cleanup {k}: {e}"));
+            }
+            if let Err(e) = self.end_now(&k, true) {
+                logf(format_args!("spawn cleanup {k}: {e}"));
+            }
+        }
+    }
+
     fn bind_spawns(&self) {
         let me = self.device.id.as_str();
         let live = self.presence.snapshot();

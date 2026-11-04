@@ -14,7 +14,9 @@ use std::time::Duration;
 use common::*;
 use coord::{BlockerAnswer, NewTask, Task, Where};
 use gocompat::time::GoTime;
-use irori_core::spawn::{DONE_GRACE, IDLE_LIMIT, SpawnReq, SpawnSetting, SpawnStarted, Spawner};
+use irori_core::spawn::{
+    ClaudeAgent, DONE_GRACE, IDLE_LIMIT, RESTARTED, SpawnReq, SpawnSetting, SpawnStarted, Spawner,
+};
 
 /// The session id of the fake's nth spawn (1-based).
 fn sess(n: usize) -> String {
@@ -58,6 +60,7 @@ fn spawner(f: &Arc<Fake>, sessions: PathBuf) -> Spawner {
             Ok(())
         }),
         trusted: Arc::new(|_| true),
+        list: None,
     }
 }
 
@@ -324,4 +327,64 @@ fn pause_all_starts_no_agent_until_it_lifts() {
     wait_for(60, "the agent started once Pause all lifted", || {
         s.fake.started.lock().unwrap().len() == 2
     });
+}
+
+#[test]
+fn after_a_restart_its_gone_agent_ends_as_finished_and_a_fresh_one_starts() {
+    let s = bound();
+    let co = s.r.core.coord();
+    // The machine restarted: the --bg session is gone, and Claude Code
+    // lists it as finished.
+    let _ = std::fs::remove_file(s.r.claude.join("sessions").join("910001.json"));
+    let mut sp = spawner(&s.fake, s.r.claude.join("sessions"));
+    let gone = sess(1);
+    sp.list = Some(Arc::new(move || {
+        Ok(vec![ClaudeAgent {
+            session_id: gone.clone(),
+            live: false,
+        }])
+    }));
+    s.r.core.set_spawner(Some(sp));
+    wait_for(60, "the gone agent removed", || ended(&s, 1));
+    let cs = co.comments(&s.t.id).unwrap_or_default();
+    assert!(cs.iter().any(|c| c.text == RESTARTED), "{cs:?}");
+    // It leaves as finished after the short grace, and a fresh agent
+    // picks the card up.
+    skew_by(&s, Duration::from_secs(40));
+    wait_for(60, "a fresh agent started", || {
+        s.fake.started.lock().unwrap().len() == 2
+    });
+    let t = co.get_task(&s.t.id).unwrap();
+    assert!(
+        t.blockers
+            .iter()
+            .all(|b| b.question != coord::CRASHED_QUESTION),
+        "a restart isn't a crash: {:?}",
+        t.blockers
+    );
+}
+
+#[test]
+fn a_live_agent_survives_the_cleanup() {
+    let s = bound();
+    let mut sp = spawner(&s.fake, s.r.claude.join("sessions"));
+    let live = sess(1);
+    sp.list = Some(Arc::new(move || {
+        Ok(vec![ClaudeAgent {
+            session_id: live.clone(),
+            live: true,
+        }])
+    }));
+    s.r.core.set_spawner(Some(sp));
+    s.r.core.set_spawn_cap(s.r.core.spawn_cap()).unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(!ended(&s, 1));
+    assert!(
+        s.r.core
+            .coord()
+            .get_task(&s.t.id)
+            .unwrap()
+            .holders
+            .contains(&s.first())
+    );
 }
