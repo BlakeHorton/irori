@@ -125,6 +125,8 @@ export type ThreadCard = B.ThreadCard
 export type ThreadSummary = B.ThreadSummary
 export type Told = B.Told
 export type Trust = B.Trust
+export type TrustNeed = B.TrustNeed
+export type TrustStarted = B.TrustStarted
 export type UnofferedCard = B.UnofferedCard
 export type UpdateStatus = B.UpdateStatus
 export type UploadFile = B.UploadFile
@@ -669,6 +671,16 @@ export function ThreadSummary(p: Partial<B.ThreadSummary> = {}): B.ThreadSummary
 /** Told with Go's zero values for every field left out. */
 export function Told(p: Partial<B.Told> = {}): B.Told {
   return { "to": [], ...p } as B.Told
+}
+
+/** TrustNeed with Go's zero values for every field left out. */
+export function TrustNeed(p: Partial<B.TrustNeed> = {}): B.TrustNeed {
+  return { "taskId": "", "folder": "", "device": "", "here": false, "what": "", ...p } as B.TrustNeed
+}
+
+/** TrustStarted with Go's zero values for every field left out. */
+export function TrustStarted(p: Partial<B.TrustStarted> = {}): B.TrustStarted {
+  return { "folder": "", "already": false, ...p } as B.TrustStarted
 }
 
 /** UnofferedCard with Go's zero values for every field left out. */

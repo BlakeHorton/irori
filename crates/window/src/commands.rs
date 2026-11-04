@@ -891,6 +891,28 @@ pub async fn note_remove(w: W<'_>, id: String, why: String) -> R<crate::notes::N
     blocking(&w, move |w| w.note_remove(&id, &why)).await
 }
 
+/// A card's trust need, when its agent couldn't start because its repo
+/// isn't trusted for agents (card #449).
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_trust_need(
+    w: W<'_>,
+    task_id: String,
+) -> R<Option<crate::agents_trust::TrustNeed>> {
+    blocking(&w, move |w| w.agents_trust_need(&task_id)).await
+}
+
+/// The person's Trust and start: trusts the card's repo for agents on this
+/// device, then starts its agent. The only path that writes trust.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_trust_and_start(
+    w: W<'_>,
+    task_id: String,
+) -> R<crate::agents_trust::TrustStarted> {
+    blocking(&w, move |w| w.agents_trust_and_start(&task_id)).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn card_wake_notes(w: W<'_>, task_id: String) -> R<Vec<crate::notes::WakeNoteView>> {
@@ -1459,6 +1481,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             note_accept,
             note_edit,
             note_remove,
+            agents_trust_need,
+            agents_trust_and_start,
             card_wake_notes,
             boards_invite,
             boards_join_invite,

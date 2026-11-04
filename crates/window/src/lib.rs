@@ -42,6 +42,7 @@
 //!   [`Window::on_decide_count`], fed by the pumps (Go `onCounts`,
 //!   `board.pump(.., tray.SetDecide)`).
 
+pub mod agents_trust;
 pub mod attachments;
 pub mod board;
 pub mod boards;

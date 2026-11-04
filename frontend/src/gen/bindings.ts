@@ -174,6 +174,16 @@ export const commands = {
 	noteAccept: (id: string) => __TAURI_INVOKE<NoteView>("note_accept", { id }),
 	noteEdit: (id: string, edit: NoteEditInput) => __TAURI_INVOKE<NoteView>("note_edit", { id, edit }),
 	noteRemove: (id: string, why: string) => __TAURI_INVOKE<NoteView>("note_remove", { id, why }),
+	/**
+	 *  A card's trust need, when its agent couldn't start because its repo
+	 *  isn't trusted for agents (card #449).
+	 */
+	agentsTrustNeed: (taskId: string) => __TAURI_INVOKE<TrustNeed | null>("agents_trust_need", { taskId }),
+	/**
+	 *  The person's Trust and start: trusts the card's repo for agents on this
+	 *  device, then starts its agent. The only path that writes trust.
+	 */
+	agentsTrustAndStart: (taskId: string) => __TAURI_INVOKE<TrustStarted>("agents_trust_and_start", { taskId }),
 	cardWakeNotes: (taskId: string) => __TAURI_INVOKE<WakeNoteView[]>("card_wake_notes", { taskId }),
 	boardsInvite: (boardId: string) => __TAURI_INVOKE<InviteStatus>("boards_invite", { boardId }),
 	boardsJoinInvite: (link: string) => __TAURI_INVOKE<InviteStatus>("boards_join_invite", { link }),
@@ -1939,6 +1949,29 @@ export type Told = {
 
 /**  inbox.Trust. */
 export type Trust = "untrusted" | "user";
+
+/**  What the person sees before they confirm. */
+export type TrustNeed = {
+	taskId: string,
+	/**  The folder trust is recorded for: the repo's main root. */
+	folder: string,
+	/**  The device the agent runs on. */
+	device: string,
+	/**
+	 *  Whether that device is this one: otherwise it's trusted on that
+	 *  device's own Irori.
+	 */
+	here: boolean,
+	/**  What trusting does, in the words the confirm shows. */
+	what: string,
+};
+
+/**  After Trust and start. */
+export type TrustStarted = {
+	folder: string,
+	/**  It was already trusted (another window got there first). */
+	already: boolean,
+};
 
 /**  An unheld card nobody has been handed, and why. */
 export type UnofferedCard = {
