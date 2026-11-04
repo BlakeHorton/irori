@@ -224,24 +224,23 @@ export const TalkService = {
   Leave: (convId: string, member: B.TalkMemberRef) => done(commands.talkLeave(convId, member)),
 }
 
-// NotesService is the window's notes_* commands (card #411). Until the
-// bindings have them it reports unavailable and lib/notes.ts runs on its
-// sample; the calls go by name so this file builds either way.
-type NotesCommands = Record<string, ((...args: unknown[]) => Promise<unknown>) | undefined>
-const notesCmd = (name: string, ...args: unknown[]): Promise<unknown> => {
-  const fn = (commands as unknown as NotesCommands)[name]
-  if (!fn) return Promise.reject(new Error(`this Irori has no ${name} yet (card #411)`))
-  return call(fn(...args))
-}
+// NotesService is the window's notes_* commands (card #411). card_wake_notes
+// comes with card #412: until the bindings have it the call goes by name,
+// so this file builds either way.
+type WakeCommands = Record<string, ((...args: unknown[]) => Promise<unknown>) | undefined>
+const wakeCmd = () => (commands as unknown as WakeCommands).cardWakeNotes
 export const NotesService = {
-  available: () => typeof (commands as unknown as NotesCommands).notesList === "function",
-  List: (scope: string, removed = false) => notesCmd("notesList", scope, removed),
-  New: (note: unknown) => notesCmd("noteNew", note),
-  Accept: (id: string) => notesCmd("noteAccept", id),
-  Edit: (id: string, edit: unknown) => notesCmd("noteEdit", id, edit),
-  Remove: (id: string, why: string) => notesCmd("noteRemove", id, why),
-  CardWakeNotes: (taskId: string) => notesCmd("cardWakeNotes", taskId),
-  wakeAvailable: () => typeof (commands as unknown as NotesCommands).cardWakeNotes === "function",
+  List: (scope: string, removed = false) => call(commands.notesList(scope, removed)),
+  New: (note: B.NoteInput) => call(commands.noteNew(note)),
+  Accept: (id: string) => call(commands.noteAccept(id)),
+  Edit: (id: string, edit: B.NoteEditInput) => call(commands.noteEdit(id, edit)),
+  Remove: (id: string, why: string) => call(commands.noteRemove(id, why)),
+  wakeAvailable: () => typeof wakeCmd() === "function",
+  CardWakeNotes: (taskId: string): Promise<unknown> => {
+    const fn = wakeCmd()
+    if (!fn) return Promise.reject(new Error("this Irori has no card_wake_notes yet (card #412)"))
+    return call(fn(taskId))
+  },
 }
 
 export const BoardsService = {

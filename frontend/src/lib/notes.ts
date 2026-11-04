@@ -5,13 +5,14 @@
 // member accepts it (a board); a person's note is live at once (§4).
 //
 // Like cards.ts, components import from here, never from src/gen. The
-// window's notes_* commands come with card #411; until the bindings have
-// them, and in a plain browser, everything runs on the sample below, which
-// the buttons change in memory.
+// window's notes_* commands (card #411) back it in the app; in a plain
+// browser everything runs on the sample below, which the buttons change in
+// memory.
 
 import { useCallback, useEffect } from "react"
 
 import { Events, NotesService } from "./host"
+import { EventBoardChanged } from "./cards"
 import { inWails } from "./irori"
 import { useLatest } from "./talk"
 
@@ -258,8 +259,6 @@ export function kindCounts(notes: Note[]): KindCount[] {
 
 // ---- the gateway -----------------------------------------------------------
 
-// EventNotesChanged is the window's notes:changed (card #411).
-export const EventNotesChanged = "notes:changed"
 
 const listeners = new Set<() => void>()
 function changed() {
@@ -268,7 +267,7 @@ function changed() {
 
 // hostNotes reports whether the window has the notes commands yet.
 function hostNotes(): boolean {
-  return inWails() && NotesService.available()
+  return inWails()
 }
 
 export const notes = {
@@ -397,8 +396,10 @@ export function useNotes(scope: string): {
     function reloadFn() {
       void reload()
     }
+    // Note rows fold into the board's changes: board:changed covers a
+    // note proposed, accepted, edited or removed, here or synced.
     const off = inWails()
-      ? Events.On(EventNotesChanged, () => void reload())
+      ? Events.On(EventBoardChanged, () => void reload())
       : () => {}
     return () => {
       listeners.delete(reloadFn)
