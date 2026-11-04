@@ -358,9 +358,14 @@ pub struct MemberProfile {
     /// devices can write a counted profile, which is enough for a colour.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub color: String,
+    /// The person's avatar (card #393), a small image data URL or "".
+    /// Outside `personSig` like `color`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub avatar: String,
 }
 go_struct!(MemberProfile { "personId" => person_id: str, "name" => name: str,
-    "personEpoch" => person_epoch: int, "personSig" => person_sig: str, "color" => color: str });
+    "personEpoch" => person_epoch: int, "personSig" => person_sig: str, "color" => color: str,
+    "avatar" => avatar: str });
 
 impl MemberProfile {
     pub fn body(&self) -> MemberProfileBody {

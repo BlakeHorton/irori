@@ -78,6 +78,7 @@ export function TalkPage({
   onOpen,
   now,
   why = "",
+  board = "",
 }: {
   threads: ThreadSummary[]
   // Channels and DMs (Talk 1, #389).
@@ -90,6 +91,9 @@ export function TalkPage({
   now: Date
   // Why nobody is free to take a waiting thread (card #172).
   why?: string
+  // The shared space the sidebar picked (card #393): new threads start
+  // there, beside the ones listed.
+  board?: string
 }) {
   const narrow = useNarrow()
   const [query, setQuery] = useState("")
@@ -238,6 +242,7 @@ export function TalkPage({
         or an idle one does. It stays in Threads until you resolve it.
       </p>
       <AskBox
+        board={board}
         onThread={(id) => {
           setComposing(false)
           onOpen(id)

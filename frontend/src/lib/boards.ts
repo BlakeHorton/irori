@@ -125,6 +125,10 @@ export function suggestTag(name: string): string {
 
 // ---- sample mode ------------------------------------------------------------
 
+// sampleAvatar is a friend's picture in the samples (card #393).
+const sampleAvatar =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAE7klEQVR42q3U0YqryAJG4XnOAUEQBEEQhEBhi9gidpB0kHSQRMRIoaGIoYihaF9hPcF5mHN1hL6dYU/ObFjX/4dYVX/8KbAEtsARuAJP4AsCQSjYCITgTZAI3gW54ENQCj4FleBLUAvOglZwEUjBKFCCSaAFs8AIFsEff0ZYEXaEE+FGeBF+RBARRmwiRMRbRBLxHpFHfESUEZ8RVcRXRB1xjmgjLhEyYoxQEVOEjpgjTMQSrUCMFWPHODFujBfjxwQxYcwmRsS8xSQx7zF5zEdMGfMZU8V8xdQx55g25hIjY8YYFTPF6Jg5xsQs8QokWAl2gpPgJngJfkKQECZsEkTCW0KS8J6QJ3wklAmfCVXCV0KdcE5oEy4JMmFMUAlTgk6YE0zCkqxAipVipzgpboqX4qcEKWHKJkWkvKUkKe8pecpHSpnymVKlfKXUKeeUNuWSIlPGFJUypeiUOcWkLOkKZFgZdoaT4WZ4GX5GkBFmbDJExlvGf/9z+8vqjHNGm3HJkBljhsqYMnTGnGEylmwFcqwcO8fJcXO8HD8nyAlzNjki/9v1n845bc4lR+aMOSpnytE5c47JWfIVKLAK7AKnwC3wCvyCoCAs2BS/WP+pLbgUyIKxQBVMBbpgLjAFS7ECW6wt9hZni7vF2+JvCbaE23+0/tNli9wyblFbpi16y7zFbFm2K1BildglTolb4pX4JUFJWL4ClMiSsUSVTCW6ZC4xJUu5AjusHfYOZ4e7w9vh7wh2L6z/JHeMO9SOaYfeMe8wO5bdCuyx9th7nD3uHm+PvyfYvw7sGfeoPdMevWfeY/Ys+xWosCrsCqfCrfAq/Iqgeh2oGCtUxVShK+YKU7FUK3DAOmAfcA64B7wD/oHg8DpwYDygDkwH9IH5gDmwHFbgiHXEPuIccY94R/wjwfF14Mh4RB2Zjugj8xFzZDmuQI1VY9c4NW6NV+PXBDVh/copqpE1Y42qmWp0zVxjapZ6BU5YJ+wTzgn3hHfCPxGcCE+vACfkifGEOjGd0CfmE+bEclqBBqvBbnAa3AavwW8IGsKGTfPPbnLDpUE2jA2qYWrQDXODaViaFWixWuwWp8Vt8Vr8lqAlbNm0iPZXb1FL23JpkS1ji2qZWnTL3GJalnYFOqwOu8PpcDu8Dr8j6Ag7Nh2i4637+9e049zRdlw6ZMfYoTqmDt0xd5iOpVuBHqvH7nF63B6vx+8JesKeTY/oeetJet578p6PnrLns6fq+eqpe849bc+lR/aMPapn6tE9c4/pWfoVkFgSW+JIXIkn8SWBJJRsJELyJknkX3zEl6SWnCWt5CKRklGiJJNES2aJkSxyBQasAXvAGXAHvAF/IBgIBzYDYvjVPxhoBy4DcmAcUAPTgB6YB8zAMqzAFeuKfcW54l7xrvhXgivh9ZVjekVeGa+oK9MVfWW+Yq4s1xVQWApb4ShchafwFYF6/SYrRoVSTAqtmBVGsagVuGHdsG84N9wb3g3/9vL6T+MNdWO6oW/MN8yN5bYCd6w79h3njnvHu/+f6z+pO9MdfWe+Y+4s9xXQWBpb42hcjaf/HaCZNFoza4xm0SvwwHpgP3AeuI9/tf7T9EA/mB+YB8tjBZ5YT+wnzhP3+TuAJ/rJ/MQ8WZ4rYLAMtsExv2H9J22YDcawmBX4xvrG/sb5/n3AN/M35pvlm/8BIz9ypdG5tDYAAAAASUVORK5CYII="
+
 let sampleBoards: BoardSummary[] | null = null
 const sampleListeners = new Set<() => void>()
 
@@ -143,6 +147,9 @@ function boardsState(): BoardSummary[] {
           name: "Blake",
           me: false,
           presence: "recent",
+          color: "indigo",
+          // A picked picture (card #393): a 32px sample.
+          avatar: sampleAvatar,
           lastSeen: new Date(Date.now() - 5 * 60_000).toISOString(),
           working: 1,
           free: 0,
@@ -152,6 +159,7 @@ function boardsState(): BoardSummary[] {
           name: "Casey",
           me: false,
           presence: "offline",
+          color: "sand",
           lastSeen: new Date(Date.now() - 2 * 3600_000).toISOString(),
           working: 1,
           free: 1,

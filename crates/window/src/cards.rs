@@ -769,6 +769,24 @@ fn unsent_key(agent: &str, r: &str) -> String {
 
 impl Window {
     /// Go `BoardService.people`.
+    /// Each other person's colour on this screen by person id (card
+    /// #385), without the rest of [`Self::people`]: for the boards list
+    /// (card #393), which runs on every boards change.
+    pub(crate) fn person_colors(&self) -> BTreeMap<String, String> {
+        let c = &self.core;
+        let board: HashMap<String, irori_core::BoardAgent> = c
+            .board_agents()
+            .into_iter()
+            .map(|a| (a.key.clone(), a))
+            .collect();
+        let persons: HashMap<String, irori_core::BoardMember> = c
+            .board_people()
+            .into_iter()
+            .map(|m| (m.key.clone(), m))
+            .collect();
+        place_others(&persons, &board, &c.device_colors())
+    }
+
     pub(crate) fn people(&self) -> People {
         let c = &self.core;
         let mut p = People {
@@ -2663,6 +2681,7 @@ mod tests {
                 name: "Blake".into(),
                 board_id: "b".into(),
                 color: "pink".into(),
+                ..Default::default()
             },
         );
         p.board.insert(
@@ -2676,6 +2695,7 @@ mod tests {
                 person: "Blake".into(),
                 person_color: "pink".into(),
                 avatar: String::new(),
+                ..Default::default()
             },
         );
         p.others = place_others(&p.persons, &p.board, &p.colors);

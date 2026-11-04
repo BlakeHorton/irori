@@ -203,6 +203,17 @@ impl Window {
         self.core.set_person_color(color)
     }
 
+    /// DevicesService.PersonAvatar: the person's avatar on shared spaces,
+    /// a small image data URL, "" for none (card #393).
+    pub fn person_avatar(&self) -> String {
+        self.core.person_avatar()
+    }
+
+    /// DevicesService.SetPersonAvatar ("" takes it off).
+    pub fn set_person_avatar(&self, avatar: &str) -> Result<(), String> {
+        self.core.set_person_avatar(avatar)
+    }
+
     /// DevicesService.HomeServer.
     pub fn home_server(&self) -> HomeServerView {
         self.seams.mesh.home_server()

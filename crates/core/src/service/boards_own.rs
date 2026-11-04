@@ -176,6 +176,12 @@ pub struct SummaryMember {
     pub working: i64,
     /// Their agents on the board that are idle.
     pub free: i64,
+    /// Their colour pick on their member.profile (card #385), "" for none;
+    /// for this person, their own pick.
+    pub color: String,
+    /// Their avatar on their member.profile (card #393), "" for none; for
+    /// this person, their own.
+    pub avatar: String,
 }
 
 /// Where a private card was shared to, when it was: the board and the
@@ -622,6 +628,8 @@ impl Services {
                 name: name_of(&me),
                 person_id: me.clone(),
                 me: true,
+                color: self.person_color.chosen(),
+                avatar: self.person_avatar.chosen(),
                 ..Default::default()
             });
         }
@@ -631,6 +639,8 @@ impl Services {
                     name: name_of(&p.person_id),
                     person_id: p.person_id.clone(),
                     me: false,
+                    color: b.verifier.profile_color(&p.person_id),
+                    avatar: b.verifier.profile_avatar(&p.person_id),
                     ..Default::default()
                 });
             }

@@ -1,7 +1,7 @@
-// AppSidebar is the window's nav (card #135): Home, Talk (card #390),
-// Boards and Held, then
+// AppSidebar is the window's nav (card #135): the space switcher (card
+// #393), Home, Talk (card #390), Boards and Held, then
 // the boards and cards you pinned, and at the bottom this device, how the
-// agents stand, and Settings. Its top button folds it to icons; the window
+// agents stand, you (your profile, card #393) and Settings. Its top button folds it to icons; the window
 // remembers that on this device. On a phone or a narrow window (card #227)
 // it is a drawer over the page instead: the header's menu button opens it,
 // and a tap outside, Escape or going somewhere closes it.
@@ -28,7 +28,9 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { Face } from "@/components/profile/face"
 import { SettingsMenu } from "@/components/settings/settings-menu"
+import { SpaceSwitcher } from "@/components/space-switcher"
 import { Badge } from "@/components/ui/badge"
 import { agentCounts } from "@/lib/agent-counts"
 import { AgentStrip } from "@/components/cards/agent-strip"
@@ -38,6 +40,7 @@ import type { BoardSummary } from "@/lib/boards"
 import type { CardSummary } from "@/lib/cards"
 import { plainLine, type Roster } from "@/lib/irori"
 import { go, type Section } from "@/lib/nav"
+import { boardsInSpace } from "@/lib/spaces"
 import { useNarrow } from "@/lib/media"
 import { previewFlag } from "@/lib/preview"
 import {
@@ -79,6 +82,9 @@ export function AppSidebar({
   onOpenCard,
   drawer = false,
   onDrawer,
+  space,
+  onSpace,
+  me,
 }: {
   roster: Roster
   held: number
@@ -101,6 +107,11 @@ export function AppSidebar({
   // Narrow windows: the drawer is open, and closing it.
   drawer?: boolean
   onDrawer?: (open: boolean) => void
+  // The space Home, Talk and Boards show (card #393), and picking one.
+  space: string
+  onSpace: (id: string) => void
+  // You, as your profile has you: the row that opens it.
+  me: { name: string; color: string; avatar: string }
 }) {
   const narrow = useNarrow()
   const [foldedPref, setFolded] = useState(readFolded)
@@ -207,7 +218,7 @@ export function AppSidebar({
   ])
   const { device, version, agents } = roster
   const n = agentCounts(agents)
-  const pinnedBoards = boards
+  const pinnedBoards = boardsInSpace(boards, space)
     .filter((b) => b.pinned)
     .sort((a, b) => (a.pinRank ?? 0) - (b.pinRank ?? 0))
   // Pinned cards in their order; a subtask shows under Pinned only on its
@@ -313,6 +324,10 @@ export function AppSidebar({
           <PanelLeftIcon className="size-4" aria-hidden />
         </button>
         )}
+      </div>
+
+      <div className="shrink-0 px-2 pb-2">
+        <SpaceSwitcher boards={boards} space={space} onSpace={onSpace} folded={folded} />
       </div>
 
       <nav
@@ -440,16 +455,28 @@ export function AppSidebar({
           folded ? "flex-col px-2" : "px-4"
         )}
       >
-        {!folded && (
-          <div className="grid min-w-0 flex-1 text-xs">
-            <span
-              className="truncate font-medium text-ink-2"
-              title={device?.id}
-            >
-              {device?.name || "this device"}
+        <button
+          type="button"
+          onClick={() => go({ kind: "profile" })}
+          aria-current={here({ kind: "profile" }) ? "page" : undefined}
+          aria-label={folded ? "Your profile" : undefined}
+          title="Your profile: name, colour and picture, and your spaces"
+          className={cn(
+            "flex min-w-0 items-center gap-2 rounded-md text-left text-xs hover:bg-secondary",
+            folded ? "justify-center p-1" : "-ml-1.5 flex-1 px-1.5 py-1",
+            here({ kind: "profile" }) && "bg-secondary"
+          )}
+        >
+          <Face name={me.name} color={me.color} avatar={me.avatar} size="md" />
+          {!folded && (
+            <span className="grid min-w-0 flex-1">
+              <span className="truncate font-medium text-ink">{me.name || "You"}</span>
+              <span className="truncate text-muted-foreground" title={device?.id}>
+                {device?.name || "this device"}
+              </span>
             </span>
-          </div>
-        )}
+          )}
+        </button>
         <SettingsMenu version={version} />
       </div>
     </aside>

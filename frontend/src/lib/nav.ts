@@ -3,8 +3,9 @@
 // or one board's tab), the Boards page, or one board's page. It lives in
 // the address, like an open card ("#card/<id>"), so back and forward move
 // between them: "#talk", "#talk/<id>" (a conversation open), "#notes",
-// "#notes/<board tag>", "#boards", "#board/<id>", and no hash for Home. A
-// card's page opens over whichever
+// "#notes/<board tag>", "#profile" (card #393: your name, colour and
+// picture, and your spaces), "#boards", "#board/<id>", and no hash for
+// Home. A card's page opens over whichever
 // of them it was opened from.
 
 export type Section =
@@ -14,6 +15,7 @@ export type Section =
   | { kind: "notes"; tab: string }
   | { kind: "boards" }
   | { kind: "board"; id: string }
+  | { kind: "profile" }
 
 export const Home: Section = { kind: "home" }
 
@@ -21,6 +23,7 @@ export const Home: Section = { kind: "home" }
 // as the section history has behind it, so Home here).
 export function sectionFromHash(hash: string): Section {
   if (hash === "#boards") return { kind: "boards" }
+  if (hash === "#profile") return { kind: "profile" }
   if (hash === "#talk") return { kind: "talk", id: "" }
   const t = hash.match(/^#talk\/(.+)$/)
   if (t) return { kind: "talk", id: decodeURIComponent(t[1]) }
@@ -34,6 +37,7 @@ export function sectionFromHash(hash: string): Section {
 
 export function sectionHash(s: Section): string {
   if (s.kind === "boards") return "#boards"
+  if (s.kind === "profile") return "#profile"
   if (s.kind === "talk") return s.id ? `#talk/${encodeURIComponent(s.id)}` : "#talk"
   if (s.kind === "notes") return s.tab ? `#notes/${encodeURIComponent(s.tab)}` : "#notes"
   if (s.kind === "board") return `#board/${encodeURIComponent(s.id)}`

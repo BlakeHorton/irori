@@ -499,3 +499,50 @@ fn person_pick_folds_newest_and_ignores_non_person_writers() {
     assert!(p.apply(&row("", 5, "user")));
     assert_eq!(p.chosen(), "");
 }
+
+// ---- the person's avatar on shared spaces (card #393) ----
+
+#[test]
+fn an_avatar_is_a_small_png_jpeg_or_webp_data_url() {
+    use coord::person_avatar::{MAX_LEN, valid};
+    assert!(valid(""));
+    assert!(valid("data:image/png;base64,iVBORw0KGgo="));
+    assert!(valid("data:image/jpeg;base64,/9j/4AAQ"));
+    assert!(valid("data:image/webp;base64,UklGRg=="));
+    assert!(!valid("data:image/svg+xml;base64,PHN2Zz4="), "no SVG");
+    assert!(!valid("https://example.com/me.png"), "no links");
+    assert!(!valid("data:image/png;base64,"), "empty");
+    assert!(
+        !valid("data:image/png;base64,abc\"><script>"),
+        "plain base64 only"
+    );
+    let big = format!("data:image/png;base64,{}", "A".repeat(MAX_LEN));
+    assert!(!valid(&big), "over the cap");
+}
+
+#[test]
+fn person_avatar_folds_newest_and_ignores_non_person_writers() {
+    use coord::person_avatar::{KIND, PersonAvatar};
+    let p = PersonAvatar::new();
+    let row = |avatar: &str, at: u64, actor: &str| Event {
+        device_id: "pc".into(),
+        seq: at as i64,
+        hlc: hlc::Timestamp(at),
+        actor: actor.into(),
+        kind: KIND.into(),
+        payload: format!(r#"{{"avatar":"{avatar}","atDevice":"pc"}}"#).into_bytes(),
+        sig: Vec::new(),
+    };
+    let a = "data:image/png;base64,QUFB";
+    let b = "data:image/webp;base64,QkJC";
+    assert!(p.apply(&row(a, 2, "user")));
+    assert!(!p.apply(&row(b, 1, "user")), "older");
+    assert!(!p.apply(&row(b, 3, "agent:x")), "not the person");
+    assert!(
+        !p.apply(&row("https://x/y.png", 4, "user")),
+        "not a picture"
+    );
+    assert_eq!(p.chosen(), a);
+    assert!(p.apply(&row("", 5, "user")));
+    assert_eq!(p.chosen(), "");
+}

@@ -54,6 +54,9 @@ import { BoardHeaderBar, BoardPage } from "@/components/boards/board-page"
 import { BoardsPage } from "@/components/boards/boards-page"
 import { NotesPage } from "@/components/notes/notes-page"
 import { useNotesWaiting } from "@/lib/notes"
+import { ProfilePage } from "@/components/profile/profile-page"
+import { useMe } from "@/lib/profile"
+import { AllSpaces, Personal, cardInSpace, threadsSpace, useSpace } from "@/lib/spaces"
 import { go, Home, sameSection, sectionFromHash, type Section } from "@/lib/nav"
 import { CommandPalette, PaletteJump, paletteOpenKey } from "@/components/command-palette"
 import { isMac, useCommands } from "@/lib/commands"
@@ -108,6 +111,14 @@ export function App() {
   // Home's idle line (card #341): a work shortage or a dispatch gap.
   const idle = useIdleReport(roster.agents)
   const { boards } = useBoards()
+  // The space the sidebar's switcher picked (card #393): Home, Talk and
+  // Boards show it. All spaces, the default, is everything.
+  const [space, setSpace] = useSpace(boards)
+  const shared = space !== AllSpaces && space !== Personal
+  const spaceCards = useMemo(() => cards.filter((c) => cardInSpace(c, space)), [cards, space])
+  // Home's own scope: your cards, or a shared space's.
+  const homeScope = shared ? space : ScopeOwn
+  const me = useMe()
   const now = useNow()
   // ?filter=done in the browser preview starts on that filter; otherwise
   // Home starts on its remembered board pick (card #199).
@@ -154,7 +165,7 @@ export function App() {
       : "all"
   )
   // Closed pages each page's own cards (card #161): Home's, or the board's.
-  const doneScope = section.kind === "board" ? section.id : ScopeOwn
+  const doneScope = section.kind === "board" ? section.id : homeScope
   const done = useDoneCards(
     section.kind === "board" ? boardFilter === "done" : filter === "done",
     doneScope
@@ -196,7 +207,7 @@ export function App() {
   const [newBoard, setNewBoard] = useState(false)
   // Threads (card #116) live on the Talk page (card #390): a new thread
   // from Home's ask box opens there, as does a thread's #ref.
-  const { threads: threadList } = useThreads()
+  const { threads: threadList } = useThreads(threadsSpace(space))
   // Channels and DMs (Talk 1, #389): Talk's list, and its count.
   const { conversations } = useConversations()
   const startedThread = (id: string) => go({ kind: "talk", id })
@@ -380,12 +391,13 @@ export function App() {
 
   // Home is your own cards; a board's live on its page (card #96), and
   // its decisions show on Home as one line per board.
-  const boardDecide = cards.filter((c) => c.scope === "board" && c.openBlockers > 0)
+  const boardDecide = spaceCards.filter((c) => c.scope === "board" && c.openBlockers > 0)
   // Needs you leads Home (card #261): its cards and held messages. An
-  // agent's message to you is a DM in Talk (card #390).
+  // agent's message to you is a DM in Talk (card #390). Held ones are
+  // yours, not a shared space's (card #393).
   const needs = useMemo(
-    () => needsOf(cards.filter((c) => inScope(c, ScopeOwn)), held.held),
-    [cards, held.held]
+    () => needsOf(spaceCards.filter((c) => inScope(c, homeScope)), shared ? [] : held.held),
+    [spaceCards, homeScope, shared, held.held]
   )
   const needCards = useMemo(
     () => new Set(needs.filter((n) => n.kind === "check" || n.kind === "decision").map((n) => n.id)),
@@ -532,11 +544,14 @@ export function App() {
         notesWaiting={notesWaiting}
         boardsNeedYou={boardDecide.length}
         boards={boards}
-        cards={cards}
+        cards={spaceCards}
         openCard={open}
         onOpenCard={openCard}
         drawer={drawer}
         onDrawer={setDrawer}
+        space={space}
+        onSpace={setSpace}
+        me={me}
       />
       <div className="flex min-w-0 flex-1 flex-col">
       <AppHeader
@@ -551,6 +566,8 @@ export function App() {
                 ? "Talk"
                 : section.kind === "notes"
                   ? "Notes"
+                : section.kind === "profile"
+                  ? "Profile"
                   : "Home"
         }
         bar={
@@ -599,6 +616,7 @@ export function App() {
             onOpen={(id) => go({ kind: "talk", id })}
             now={now}
             why={whyWaiting(roster.agents)}
+            board={threadsSpace(space)}
           />
         ) : section.kind === "notes" ? (
           <Scroll>
@@ -611,9 +629,19 @@ export function App() {
               now={now}
             />
           </Scroll>
+        ) : section.kind === "profile" ? (
+          <Scroll>
+            <ProfilePage
+              boards={boards}
+              agents={roster.agents.length}
+              space={space}
+              onSpace={setSpace}
+            />
+          </Scroll>
         ) : section.kind === "boards" ? (
           <Scroll>
             <BoardsPage
+              space={space}
               cards={cards}
               now={now}
               newBoard={newBoard}
@@ -640,8 +668,9 @@ export function App() {
           <p className="px-1 text-sm text-muted-foreground">Loading cards…</p>
         ) : (
           <BoardView
-            scope={ScopeOwn}
-            cards={cards}
+            key={homeScope}
+            scope={homeScope}
+            cards={spaceCards}
             done={done}
             filter={filter}
             onFilter={pickHomeFilter}
@@ -655,7 +684,7 @@ export function App() {
             header={
               <>
                 <MainRedLines reds={mainReds(cards)} onOpen={openCard} />
-                <AskBox onThread={startedThread} />
+                <AskBox onThread={startedThread} board={threadsSpace(space)} />
                 <IdleLine text={idleLine(idle)} />
               </>
             }
@@ -691,7 +720,10 @@ export function App() {
         board={
           section.kind === "board" && !open
             ? boards.find((b) => b.boardId === section.id)
-            : undefined
+            : // Home in a shared space makes its cards there (card #393).
+              !open && shared && section.kind === "home"
+              ? boards.find((b) => b.boardId === space)
+              : undefined
         }
       />
       {heldOpen && (

@@ -173,6 +173,9 @@ pub struct BoardAgent {
     /// The member's own colour pick on their member.profile, "" for none
     /// (card #385); the window places it beside the viewer's devices.
     pub person_color: String,
+    /// The member's avatar on their member.profile, "" for none (card
+    /// #393).
+    pub person_avatar: String,
 }
 
 /// Another person on a shared board ([`super::Core::board_people`]).
@@ -186,6 +189,8 @@ pub struct BoardMember {
     /// Their own colour pick on their member.profile, "" for none (card
     /// #385).
     pub color: String,
+    /// Their avatar on their member.profile, "" for none (card #393).
+    pub avatar: String,
 }
 
 /// A folded `agent.card` row.
@@ -1997,15 +2002,19 @@ impl Services {
             )?;
             b.store.append("irori", kinds::MEMBER_DEVICE_ADDED, &add)?;
         }
-        // None yet, or the person renamed themself (card #183) or picked
-        // a colour (card #385): the board shows the newest of both.
+        // None yet, or the person renamed themself (card #183), picked a
+        // colour (card #385) or an avatar (card #393): the board shows the
+        // newest of each.
         let color = self.person_color.chosen();
+        let avatar = self.person_avatar.chosen();
         if v.profile(&me.id)
             .is_none_or(|n| n != self.ident.current().name)
             || v.profile_color(&me.id) != color
+            || v.profile_avatar(&me.id) != avatar
         {
             let mut prof = self.ident.member_profile_row(epoch)?;
             prof.color = color;
+            prof.avatar = avatar;
             b.store.append("irori", kinds::MEMBER_PROFILE, &prof)?;
         }
         Ok(())
@@ -2452,6 +2461,7 @@ impl super::Core {
                     person: people.get(&person_id).cloned().unwrap_or_default(),
                     person_color: b.verifier.profile_color(&person_id),
                     avatar: checked_face(face_of.get(&a.key).map(String::as_str).unwrap_or("")),
+                    person_avatar: b.verifier.profile_avatar(&person_id),
                     key: a.key,
                     name: a.name,
                     status: a.status,
@@ -2485,6 +2495,7 @@ impl super::Core {
                     name,
                     board_id: b.id.clone(),
                     color: b.verifier.profile_color(&p.person_id),
+                    avatar: b.verifier.profile_avatar(&p.person_id),
                 });
             }
         }

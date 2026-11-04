@@ -8,6 +8,7 @@ import { cardTone, type Tone } from "@/components/cards/bits"
 import { Face } from "@/components/cards/faces"
 import { Button } from "@/components/ui/button"
 import { useBoards, useInvite, type BoardSummary } from "@/lib/boards"
+import { AllSpaces, Personal, boardsInSpace } from "@/lib/spaces"
 import { TaskState, type CardSummary } from "@/lib/cards"
 import { plainLine, relativeTime } from "@/lib/irori"
 import { go } from "@/lib/nav"
@@ -20,14 +21,18 @@ export function BoardsPage({
   now,
   newBoard,
   onNewBoard,
+  space = AllSpaces,
 }: {
+  // The sidebar's space (card #393): only its boards show.
+  space?: string
   cards: CardSummary[]
   now: Date
   // The header's New board dialog is open (card #126).
   newBoard: boolean
   onNewBoard: (open: boolean) => void
 }) {
-  const { boards, error, reload } = useBoards()
+  const { boards: all, error, reload } = useBoards()
+  const boards = boardsInSpace(all, space)
   const { invite, setInvite } = useInvite(true)
   const inviting = !!invite && invite.state !== ""
   return (
@@ -54,7 +59,12 @@ export function BoardsPage({
           />
         </div>
       )}
-      {boards.length > 0 ? (
+      {space === Personal ? (
+        <p className="max-w-2xl text-[13px] text-muted-foreground">
+          Personal holds no shared boards: your own cards are on Home. Pick
+          All spaces or a shared space in the sidebar to see its boards.
+        </p>
+      ) : boards.length > 0 ? (
         <ul
           className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
           aria-label="Your boards"
@@ -77,7 +87,7 @@ export function BoardsPage({
       <NewBoardDialog
         open={newBoard}
         onClose={() => onNewBoard(false)}
-        taken={boards.map((b) => b.tag)}
+        taken={all.map((b) => b.tag)}
         onMade={reload}
         // One invite at a time: joining waits until this one ends.
         join={!inviting}

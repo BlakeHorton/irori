@@ -868,6 +868,7 @@ impl Identity {
             person_epoch: b.person_epoch,
             person_sig: sig,
             color: String::new(),
+            avatar: String::new(),
         })
     }
 

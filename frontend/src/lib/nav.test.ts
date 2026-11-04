@@ -13,6 +13,7 @@ describe("Talk lives in the address (card #390)", () => {
       { kind: "talk", id: "01M6 x/y" },
       { kind: "board", id: "b1" },
       { kind: "boards" },
+      { kind: "profile" },
       { kind: "home" },
     ] as const)
       expect(sectionFromHash(sectionHash(s))).toEqual(s)

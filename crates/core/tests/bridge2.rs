@@ -813,3 +813,45 @@ fn an_agents_face_reaches_a_friend_on_a_shared_board() {
             .any(|a| a.key == b1 && a.avatar.contains("\"id\":\"kettle\""))
     });
 }
+
+/// Card #393: Bob picks an avatar. His Core writes it on his
+/// member.profile, and once the space syncs Alice's Core shows it on Bob in
+/// the space's members; taking it off clears it again. Bob's colour rides
+/// on the same summary.
+#[test]
+fn a_persons_avatar_reaches_the_other_side() {
+    let t = two_people();
+    let bob_id = t.b().person().id;
+    let bobs = |c: &Core| {
+        c.board_list()
+            .into_iter()
+            .flat_map(|b| b.members)
+            .find(|m| m.person_id == bob_id)
+            .map(|m| (m.avatar, m.color))
+    };
+    assert_eq!(
+        bobs(t.a()),
+        Some((String::new(), String::new())),
+        "none yet"
+    );
+    assert!(
+        t.b()
+            .set_person_avatar("https://example.com/b.png")
+            .is_err()
+    );
+    let pic = "data:image/png;base64,iVBORw0KGgo=";
+    t.b().set_person_avatar(pic).unwrap();
+    t.b().set_person_color("pink").unwrap();
+    wait_for(30, "bob's Core takes the avatar", || {
+        t.b().person_avatar() == pic
+    });
+    wait_for(30, "alice sees bob's avatar and colour", || {
+        t.sync();
+        bobs(t.a()) == Some((pic.to_string(), "pink".to_string()))
+    });
+    t.b().set_person_avatar("").unwrap();
+    wait_for(30, "alice sees bob without one again", || {
+        t.sync();
+        bobs(t.a()).is_some_and(|(a, _)| a.is_empty())
+    });
+}

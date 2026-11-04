@@ -80,6 +80,8 @@ struct MemberFold {
     name: String,
     /// The latest counted profile's colour (card #385).
     color: String,
+    /// The latest counted profile's avatar (card #393).
+    avatar: String,
     profile: bool,
 }
 
@@ -370,6 +372,7 @@ fn fold_member(
         claims,
         name: String::new(),
         color: String::new(),
+        avatar: String::new(),
         profile: false,
     };
     for p in &rows.profiles {
@@ -387,6 +390,7 @@ fn fold_member(
         ) {
             m.name = p.prof.name.clone(); // the latest counted one
             m.color = p.prof.color.clone();
+            m.avatar = p.prof.avatar.clone();
             m.profile = true;
         }
     }
@@ -974,6 +978,17 @@ impl BoardVerifier {
             .get(person_id)
             .filter(|m| m.profile)
             .map(|m| m.color.clone())
+            .unwrap_or_default()
+    }
+
+    /// The avatar on a member's counted member.profile, "" when none
+    /// (card #393). Not checked here; the reader checks it before drawing.
+    pub fn profile_avatar(&self, person_id: &str) -> String {
+        let st = self.lock();
+        st.members
+            .get(person_id)
+            .filter(|m| m.profile)
+            .map(|m| m.avatar.clone())
             .unwrap_or_default()
     }
 

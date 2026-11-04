@@ -172,6 +172,8 @@ export const commands = {
 	/**  Agents' own faces by name key (card #407): open-bot-avatar JSON. */
 	devicesAgentAvatars: () => __TAURI_INVOKE<{ [key in string]: string }>("devices_agent_avatars"),
 	devicesSetPersonColor: (color: string) => __TAURI_INVOKE<null>("devices_set_person_color", { color }),
+	devicesPersonAvatar: () => __TAURI_INVOKE<string>("devices_person_avatar"),
+	devicesSetPersonAvatar: (avatar: string) => __TAURI_INVOKE<null>("devices_set_person_avatar", { avatar }),
 	devicesRenameDevice: (deviceId: string, name: string) => __TAURI_INVOKE<string>("devices_rename_device", { deviceId, name }),
 	devicesAddDevice: (role: string) => __TAURI_INVOKE<PairStatus>("devices_add_device", { role }),
 	devicesJoinWithCode: (code: string, server: string) => __TAURI_INVOKE<PairStatus>("devices_join_with_code", { code, server }),
@@ -1553,6 +1555,14 @@ export type SummaryMember = {
 	/**  Their agents on the board that are working, and idle. */
 	working: number,
 	free: number,
+	/**
+	 *  Their colour (card #385): another person's as this screen places
+	 *  it (their pick, nudged off this person's devices and other people);
+	 *  this person's own pick, "" for none.
+	 */
+	color?: string,
+	/**  Their avatar (card #393): a small image data URL, "" for none. */
+	avatar?: string,
 };
 
 /**  One conversation in Talk's list. */

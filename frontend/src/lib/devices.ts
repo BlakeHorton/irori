@@ -359,6 +359,17 @@ export const devices = {
     if (inWails()) return DevicesService.SetPersonColor(color)
     samplePersonColor = color
   },
+  // personAvatar is the person's own picture on shared spaces (card
+  // #393): a small image data URL, "" for none.
+  async personAvatar(): Promise<string> {
+    if (inWails()) return DevicesService.PersonAvatar()
+    return samplePersonAvatar
+  },
+  // setPersonAvatar picks it; "" takes it off.
+  async setPersonAvatar(avatar: string): Promise<void> {
+    if (inWails()) return DevicesService.SetPersonAvatar(avatar)
+    samplePersonAvatar = avatar
+  },
   // rename is the person's name for a device (card #184); "" goes back to
   // the computer's name. Returns the name as kept.
   async rename(deviceId: string, name: string): Promise<string> {
@@ -368,6 +379,7 @@ export const devices = {
 }
 
 let samplePersonColor = ""
+let samplePersonAvatar = ""
 
 // MaxDeviceName mirrors coord::devname::MAX_LEN.
 export const MaxDeviceName = 40

@@ -245,6 +245,8 @@ struct Services {
     person_color: coord::devcolor::PersonPick,
     /// Agents' faces by name (card #407).
     faces: coord::avatar::Faces,
+    /// The person's own avatar on shared spaces (card #393).
+    person_avatar: coord::person_avatar::PersonAvatar,
     /// The person's names for their devices (card #184).
     device_names: coord::devname::Names,
     /// Talk's channels, DMs and read cursors (card #389).
@@ -702,6 +704,14 @@ struct PersonColor<'a> {
     color: &'a str,
 }
 
+/// The `person.avatar` payload (card #393).
+#[derive(Serialize)]
+struct PersonAvatarRow<'a> {
+    #[serde(rename = "atDevice")]
+    at_device: &'a str,
+    avatar: &'a str,
+}
+
 impl Core {
     /// Brings everything up (Go `Start` without the net, pairing, boards,
     /// home server and API listener). The lockfile is written by
@@ -1009,8 +1019,9 @@ impl Core {
         let colors = coord::devcolor::Picks::new();
         let person_color = coord::devcolor::PersonPick::new();
         let faces = coord::avatar::Faces::new();
+        let person_avatar = coord::person_avatar::PersonAvatar::new();
         let colors_sub = Arc::new(st.subscribe());
-        load_colors(&st, &colors, &person_color, &faces);
+        load_colors(&st, &colors, &person_color, &faces, &person_avatar);
         let device_names = coord::devname::Names::new();
         load_device_names(&st, &device_names);
         let talk = Arc::new(coord::talk::Talk::new(Some(st.clone()), {
@@ -1179,6 +1190,7 @@ impl Core {
             colors,
             person_color,
             faces,
+            person_avatar,
             device_names,
             talk,
             files,
@@ -1516,7 +1528,13 @@ impl Core {
                 let _reg = reg;
                 while let Some(ev) = sub.recv() {
                     if ev.is_resync() {
-                        load_colors(&s.store, &s.colors, &s.person_color, &s.faces);
+                        load_colors(
+                            &s.store,
+                            &s.colors,
+                            &s.person_color,
+                            &s.faces,
+                            &s.person_avatar,
+                        );
                         load_device_names(&s.store, &s.device_names);
                         s.follow_person_name();
                         s.hub.publish(CoreEvent::Devices);
@@ -1536,10 +1554,12 @@ impl Core {
                         if s.faces.apply(&ev) {
                             s.hub.publish(CoreEvent::Devices);
                         }
-                    } else if ev.kind == coord::devcolor::PERSON_KIND {
+                    } else if ev.kind == coord::devcolor::PERSON_KIND
+                        || ev.kind == coord::person_avatar::KIND
+                    {
                         // The pick reaches every shared board on the
-                        // person's member.profile (card #385).
-                        if s.person_color.apply(&ev) {
+                        // person's member.profile (cards #385, #393).
+                        if s.person_color.apply(&ev) || s.person_avatar.apply(&ev) {
                             s.follow_person_name();
                             s.hub.publish(CoreEvent::Devices);
                         }
@@ -2348,6 +2368,41 @@ impl Core {
             .map_err(|e| e.to_string())
     }
 
+    /// The person's own avatar on shared spaces, "" for none (card #393).
+    pub fn person_avatar(&self) -> String {
+        self.s.person_avatar.chosen()
+    }
+
+    /// Records the person's avatar (`""` takes it off): a PNG, JPEG or
+    /// WebP data URL of at most `coord::person_avatar::MAX_LEN` bytes. Every shared
+    /// space hears it on the person's member.profile. Only the window
+    /// calls it.
+    pub fn set_person_avatar(&self, avatar: &str) -> Result<(), String> {
+        if !coord::person_avatar::valid(avatar) {
+            return Err(if avatar.len() > coord::person_avatar::MAX_LEN {
+                format!(
+                    "the picture is too big ({} KB; at most {} KB)",
+                    avatar.len() / 1024,
+                    coord::person_avatar::MAX_LEN / 1024
+                )
+            } else {
+                "an avatar is a PNG, JPEG or WebP picture".into()
+            });
+        }
+        self.s
+            .store
+            .append(
+                "user",
+                coord::person_avatar::KIND,
+                &PersonAvatarRow {
+                    at_device: &self.s.device.id,
+                    avatar,
+                },
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// What each of the person's devices is called, by id: the person's
     /// name for it (card #184), else its certificate's label (the
     /// computer's name when it joined), else this device's own name.
@@ -2572,12 +2627,14 @@ fn load_colors(
     colors: &coord::devcolor::Picks,
     person: &coord::devcolor::PersonPick,
     faces: &coord::avatar::Faces,
+    avatar: &coord::person_avatar::PersonAvatar,
 ) {
     let mut f = Filter {
         kinds: vec![
             coord::devcolor::KIND.into(),
             coord::devcolor::PERSON_KIND.into(),
             coord::avatar::KIND.into(),
+            coord::person_avatar::KIND.into(),
         ],
         limit: store::MAX_LIST_LIMIT,
         ..Filter::default()
@@ -2588,6 +2645,7 @@ fn load_colors(
             colors.apply(ev);
             person.apply(ev);
             faces.apply(ev);
+            avatar.apply(ev);
         }
         if (evs.len() as i64) < f.limit {
             return;

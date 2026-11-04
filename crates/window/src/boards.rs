@@ -88,6 +88,16 @@ pub struct SummaryMember {
     /// Their agents on the board that are working, and idle.
     pub working: i64,
     pub free: i64,
+    /// Their colour (card #385): another person's as this screen places
+    /// it (their pick, nudged off this person's devices and other people);
+    /// this person's own pick, "" for none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub color: String,
+    /// Their avatar (card #393): a small image data URL, "" for none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub avatar: String,
 }
 
 fn is_zero_rank(r: &f64) -> bool {
@@ -118,6 +128,12 @@ impl From<irori_core::BoardSummary> for BoardSummary {
                     last_seen: m.last_seen,
                     working: m.working,
                     free: m.free,
+                    color: m.color,
+                    avatar: if coord::person_avatar::valid(&m.avatar) {
+                        m.avatar
+                    } else {
+                        String::new()
+                    },
                 })
                 .collect(),
             owner: s.owner,
@@ -226,6 +242,9 @@ impl Window {
     /// BoardsService.List: every board on this device, by name.
     pub fn boards_list(&self) -> Vec<BoardSummary> {
         let pins = self.core.coord().pinned_ranks();
+        // Other people wear the colour this screen gives them (card #385),
+        // the same one their face and agents wear on cards.
+        let others = self.person_colors();
         self.core
             .board_list()
             .into_iter()
@@ -234,6 +253,11 @@ impl Window {
                 if let Some(r) = pins.get(&board_pin_key(&b.board_id)) {
                     b.pinned = true;
                     b.pin_rank = *r;
+                }
+                for m in b.members.iter_mut().filter(|m| !m.me) {
+                    if let Some(c) = others.get(&m.person_id) {
+                        m.color.clone_from(c);
+                    }
                 }
                 b
             })

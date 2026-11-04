@@ -8,6 +8,7 @@
 //! | [`decision`] | `internal/decision` | decision records with re-checked code anchors |
 //! | [`roster`] | `internal/roster` | other devices' agent cards with liveness |
 //! | [`names`] | `internal/names` | friendly session names |
+//! | [`person_avatar`] | (Rust only, card #393) | the person's picture |
 //! | [`devcolor`] | `internal/devcolor` | device colours |
 //! | [`devname`] | (Rust only, card #184) | the person's names for their devices |
 //! | [`talk`] | (Rust only, card #389) | channels, DMs and read cursors |
@@ -22,6 +23,7 @@ pub mod gojson;
 pub(crate) mod gotime;
 pub mod mentions;
 pub mod names;
+pub mod person_avatar;
 pub mod roster;
 pub mod talk;
 
