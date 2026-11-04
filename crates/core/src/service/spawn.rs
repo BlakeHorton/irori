@@ -33,6 +33,13 @@ fn before(a: &GoTime, b: &GoTime) -> bool {
     a.unix_nano() < b.unix_nano()
 }
 
+/// Whether blocker b waits on a person (not on other work, which ends by
+/// itself).
+fn on_person(b: &coord::Blocker) -> bool {
+    b.on.as_ref()
+        .is_none_or(|on| on.kind == coord::BLOCKED_ON_PERSON)
+}
+
 fn at_least(now: &GoTime, at: &GoTime, d: Duration) -> bool {
     i128::from(now.unix_nano()) - i128::from(at.unix_nano()) >= d.as_nanos() as i128
 }
@@ -140,6 +147,29 @@ pub struct SpawnSetting {
     /// [`MERGE_MAIN`]. A repo not named opens a PR.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub merge: std::collections::BTreeMap<String, String>,
+    /// The idle limit in minutes (§10, card #447): how long a spawned
+    /// agent waits on an unanswered question for the person before it
+    /// hands off and goes. 0 is [`IDLE_LIMIT`].
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub idle_mins: i64,
+}
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
+}
+
+/// The default idle limit (§2 "Stuck on a blocker", card #447).
+pub const IDLE_LIMIT: Duration = Duration::from_secs(30 * 60);
+
+impl SpawnSetting {
+    /// The board's idle limit.
+    pub fn idle_limit(&self) -> Duration {
+        if self.idle_mins > 0 {
+            Duration::from_secs(self.idle_mins as u64 * 60)
+        } else {
+            IDLE_LIMIT
+        }
+    }
 }
 
 /// [`SpawnSetting::permission`]: acceptEdits plus the board's rules.
@@ -848,7 +878,22 @@ impl Services {
                         && b.status != coord::BLOCKER_ANSWERED
                         && at_least(&now, &b.at, DONE_GRACE)
                 });
-            if done_check || coord::is_terminal(&t.state) || !t.holders.contains(&a.key) {
+            // Stuck on a question for the person past the board's idle
+            // limit (§2): it hands off and goes; his answer on the
+            // holderless card brings a fresh agent with the answer.
+            let limit = self.spawn_setting("").idle_limit();
+            let waiting = t.state == BLOCKED
+                && !t
+                    .blockers
+                    .iter()
+                    .any(|b| b.open() && b.status == coord::BLOCKER_ANSWERED)
+                && t.blockers
+                    .iter()
+                    .filter(|b| b.open() && !b.done_check && on_person(b))
+                    .max_by_key(|b| b.at.unix_nano())
+                    .is_some_and(|b| at_least(&now, &b.at, limit));
+            if done_check || waiting || coord::is_terminal(&t.state) || !t.holders.contains(&a.key)
+            {
                 self.begin_end(&a.key);
             }
         }

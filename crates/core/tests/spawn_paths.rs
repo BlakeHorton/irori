@@ -14,7 +14,7 @@ use std::time::Duration;
 use common::*;
 use coord::{BlockerAnswer, NewTask, Task, Where};
 use gocompat::time::GoTime;
-use irori_core::spawn::{DONE_GRACE, SpawnReq, SpawnSetting, SpawnStarted, Spawner};
+use irori_core::spawn::{DONE_GRACE, IDLE_LIMIT, SpawnReq, SpawnSetting, SpawnStarted, Spawner};
 
 /// The session id of the fake's nth spawn (1-based).
 fn sess(n: usize) -> String {
@@ -89,6 +89,26 @@ struct Setup {
 /// A card on the private board with spawning on, its first agent bound,
 /// and that agent's done check raised.
 fn at_done_check() -> Setup {
+    let s = bound();
+    let co = s.r.core.coord();
+    co.set_task_state(&s.first(), &s.t.id, "completed", "done: saving works")
+        .unwrap();
+    s
+}
+
+impl Setup {
+    /// The key of the fake's nth agent.
+    fn agent(&self, n: usize) -> String {
+        format!("{}/{}", self.r.core.device_id(), sess(n))
+    }
+
+    fn first(&self) -> String {
+        self.agent(1)
+    }
+}
+
+/// A card on the private board with spawning on and its first agent bound.
+fn bound() -> Setup {
     let skew = Arc::new(AtomicI64::new(0));
     let r = rig(&skew);
     let work = tempfile::tempdir().unwrap();
@@ -130,8 +150,6 @@ fn at_done_check() -> Setup {
         co.get_task(&t.id)
             .is_some_and(|t| t.holders.contains(&first))
     });
-    co.set_task_state(&first, &t.id, "completed", "done: saving works")
-        .unwrap();
     Setup {
         r,
         fake,
@@ -230,5 +248,80 @@ fn a_late_not_done_starts_a_fresh_agent_with_his_words() {
     wait_for(60, "the fresh agent bound", || {
         co.get_task(&s.t.id)
             .is_some_and(|t| t.holders.contains(&second))
+    });
+}
+
+fn skew_by(s: &Setup, d: Duration) {
+    s.skew.fetch_add(d.as_secs() as i64 + 10, Ordering::SeqCst);
+    s.r.core.set_spawn_cap(s.r.core.spawn_cap()).unwrap();
+}
+
+#[test]
+fn stuck_on_a_question_past_the_idle_limit_it_goes_and_his_answer_brings_a_fresh_one() {
+    let s = bound();
+    let co = s.r.core.coord();
+    let t = co.block(&s.first(), &s.t.id, "which port?", None).unwrap();
+    let b = t.blockers.iter().find(|b| b.open()).unwrap().id.clone();
+    // Inside the limit it waits for him.
+    skew_by(&s, Duration::from_secs(60));
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(!ended(&s, 1), "ended inside the idle limit");
+    // Its hand-off, which Irori asks for before it ends it.
+    co.add_comment(
+        &s.first(),
+        &s.t.id,
+        "Waiting on the port; the server code is on the branch.",
+        false,
+    )
+    .unwrap();
+    skew_by(&s, IDLE_LIMIT);
+    wait_for(60, "the stuck agent ended", || ended(&s, 1));
+    wait_for(90, "the stuck agent off its card", || {
+        co.get_task(&s.t.id).is_some_and(|t| t.holders.is_empty())
+    });
+    co.answer(
+        &s.person,
+        &s.t.id,
+        &b,
+        BlockerAnswer {
+            text: "use 8080, the 3000s are taken".into(),
+            ..BlockerAnswer::default()
+        },
+    )
+    .unwrap();
+    wait_for(60, "a fresh agent started", || {
+        s.fake.started.lock().unwrap().len() == 2
+    });
+    let req = s.fake.started.lock().unwrap()[1].clone();
+    let brief = std::fs::read_to_string(&req.brief_path).unwrap();
+    assert!(brief.contains("use 8080, the 3000s are taken"), "{brief}");
+}
+
+#[test]
+fn pause_all_starts_no_agent_until_it_lifts() {
+    let s = at_done_check();
+    let co = s.r.core.coord();
+    past_grace(&s);
+    wait_for(60, "the first agent ended", || ended(&s, 1));
+    wait_for(90, "the first agent off its card", || {
+        co.get_task(&s.t.id).is_some_and(|t| t.holders.is_empty())
+    });
+    let inbox = s.r.core.inbox();
+    let mut pol = inbox.policy();
+    pol.paused = true;
+    inbox.set_policy(pol.clone(), "user:test").unwrap();
+    not_done(&s, "still broken");
+    s.r.core.set_spawn_cap(s.r.core.spawn_cap()).unwrap();
+    std::thread::sleep(Duration::from_millis(2000));
+    assert_eq!(
+        s.fake.started.lock().unwrap().len(),
+        1,
+        "nothing starts while paused"
+    );
+    pol.paused = false;
+    inbox.set_policy(pol, "user:test").unwrap();
+    s.r.core.set_spawn_cap(s.r.core.spawn_cap()).unwrap();
+    wait_for(60, "the agent started once Pause all lifted", || {
+        s.fake.started.lock().unwrap().len() == 2
     });
 }
