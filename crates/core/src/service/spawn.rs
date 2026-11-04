@@ -317,6 +317,18 @@ struct SpawnSetRow {
     at: GoTime,
 }
 
+/// An `agent.offer` row (card #453): the person's "Offer it cards" on one
+/// of their terminal agents.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentOffer {
+    pub key: String,
+    pub on: bool,
+    #[serde(default)]
+    pub by: String,
+    #[serde(default)]
+    pub at: GoTime,
+}
+
 /// A device's cap on spawned agents (`spawn.cap`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -487,6 +499,10 @@ pub(crate) struct SpawnState {
     /// the coords' hand-out under their locks, so never the store.
     pub on: Arc<RwLock<HashMap<String, SpawnSetting>>>,
     pub caps: RwLock<HashMap<String, i64>>,
+    /// The person's "Offer it cards", by agent key (card #453): a terminal
+    /// agent is handed work only when this is on. Read by the coords'
+    /// hand-out under their locks.
+    pub offers: Arc<RwLock<HashMap<String, bool>>>,
     /// Spawned agents being ended: when they were asked for the hand-off.
     pub ending: Mutex<HashMap<String, GoTime>>,
     /// The person's words for a card's next agent, by card id: put in its
@@ -549,7 +565,11 @@ impl SpawnState {
 /// Reads every `spawn.set` and `spawn.cap` row the person wrote.
 pub(crate) fn load_spawn(st: &Store, s: &SpawnState) {
     let f = Filter {
-        kinds: vec![kinds::SPAWN_SET.into(), kinds::SPAWN_CAP.into()],
+        kinds: vec![
+            kinds::SPAWN_SET.into(),
+            kinds::SPAWN_CAP.into(),
+            kinds::AGENT_OFFER.into(),
+        ],
         limit: store::MAX_LIST_LIMIT,
         ..Filter::default()
     };
@@ -557,11 +577,18 @@ pub(crate) fn load_spawn(st: &Store, s: &SpawnState) {
     let Ok(evs) = st.list(&f) else { return };
     let mut on = HashMap::new();
     let mut caps = HashMap::new();
+    let mut offers = HashMap::new();
     for ev in evs {
         if ev.actor != "user" {
             continue;
         }
-        if ev.kind == kinds::SPAWN_SET {
+        if ev.kind == kinds::AGENT_OFFER {
+            if let Ok(r) = serde_json::from_slice::<AgentOffer>(&ev.payload)
+                && !r.key.is_empty()
+            {
+                offers.insert(r.key, r.on);
+            }
+        } else if ev.kind == kinds::SPAWN_SET {
             if let Ok(mut r) = serde_json::from_slice::<SpawnSetRow>(&ev.payload) {
                 if r.s.check().is_err() {
                     r.s.model.clear();
@@ -577,6 +604,7 @@ pub(crate) fn load_spawn(st: &Store, s: &SpawnState) {
     }
     *s.on.write().unwrap_or_else(|e| e.into_inner()) = on;
     *s.caps.write().unwrap_or_else(|e| e.into_inner()) = caps;
+    *s.offers.write().unwrap_or_else(|e| e.into_inner()) = offers;
 }
 
 fn session_of(key: &str) -> &str {
@@ -690,6 +718,51 @@ impl Services {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(row.device, row.cap);
+        drop(rows);
+        self.asks_kick.kick();
+        Ok(())
+    }
+
+    /// Whether the person turned on "Offer it cards" for agent `key`
+    /// (card #453).
+    pub(crate) fn agent_offered(&self, key: &str) -> bool {
+        self.spawn
+            .offers
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(key)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// The person turns "Offer it cards" on or off for one of their
+    /// terminal agents, from the app only (card #453). An agent Irori
+    /// started keeps its own rule: it serves only its card.
+    pub(crate) fn set_agent_offer(&self, key: &str, on: bool) -> Result<(), String> {
+        if key.trim().is_empty() {
+            return Err("spawn: no agent given".into());
+        }
+        if self.coord.is_spawned(key) {
+            return Err(
+                "spawn: Irori started this agent for its card; it is never offered other cards"
+                    .into(),
+            );
+        }
+        let row = AgentOffer {
+            key: key.into(),
+            on,
+            by: format!("user:{}", self.device.id),
+            at: (self.now)(),
+        };
+        let rows = self.spawn.rows.lock().unwrap_or_else(|e| e.into_inner());
+        self.store
+            .append("user", kinds::AGENT_OFFER, &row)
+            .map_err(|e| e.to_string())?;
+        self.spawn
+            .offers
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(row.key, on);
         drop(rows);
         self.asks_kick.kick();
         Ok(())

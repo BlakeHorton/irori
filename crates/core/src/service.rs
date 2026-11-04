@@ -2349,6 +2349,24 @@ impl Core {
         (self.s.spawned_here(), self.s.spawn_cap(&self.s.device.id))
     }
 
+    /// Whether the person turned on "Offer it cards" for agent `key`: a
+    /// terminal agent is handed unheld cards, asks and threads only then
+    /// (card #453).
+    pub fn agent_offered(&self, key: &str) -> bool {
+        self.s.agent_offered(key)
+    }
+
+    /// Whether Irori started agent `key` for a card (its spawned mark).
+    pub fn agent_spawned(&self, key: &str) -> bool {
+        self.s.coord.is_spawned(key)
+    }
+
+    /// The person's "Offer it cards" on one of their terminal agents: the
+    /// app only, never a tool (card #453).
+    pub fn set_agent_offer(&self, key: &str, on: bool) -> Result<(), String> {
+        self.s.set_agent_offer(key, on)
+    }
+
     /// The person sets this device's cap: the app only.
     pub fn set_spawn_cap(&self, cap: i64) -> Result<(), String> {
         self.s.set_spawn_cap(&self.s.device.id.clone(), cap)

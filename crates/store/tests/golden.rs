@@ -110,7 +110,8 @@ const SINCE_GO: [&str; 22] = [
 /// cursors, card #389; agents' faces, card #407; the merge desk's rows,
 /// card #415; the person's picture, card #393; the notification
 /// history, card #377; spawned agents, card #446).
-const SINCE_GO_REFUSED: [&str; 19] = [
+const SINCE_GO_REFUSED: [&str; 20] = [
+    kinds::AGENT_OFFER,
     kinds::TASK_SPAWN,
     kinds::TASK_SPAWNED,
     kinds::SPAWN_SET,

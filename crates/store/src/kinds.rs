@@ -175,6 +175,10 @@ kinds! {
     /// A device's cap on spawned agents (card #446): `{device, cap, by,
     /// at}`, actor `user`.
     SPAWN_CAP = "spawn.cap" => Replicated, Refuses;
+    /// The person's "Offer it cards" on an agent they started (card #453):
+    /// `{key, on, by, at}`, actor `user`. Without it a terminal agent is
+    /// never handed unheld cards, asks or threads. Set in the app only.
+    AGENT_OFFER = "agent.offer" => Replicated, Refuses;
     // capture
     CAPTURE_TURN = "capture.turn" => Replicated, Refuses;
     CAPTURE_EDIT = "capture.edit" => Replicated, Refuses;
