@@ -297,6 +297,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             // Free the speech model before exit (#240: Metal asserts otherwise).
             window.voice_shutdown();
             h.core.set_reviver(None);
+            h.core.set_spawner(None);
             h.close()
         }
         None => Ok(()),
@@ -367,6 +368,7 @@ fn start_core(
             None => Err("Irori is closing".into()),
         })));
     }
+    core.set_spawner(Some(spawner()));
     app.manage(core.clone());
     app.manage(window.clone());
     wire_window(app, &window);
@@ -636,5 +638,36 @@ impl irori_window::seams::LoginItem for ShellLogin {
         let res = login::LoginItem::system().set(on);
         rebuild_tray(&self.0);
         res
+    }
+}
+
+/// The Core's spawner (spawned agents part 1 and 2, cards #445 and #446):
+/// `claude --bg` from this GUI process, with no console window, its trust
+/// check, and `claude stop` then `claude rm` to end one.
+fn spawner() -> irori_core::spawn::Spawner {
+    use irori_core::spawn::{SpawnReq, SpawnStarted, Spawner};
+    use irori_window::spawn;
+    let opt = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());
+    Spawner {
+        spawn: Arc::new(move |r: &SpawnReq| {
+            let got = spawn::spawn(&spawn::SpawnSpec {
+                cwd: std::path::PathBuf::from(&r.folder),
+                name: r.name.clone(),
+                permission_mode: r.permission_mode.clone(),
+                model: opt(&r.model),
+                effort: opt(&r.effort),
+                worktree: r.worktree.clone(),
+                settings: r.settings_file.clone(),
+                brief_file: Some(r.brief_path.clone()),
+                prompt: Some(r.prompt.clone()),
+                ..Default::default()
+            })?;
+            Ok(SpawnStarted {
+                name: got.name,
+                prefix: got.short_id,
+            })
+        }),
+        end: Arc::new(|id: &str| spawn::end(id).map(|_| ())),
+        trusted: Arc::new(|p: &std::path::Path| spawn::trust_ok(p)),
     }
 }
