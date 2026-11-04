@@ -69,6 +69,9 @@ crate::go_struct! {
         pub permission_mode: String = "permissionMode",
         pub last_tool: String = "lastTool" "omit",
         pub device_state: String = "deviceState" "omit",
+        /// While `status` is "waiting", what for ("permission prompt"),
+        /// from Claude Code's session file (card #445).
+        pub waiting_for: String = "waitingFor" "omit",
     }
 }
 

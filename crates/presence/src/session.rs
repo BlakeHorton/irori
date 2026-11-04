@@ -20,6 +20,8 @@ pub struct Session {
     /// Who set name: "user" for /rename; other values are Claude Code's.
     pub name_source: String,
     pub status: String,
+    /// `waitingFor`: what a "waiting" session waits on ("permission prompt").
+    pub waiting_for: String,
     pub kind: String,
     pub entrypoint: String,
     pub version: String,
@@ -105,6 +107,7 @@ pub fn read_session(r: impl Read) -> Option<Session> {
         name: str_of(m.get("name")),
         name_source: str_of(m.get("nameSource")),
         status: str_of(m.get("status")),
+        waiting_for: str_of(m.get("waitingFor")),
         kind: str_of(m.get("kind")),
         entrypoint: str_of(m.get("entrypoint")),
         version: str_of(m.get("version")),

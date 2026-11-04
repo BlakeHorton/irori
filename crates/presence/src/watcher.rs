@@ -360,6 +360,7 @@ impl Inner {
             pid: s.pid,
             cwd: s.cwd.clone(),
             status: s.status.clone(),
+            waiting_for: s.waiting_for.clone(),
             session_kind: s.kind.clone(),
             entrypoint: s.entrypoint.clone(),
             version: s.version.clone(),
@@ -617,6 +618,7 @@ pub fn changed(a: &AgentCard, b: &AgentCard) -> bool {
         || a.title != b.title
         || a.cwd != b.cwd
         || a.status != b.status
+        || a.waiting_for != b.waiting_for
         || a.session_kind != b.session_kind
         || a.entrypoint != b.entrypoint
         || a.version != b.version

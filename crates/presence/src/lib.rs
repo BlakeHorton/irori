@@ -74,8 +74,12 @@ pub struct AgentCard {
     #[serde(rename = "aiTitle", skip_serializing_if = "is_empty")]
     pub ai_title: String,
     pub cwd: String,
-    /// As Claude Code reports: "busy", "idle", ...; "gone" when dead.
+    /// As Claude Code reports: "busy", "idle", "waiting", ...; "gone" when dead.
     pub status: String,
+    /// While `status` is "waiting", what for, as Claude Code writes it:
+    /// "permission prompt" when a tool call waits on a person (card #445).
+    #[serde(rename = "waitingFor", skip_serializing_if = "is_empty")]
+    pub waiting_for: String,
     /// "interactive", "bg", ...
     #[serde(rename = "sessionKind")]
     pub session_kind: String,

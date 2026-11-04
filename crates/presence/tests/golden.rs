@@ -166,6 +166,8 @@ fn json_matches_go() {
         ai_title: "ai".into(),
         cwd: r"C:\x".into(),
         status: "busy".into(),
+        // Rust-only (card #445) and omitted when empty, like last_tool.
+        waiting_for: String::new(),
         session_kind: "bg".into(),
         entrypoint: "cli".into(),
         version: "2.1.310".into(),

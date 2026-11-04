@@ -53,6 +53,30 @@ fn is_session_file_table() {
     }
 }
 
+/// Card #445: a `--bg` session stopped at a permission prompt (as Claude
+/// Code 2.1.318 wrote it on the Mac) says so, and the card carries it.
+#[test]
+fn waiting_for_a_permission_prompt() {
+    let raw = br#"{"pid":52788,"sessionId":"ce277a06-054e-4f11-9bd2-17da8a5815f5","cwd":"/Users/pat/scratch","startedAt":1793766937837,"version":"2.1.318","kind":"bg","entrypoint":"cli","name":"probe","jobId":"ce277a06","status":"waiting","updatedAt":1793766942188,"statusUpdatedAt":1793766942188,"waitingFor":"permission prompt"}"#;
+    let s = read_session(&raw[..]).expect("session");
+    assert_eq!(
+        (s.status.as_str(), s.waiting_for.as_str()),
+        ("waiting", "permission prompt")
+    );
+    let c = AgentCard {
+        waiting_for: s.waiting_for.clone(),
+        ..AgentCard::default()
+    };
+    let j = serde_json::to_value(&c).unwrap();
+    assert_eq!(j["waitingFor"], "permission prompt");
+    let idle = serde_json::to_value(AgentCard::default()).unwrap();
+    assert!(
+        idle.get("waitingFor").is_none(),
+        "omitted when empty, as Go's omitempty"
+    );
+    assert!(changed(&c, &AgentCard::default()));
+}
+
 #[test]
 fn read_session_fixtures() {
     let f = std::fs::File::open(testdata().join("sessions").join("13704.json")).unwrap();

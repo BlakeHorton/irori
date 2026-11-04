@@ -86,6 +86,42 @@ impl Probe {
         self.note("login-cutover error: Windows only");
     }
 
+    /// Spawned agents part 1 (card #445): with `IRORI_DEV_SPAWN_REPO=<a
+    /// trusted repo>`, starts one `claude --bg` agent from the GUI process
+    /// (a release build has no console, so this is the "first spawn from the
+    /// GUI opens no window" check) in a fresh `-w` worktree, with a brief that
+    /// only replies. Notes `spawn <short id> <name>` or `spawn error: …`.
+    /// The agent is left for the tester to `claude stop` and `claude rm`.
+    pub fn spawn_from_gui(&self) {
+        if !self.on() {
+            return;
+        }
+        let Some(repo) = std::env::var_os("IRORI_DEV_SPAWN_REPO").filter(|v| !v.is_empty()) else {
+            return;
+        };
+        let probe = self.clone();
+        std::thread::spawn(move || {
+            let briefs = std::env::temp_dir().join("irori-spawn-probe");
+            let spec = irori_window::spawn::SpawnSpec {
+                cwd: PathBuf::from(repo),
+                name: "irori-gui-spawn-probe".into(),
+                brief:
+                    "Reply with exactly: gui-spawn-probe-ok. Do nothing else: no tools, no files."
+                        .into(),
+                permission_mode: "default".into(),
+                model: Some("sonnet".into()),
+                effort: Some("low".into()),
+                worktree: Some("irori-gui-spawn-probe".into()),
+                brief_dir: briefs,
+                ..Default::default()
+            };
+            match irori_window::spawn::spawn(&spec) {
+                Ok(s) => probe.note(&format!("spawn {} {}", s.short_id, s.name)),
+                Err(e) => probe.note(&format!("spawn error: {}", e.replace('\n', " "))),
+            }
+        });
+    }
+
     /// Quits the app once `<file>.quit` exists, as the tray's Quit does.
     pub fn watch_quit(&self, app: &tauri::AppHandle) {
         let Some(p) = &self.0 else { return };

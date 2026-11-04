@@ -425,6 +425,7 @@ fn start_core(
             // The rehearsal's launch-at-login switch-over against a
             // scratch Run key (tools/rehearse; probe only).
             probe.cutover_on_scratch_key();
+            probe.spawn_from_gui();
             probe.watch_quit(&app);
             probe.note(&format!("version {}", version()));
             probe.note(&format!("api-port {api_port}"));

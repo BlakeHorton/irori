@@ -108,6 +108,7 @@ impl coord::roster::Agents for CoordRoster {
                 permission_mode: c.permission_mode,
                 last_tool: c.last_tool,
                 device_state: c.device_state,
+                waiting_for: c.waiting_for,
             })
             .collect()
     }
