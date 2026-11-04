@@ -743,6 +743,16 @@ export type CardSummary = {
 	waitOn?: string,
 	waitQuestion?: string,
 	/**
+	 *  The card the first wait is on, by id (Home counts the cards that
+	 *  wait on a red main's card by it, card #436).
+	 */
+	waitTask?: string,
+	/**
+	 *  A "main is red" card's failing test (card #436): Home leads with
+	 *  it while it is open.
+	 */
+	mainRed?: string,
+	/**
 	 *  Where the first wait's chain of cards ends at the person (card
 	 *  #347): "your review of PR #96 (#334)" or "your answer on #12".
 	 */

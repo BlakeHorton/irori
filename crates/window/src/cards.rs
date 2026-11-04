@@ -230,10 +230,16 @@ pub struct CardSummary {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[specta(optional)]
     pub wait_question: String,
-    /// The card the first wait is on, until wait_on names it.
-    #[serde(skip)]
-    #[specta(skip)]
+    /// The card the first wait is on, by id (Home counts the cards that
+    /// wait on a red main's card by it, card #436).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
     pub wait_task: String,
+    /// A "main is red" card's failing test (card #436): Home leads with
+    /// it while it is open.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    #[specta(optional)]
+    pub main_red: String,
     /// Where the first wait's chain of cards ends at the person (card
     /// #347): "your review of PR #96 (#334)" or "your answer on #12".
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -1062,6 +1068,7 @@ pub(crate) fn card_summary(t: &Task, p: &People) -> CardSummary {
         pinned: t.pinned,
         pin_rank: t.pin_rank,
         paused: t.paused,
+        main_red: coord::main_red_test(t).unwrap_or_default().to_string(),
         ..CardSummary::default()
     };
     if let Some(r) = &t.rollup {

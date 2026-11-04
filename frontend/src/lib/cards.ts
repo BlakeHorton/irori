@@ -638,6 +638,8 @@ function summary(c: CardDetail): CardSummary {
     waitOn: c.waitOn,
     waitQuestion: c.waitQuestion,
     waitYou: c.waitYou,
+    waitTask: c.waitTask,
+    mainRed: c.mainRed,
     reviewPr: c.reviewPr,
     working: c.working,
     watching: c.watching,

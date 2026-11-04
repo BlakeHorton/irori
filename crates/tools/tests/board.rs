@@ -2364,3 +2364,50 @@ fn the_avatar_tool_checks_a_face_before_keeping_it() {
     let none = h.call(&call_a(), "avatar", "{}");
     assert!(none.contains("no face of your own yet"), "{none}");
 }
+
+/// Card #436: two agents hit the same red test on clean main; the second
+/// report joins the first card instead of making its own.
+#[test]
+fn test_board_block_main_red_joins_one_card() {
+    let h = new_harness();
+    let (a, b) = (call_a(), call_b());
+    let x = h.new_card(&a, json!({"title": "Talk 3"}));
+    h.okj(&a, "board_join", json!({"task_id": x}));
+    let y = h.new_card(&b, json!({"title": "Merge desk slice 2"}));
+    h.okj(&b, "board_join", json!({"task_id": y}));
+
+    let out = h.okj(
+        &a,
+        "board_block",
+        json!({"task_id": x, "question": "attach_exe fails on clean main", "on": "main-red attach_exe 3573cf11"}),
+    );
+    has(
+        &out,
+        &[
+            "Main is red: Irori made #3 for that test",
+            "unblocks by itself when that task",
+        ],
+    );
+
+    let out = h.okj(
+        &b,
+        "board_block",
+        json!({"task_id": y, "question": "attach_exe red on main", "on": "main-red attach_exe"}),
+    );
+    has(&out, &["Main is already red for that test: it waits on #3"]);
+    has_not(&out, &["Irori made"]);
+
+    let board = h.okj(&a, "board", json!({}));
+    has(
+        &board,
+        &["Main is red: attach_exe fails on clean main; 2 cards wait on #3 (nobody holds it yet)"],
+    );
+    has_not(&board, &["#4 "]);
+
+    let out = h.callj(
+        &a,
+        "board_block",
+        json!({"task_id": x, "reason": "r", "on": "main-red"}),
+    );
+    has(&out, &["Error: ", "needs the failing test's name"]);
+}
