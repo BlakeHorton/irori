@@ -122,6 +122,7 @@ fn a_helpers_part_starts_in_a_worktree_from_the_card_branch() {
         .set_spawn_setting(SpawnSetting {
             board_id: String::new(),
             on: true,
+            ..SpawnSetting::default()
         })
         .unwrap();
     wait_for(60, "the helper bound to its part", || {
