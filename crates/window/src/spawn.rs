@@ -389,8 +389,22 @@ fn main_root(wt: &Path, dot: &Path) -> Option<PathBuf> {
         // A submodule's gitdir has no commondir: it is its own repo.
         Err(_) => return Some(wt.to_path_buf()),
     };
-    let common = std::fs::canonicalize(&common).unwrap_or(common);
+    let common = std::fs::canonicalize(&common).map(plain).unwrap_or(common);
     common.parent().map(Path::to_path_buf)
+}
+
+/// A canonical path without Windows' verbatim prefix: `\\?\C:\x` is `C:\x`
+/// and `\\?\UNC\s\x` is `\\s\x`. Git refuses verbatim paths, and Claude
+/// Code's trust keys never have one (PC run on #445).
+pub fn plain(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => p,
+    }
 }
 
 /// Whether Claude Code will start a `--bg` session in `dir`, by its own
@@ -446,7 +460,7 @@ mod tests {
     #[test]
     fn repo_under_trusted_parent_is_not_trusted() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = plain(std::fs::canonicalize(tmp.path()).unwrap());
         let repo = base.join("projects").join("repo");
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         let plain = base.join("projects").join("notes");
@@ -466,7 +480,7 @@ mod tests {
     #[test]
     fn worktree_follows_its_repo() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = plain(std::fs::canonicalize(tmp.path()).unwrap());
         let repo = base.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-q"]);
@@ -552,6 +566,48 @@ mod tests {
         assert!(check(&m).is_err());
     }
 
+    /// The arguments the fake recorded: one per line off Windows; on Windows
+    /// the raw `%*` line, split the way Rust quoted it (spaces outside quotes).
+    fn args_of(raw: &str) -> Vec<String> {
+        if !cfg!(windows) {
+            return raw.lines().map(str::to_string).collect();
+        }
+        let mut out = Vec::new();
+        let (mut cur, mut quoted, mut any) = (String::new(), false, false);
+        for c in raw.trim_end_matches(['\r', '\n']).chars() {
+            match c {
+                '"' => {
+                    quoted = !quoted;
+                    any = true;
+                }
+                ' ' if !quoted => {
+                    if any || !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                    }
+                    any = false;
+                }
+                _ => cur.push(c),
+            }
+        }
+        if any || !cur.is_empty() {
+            out.push(cur);
+        }
+        out
+    }
+
+    #[test]
+    fn verbatim_prefix_is_stripped() {
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\C:\Users\x")),
+            PathBuf::from(r"C:\Users\x")
+        );
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\UNC\srv\share\x")),
+            PathBuf::from(r"\\srv\share\x")
+        );
+        assert_eq!(plain(PathBuf::from("/Users/x")), PathBuf::from("/Users/x"));
+    }
+
     /// A fake `claude` that writes each argument on its own line to
     /// `argv.txt` beside it and prints what `claude --bg` prints.
     fn fake_claude(dir: &Path) -> PathBuf {
@@ -562,7 +618,7 @@ mod tests {
             std::fs::write(
                 &p,
                 format!(
-                    "@echo off\r\n(for %%a in (%*) do @echo %%~a) > \"{}\"\r\necho backgrounded · 0a1b2c3d · fake\r\n",
+                    "@echo off\r\n(echo %*) > \"{}\"\r\necho backgrounded · 0a1b2c3d · fake\r\n",
                     log.display()
                 ),
             )
@@ -590,7 +646,7 @@ mod tests {
     #[test]
     fn spawns_with_a_fake_claude_and_keeps_the_brief_off_argv() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = plain(std::fs::canonicalize(tmp.path()).unwrap());
         let repo = base.join("repo");
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         let bin = fake_claude(&base);
@@ -622,12 +678,13 @@ mod tests {
         let got = spawn_in(&bin, &spec, &cfg(&base, &[&repo])).unwrap();
         assert_eq!(got.short_id, "0a1b2c3d");
         assert_eq!(std::fs::read_to_string(&got.brief_file).unwrap(), brief);
-        let argv = std::fs::read_to_string(base.join("argv.txt")).unwrap();
+        let raw = std::fs::read_to_string(base.join("argv.txt")).unwrap();
+        let lines = args_of(&raw);
+        let argv = lines.join("\n");
         for bad in ["&", "|", "%", "\"", "quoted", "ampersand"] {
             assert!(!argv.contains(bad), "{bad:?} reached argv: {argv}");
         }
         assert!(argv.len() < 1024, "argv is short: {} bytes", argv.len());
-        let lines: Vec<&str> = argv.lines().collect();
         assert_eq!(lines[0], "--add-dir");
         assert_eq!(
             &lines[2..9],
@@ -699,7 +756,7 @@ mod tests {
     #[test]
     fn a_ready_brief_is_used_as_is_and_its_folder_added() {
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = plain(std::fs::canonicalize(tmp.path()).unwrap());
         let repo = base.join("repo");
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         let briefs = base.join("core-briefs");
@@ -717,12 +774,11 @@ mod tests {
         };
         let got = spawn_in(&bin, &spec, &cfg(&base, &[&repo])).unwrap();
         assert_eq!(got.brief_file, f);
-        let argv = std::fs::read_to_string(base.join("argv.txt")).unwrap();
-        let lines: Vec<&str> = argv.lines().collect();
+        let lines = args_of(&std::fs::read_to_string(base.join("argv.txt")).unwrap());
         assert_eq!(&lines[..2], ["--add-dir", briefs.to_str().unwrap()]);
         assert_eq!(
-            *lines.last().unwrap(),
-            format!("Read {} and do what it says.", f.display())
+            lines.last().unwrap(),
+            &format!("Read {} and do what it says.", f.display())
         );
         let bad = SpawnSpec {
             prompt: Some("do it & calc".into()),
@@ -738,7 +794,7 @@ mod tests {
     fn end_stops_then_removes_and_retries_a_locked_rm() {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
-        let base = std::fs::canonicalize(tmp.path()).unwrap();
+        let base = plain(std::fs::canonicalize(tmp.path()).unwrap());
         let bin = base.join("claude");
         let log = base.join("calls.txt");
         let n = base.join("n");
