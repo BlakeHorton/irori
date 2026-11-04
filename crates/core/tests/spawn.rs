@@ -124,9 +124,20 @@ fn a_card_gets_its_own_agent_which_ends_at_its_done_check() {
     assert_eq!(req.permission_mode, "bypassPermissions");
     // No model picked: Sonnet at medium effort (#448), on the request row
     // too.
-    assert_eq!((req.model.as_str(), req.effort.as_str()), ("sonnet", "medium"));
-    let sr = co.get_task(&t.id).unwrap().spawn_request().cloned().unwrap();
-    assert_eq!((sr.model.as_str(), sr.effort.as_str()), ("sonnet", "medium"));
+    assert_eq!(
+        (req.model.as_str(), req.effort.as_str()),
+        ("sonnet", "medium")
+    );
+    let sr = co
+        .get_task(&t.id)
+        .unwrap()
+        .spawn_request()
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        (sr.model.as_str(), sr.effort.as_str()),
+        ("sonnet", "medium")
+    );
     assert_eq!(req.folder, work.path().to_string_lossy());
     // The brief is in a file, quoted and fenced; the prompt is short and
     // carries none of the card's text.
@@ -431,7 +442,11 @@ fn model_and_effort_are_kept_and_checked() {
     ] {
         assert!(r.core.set_spawn_setting(bad).is_err());
     }
-    assert_eq!(r.core.spawn_setting("").model(), "opus", "a refused row changes nothing");
+    assert_eq!(
+        r.core.spawn_setting("").model(),
+        "opus",
+        "a refused row changes nothing"
+    );
 }
 
 /// Card #448, decision 1 (a): in the app the private board's spawning is

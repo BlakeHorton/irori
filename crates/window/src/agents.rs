@@ -121,13 +121,19 @@ mod tests {
                 ..AgentsChange::default()
             },
         );
-        assert_eq!((s.on, s.model.as_str(), s.effort.as_str()), (true, "opus", "high"));
+        assert_eq!(
+            (s.on, s.model.as_str(), s.effort.as_str()),
+            (true, "opus", "high")
+        );
     }
 
     #[test]
     fn nothing_picked_shows_sonnet_at_medium() {
         let v = view(&SpawnSetting::default(), false);
-        assert_eq!((v.model.as_str(), v.effort.as_str(), v.on), ("sonnet", "medium", false));
+        assert_eq!(
+            (v.model.as_str(), v.effort.as_str(), v.on),
+            ("sonnet", "medium", false)
+        );
         assert_eq!(v.models[0], "sonnet");
     }
 }

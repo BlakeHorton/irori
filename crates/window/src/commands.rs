@@ -15,11 +15,11 @@ use specta::Type;
 use tauri::State;
 
 use crate::Window;
+use crate::agents::{AgentsChange, AgentsSettings};
 use crate::attachments::AttachmentInfo;
 use crate::board::{AnswerResult, AskRepo, CommentResult, TaskResult, UploadFile};
 use crate::boards::{BoardSettings, BoardSummary, SharePreview};
 use crate::cards::{CardDetail, CardMessage, CardSummary, DonePage, IdleReport};
-use crate::agents::{AgentsChange, AgentsSettings};
 use crate::desk::{DeskSettings, DeskView};
 use crate::devices::{DeviceView, HomeServerView, PairStatus, RelayView};
 use crate::events::{CaptureChange, Empty};

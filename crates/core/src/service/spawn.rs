@@ -269,12 +269,20 @@ pub const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 impl SpawnSetting {
     /// The model a spawn passes: the board's pick, else [`DEFAULT_MODEL`].
     pub fn model(&self) -> &str {
-        if self.model.is_empty() { DEFAULT_MODEL } else { &self.model }
+        if self.model.is_empty() {
+            DEFAULT_MODEL
+        } else {
+            &self.model
+        }
     }
 
     /// The effort a spawn passes: the board's pick, else [`DEFAULT_EFFORT`].
     pub fn effort(&self) -> &str {
-        if self.effort.is_empty() { DEFAULT_EFFORT } else { &self.effort }
+        if self.effort.is_empty() {
+            DEFAULT_EFFORT
+        } else {
+            &self.effort
+        }
     }
 
     /// Refuses a model or effort Settings › Agents doesn't offer, so a bad
@@ -503,8 +511,7 @@ impl SpawnState {
         match on.read().unwrap_or_else(|e| e.into_inner()).get(board_id) {
             Some(s) => s.on,
             None => {
-                board_id.is_empty()
-                    && private_default.load(std::sync::atomic::Ordering::Relaxed)
+                board_id.is_empty() && private_default.load(std::sync::atomic::Ordering::Relaxed)
             }
         }
     }
