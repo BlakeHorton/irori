@@ -12,7 +12,6 @@ import {
 import { Input } from "@/components/ui/input"
 import {
   AutonomyPresets,
-  OpenCardsChoices,
   ThreadsModes,
   boards as actions,
   InviteState,
@@ -557,8 +556,6 @@ export function BoardSettingsPanel({
   const owners = s.members.filter((m) => m.owner).length
   const receiveHint = ReceivePresets.find((p) => p.value === s.receive)?.hint
   const autonomyHint = AutonomyPresets.find((p) => p.value === s.autonomy)?.hint
-  const openCards = s.openCards || "author"
-  const openCardsHint = OpenCardsChoices.find((p) => p.value === openCards)?.hint
   return (
     <div className="grid gap-3 text-xs">
       <section className="grid gap-1" aria-label="Members">
@@ -712,28 +709,6 @@ export function BoardSettingsPanel({
           ))}
         </div>
         <p className="text-muted-foreground">{autonomyHint}</p>
-      </section>
-      <section className="grid gap-1" aria-label="Open cards go to">
-        <span className="font-semibold text-ink">Open cards go to</span>
-        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Open cards go to">
-          {OpenCardsChoices.map((p) => (
-            <Button
-              key={p.value}
-              size="sm"
-              variant={openCards === p.value ? "secondary" : "ghost"}
-              role="radio"
-              aria-checked={openCards === p.value}
-              disabled={!amOwner}
-              onClick={() => void save(() => actions.setOpenCards(boardId, p.value))}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
-        <p className="text-muted-foreground">
-          {openCardsHint}
-          {!amOwner && " One setting for the whole board; its owners change it."}
-        </p>
       </section>
       <section className="grid gap-1" aria-label="My threads">
         <span className="font-semibold text-ink">My threads</span>

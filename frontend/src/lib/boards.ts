@@ -81,21 +81,6 @@ export const AutonomyPresets = [
   { value: "autonomous", label: "Autonomous", hint: "They also share private cards (after scrub) and mirror all their leases." },
 ] as const
 
-// OpenCardsChoices are who a shared board's open cards go to (card #174):
-// one value for the whole board, set by its owners.
-export const OpenCardsChoices = [
-  {
-    value: "author",
-    label: "The author's agents",
-    hint: "Each person's open cards go to their own free agents. Everyone sees and talks to each other's agents.",
-  },
-  {
-    value: "any",
-    label: "Any member's agents",
-    hint: "An open card goes to a free agent on any member's device, one at a time.",
-  },
-] as const
-
 // ThreadsModes are where your threads on a shared board live (card #185).
 export const ThreadsModes = [
   { value: "shared", label: "Shared", hint: "Every member and their agents see your threads on this board." },
@@ -424,15 +409,6 @@ export const boards = {
     if (inWails()) return BoardsService.SetAutonomy(boardId, preset)
     const s = await boards.settings(boardId)
     Object.assign(s, { autonomy: preset || "trusted", autonomyOwn: !!preset })
-    return BoardSettings(s)
-  },
-
-  // setOpenCards sets who the board's open cards go to (owners, card
-  // #174): "author" or "any".
-  async setOpenCards(boardId: string, to: string): Promise<BoardSettings> {
-    if (inWails()) return BoardsService.SetOpenCards(boardId, to)
-    const s = await boards.settings(boardId)
-    Object.assign(s, { openCards: to })
     return BoardSettings(s)
   },
 

@@ -500,8 +500,10 @@ impl Fold {
         owner::device_of(&t.created_by) == self.dev
     }
 
-    /// The agents card t may go to (card #174): on a shared board set to
-    /// the author's agents, those of the member who made it; else all.
+    /// The agents card t may go to (card #174): on a shared board, only
+    /// those of the member who made it. Irori never hands one person's
+    /// card to another person's agents (0.11.1: their own background
+    /// agents serve them); an agent told to take one still can.
     fn offer_pool(&self, t: &Task, agents: &[AgentCard]) -> Vec<AgentCard> {
         // A spawned agent serves only the card it was started for (§6).
         let agents: Vec<AgentCard> = agents
@@ -509,8 +511,7 @@ impl Fold {
             .filter(|a| self.may_hand_to(&a.key, t))
             .cloned()
             .collect();
-        let any = self.open_cards_any.as_ref().is_some_and(|f| f());
-        let (true, false, Some(kp)) = (self.on_board, any, &self.key_person) else {
+        let (true, Some(kp)) = (self.on_board, &self.key_person) else {
             return agents;
         };
         let author = kp(&t.created_by);

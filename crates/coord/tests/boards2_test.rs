@@ -52,28 +52,15 @@ fn device_person(d: &str) -> String {
 
 /// side, with the person's done check (card #112) on or off.
 fn side_with(dev: &str, person: &str, owners: &Owners, done_check: bool) -> Side {
-    side_opts(dev, person, owners, done_check, None)
+    side_full(dev, person, owners, done_check, None)
 }
 
-/// side_with, reading "open cards go to any member's agents" (card #174)
-/// from `any`.
-fn side_opts(
-    dev: &str,
-    person: &str,
-    owners: &Owners,
-    done_check: bool,
-    any: Option<Arc<std::sync::atomic::AtomicBool>>,
-) -> Side {
-    side_full(dev, person, owners, done_check, any, None)
-}
-
-/// side_opts, with a roster of the agents live on this device.
+/// side_with, with a roster of the agents live on this device.
 fn side_full(
     dev: &str,
     person: &str,
     owners: &Owners,
     done_check: bool,
-    any: Option<Arc<std::sync::atomic::AtomicBool>>,
     ros: Option<Arc<TestRoster>>,
 ) -> Side {
     let clk = Clk(Arc::new(Mutex::new(fixed_now())));
@@ -108,10 +95,6 @@ fn side_full(
                 who == p && at.map_or(*until == u64::MAX, |at| *from < at.hlc && at.hlc < *until)
             })
         })),
-        open_cards_any: any.map(|f| {
-            Arc::new(move || f.load(std::sync::atomic::Ordering::SeqCst))
-                as Arc<dyn Fn() -> bool + Send + Sync>
-        }),
         ..Options::default()
     };
     let c = Coord::new(st.clone(), ros.map(|r| r as Arc<dyn Agents>), o).unwrap();
@@ -139,8 +122,8 @@ fn two_people_with(
     rb: Option<Arc<TestRoster>>,
 ) -> (Side, Side, Owners) {
     let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
-    let a = side_full("dev-a", P1, &owners, false, None, ra);
-    let b = side_full("dev-b", P2, &owners, false, None, rb);
+    let a = side_full("dev-a", P1, &owners, false, ra);
+    let b = side_full("dev-b", P2, &owners, false, rb);
     a.st.append(
         P1,
         kinds::BOARD_CREATED,
@@ -844,11 +827,11 @@ fn roster(idle: &[&str]) -> Vec<coord::roster::AgentCard> {
         .collect()
 }
 
-/// p1 on dev-a and p2 on dev-b, with "open cards go to" a switch.
-fn two_people_any(any: &Arc<std::sync::atomic::AtomicBool>) -> (Side, Side) {
+/// p1 on dev-a and p2 on dev-b on one shared board.
+fn two_people_shared() -> (Side, Side) {
     let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
-    let a = side_opts("dev-a", P1, &owners, false, Some(any.clone()));
-    let b = side_opts("dev-b", P2, &owners, false, Some(any.clone()));
+    let a = side_with("dev-a", P1, &owners, false);
+    let b = side_with("dev-b", P2, &owners, false);
     a.st.append(
         P1,
         kinds::BOARD_CREATED,
@@ -886,8 +869,7 @@ fn two_people_any(any: &Arc<std::sync::atomic::AtomicBool>) -> (Side, Side) {
 /// to p1's free agent, and only p1's device hands it out.
 #[test]
 fn open_cards_go_to_the_authors_agents() {
-    let any = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let (a, b) = two_people_any(&any);
+    let (a, b) = two_people_shared();
     let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
     sync(&a, &b);
     // p2's device runs no hand-out for p1's card.
@@ -909,53 +891,11 @@ fn open_cards_go_to_the_authors_agents() {
     }
 }
 
-/// Card #174, any member's agents: p1's card goes to one free agent at a
-/// time, on either person's device; passing on moves it to the next, and
-/// once one takes it nobody else is offered it.
-#[test]
-fn open_cards_go_to_any_members_agents_one_at_a_time() {
-    let any = Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let (a, b) = two_people_any(&any);
-    let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
-    sync(&a, &b);
-    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
-    r.unwrap();
-    assert!(ns.len() == 1 && ns[0].to == [CARD2], "idle longest: {ns:?}");
-    sync(&a, &b);
-    assert_eq!(b.c.get_task(&t.id).unwrap().live_offer().unwrap().to, CARD2);
-    // A sweep with nothing new tells nobody again.
-    let (ns, _) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
-    assert!(ns.is_empty(), "{ns:?}");
-    // p2's agent gives it back on p2's device; p1's device hands it on.
-    b.c.leave(CARD2, &t.id, CARD2).unwrap();
-    sync(&a, &b);
-    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
-    r.unwrap();
-    assert!(ns.len() == 1 && ns[0].to == [CARD3], "{ns:?}");
-    sync(&a, &b);
-    // c3 takes it: held, and nobody else is offered it.
-    b.c.claim_task(CARD3, &t.id).unwrap();
-    sync(&a, &b);
-    let (ns, _) = a.c.sweep_asks_partial(&roster(&[CARD1, CARD2]));
-    assert!(ns.is_empty(), "{ns:?}");
-    for s in [&a, &b] {
-        let t = s.c.get_task(&t.id).unwrap();
-        assert_eq!(t.holders, vec![CARD3.to_string()]);
-        assert!(t.live_offer().is_none());
-    }
-    // Back to the author's agents: a new card of p1's skips p2's agents.
-    any.store(false, std::sync::atomic::Ordering::SeqCst);
-    a.c.create_task(P1, nt("Second", "")).unwrap();
-    let (ns, _) = a.c.sweep_asks_partial(&roster(&[CARD2]));
-    assert!(ns.is_empty(), "{ns:?}");
-}
-
 /// Card #174: a hand-out row only counts from the device that made the
 /// card, so another device can't point it at its own agent.
 #[test]
 fn a_hand_out_from_another_device_counts_nowhere() {
-    let any = Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let (a, b) = two_people_any(&any);
+    let (a, b) = two_people_shared();
     let t = a.c.create_task(P1, nt("Fix the loader", "")).unwrap();
     sync(&a, &b);
     // From Irori and from one of p2's agents, on p2's device.
@@ -1381,8 +1321,8 @@ fn a_question_on_a_board_is_for_the_cards_owner_by_default() {
 #[test]
 fn a_done_check_on_a_board_goes_to_the_cards_owner() {
     let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
-    let a = side_full("dev-a", P1, &owners, true, None, None);
-    let b = side_full("dev-b", P2, &owners, true, None, None);
+    let a = side_full("dev-a", P1, &owners, true, None);
+    let b = side_full("dev-b", P2, &owners, true, None);
     a.st.append(
         P1,
         kinds::BOARD_CREATED,
@@ -1457,8 +1397,8 @@ fn a_question_can_be_for_another_member() {
 fn a_merged_pr_on_a_completed_board_card_awaiting_done_is_not_told_again() {
     const PR: &str = "https://github.com/a/b/pull/9";
     let owners: Owners = Arc::new(Mutex::new(vec![("p1".into(), 0, u64::MAX)]));
-    let a = side_full("dev-a", P1, &owners, true, None, None);
-    let b = side_full("dev-b", P2, &owners, true, None, None);
+    let a = side_full("dev-a", P1, &owners, true, None);
+    let b = side_full("dev-b", P2, &owners, true, None);
     a.st.append(
         P1,
         kinds::BOARD_CREATED,
@@ -1520,17 +1460,17 @@ fn a_merged_pr_on_a_completed_board_card_awaiting_done_is_not_told_again() {
 }
 
 /// Card #337: a subtask on a shared board goes out like a top-level card,
-/// to the free agent idle longest (wind#87-91 got a hand-out row; nobody
-/// in the board's pool was free).
+/// to the author's free agent (wind#87-91 got a hand-out row; nobody in
+/// the board's pool was free); another member's agents never get it.
 #[test]
 fn a_board_subtask_is_handed_out_like_a_card() {
-    let any = Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let (a, b) = two_people_any(&any);
-    let p = a.c.create_task(CARD1, nt("Parent", "")).unwrap();
-    a.c.claim_task(CARD1, &p.id).unwrap();
+    let (a, b) = two_people_shared();
+    // p1 holds the parent, so p1's one agent is free for the subtask.
+    let p = a.c.create_task(P1, nt("Parent", "")).unwrap();
+    a.c.claim_task(P1, &p.id).unwrap();
     let s =
         a.c.create_task(
-            CARD1,
+            P1,
             NewTask {
                 title: "Sub".into(),
                 parent: p.id.clone(),
@@ -1541,11 +1481,14 @@ fn a_board_subtask_is_handed_out_like_a_card() {
     sync(&a, &b);
     let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD3]));
     r.unwrap();
+    assert!(ns.is_empty(), "p2's agents never get p1's subtask: {ns:?}");
+    let (ns, r) = a.c.sweep_asks_partial(&roster(&[CARD2, CARD1]));
+    r.unwrap();
     assert!(
-        ns.len() == 1 && ns[0].to == [CARD2] && ns[0].task_id == s.id,
+        ns.len() == 1 && ns[0].to == [CARD1] && ns[0].task_id == s.id,
         "{ns:?}"
     );
-    assert_eq!(a.c.get_task(&s.id).unwrap().live_offer().unwrap().to, CARD2);
+    assert_eq!(a.c.get_task(&s.id).unwrap().live_offer().unwrap().to, CARD1);
 }
 
 /// side_reopen, with `leases` as the live leases this person's agents hold

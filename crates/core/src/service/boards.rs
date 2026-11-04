@@ -689,9 +689,6 @@ pub struct BoardInfo {
     pub epoch: i64,
     /// The newest epoch this device holds a secret for.
     pub secret_epoch: i64,
-    /// Who the board's open cards go to (card #174): "author" (the
-    /// default) or "any".
-    pub open_cards: String,
 }
 
 /// What a board's Verifier holds about one member, for tests and
@@ -728,16 +725,6 @@ impl Agents for BoardRoster {
 }
 
 /// [`BoardRoster`]'s agents for board `b`.
-/// Who a board's open cards go to by its membership fold (card #174):
-/// the author's agents unless an owner said any member's.
-pub(crate) fn open_cards_of(m: &irori_identity::membership::Membership) -> String {
-    if m.open_cards.is_empty() {
-        irori_identity::membership::OPEN_CARDS_AUTHOR.to_string()
-    } else {
-        m.open_cards.clone()
-    }
-}
-
 pub(super) fn roster_of(s: &Services, b: &BoardLog) -> Vec<AgentCard> {
     {
         let live: HashMap<String, AgentCard> = s
@@ -1096,47 +1083,6 @@ impl Services {
             .unwrap_or_default()
     }
 
-    /// Sets who board `board_id`'s open cards go to (card #174): `to` is
-    /// "author" or "any"; owners only, with board.opencards signed by this
-    /// person's key, so every member folds the same value.
-    pub(crate) fn set_open_cards(&self, board_id: &str, to: &str) -> Result<()> {
-        use irori_identity::membership::{OPEN_CARDS_ANY, OPEN_CARDS_AUTHOR};
-        let to = trim(to);
-        if to != OPEN_CARDS_AUTHOR && to != OPEN_CARDS_ANY {
-            return Err(Error::coord(
-                CK::Invalid,
-                format_args!("open cards go to {OPEN_CARDS_AUTHOR:?} or {OPEN_CARDS_ANY:?}"),
-            ));
-        }
-        let b = self.board(board_id)?;
-        let me = self.person_id();
-        let m = b.verifier.membership();
-        if !m.owner(&me) {
-            return Err(Error::coord(
-                CK::NotAllowed,
-                format_args!("only an owner sets where board {board_id}'s open cards go"),
-            ));
-        }
-        if open_cards_of(&m) == to {
-            return Ok(());
-        }
-        let epoch = b.verifier.epoch(&me);
-        if epoch != self.ident.current().epoch {
-            return Err(Error::coord(
-                CK::NotAllowed,
-                "this device's person key isn't the board's newest yet",
-            ));
-        }
-        let row = self.ident.board_open_cards_row(epoch, to, (self.now)())?;
-        b.store.append(
-            &format!("{PERSON_ACTOR_PREFIX}{me}"),
-            kinds::BOARD_OPEN_CARDS,
-            &row,
-        )?;
-        self.boards.moved();
-        Ok(())
-    }
-
     /// Renames a board (§4.2: owners only), with board.renamed signed by
     /// this person's key.
     pub(crate) fn rename_board(&self, board_id: &str, name: &str) -> Result<()> {
@@ -1179,7 +1125,6 @@ impl Services {
     pub(crate) fn board_info(&self, board_id: &str) -> Result<BoardInfo> {
         let b = self.board(board_id)?;
         let m = b.verifier.membership();
-        let open_cards = open_cards_of(&m);
         Ok(BoardInfo {
             board_id: board_id.into(),
             name: m.name,
@@ -1189,7 +1134,6 @@ impl Services {
             conflicts: m.conflicts,
             epoch: b.verifier.board_epoch(),
             secret_epoch: b.secrets.epoch(),
-            open_cards,
         })
     }
 
@@ -1347,9 +1291,8 @@ impl Services {
         laps.lap("identity+secret");
         let me = self.person_actor();
         let co = {
-            let (ch, v1, v2, v3, v4, v5, v6) = (
+            let (ch, v1, v2, v3, v4, v5) = (
                 self.chain.clone(),
-                v.clone(),
                 v.clone(),
                 v.clone(),
                 v.clone(),
@@ -1382,12 +1325,6 @@ impl Services {
                         })
                     })),
                     tag: Some(Arc::new(move || v4.membership().tag)),
-                    // Who open cards go to (card #174), as the board's
-                    // owners last set it.
-                    open_cards_any: Some(Arc::new(move || {
-                        open_cards_of(&v6.membership())
-                            == irori_identity::membership::OPEN_CARDS_ANY
-                    })),
                     // The cancel rule reads the owners at the row's place
                     // (v0.5 §5.3); no place means now.
                     board_owner: Some(Arc::new(move |p: &str, at: Option<&coord::RowPos>| {
@@ -2314,12 +2251,6 @@ impl super::Core {
     /// their devices' bridge.
     pub fn board_ask(&self, board_id: &str, input: coord::NewAsk) -> Result<(coord::Task, Notice)> {
         self.s.board_ask(board_id, input)
-    }
-
-    /// Sets who a board's open cards go to (owners): "author" or "any"
-    /// (card #174).
-    pub fn set_open_cards(&self, board_id: &str, to: &str) -> Result<()> {
-        self.s.set_open_cards(board_id, to)
     }
 
     /// Renames a board (owners).

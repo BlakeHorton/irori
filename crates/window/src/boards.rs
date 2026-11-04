@@ -541,10 +541,6 @@ pub struct BoardSettings {
     pub reviewers: Vec<BoardReviewer>,
     /// This person's live agents, to dedicate one as a reviewer.
     pub agents: Vec<ReviewerChoice>,
-    /// Who the board's open cards go to (card #174): "author" (each
-    /// card's author's own free agents, the default) or "any" (any
-    /// member's). One value for the whole board; owners change it.
-    pub open_cards: String,
 }
 
 impl Window {
@@ -624,13 +620,7 @@ impl Window {
                 })
                 .collect(),
             agents: self.reviewer_choices(),
-            open_cards: info.open_cards,
         })
-    }
-
-    /// BoardsService.SetOpenCards (owners, card #174): "author" or "any".
-    pub fn boards_set_open_cards(&self, board_id: &str, to: &str) -> Result<(), String> {
-        self.core.set_open_cards(board_id, to).map_err(text)
     }
 
     /// BoardsService.RemoveMember (owners, §4.3).

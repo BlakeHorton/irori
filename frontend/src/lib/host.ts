@@ -306,7 +306,6 @@ export const BoardsService = {
     call(commands.boardsSetReceive(boardId, preset, people)),
   SetAutonomy: (boardId: string, preset: string) => call(commands.boardsSetAutonomy(boardId, preset)),
   SetThreads: (boardId: string, mode: string) => call(commands.boardsSetThreads(boardId, mode)),
-  SetOpenCards: (boardId: string, to: string) => call(commands.boardsSetOpenCards(boardId, to)),
   SetReviewer: (boardId: string, agent: string, repo: string) =>
     call(commands.boardsSetReviewer(boardId, agent, repo)),
   Invite: (boardId: string) => call(commands.boardsInvite(boardId)),

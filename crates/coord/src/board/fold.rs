@@ -219,8 +219,6 @@ pub struct Fold {
     pub(crate) on_board: bool,
     pub(crate) done_check: bool,
     pub(crate) person: String,
-    /// See [`super::Options::open_cards_any`].
-    pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::spawning`].
     pub(crate) spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::offers`].
@@ -398,7 +396,6 @@ impl Fold {
             done_check: o.done_check,
             person,
             key_person: o.key_person,
-            open_cards_any: o.open_cards_any,
             spawning: o.spawning,
             offers: o.offers,
             agents_per_card: o.agents_per_card,

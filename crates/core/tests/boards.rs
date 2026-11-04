@@ -776,15 +776,6 @@ fn create_board_rows() {
     let e = c.rename_board(&id, "").unwrap_err();
     assert_eq!(coord_kind(&e), Some(CK::Invalid), "an empty name: {e}");
     assert_eq!(c.board_info(&id).unwrap().name, "mlg & co");
-    // Where open cards go (card #174): the author's agents until an owner
-    // says any member's; a bad value is refused.
-    assert_eq!(c.board_info(&id).unwrap().open_cards, "author");
-    c.set_open_cards(&id, "any").unwrap();
-    assert_eq!(c.board_info(&id).unwrap().open_cards, "any");
-    let e = c.set_open_cards(&id, "everyone").unwrap_err();
-    assert_eq!(coord_kind(&e), Some(CK::Invalid), "a bad value: {e}");
-    c.set_open_cards(&id, "author").unwrap();
-    assert_eq!(c.board_info(&id).unwrap().open_cards, "author");
     // The secret: in its sealed file, not in any row.
     let (secret, _) = c
         .board_secrets(&id)
