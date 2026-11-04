@@ -2,6 +2,7 @@ import { useId, useRef, useState, type ReactNode } from "react"
 import { useReducedMotion } from "@/lib/motion"
 import {
   BellIcon,
+  BotIcon,
   GitMergeIcon,
   InfoIcon,
   LaptopIcon,
@@ -14,6 +15,7 @@ import {
 import { InvitePanel, JoinInvite } from "@/components/boards/parts"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { DevicesPanel } from "@/components/settings/devices-panel"
+import { AgentsPane } from "@/components/settings/agents-pane"
 import { DesksPane } from "@/components/settings/desks-pane"
 import { AppearancePane } from "@/components/settings/appearance-pane"
 import { MaintenancePane } from "@/components/settings/maintenance-pane"
@@ -39,6 +41,7 @@ export type SettingsSection =
   | "appearance"
   | "devices"
   | "people"
+  | "agents"
   | "desks"
   | "maintenance"
   | "app"
@@ -72,6 +75,12 @@ export const settingsSections: {
     label: "People and invites",
     icon: UsersIcon,
     hint: "Who is on your boards, and joining someone else's.",
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    icon: BotIcon,
+    hint: "Agents Irori starts for your cards, and what they start with.",
   },
   {
     id: "desks",
@@ -158,6 +167,7 @@ export function SettingsDialog({
           {here.id === "people" && (
             <PeoplePane onOpenBoard={() => onOpenChange(false)} />
           )}
+          {here.id === "agents" && <AgentsPane open={open} />}
           {here.id === "desks" && <DesksPane open={open} />}
           {here.id === "maintenance" && <MaintenancePane />}
           {here.id === "app" && <AppPane open={open} version={version} />}

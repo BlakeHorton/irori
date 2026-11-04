@@ -19,6 +19,7 @@ use crate::attachments::AttachmentInfo;
 use crate::board::{AnswerResult, AskRepo, CommentResult, TaskResult, UploadFile};
 use crate::boards::{BoardSettings, BoardSummary, SharePreview};
 use crate::cards::{CardDetail, CardMessage, CardSummary, DonePage, IdleReport};
+use crate::agents::{AgentsChange, AgentsSettings};
 use crate::desk::{DeskSettings, DeskView};
 use crate::devices::{DeviceView, HomeServerView, PairStatus, RelayView};
 use crate::events::{CaptureChange, Empty};
@@ -1285,6 +1286,23 @@ pub async fn voice_open_settings(w: W<'_>, code: String) -> R<()> {
     blocking(&w, move |w| w.voice_open_settings(&code)).await
 }
 
+// ---- Settings › Agents (card #448) ------------------------------------------
+
+/// A board's spawned-agent switch, model and effort (`""`: the private
+/// board).
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_settings(w: W<'_>, board_id: String) -> R<AgentsSettings> {
+    Ok(w.agents_settings(&board_id))
+}
+
+/// The person changes them: the app only, never a tool.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_set(w: W<'_>, change: AgentsChange) -> R<AgentsSettings> {
+    w.agents_set(change)
+}
+
 // ---- merge desks (card #417) ----------------------------------------------
 
 /// Every merge desk in the person's log.
@@ -1578,6 +1596,8 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             term_close,
             term_folders,
             term_list,
+            agents_settings,
+            agents_set,
             desk_list,
             desk_set,
             desk_hold,

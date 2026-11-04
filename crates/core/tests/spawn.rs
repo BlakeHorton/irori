@@ -122,6 +122,11 @@ fn a_card_gets_its_own_agent_which_ends_at_its_done_check() {
     assert_eq!(reqs.len(), 1, "one spawn: {reqs:?}");
     let req = &reqs[0];
     assert_eq!(req.permission_mode, "bypassPermissions");
+    // No model picked: Sonnet at medium effort (#448), on the request row
+    // too.
+    assert_eq!((req.model.as_str(), req.effort.as_str()), ("sonnet", "medium"));
+    let sr = co.get_task(&t.id).unwrap().spawn_request().cloned().unwrap();
+    assert_eq!((sr.model.as_str(), sr.effort.as_str()), ("sonnet", "medium"));
     assert_eq!(req.folder, work.path().to_string_lossy());
     // The brief is in a file, quoted and fenced; the prompt is short and
     // carries none of the card's text.
@@ -391,4 +396,40 @@ fn a_spawned_agent_on_a_permission_prompt_waits_on_the_person() {
         r.core.set_spawn_cap(r.core.spawn_cap()).unwrap();
         waits(co).is_empty()
     });
+}
+
+/// Card #448: the board's model and effort are kept with its switch and
+/// permissions, and one Settings › Agents doesn't offer is refused.
+#[test]
+fn model_and_effort_are_kept_and_checked() {
+    let r = Rig::new();
+    let d = r.core.spawn_setting("");
+    assert_eq!((d.model(), d.effort()), ("sonnet", "medium"));
+    r.core
+        .set_spawn_setting(SpawnSetting {
+            model: "opus".into(),
+            effort: "high".into(),
+            ..SpawnSetting::default()
+        })
+        .unwrap();
+    let s = r.core.spawn_setting("");
+    assert_eq!((s.model(), s.effort(), s.on), ("opus", "high", false));
+    // Setting the permissions keeps the model and effort.
+    r.core
+        .set_spawn_permissions("", "limited", vec![], vec![], Default::default())
+        .unwrap();
+    assert_eq!(r.core.spawn_setting("").model(), "opus");
+    for bad in [
+        SpawnSetting {
+            model: "opus --dangerously-skip-permissions".into(),
+            ..SpawnSetting::default()
+        },
+        SpawnSetting {
+            effort: "huge".into(),
+            ..SpawnSetting::default()
+        },
+    ] {
+        assert!(r.core.set_spawn_setting(bad).is_err());
+    }
+    assert_eq!(r.core.spawn_setting("").model(), "opus", "a refused row changes nothing");
 }

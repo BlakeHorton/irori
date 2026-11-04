@@ -271,6 +271,13 @@ export const commands = {
 	termClose: (id: number) => __TAURI_INVOKE<null>("term_close", { id }),
 	termFolders: (card: string) => __TAURI_INVOKE<Folder[]>("term_folders", { card }),
 	termList: (card: string) => __TAURI_INVOKE<TermInfo[]>("term_list", { card }),
+	/**
+	 *  A board's spawned-agent switch, model and effort (`""`: the private
+	 *  board).
+	 */
+	agentsSettings: (boardId: string) => __TAURI_INVOKE<AgentsSettings>("agents_settings", { boardId }),
+	/**  The person changes them: the app only, never a tool. */
+	agentsSet: (change: AgentsChange) => __TAURI_INVOKE<AgentsSettings>("agents_set", { change }),
 	/**  Every merge desk in the person's log. */
 	deskList: () => __TAURI_INVOKE<DeskView[]>("desk_list"),
 	/**  The person sets up or changes a repo's merge desk. */
@@ -376,6 +383,30 @@ export type AgentRef = {
 	 *  the default for its name.
 	 */
 	avatar?: string,
+};
+
+/**  The person's change: the fields left `None` keep what is stored. */
+export type AgentsChange = {
+	boardId?: string,
+	on?: boolean | null,
+	model?: string | null,
+	effort?: string | null,
+};
+
+/**  What Settings › Agents shows for one board. */
+export type AgentsSettings = {
+	/**  `""`: the private board. */
+	boardId: string,
+	/**  Irori starts an agent for each card instead of waiting for a free one. */
+	on: boolean,
+	/**  What a spawn passes: the board's pick, or the default. */
+	model: string,
+	effort: string,
+	/**  The choices Settings › Agents offers. */
+	models: string[],
+	efforts: string[],
+	defaultModel: string,
+	defaultEffort: string,
 };
 
 /**  Answer's reply: the card after the answer, and who heard. */

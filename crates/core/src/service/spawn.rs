@@ -169,6 +169,14 @@ pub struct SpawnSetting {
     /// hands off and goes. 0 is [`IDLE_LIMIT`].
     #[serde(default, skip_serializing_if = "is_zero")]
     pub idle_mins: i64,
+    /// The model spawned agents start with (`--model`): one of
+    /// [`MODELS`]; `""` means [`DEFAULT_MODEL`] (card #448, decision 9).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    /// Their effort (`--effort`): one of [`EFFORTS`]; `""` means
+    /// [`DEFAULT_EFFORT`].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub effort: String,
 }
 
 fn is_zero(n: &i64) -> bool {
@@ -246,6 +254,48 @@ fn valid_permissions(s: &SpawnSetting) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The model a board's spawned agents start with when he hasn't picked one
+/// (decision 9 (c), and Stephen on #458: Sonnet to start).
+pub const DEFAULT_MODEL: &str = "sonnet";
+/// The effort they start with when he hasn't picked one.
+pub const DEFAULT_EFFORT: &str = "medium";
+/// The models Settings › Agents offers (Claude Code's `--model` aliases).
+pub const MODELS: &[&str] = &["sonnet", "opus", "haiku"];
+/// The efforts it offers (Claude Code's `--effort` levels).
+pub const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+
+impl SpawnSetting {
+    /// The model a spawn passes: the board's pick, else [`DEFAULT_MODEL`].
+    pub fn model(&self) -> &str {
+        if self.model.is_empty() { DEFAULT_MODEL } else { &self.model }
+    }
+
+    /// The effort a spawn passes: the board's pick, else [`DEFAULT_EFFORT`].
+    pub fn effort(&self) -> &str {
+        if self.effort.is_empty() { DEFAULT_EFFORT } else { &self.effort }
+    }
+
+    /// Refuses a model or effort Settings › Agents doesn't offer, so a bad
+    /// row never reaches `claude`'s command line.
+    pub fn check(&self) -> Result<(), String> {
+        if !self.model.is_empty() && !MODELS.contains(&self.model.as_str()) {
+            return Err(format!(
+                "unknown model {:?}: pick one of {}",
+                self.model,
+                MODELS.join(", ")
+            ));
+        }
+        if !self.effort.is_empty() && !EFFORTS.contains(&self.effort.as_str()) {
+            return Err(format!(
+                "unknown effort {:?}: pick one of {}",
+                self.effort,
+                EFFORTS.join(", ")
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -477,7 +527,11 @@ pub(crate) fn load_spawn(st: &Store, s: &SpawnState) {
             continue;
         }
         if ev.kind == kinds::SPAWN_SET {
-            if let Ok(r) = serde_json::from_slice::<SpawnSetRow>(&ev.payload) {
+            if let Ok(mut r) = serde_json::from_slice::<SpawnSetRow>(&ev.payload) {
+                if r.s.check().is_err() {
+                    r.s.model.clear();
+                    r.s.effort.clear();
+                }
                 on.insert(r.s.board_id.clone(), r.s);
             }
         } else if let Ok(r) = serde_json::from_slice::<SpawnCap>(&ev.payload)
@@ -521,6 +575,7 @@ impl Services {
     /// The person sets a board's switch, from the app only.
     pub(crate) fn set_spawn_setting(&self, s: SpawnSetting) -> Result<(), String> {
         valid_permissions(&s)?;
+        s.check()?;
         let row = SpawnSetRow {
             s: s.clone(),
             by: format!("user:{}", self.device.id),
@@ -685,7 +740,8 @@ impl Services {
             .cloned()
             .or_else(|| self.answer_on_card(t, &comments));
         let brief = build_brief(t, &comments, &named, &|_| None, answer.as_deref());
-        let perms = spawn_permissions(&self.spawn_setting(""), "", &t.repo_key, &brief);
+        let setting = self.spawn_setting("");
+        let perms = spawn_permissions(&setting, "", &t.repo_key, &brief);
         let ask = SpawnAsk {
             task_id: t.id.clone(),
             device: me.clone(),
@@ -693,6 +749,8 @@ impl Services {
             folder: folder.clone().unwrap_or_default(),
             permission_mode: perms.mode.clone(),
             name: name.clone(),
+            model: setting.model().into(),
+            effort: setting.effort().into(),
             ..SpawnAsk::default()
         };
         let Some(g) = self
@@ -734,8 +792,8 @@ impl Services {
             worktree: None,
             permission_mode: perms.mode,
             settings_file,
-            model: String::new(),
-            effort: String::new(),
+            model: setting.model().into(),
+            effort: setting.effort().into(),
             prompt: format!(
                 "You were started for {}. Read your brief at {} before anything else.",
                 t.short_ref(),

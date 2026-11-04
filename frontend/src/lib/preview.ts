@@ -3,7 +3,8 @@
 // ?open=, they only exist outside the app: inside Wails they read nothing.
 //
 //   ?settings[=<s>] opens Settings at a section: notifications, appearance,
-//                   devices, people, maintenance or app
+//                   devices, people, agents, desks,
+//                   maintenance or app
 //   ?devices        opens Settings at Devices and connections
 //   ?boards         opens the Boards dialog
 //   ?share=<card>   opens Share to board on that card's page

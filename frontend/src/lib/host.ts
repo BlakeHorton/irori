@@ -405,6 +405,11 @@ export const TermService = {
 }
 
 // Merge desks (card #417).
+export const AgentsService = {
+  Settings: (boardId: string) => call(commands.agentsSettings(boardId)),
+  Set: (change: B.AgentsChange) => call(commands.agentsSet(change)),
+}
+
 export const DeskService = {
   List: () => call(commands.deskList()),
   Set: (s: B.DeskSettings) => done(commands.deskSet(s)),
