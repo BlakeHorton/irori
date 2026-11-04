@@ -21,6 +21,7 @@ import { Face } from "@/components/cards/faces"
 import { AgentCards } from "@/components/cards/agent-hover"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
 import { Button } from "@/components/ui/button"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import {
   agentsNowFor,
   dmWith,
@@ -138,11 +139,26 @@ export function ConversationView({
               <ChevronLeftIcon />
             </Button>
           )}
-          <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-semibold text-ink">{title}</h2>
+          {narrow && conv.kind === "channel" ? (
+            // A phone keeps the members behind the channel's name (talk-5).
+            <h2 className="min-w-0 text-[15px] font-semibold text-ink">
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-2"
+                aria-expanded={showMembers}
+                title="Who's in this channel"
+                onClick={() => setShowMembers((s) => !s)}
+              >
+                {title}
+              </button>
+            </h2>
+          ) : (
+            <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-semibold text-ink">{title}</h2>
+          )}
           {conv.topic && (
             <span className="min-w-0 truncate text-[12px] text-muted-foreground">{plainLine(conv.topic)}</span>
           )}
-          {conv.kind === "channel" && (
+          {conv.kind === "channel" && !narrow && (
             <Button
               size="xs"
               variant={showMembers ? "secondary" : "ghost"}
@@ -156,6 +172,9 @@ export function ConversationView({
             </Button>
           )}
         </header>
+        {narrow && showMembers && conv.kind === "channel" ? (
+          <Members members={conv.members} live={live} wide />
+        ) : (
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-0.5 overflow-y-auto px-3 py-3">
           {error && (
             <p className="px-2 text-xs text-destructive" role="alert">
@@ -191,6 +210,7 @@ export function ConversationView({
           })}
           <div ref={bottom} />
         </div>
+        )}
         {conv.readOnly ? (
           <p className="border-t border-border px-4 py-2.5 text-[12px] text-muted-foreground">
             Agents talking to each other: you can read it, not post. Nothing between agents is hidden.
@@ -199,7 +219,7 @@ export function ConversationView({
           <Composer conv={conv} other={other[0]} />
         )}
       </div>
-      {showMembers && conv.kind === "channel" && <Members members={conv.members} live={live} />}
+      {showMembers && conv.kind === "channel" && !narrow && <Members members={conv.members} live={live} />}
       <NewCardDialog
         open={!!making}
         from={prefill}
@@ -253,7 +273,13 @@ function PostRow({
   const [asking, setAsking] = useState(false)
   // Its @names, so the text shows them as mentions.
   const mentions = post.mentions.map((key) => {
-    const m: Member = names.get(key) ?? { kind: key.startsWith("person:") ? "person" : "agent", key }
+    // "user" is the person on any of their devices (an agent's mention
+    // "person", card #395).
+    const m: Member =
+      names.get(key) ??
+      (key === "user" || key.startsWith("user:")
+        ? { kind: "person", key, name: "you" }
+        : { kind: key.startsWith("person:") ? "person" : "agent", key })
     const ref = refOf(m, live)
     return { name: m.kind === "person" && m.name === "you" ? "you" : (m.name ?? key), who: ref, gone: !ref.live }
   })
@@ -272,18 +298,22 @@ function PostRow({
         <span className="shrink-0">· in Threads</span>
       </div>
     )
-  return (
+  // Long-press on a phone, or right-click (card #395, mockup talk-5): the
+  // same two actions as the hover buttons, which a touch screen never shows.
+  const canThread = !!channel && !!onMakeCard
+  const canCard = !!onMakeCard && !post.card
+  const row = (
     <div className="group flex gap-2.5 rounded-lg px-2 py-1.5 hover:bg-secondary/40">
       <Face who={refOf(m, live)} className="mt-0.5 shrink-0" />
       <div className="grid min-w-0 flex-1 gap-0.5">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[13px] font-medium text-ink">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 truncate text-[13px] font-medium text-ink">
             {m.kind === "person" ? (m.name === "you" ? "You" : plainLine(m.name ?? "")) : plainLine(m.name ?? m.key)}
           </span>
           {m.kind === "agent" && (
-            <span className="text-[10.5px] text-muted-foreground uppercase">agent</span>
+            <span className="shrink-0 text-[10.5px] text-muted-foreground uppercase">agent</span>
           )}
-          <time className="text-[11px] text-muted-foreground tabular-nums" dateTime={at?.toISOString()}>
+          <time className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground tabular-nums" dateTime={at?.toISOString()}>
             {at?.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
           </time>
           {channel && onMakeCard && (
@@ -323,6 +353,28 @@ function PostRow({
         )}
       </div>
     </div>
+  )
+  if (!canThread && !canCard) return row
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger className="[-webkit-touch-callout:none] md:select-text">
+        {row}
+      </ContextMenuTrigger>
+      <ContextMenuContent aria-label="Message actions">
+        {canThread && (
+          <ContextMenuItem onClick={() => setAsking(true)}>
+            <MessageSquareTextIcon aria-hidden />
+            Reply in thread
+          </ContextMenuItem>
+        )}
+        {canCard && (
+          <ContextMenuItem onClick={onMakeCard}>
+            <SquarePlusIcon aria-hidden />
+            Make a card
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -413,15 +465,25 @@ function CardChip({ id }: { id: string }) {
 function Members({
   members,
   live,
+  wide = false,
 }: {
   members: Member[]
   live: ReadonlyMap<string, { status: string }>
+  // A phone: the whole page under the header, in place of the posts.
+  wide?: boolean
 }) {
   const sorted = [...members].sort((a, b) =>
     a.kind === b.kind ? (a.name ?? a.key).localeCompare(b.name ?? b.key) : a.kind === "person" ? -1 : 1
   )
   return (
-    <aside aria-label="Members" className="hidden w-[220px] shrink-0 overflow-y-auto border-l border-border px-3 py-3 lg:block">
+    <aside
+      aria-label="Members"
+      className={
+        wide
+          ? "min-h-0 flex-1 overflow-y-auto px-4 py-3"
+          : "hidden w-[220px] shrink-0 overflow-y-auto border-l border-border px-3 py-3 lg:block"
+      }
+    >
       <h3 className="pb-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
         Members · {members.length}
       </h3>

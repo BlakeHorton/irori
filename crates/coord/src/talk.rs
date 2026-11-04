@@ -675,6 +675,25 @@ impl Talk {
             .map(|c| c.up_to.clone())
     }
 
+    /// Post `post_id` in `conv`, when it should notify `reader` (card
+    /// #395, design §8): someone else's, not yet read, and either in a DM
+    /// `reader` is in or @-mentioning them. A plain channel post only
+    /// bumps the unread count.
+    pub fn notifies(&self, conv: &str, post_id: &str, reader: &str) -> Option<Post> {
+        let posts = self.posts(conv);
+        let cursor = self.cursor(reader, conv);
+        let p = since(&posts, cursor.as_deref())
+            .iter()
+            .find(|p| p.post_id == post_id)?;
+        let me = canon(reader);
+        if canon(&p.by) == me || p.thread_from.is_some() {
+            return None;
+        }
+        let dm = is_dm(conv) && self.is_member(conv, reader);
+        let mentioned = p.mentions.iter().any(|m| canon(m) == me);
+        (dm || mentioned).then(|| p.clone())
+    }
+
     /// The card made from post `id` (`talk.card`).
     pub fn card_of(&self, id: &str) -> Option<String> {
         self.lock().cards.get(id).cloned()

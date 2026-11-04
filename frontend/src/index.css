@@ -22,6 +22,12 @@
     --device-cyan: oklch(0.78 0.11 215);
     --device-indigo: oklch(0.7 0.13 275);
     --device-sand: oklch(0.78 0.06 80);
+    /* The system bars a page pads around (card #395): env() where the
+       WebView reports it, else what MainActivity hands over (lib/insets.ts). */
+    --safe-top: max(env(safe-area-inset-top), var(--android-inset-top, 0px));
+    --safe-bottom: max(env(safe-area-inset-bottom), var(--android-inset-bottom, 0px));
+    --safe-left: max(env(safe-area-inset-left), var(--android-inset-left, 0px));
+    --safe-right: max(env(safe-area-inset-right), var(--android-inset-right, 0px));
 }
 
 @theme inline {

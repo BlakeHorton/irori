@@ -257,7 +257,7 @@ export function AppSidebar({
               // Opaque (the theme's --sidebar is translucent glass, which let the page
               // show through on a phone) and clear of Android's status and
               // gesture bars (edge to edge, card #227).
-              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl transition-transform",
+              "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] bg-background pt-[var(--safe-top)] pb-[var(--safe-bottom)] shadow-xl transition-transform",
               !drawer && "invisible -translate-x-full"
             )
           : "bg-sidebar/60"

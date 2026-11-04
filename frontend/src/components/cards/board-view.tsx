@@ -284,7 +284,7 @@ export function BoardView({
         </div>
         {aside}
         {sheet && threads && (
-          <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
+          <div className="fixed inset-0 z-40 overflow-y-auto bg-background p-2 pt-[calc(var(--safe-top)+0.5rem)] pb-[calc(var(--safe-bottom)+2.5rem)]">
             <ThreadsPanel
               threads={threads.list}
               open={threads.open}

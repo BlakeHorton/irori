@@ -405,3 +405,68 @@ fn a_card_made_from_a_post_is_linked() {
     want(t.link_card(&p.post_id, " ", USER), ErrorKind::Invalid);
     assert_eq!(talk(&e).card_of(&p.post_id).as_deref(), Some("task-1"));
 }
+
+/// Card #395: a mention or a DM notifies the person; a plain channel post,
+/// their own post or one they've read doesn't.
+#[test]
+fn only_mentions_and_dms_notify() {
+    let e = Env::new();
+    let t = talk(&e);
+    let reader = "user:phone";
+    let c = t.create_channel(USER, "suzuri", "").unwrap();
+    let plain = post(&t, &c.id, ALICE, "the build is green");
+    assert!(
+        t.notifies(&c.id, &plain.post_id, reader).is_none(),
+        "a plain channel post"
+    );
+    let tagged = t
+        .post(NewPost {
+            conv_id: c.id.clone(),
+            text: "@you anything blocking?".into(),
+            mentions: vec!["user".into()],
+            by: ALICE.into(),
+            ..NewPost::default()
+        })
+        .unwrap();
+    assert_eq!(
+        t.notifies(&c.id, &tagged.post_id, reader).map(|p| p.text),
+        Some("@you anything blocking?".into()),
+        "a mention of the person, read on any of their devices"
+    );
+    let own = t
+        .post(NewPost {
+            conv_id: c.id.clone(),
+            text: "note to self @you".into(),
+            mentions: vec!["user".into()],
+            by: USER.into(),
+            ..NewPost::default()
+        })
+        .unwrap();
+    assert!(
+        t.notifies(&c.id, &own.post_id, reader).is_none(),
+        "their own post"
+    );
+
+    let dm = t
+        .open_dm(&Member::of(USER), &Member::of(ALICE), USER)
+        .unwrap();
+    let said = post(&t, &dm, ALICE, "done with #330");
+    assert!(
+        t.notifies(&dm, &said.post_id, reader).is_some(),
+        "a DM to the person"
+    );
+    t.mark_read(&dm, &said.post_id, USER).unwrap();
+    assert!(
+        t.notifies(&dm, &said.post_id, reader).is_none(),
+        "read already"
+    );
+
+    let theirs = t
+        .open_dm(&Member::of(ALICE), &Member::of(BOB), ALICE)
+        .unwrap();
+    let between = post(&t, &theirs, ALICE, "hi bob");
+    assert!(
+        t.notifies(&theirs, &between.post_id, reader).is_none(),
+        "two agents' DM"
+    );
+}

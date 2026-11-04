@@ -20,6 +20,8 @@ mod apk;
 mod golden;
 pub mod instance;
 pub mod login;
+#[cfg(target_os = "android")]
+mod notify_android;
 mod probe;
 // No tray on a phone (card #226): the same API with nothing behind it.
 #[cfg_attr(mobile, path = "tray_mobile.rs")]
@@ -92,11 +94,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     // The desktop cards, one per data dir (settings.json there). The dev
     // shell probe (automated tests) never puts a card on screen.
+    // A phone's are Android notifications, for mentions and DMs only
+    // (card #395).
+    #[cfg(target_os = "android")]
+    let phone: notify_android::Slot = Arc::default();
+    #[cfg(target_os = "android")]
+    let toaster: Option<Arc<dyn notify::Toaster>> =
+        Some(Arc::new(notify_android::Phone(phone.clone())));
+    #[cfg(not(target_os = "android"))]
+    let toaster = None;
     let notifier = notify::Notifier::new(notify::Config {
         dir: Some(data.clone()),
         headless: probe::Probe::from_env().on(),
+        toaster,
         ..notify::Config::default()
     });
+
     // The updater (M8), GUI role only; a dev build never checks.
     let updater = update::new(&data);
 
@@ -125,6 +138,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // Android's install screen for in-app updates (card #270).
     #[cfg(target_os = "android")]
     let app = app.plugin(apk::init(updater.clone()));
+    // A tapped notification opens its conversation once the page listens:
+    // when it starts (a tap that launched Irori) and each time it shows
+    // again (a tap that brought it back).
+    #[cfg(target_os = "android")]
+    let app = app.plugin(notify_android::init(phone.clone(), notifier.clone()));
     let app = app
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -260,6 +278,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 // Go build on the Mac).
                 #[cfg(target_os = "macos")]
                 RunEvent::Reopen { .. } => show(_app),
+
                 _ => {}
             }
         })

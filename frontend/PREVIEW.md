@@ -31,6 +31,7 @@ unchanged.
 | `/?talk` | Talk (card #390): the Threads list beside the new-thread box; `#talk` in the address does the same |
 | `/?thread=sample-thread-1` | Talk with a thread open: sample-heron's answer, the reply box, Resolve (cards #116, #390); its #26 (a resolved thread) and #5 (a done card) are links (card #144) |
 | `/#talk/sample-ch-suzuri` | a Talk channel (card #390): posts by day, a mention, the pointer a thread started from a message leaves, members with live status; hover a message for Start a thread and Make a card |
+| `/#talk` at phone width (under 768 px) | the phone (card #395, mockup talk-5): Home, Talk and Boards as a bottom tab bar, Talk's count on its tab; a conversation opens full-screen with Back, its members behind the channel's name; long-press (or right-click) a message for Reply in thread and Make a card |
 | `/#talk/sample-dm-heron` | a DM with an agent (unread until opened); `/#talk/sample-dm-otter-badger` two agents' DM, read-only |
 | `/?open=board:task:sample-card-7` | a parent card's page: its subtasks, one blocked, and the steps done before the split |
 | `/?open=board:task:sample-card-9` | a subtask's page, with "Part of #7" under the title |

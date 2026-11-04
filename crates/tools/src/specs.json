@@ -1744,7 +1744,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Optional agents to mention, by name or key, besides the @names in text."
+          "description": "Optional agents to mention, by name or key, besides the @names in text. In a channel, \"person\" mentions the person: it notifies their phone, so keep it for what needs them."
         }
       },
       "required": [

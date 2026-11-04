@@ -13,6 +13,8 @@ export type { Target }
 
 // EventOpen is app:open (notify_gui.go): show a tab and select a ref there.
 export const EventOpen = "app:open"
+// EventOpenReady is app:open-ready: the page listens for app:open now.
+export const EventOpenReady = "app:open-ready"
 
 // EventLaunchAtLogin is settings:launch-at-login (settings_service.go).
 const EventLaunchAtLogin = "settings:launch-at-login"
@@ -143,7 +145,18 @@ export function onOpen(fn: (t: Target) => void): () => void {
     const id = window.setTimeout(() => fn({ tab, ref: ref.join(":") }), 0)
     return () => window.clearTimeout(id)
   }
-  return Events.On<Target>(EventOpen, (ev) => fn(ev.data))
+  // Once it listens, and each time the window shows again, the host may
+  // send what waited for it: a phone notification tapped (card #395).
+  const ready = () => Events.Emit(EventOpenReady)
+  const shown = () => {
+    if (document.visibilityState === "visible") ready()
+  }
+  document.addEventListener("visibilitychange", shown)
+  const off = Events.On<Target>(EventOpen, (ev) => fn(ev.data), ready)
+  return () => {
+    document.removeEventListener("visibilitychange", shown)
+    off()
+  }
 }
 
 // useYourName is the person's name (card #183): set once in Settings, it

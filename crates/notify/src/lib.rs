@@ -43,8 +43,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 pub use inbox::watch::{
-    Level, SeenStore, TAB_BOARD, TAB_HELD, TAB_INBOX, Target, WAITING_ID, ask_id, held_id,
-    message_id, needs_id, parse_level, returned_id, unclaimed_id,
+    Level, SeenStore, TAB_BOARD, TAB_HELD, TAB_INBOX, TAB_TALK, Target, WAITING_ID, ask_id,
+    held_id, message_id, needs_id, parse_level, returned_id, talk_conv, talk_id, unclaimed_id,
 };
 pub use settings::{SEEN_FILE, SETTINGS_FILE, SeenFile, load, save};
 pub use thumb::{attachment_thumbnail, thumbnail};
@@ -52,6 +52,31 @@ pub use watch::{
     AskSource, BoardSource, FileFn, InboxFeed, RoomSource, Sources, WatchHandle, hold_reason,
     preview, upper, watch,
 };
+
+/// Whether a card is one a phone shows (card #395): a Talk post that
+/// mentions the person or is a DM to them, or an agent's message to the
+/// person (Talk shows it as a DM). On a phone only mentions and DMs
+/// notify: asks, held messages and cards waiting on you stay off it.
+pub fn on_phone(id: &str) -> bool {
+    talk_conv(id).is_some() || id.starts_with("msg:")
+}
+
+/// Where a phone notification `id` opens when tapped: a Talk post its
+/// conversation, an agent's message its DM (by its delivery).
+pub fn phone_target(id: &str) -> Option<Target> {
+    if let Some(conv) = talk_conv(id) {
+        return Some(Target {
+            tab: TAB_TALK.into(),
+            ref_: conv.into(),
+        });
+    }
+    id.strip_prefix("msg:")
+        .filter(|d| !d.is_empty())
+        .map(|d| Target {
+            tab: TAB_INBOX.into(),
+            ref_: d.into(),
+        })
+}
 
 /// The most buttons a card shows (the toast engine's limit).
 pub const MAX_ACTIONS: usize = 2;

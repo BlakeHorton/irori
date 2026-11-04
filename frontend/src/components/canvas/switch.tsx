@@ -146,7 +146,7 @@ export function BoardCanvas({
     setFull((f) => !f)
   }
   const size = full
-    ? "fixed inset-0 z-50 rounded-none! pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+    ? "fixed inset-0 z-50 rounded-none! pt-[var(--safe-top)] pb-[var(--safe-bottom)]"
     : fill
       ? "min-h-[280px] flex-[1_1_0]"
       : "h-[calc(100vh-220px)] min-h-[480px]"

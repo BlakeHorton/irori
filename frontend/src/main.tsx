@@ -8,6 +8,9 @@ import { commands } from "./gen/bindings"
 import { inHost } from "./lib/irori"
 import { applyAppearance, clean, loadAppearance } from "./lib/appearance"
 import { previewFlag } from "./lib/preview"
+import { followInsets } from "./lib/insets"
+
+followInsets()
 
 // Card #232: index.html shows the opening screen while the Core starts on
 // its own thread (a fully synced log takes a while on a phone); every

@@ -510,13 +510,27 @@ pub fn post(
     let talk = talk_of(b)?;
     let by = from.key.clone();
     let text_ok = ct::check_text(&by, text).map_err(|e| e.to_string())?;
-    let res: Resolved = coord::mentions::resolve(&cards(b), &by, &text_ok, given);
-    let live: Vec<String> = res
+    // "person" is the person, not an agent to resolve (card #395).
+    let agents_given: Vec<String> = given
+        .iter()
+        .filter(|g| !is_person_mention(g))
+        .cloned()
+        .collect();
+    let res: Resolved = coord::mentions::resolve(&cards(b), &by, &text_ok, &agents_given);
+    let mut live: Vec<String> = res
         .mentions
         .iter()
         .filter(|m| !m.gone)
         .map(|m| m.key.clone())
         .collect();
+    // An agent mentions the person in a channel with mention "person"
+    // (card #395): it notifies their phone. A DM with them already does.
+    if matches!(target, Target::Channel(_))
+        && !ct::is_person_key(&by)
+        && given.iter().any(|g| is_person_mention(g))
+    {
+        live.push(PERSON_MENTION.to_string());
+    }
     let mut out = Posted {
         mentions: res.mentions.clone(),
         misses: res.misses.clone(),
@@ -596,7 +610,7 @@ pub fn post(
         })
         .map_err(|e| e.to_string())?;
     if ct::is_channel(&conv) {
-        for k in &live {
+        for k in live.iter().filter(|k| !ct::is_person_key(k)) {
             // An agent mentioned in a channel joins it (§3).
             let _ = talk.join(&conv, &Member::of(k), &by);
         }
@@ -684,6 +698,17 @@ fn tell_readers(
         out.extend(crate::notice::route_notice(b.inbox(), from, &n));
     }
     out
+}
+
+/// The key a post's mentions name the person by: Talk counts every one of
+/// their devices as it ([`ct::canon`]).
+pub const PERSON_MENTION: &str = "user";
+
+/// Whether a `mention` entry names the person: "person" (as a DM's conv
+/// does), "you", or their key.
+fn is_person_mention(g: &str) -> bool {
+    let g = g.trim().trim_start_matches('@').trim();
+    g.eq_ignore_ascii_case("person") || g.eq_ignore_ascii_case("you") || ct::is_person_key(g)
 }
 
 /// Wakes the agents a post mentions, through the mention notice.

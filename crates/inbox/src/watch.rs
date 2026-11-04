@@ -21,6 +21,8 @@ use crate::{Change, ChangeKind, Delivery, Inbox, Result, hold, st};
 pub const TAB_INBOX: &str = "inbox";
 pub const TAB_BOARD: &str = "board";
 pub const TAB_HELD: &str = "held";
+/// Talk with a channel or DM open (card #395); the ref is its id.
+pub const TAB_TALK: &str = "talk";
 
 /// Card ids (I:internal/notify/notify.go:416-421).
 pub fn held_id(sender_key: &str) -> String {
@@ -32,6 +34,14 @@ pub fn message_id(delivery_id: &str) -> String {
 /// The one quiet card at start for messages that waited while Irori was
 /// closed (#364).
 pub const WAITING_ID: &str = "msg:waiting";
+/// A Talk post's card (card #395): the conversation, then the post.
+pub fn talk_id(conv: &str, post_id: &str) -> String {
+    format!("talk:{conv}/{post_id}")
+}
+/// The conversation of a [`talk_id`].
+pub fn talk_conv(id: &str) -> Option<&str> {
+    id.strip_prefix("talk:")?.split_once('/').map(|(c, _)| c)
+}
 pub fn needs_id(task_id: &str) -> String {
     format!("needs:{task_id}")
 }

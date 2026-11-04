@@ -13,6 +13,9 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { CardPage } from "@/components/cards/card-detail"
 import { HeldDialog, type HeldTab } from "@/components/cards/held-dialog"
 import { NewCardDialog } from "@/components/cards/new-card-dialog"
+import { PhoneTabs, phoneTab } from "@/components/phone-tabs"
+import { useNarrow } from "@/lib/media"
+import { cn } from "@/lib/utils"
 import { WindDownDialog } from "@/components/wind-down-dialog"
 import { MessageDialog } from "@/components/cards/message-dialog"
 import { TalkPage, needsYou } from "@/components/talk/talk-page"
@@ -365,6 +368,11 @@ export function App() {
           setWindDown(true)
           return
         }
+        // A Talk notification (card #395): that channel or DM.
+        if (target.tab === "talk" && ref) {
+          go({ kind: "talk", id: ref })
+          return
+        }
         if (target.tab === "held") {
           openHeld(ref)
           return
@@ -532,6 +540,13 @@ export function App() {
     setDrawer(false)
   }
 
+  // A phone (card #395, mockup talk-5): Home, Talk and Boards are tabs at
+  // the bottom, and an open conversation is the whole screen, its own
+  // header carrying Back.
+  const narrow = useNarrow()
+  const talkWaiting = threadList.filter(needsYou).length + unreadDms(conversations)
+  const fullScreen = narrow && !open && section.kind === "talk" && !!section.id
+
   return (
     <AgentCards.Provider value={agentCards}>
     <LiveRoster.Provider value={liveRoster}>
@@ -542,7 +557,7 @@ export function App() {
       <AppSidebar
         roster={roster}
         held={held.held.length}
-        talk={threadList.filter(needsYou).length + unreadDms(conversations)}
+        talk={talkWaiting}
         desks={{
           on: desks.desks.filter(deskOn).length,
           needYou: desks.desks
@@ -564,6 +579,9 @@ export function App() {
         me={me}
       />
       <div className="flex min-w-0 flex-1 flex-col">
+      {fullScreen ? (
+        <div aria-hidden className="shrink-0 pt-[var(--safe-top)]" />
+      ) : (
       <AppHeader
         onMenu={() => setDrawer(true)}
         roster={roster}
@@ -592,7 +610,14 @@ export function App() {
         onWindDown={() => setWindDown(true)}
         section={open ? null : section}
       />
-      <main className="mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 px-4 pt-[18px] pb-[env(safe-area-inset-bottom)] sm:px-6">
+      )}
+      <main
+        className={cn(
+          "mx-auto flex min-h-0 w-full max-w-[1920px] flex-1 flex-col gap-3.5 sm:px-6",
+          fullScreen ? "px-0 pt-0" : "px-4 pt-[18px]",
+          !narrow && "pb-[var(--safe-bottom)]"
+        )}
+      >
         <UpdateBanner />
         {error && (
           <p className="glass-panel border-destructive/50! px-3 py-2 text-sm text-destructive" role="alert">
@@ -725,6 +750,9 @@ export function App() {
           />
         )}
       </main>
+      {narrow && (
+        <PhoneTabs at={phoneTab(section)} talk={talkWaiting} onGo={goTo} />
+      )}
       </div>
       {windDown && (
         <WindDownDialog

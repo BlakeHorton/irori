@@ -9,7 +9,7 @@
 // event callback gets the payload as `data`.
 
 import { Channel } from "@tauri-apps/api/core"
-import { listen } from "@tauri-apps/api/event"
+import { emit, listen } from "@tauri-apps/api/event"
 import { readImage, writeText } from "@tauri-apps/plugin-clipboard-manager"
 import { openUrl } from "@tauri-apps/plugin-opener"
 
@@ -50,13 +50,17 @@ export type HostEvent<T> = { name: string; data: T }
 // unsubscribe. Tauri's listen resolves later, so an unsubscribe that comes
 // first is applied when it does.
 export const Events = {
-  On<T = unknown>(name: string, callback: (ev: HostEvent<T>) => void): () => void {
+  // listening, when given, runs once the subscription is live.
+  On<T = unknown>(name: string, callback: (ev: HostEvent<T>) => void, listening?: () => void): () => void {
     let off: (() => void) | null = null
     let cancelled = false
     listen<T>(name, (e) => callback({ name, data: e.payload }))
       .then((unlisten) => {
         if (cancelled) unlisten()
-        else off = unlisten
+        else {
+          off = unlisten
+          listening?.()
+        }
       })
       .catch(() => {})
     return () => {
@@ -64,6 +68,10 @@ export const Events = {
       off?.()
       off = null
     }
+  },
+  // Emit tells the host something happened here.
+  Emit(name: string): void {
+    void emit(name).catch(() => {})
   },
 }
 

@@ -307,3 +307,28 @@ fn confetti_is_saved_only_while_on() {
     );
     assert!(!notify::load(dir.path()).confetti);
 }
+
+/// Card #395: only Talk's mentions and DMs and agents' messages reach a
+/// phone, and a tap opens the conversation.
+#[test]
+fn phone_shows_mentions_and_dms_only() {
+    assert!(notify::on_phone(&notify::talk_id("ch_1", "p1")));
+    assert!(notify::on_phone(&notify::message_id("d1")));
+    for id in [
+        notify::needs_id("t1"),
+        notify::ask_id("a1"),
+        notify::held_id("k"),
+        notify::unclaimed_id("t"),
+    ] {
+        assert!(!notify::on_phone(&id), "{id}");
+    }
+    let t = notify::phone_target(&notify::talk_id("dm:0123456789abcdef", "p1")).unwrap();
+    assert_eq!(
+        (t.tab.as_str(), t.ref_.as_str()),
+        ("talk", "dm:0123456789abcdef")
+    );
+    let t = notify::phone_target(&notify::message_id("d1")).unwrap();
+    assert_eq!((t.tab.as_str(), t.ref_.as_str()), ("inbox", "d1"));
+    assert!(notify::phone_target("").is_none());
+    assert!(notify::phone_target("needs:t1").is_none());
+}

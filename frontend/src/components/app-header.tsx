@@ -41,7 +41,7 @@ export function AppHeader({
   onMenu?: () => void
 }) {
   return (
-    <header className="sticky top-0 z-20 border-x-0! border-t-0! pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] glass-panel">
+    <header className="sticky top-0 z-20 border-x-0! border-t-0! pt-[var(--safe-top)] pl-[var(--safe-left)] pr-[var(--safe-right)] glass-panel">
       <div className="mx-auto flex h-14 max-w-[1920px] items-center gap-2 px-2 sm:gap-3 sm:px-6 md:px-4">
         {onMenu && (
           <Button

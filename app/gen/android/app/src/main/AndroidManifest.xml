@@ -8,6 +8,8 @@
     <!-- In-app updates (#270): the downloaded APK goes to Android's install
          screen, which asks the person to confirm. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Talk notifications (#395): a mention or a DM; Android 13+ asks once. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

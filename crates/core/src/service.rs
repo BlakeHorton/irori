@@ -1561,6 +1561,9 @@ impl Core {
                         // window still hears it (card #389).
                         s.talk.apply(&ev);
                         s.hub.publish(CoreEvent::Talk);
+                        if ev.kind == kinds::TALK_POST {
+                            s.talk_note(&ev);
+                        }
                     } else if ev.kind == kinds::MESSAGE_SENT {
                         // Agents' messages show as DMs (card #389).
                         s.hub.publish(CoreEvent::Talk);
@@ -2692,6 +2695,64 @@ impl Services {
 
     fn user_sender(&self) -> Sender {
         Sender::new(&format!("user:{}", self.device.id), "you", "user")
+    }
+
+    /// A Talk post that mentions the person or is a DM to them, posted in
+    /// the last few minutes, becomes a notification here (card #395,
+    /// design §8); a plain channel post only bumps the unread count. A
+    /// tap opens the conversation.
+    fn talk_note(&self, ev: &Event) {
+        const FRESH: Duration = Duration::from_secs(10 * 60);
+        let Ok(r) = serde_json::from_slice::<coord::talk::PostRow>(&ev.payload) else {
+            return;
+        };
+        let Some(p) = self
+            .talk
+            .notifies(&r.conv_id, &r.post_id, &self.user_sender().key)
+        else {
+            return;
+        };
+        // A device catching up on old posts doesn't ring for each.
+        let age = (self.now)().unix_milli_value() - p.at.unix_milli_value();
+        if age >= FRESH.as_millis() as i64 {
+            return;
+        }
+        let who = if coord::talk::is_person_key(&p.by) {
+            "You".to_string()
+        } else {
+            // As Talk's list names it: the live card's, else the last name
+            // the agent went by.
+            self.local_agents()
+                .into_iter()
+                .map(|a| (a.key, a.name))
+                .chain(self.roster.agents().into_iter().map(|a| (a.key, a.name)))
+                .find(|(k, n)| *k == p.by && !n.trim().is_empty())
+                .map(|(_, n)| n)
+                .or_else(|| {
+                    self.note_agent_names();
+                    self.agent_names.all().remove(&p.by)
+                })
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| p.by.clone())
+        };
+        let title = match self.talk.channel(&p.conv_id) {
+            Some(c) => format!("{who} in #{}", c.name),
+            None => who,
+        };
+        let n = self.notifier.0.clone();
+        let conv = p.conv_id.clone();
+        self.notifier.0.post(notify::Note {
+            id: notify::talk_id(&p.conv_id, &p.post_id),
+            title,
+            body: notify::preview(&p.text),
+            on_click: Some(Arc::new(move || {
+                n.open(notify::Target {
+                    tab: notify::TAB_TALK.into(),
+                    ref_: conv.clone(),
+                })
+            })),
+            ..notify::Note::default()
+        });
     }
 
     fn local_agents(&self) -> Vec<presence::AgentCard> {

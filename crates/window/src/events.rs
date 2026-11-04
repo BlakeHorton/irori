@@ -45,6 +45,9 @@ pub const EVENT_DEVICES_PAIRING: &str = "devices:pairing";
 pub const EVENT_DEVICES_CHANGED: &str = "devices:changed";
 pub const EVENT_TALK_CHANGED: &str = "talk:changed";
 pub const EVENT_APP_OPEN: &str = "app:open";
+/// From the page: it listens for app:open now (card #395: a phone
+/// notification tapped while Irori was closed opens then).
+pub const EVENT_APP_OPEN_READY: &str = "app:open-ready";
 
 /// The board:changed and boards:changed payload.
 #[derive(Debug, Clone, Default, Serialize, Type)]
