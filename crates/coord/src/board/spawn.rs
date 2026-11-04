@@ -451,6 +451,6 @@ impl Fold {
             .cloned()
             .collect();
         v.sort_by(|a, b| gotime::cmp(&a.created_at, &b.created_at).then_with(|| a.id.cmp(&b.id)));
-        v
+        self.within_limits(v)
     }
 }

@@ -217,6 +217,8 @@ pub struct Fold {
     pub(crate) open_cards_any: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::spawning`].
     pub(crate) spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// See [`super::Options::agents_per_card`].
+    pub(crate) agents_per_card: Option<Arc<dyn Fn() -> i64 + Send + Sync>>,
     /// See [`super::Options::outside_leases`].
     pub(crate) outside_leases: Option<Arc<dyn Fn() -> Vec<String> + Send + Sync>>,
     /// "task/blocker" of external waits on this person's private leases
@@ -377,6 +379,7 @@ impl Fold {
             key_person: o.key_person,
             open_cards_any: o.open_cards_any,
             spawning: o.spawning,
+            agents_per_card: o.agents_per_card,
             outside_leases: o.outside_leases,
             outside_waits: Default::default(),
             origin: HashMap::new(),
@@ -1074,6 +1077,7 @@ impl Fold {
             tag: self.tag_of(&p.board),
             board: p.board.clone(),
             from: p.from.clone(),
+            agents: p.agents.clamp(0, super::MAX_AGENTS_PER_CARD),
             ..Task::default()
         };
         self.fold_ask_created(&mut task, p.ask.as_ref(), ev, &p.by);

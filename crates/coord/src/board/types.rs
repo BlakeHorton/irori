@@ -451,6 +451,10 @@ pub struct Task {
     /// the person.
     #[serde(skip_serializing_if = "omit")]
     pub spawn: bool,
+    /// Its own "Up to N agents" (spawned agents §3): 0 for the board's
+    /// Agents per card, 1 for the lead alone.
+    #[serde(skip_serializing_if = "omit")]
+    pub agents: i64,
     #[serde(skip_serializing_if = "omit")]
     pub subtasks: Vec<String>,
     /// The thread this card was made from (card #155).
@@ -603,6 +607,9 @@ pub struct NewTask {
     /// On a space (card #392): another board in it, by id; empty for the
     /// space's own board.
     pub board: String,
+    /// "Up to N agents" (spawned agents §3): 0 for the board's Agents per
+    /// card, 1 for the lead alone.
+    pub agents: i64,
 }
 
 /// Narrows `list_tasks`; zero values mean any.

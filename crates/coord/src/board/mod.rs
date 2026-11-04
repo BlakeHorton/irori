@@ -38,7 +38,7 @@ mod placed;
 mod prstate;
 mod threads;
 pub use offers::{IdleReport, OFFER_HANDED, OFFER_PASSED, OFFER_WAITING, Unoffered};
-pub use parts::PART_QUESTION;
+pub use parts::{DEFAULT_AGENTS_PER_CARD, MAX_AGENTS_PER_CARD, PART_QUESTION};
 pub use spawn::{
     CRASHED_QUESTION, CRASHED_START, MAX_SPAWN_CRASHES, PERMISSION_MODES, SPAWN_CANCELED,
     SPAWN_FAILED, SPAWN_GRACE, SPAWN_REQUESTED, Spawn, SpawnAsk, Spawned,
@@ -268,6 +268,10 @@ pub struct Options {
     /// the app only. Read when the hand-out runs. `None` or false: idle
     /// agents, as before.
     pub spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// The board's "Agents per card" (spawned agents §3, part 7): how many
+    /// agents a card may have at once, its lead and helpers, unless the
+    /// card sets its own. `None` or below 1: [`DEFAULT_AGENTS_PER_CARD`].
+    pub agents_per_card: Option<Arc<dyn Fn() -> i64 + Send + Sync>>,
     /// On a board, the names of the live leases this person's agents hold
     /// on their private board (card #339). Named leases never show on a
     /// board, so a board card's external wait that names some held ones is
