@@ -27,6 +27,7 @@ irori-notify.workspace = true
 irori-presence.workspace = true
 irori-scrub.workspace = true
 irori-store.workspace = true
+irori-term.workspace = true
 irori-sys.workspace = true
 irori-tools.workspace = true
 getrandom.workspace = true

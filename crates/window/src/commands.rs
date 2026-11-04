@@ -1364,6 +1364,20 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             talk_dm,
             talk_join,
             talk_leave,
+            term_open,
+            term_attach,
+            term_detach,
+            term_write,
+            term_paste,
+            term_resize,
+            term_scroll,
+            term_cell_px,
+            term_focus,
+            term_redraw,
+            term_ack,
+            term_close,
+            term_folders,
+            term_list,
         ])
         .typ::<RosterChange>()
         .typ::<CaptureChange>()
@@ -1379,4 +1393,130 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .dangerously_cast_bigints_to_number()
         .disable_serde_phases()
+}
+
+// ---- Terminals (card #369; docs/design/inline-terminals.md section 5) ----------
+
+/// One terminal frame as raw bytes: `InvokeResponseBody::Raw`, an
+/// ArrayBuffer in the webview with no JSON or base64. Frames never go
+/// through events, which are coalesced (design section 5). The route is
+/// S0b's (#366): `InvokeResponseBody` has no `specta::Type`, so this
+/// newtype is typed as `ArrayBuffer` for the bindings.
+pub struct RawFrame(pub Vec<u8>);
+
+impl tauri::ipc::IpcResponse for RawFrame {
+    fn body(self) -> tauri::Result<tauri::ipc::InvokeResponseBody> {
+        Ok(tauri::ipc::InvokeResponseBody::Raw(self.0))
+    }
+}
+
+impl specta::Type for RawFrame {
+    fn definition(_: &mut specta::Types) -> specta::datatype::DataType {
+        specta_typescript::define("ArrayBuffer").into()
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_open(
+    w: W<'_>,
+    scope: term::Scope,
+    cols: u16,
+    rows: u16,
+    cwd: Option<String>,
+) -> R<term::TermInfo> {
+    blocking(&w, move |w| w.term_open(scope, cols, rows, cwd)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_attach(
+    w: W<'_>,
+    id: u32,
+    frames: tauri::ipc::Channel<RawFrame>,
+    msgs: tauri::ipc::Channel<term::TermMsg>,
+) -> R<()> {
+    let viewer = term::Viewer::new(
+        move |b| frames.send(RawFrame(b)).is_ok(),
+        move |m| msgs.send(m).is_ok(),
+    );
+    w.core.terms().attach(id, viewer)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_detach(w: W<'_>, id: u32) -> R<()> {
+    w.core.terms().detach(id);
+    Ok(())
+}
+
+// What the person types reaches the shell in the order typed: these are
+// sync commands, which Tauri runs one at a time on the main thread. Each
+// only queues bytes for the pane's actor. As async commands, every key was
+// its own task, and on the PC a fast burst once arrived out of order
+// (#369, kestrel).
+#[tauri::command]
+#[specta::specta]
+pub fn term_write(w: W<'_>, id: u32, data: String) -> R<()> {
+    w.core.terms().write(id, data.into_bytes())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn term_paste(w: W<'_>, id: u32, text: String) -> R<()> {
+    w.core.terms().paste(id, &text)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn term_resize(w: W<'_>, id: u32, cols: u16, rows: u16) -> R<()> {
+    w.core.terms().resize(id, cols, rows)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn term_scroll(w: W<'_>, id: u32, delta: i32) -> R<()> {
+    w.core.terms().scroll(id, delta)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_cell_px(w: W<'_>, id: u32, width: u16, height: u16) -> R<()> {
+    w.core.terms().cell_px(id, width, height)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn term_focus(w: W<'_>, id: u32, on: bool) -> R<()> {
+    w.core.terms().focus(id, on)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_redraw(w: W<'_>, id: u32) -> R<()> {
+    w.core.terms().redraw(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn term_ack(w: W<'_>, id: u32, seq: u32) -> R<()> {
+    w.core.terms().ack(id, seq)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_close(w: W<'_>, id: u32) -> R<()> {
+    w.core.terms().close(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_list(w: W<'_>, card: String) -> R<Vec<term::TermInfo>> {
+    Ok(w.term_list(&card))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn term_folders(w: W<'_>, card: String) -> R<Vec<crate::terms::Folder>> {
+    blocking(&w, move |w| w.term_folders(&card)).await
 }

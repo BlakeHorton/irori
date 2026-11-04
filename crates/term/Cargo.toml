@@ -1,0 +1,25 @@
+[package]
+name = "irori-term"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Live terminals on cards (docs/design/inline-terminals.md): rsz-term panes owned by the Core, a stub on mobile"
+
+[lib]
+name = "term"
+
+[dependencies]
+parking_lot = "0.12"
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+
+# The PTY half (design section 2): rsz-term on desktop only. Android and iOS
+# build the same API over a stub that answers "not on this device".
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+rsz-term.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

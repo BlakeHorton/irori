@@ -8,6 +8,7 @@
 // rejects with an Error whose message is the Rust side's text, and an
 // event callback gets the payload as `data`.
 
+import { Channel } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { readImage, writeText } from "@tauri-apps/plugin-clipboard-manager"
 import { openUrl } from "@tauri-apps/plugin-opener"
@@ -333,4 +334,37 @@ export const VoiceService = {
   Start: () => call(commands.voiceStart()),
   Stop: (session: number) => done(commands.voiceStop(session)),
   OpenSettings: (code: string) => done(commands.voiceOpenSettings(code)),
+}
+
+// Card terminals (card #369; inline-terminals.md section 5). Frames come as
+// raw ArrayBuffers on their own Channel, never as events; everything else
+// is a TermMsg on a second one.
+export const TermService = {
+  Folders: (card: string) => call(commands.termFolders(card)),
+  List: (card: string) => call(commands.termList(card)),
+  Open: (scope: B.Scope, cols: number, rows: number, cwd: string | null) =>
+    call(commands.termOpen(scope, cols, rows, cwd)),
+  Attach(
+    id: number,
+    onFrame: (frame: ArrayBuffer) => void,
+    onMsg: (msg: B.TermMsg) => void
+  ): Promise<void> {
+    const frames = new Channel<ArrayBuffer>()
+    frames.onmessage = onFrame
+    const msgs = new Channel<B.TermMsg>()
+    msgs.onmessage = onMsg
+    return done(commands.termAttach(id, frames, msgs))
+  },
+  Detach: (id: number) => done(commands.termDetach(id)),
+  Write: (id: number, data: string) => done(commands.termWrite(id, data)),
+  Paste: (id: number, text: string) => done(commands.termPaste(id, text)),
+  Resize: (id: number, cols: number, rows: number) =>
+    done(commands.termResize(id, cols, rows)),
+  Scroll: (id: number, delta: number) => done(commands.termScroll(id, delta)),
+  CellPx: (id: number, w: number, h: number) =>
+    done(commands.termCellPx(id, w, h)),
+  Focus: (id: number, on: boolean) => done(commands.termFocus(id, on)),
+  Redraw: (id: number) => done(commands.termRedraw(id)),
+  Ack: (id: number, seq: number) => done(commands.termAck(id, seq)),
+  Close: (id: number) => done(commands.termClose(id)),
 }

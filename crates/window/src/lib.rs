@@ -61,6 +61,7 @@ pub mod seams;
 pub mod settings;
 pub mod stop;
 pub mod talk;
+pub mod terms;
 pub mod threads;
 pub mod ts;
 pub mod update;

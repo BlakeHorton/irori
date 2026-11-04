@@ -6,7 +6,7 @@ Paths starting `suzuri:` are in the suzuri repo; every other path is in Irori.
 
 ## 1. What the person sees
 
-- **A card terminal.** A card page gets a **Terminal** section beside Thread (`CardPage`, `components/cards/card-detail.tsx:113`). It holds one live shell, opened in the card's folder on this device (§6.1 says where that comes from). It stays on the card while the card is open, and its scrollback is kept while the app runs.
+- **A card terminal.** A card page gets a **Terminal** section beside Thread (`CardPage`, `components/cards/card-detail.tsx:113`). It holds the live shells the person opened (New terminal starts each; several show as tabs), each in the card's folder on this device (§6.1 says where that comes from). It stays on the card while the card is open, and its scrollback is kept while the app runs.
 - **An agent-row terminal.** In Who's on it (`People`, card-detail.tsx:1894), each agent row gets a terminal toggle. It opens the terminal that agent's commands run in (§7), under the row.
 - **Watching an agent work.** When an agent runs a command through Irori (§7), the command and its output appear in that terminal as if someone typed them. A label on the terminal names whoever is typing: `moss is running…`, or `You`.
 - **Taking over.** Click into the terminal and type. The terminal is then **yours**: the agent's next command is refused with a reason (§7.3) until you press **Hand back**. Ctrl+C reaches the program as usual. Whether plain typing should take it, or only an explicit Take over, is open (§11).
@@ -151,7 +151,7 @@ interface TermView {
 
 | Command | Arguments → result | Notes |
 |---|---|---|
-| `term_open` | `{ scope: Card(ref) \| Agent(key), cols, rows, cwd? }` → `TermInfo { id, owner, cwd, held_by }` | Opens the scope's terminal, or returns the one already running (§6.1). `cwd` is the person's choice when §6.1 finds no folder. |
+| `term_open` | `{ scope: Card(ref) \| Agent(key), cols, rows, cwd? }` → `TermInfo { id, owner, cwd, held_by }` | Starts a new shell in the scope (a card can hold several, §6.1). `cwd` is the person's choice when §6.1 finds no folder. |
 | `term_attach` | `{ id, frames: Channel<…>, msgs: Channel<TermMsg> }` → `()` | Starts this view's streams with the cached state, then a full frame (§6.2). |
 | `term_detach` | `{ id }` | The view went away. The pane keeps running. |
 | `term_write` / `term_paste` | `{ id, data }` | The person typing. Calling it takes the terminal (§7.3). |
@@ -197,8 +197,8 @@ interface TermView {
 ### 6.1 Who owns a pane
 
 The Core's `irori-term` holds every pane in a map: `TermId → { pane, scope, owner_device, held_by, viewers, cache, runs }`.
-- **Only the person opens a terminal.** `term_open` is a window command (§8). An agent's `term_run` never starts a shell; with no terminal open for its scope it is refused (§7.2). Whether agents may start one in their own agent scope is open (§11).
-- **Card scope:** one terminal per card per device. A card has no local folder of its own: `Task.repo_key` is a normalized remote key such as `github.com/x/y` (`crates/coord/src/board/types.rs:337-338`), and capture only maps a folder to a repo (`repo_for(dir)`, `crates/capture/src/handle.rs:68`; `cached_repo(f, dir)`, `crates/capture/src/views.rs:186`), never the other way. So the cwd is chosen in this order:
+- **A shell starts only when asked.** Opening a card starts nothing; only New terminal (or, from S4, an agent's request) starts one (Stephen on #369 b5). `term_open` is a window command (§8). An agent's `term_run` never starts a shell; with no terminal open for its scope it is refused (§7.2). Whether agents may start one in their own agent scope is open (§11).
+- **Card scope:** a card can hold several terminals on a device, shown as tabs named by folder (#369 b5). A card has no local folder of its own: `Task.repo_key` is a normalized remote key such as `github.com/x/y` (`crates/coord/src/board/types.rs:337-338`), and capture only maps a folder to a repo (`repo_for(dir)`, `crates/capture/src/handle.rs:68`; `cached_repo(f, dir)`, `crates/capture/src/views.rs:186`), never the other way. So the cwd is chosen in this order:
   1. the cwd of an agent on this device that holds the card (`AgentCard.cwd`, `crates/presence/src/lib.rs:55-80`);
   2. else the most recent session cwd on this device whose repo (`repo_for`) matches `repo_key`;
   3. else a folder the person picks, remembered per device and card in a local, non-replicated row.

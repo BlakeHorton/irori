@@ -178,6 +178,9 @@ pub struct Core {
     threads: Mutex<Vec<JoinHandle<()>>>,
     /// The cards' Watch over the inbox, Board and asks (desktop only).
     watch: Mutex<Option<notify::WatchHandle>>,
+    /// Card terminals (card #369): the Core owns the shells, so they
+    /// outlive the page that shows them.
+    terms: Arc<term::Terms>,
     closed: AtomicBool,
 }
 
@@ -1229,6 +1232,7 @@ impl Core {
             stop_async: CancellationToken::new(),
             threads: Mutex::new(Vec::new()),
             watch: Mutex::new(None),
+            terms: Arc::new(term::Terms::new()),
             closed: AtomicBool::new(false),
         };
         // Other devices' queued deliveries get this device's own hold
@@ -1788,6 +1792,7 @@ impl Core {
                 let _ = h.join();
             }
         }
+        self.terms.close_all();
         self.s.boards.close_all();
         self.s.hub.close();
         self.s.pairing.shutdown();
@@ -1841,6 +1846,11 @@ impl Core {
         self.s.headless
     }
     /// This device (`device.json`).
+    /// This device's terminals (card #369).
+    pub fn terms(&self) -> &Arc<term::Terms> {
+        &self.terms
+    }
+
     pub fn device(&self) -> &DeviceJson {
         &self.s.device
     }

@@ -82,6 +82,8 @@ import {
 import { KeepAsNote, NoteCard, WakeNotes, useNoteCard } from "@/components/notes/parts"
 import { Face, LiveDot } from "./faces"
 import { Thread } from "./thread"
+import { TerminalSection } from "@/components/term/terminal-section"
+import { termsHere } from "@/lib/term"
 import { AttachmentList } from "@/components/attachments"
 import type { FileRef } from "@/lib/attachments"
 import { LinkChip, RichLine, RichText } from "@/components/common/rich-text"
@@ -478,7 +480,9 @@ export function CardPage({
           </Card>
         </aside>
 
-        <Card className="gap-0 py-0! min-[900px]:col-start-1 min-[900px]:row-start-2">
+        <div className="grid gap-4 min-[900px]:col-start-1 min-[900px]:row-start-2">
+        <TerminalCard cardId={detail.id} />
+        <Card className="gap-0 py-0!">
           <Section title="Thread" last>
             <Thread
               cardId={detail.id}
@@ -498,6 +502,7 @@ export function CardPage({
             />
           </Section>
         </Card>
+        </div>
       </div>
     </article>
     </NoteCard.Provider>
@@ -1189,6 +1194,19 @@ function ProofKeep({ cardId, text }: { cardId: string; text: string }) {
       className="justify-self-start"
       source={{ label: "the done proof", source: `proof:${cardId}` }}
     />
+  )
+}
+
+// TerminalCard is the card's live terminal on this device (card #369), in
+// the window only: none in a plain browser or on a phone.
+function TerminalCard({ cardId }: { cardId: string }) {
+  if (!termsHere()) return null
+  return (
+    <Card className="gap-0 py-0!">
+      <Section title="Terminal" last>
+        <TerminalSection cardId={cardId} />
+      </Section>
+    </Card>
   )
 }
 

@@ -311,8 +311,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
-  // Esc on a card's page is Back, unless a dialog or menu takes it, or it
-  // is in a field (there it leaves the field first, so a draft isn't lost
+  // Esc on a card's page is Back, unless a dialog or menu takes it, a
+  // terminal has the keyboard, or it is in a field (there it leaves the field first, so a draft isn't lost
   // to a stray key). Capture: it runs before a dialog closes itself.
   useEffect(() => {
     if (!open) return
@@ -325,6 +325,9 @@ export function App() {
       )
         return
       const t = e.target instanceof HTMLElement ? e.target : null
+      // A terminal's Esc is the program's (vim, less, PSReadLine): it
+      // stays in the terminal (card #369).
+      if (t?.closest(".rsz-view")) return
       if (t?.closest("input,textarea,select,[contenteditable]")) {
         t.blur()
         return

@@ -53,6 +53,7 @@ export type DonePage = B.DonePage
 export type Empty = B.Empty
 export type Event = B.Event
 export type FileRef = B.FileRef
+export type Folder = B.Folder
 export type GoneSession = B.GoneSession
 export type HoldReason = B.HoldReason
 export type Holding = B.Holding
@@ -88,6 +89,7 @@ export type ReviewPr = B.ReviewPr
 export type ReviewerChoice = B.ReviewerChoice
 export type Rollup = B.Rollup
 export type RosterChange = B.RosterChange
+export type Scope = B.Scope
 export type SendResult = B.SendResult
 export type Sender = B.Sender
 export type SharePreview = B.SharePreview
@@ -105,6 +107,8 @@ export type Target = B.Target
 export type Task = B.Task
 export type TaskResult = B.TaskResult
 export type TaskState = B.TaskState
+export type TermInfo = B.TermInfo
+export type TermMsg = B.TermMsg
 export type ThreadCard = B.ThreadCard
 export type ThreadSummary = B.ThreadSummary
 export type Told = B.Told
@@ -339,6 +343,11 @@ export function FileRef(p: Partial<B.FileRef> = {}): B.FileRef {
   return { "sha256": "", "name": "", "size": 0, "device": "", ...p } as B.FileRef
 }
 
+/** Folder with Go's zero values for every field left out. */
+export function Folder(p: Partial<B.Folder> = {}): B.Folder {
+  return { "path": "", "why": "", ...p } as B.Folder
+}
+
 /** GoneSession with Go's zero values for every field left out. */
 export function GoneSession(p: Partial<B.GoneSession> = {}): B.GoneSession {
   return { "key": "", "sessionId": "", "name": "", "title": "", "cwd": "", "repoKey": "", "goneAt": "", "reason": "", "transcript": false, "trusted": false, ...p } as B.GoneSession
@@ -567,6 +576,11 @@ export function Task(p: Partial<B.Task> = {}): B.Task {
 /** TaskResult with Go's zero values for every field left out. */
 export function TaskResult(p: Partial<B.TaskResult> = {}): B.TaskResult {
   return { "task": Task(), "told": Told(), ...p } as B.TaskResult
+}
+
+/** TermInfo with Go's zero values for every field left out. */
+export function TermInfo(p: Partial<B.TermInfo> = {}): B.TermInfo {
+  return { "id": 0, "scope": "", "cwd": "", "title": "", "running": false, ...p } as B.TermInfo
 }
 
 /** ThreadCard with Go's zero values for every field left out. */

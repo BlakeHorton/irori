@@ -1,3 +1,8 @@
+[net]
+# rsz-term and its portable-pty patch come from the private rust-suzuri repo
+# until suzuri PR #96 merges (card #369): fetch with git's own credentials.
+git-fetch-with-cli = true
+
 [alias]
 # `cargo xtask bindings [--check]` (architecture.md 7.1, D10).
 xtask = "run --quiet -p xtask --"
