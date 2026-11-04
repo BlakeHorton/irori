@@ -489,6 +489,47 @@ fn a_second_board_in_a_space_reaches_the_other_device() {
     }
 }
 
+/// Card #411: a board note waits, like a space row, until every member
+/// device has said it reads them (an older Irori would stall on note.*),
+/// naming what it waits on; a Mine note never waits. Then the board note
+/// reaches the other device.
+#[test]
+fn a_board_note_waits_for_every_device_then_reaches_it() {
+    let (a, b) = paired();
+    let id = a.core.create_board("MLG", "mlg").unwrap();
+    let me = a.core.user_sender().key;
+    let nn = |text: &str| coord::NewNote {
+        kind: "rule".into(),
+        text: text.into(),
+        tags: vec!["everywhere".into()],
+        ..Default::default()
+    };
+    let e = a
+        .core
+        .propose_note(&me, "mlg", nn("Ship models to the repo."))
+        .unwrap_err();
+    assert!(e.is(coord::ErrorKind::NotAllowed), "{e}");
+    assert!(e.to_string().contains("waiting on"), "{e}");
+    assert!(a.core.notes("mlg", false).unwrap().is_empty());
+    a.core
+        .propose_note(&me, "mine", nn("Home IPs stay out of MLG."))
+        .unwrap();
+    wait_for(45, "b opens the board", || b.core.board_coord(&id).is_ok());
+    wait_for(45, "a hears b read spaces", || {
+        a.core.space_not_ready(&id).unwrap().is_empty()
+    });
+    let n = a
+        .core
+        .propose_note(&me, "mlg", nn("Ship models to the repo."))
+        .unwrap();
+    assert_eq!(n.note.state, coord::NOTE_ACCEPTED);
+    wait_for(45, "b gets the board note", || {
+        b.core
+            .notes(&id, false)
+            .is_ok_and(|ns| ns.iter().any(|x| x.note.id == n.note.id))
+    });
+}
+
 /// Card #392: a member device not yet heard to read space rows (an older
 /// Irori, or one not seen since this start) holds back every space-only
 /// row, and the refusal names it.

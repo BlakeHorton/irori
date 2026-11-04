@@ -28,18 +28,24 @@ impl Services {
     /// (#411). An older Irori refuses an unknown kind, and every later row
     /// of that writer's stream then fails its gap check there, so one
     /// note.* row would stall this device's whole stream on any member
-    /// device that predates notes (nutmeg, #392). The board hello's
-    /// `spaces` field says which devices read the new rows; until that
-    /// gate is on main (#392), board notes wait. Mine notes never do.
+    /// device that predates notes (nutmeg, #392). The note kinds landed
+    /// before the board hello's `spaces` field (0f6544ab, then 9d5a72dc),
+    /// so a device heard to read space rows reads note rows too: the
+    /// space gate ([`Services::space_not_ready`]) is the notes gate. Mine
+    /// notes never wait.
     pub(crate) fn board_notes_ready(
         &self,
         board_id: &str,
     ) -> std::result::Result<(), coord::Error> {
-        let _ = board_id;
+        let waiting = self.space_not_ready(board_id).map_err(Error::into_coord)?;
+        if waiting.is_empty() {
+            return Ok(());
+        }
         Err(Error::coord(
             CK::NotAllowed,
             format_args!(
-                "board notes wait until every member's Irori can read them (card #392); keep it in Mine for now"
+                "every device on the board must run an Irori with notes first; waiting on {}. Keep it in Mine for now",
+                waiting.join(", ")
             ),
         )
         .into_coord())

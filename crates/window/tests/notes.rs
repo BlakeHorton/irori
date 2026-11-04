@@ -110,9 +110,12 @@ fn notes_in_the_window() {
     assert_eq!(w.notes_list("mine", false).unwrap().len(), 1);
     assert_eq!(w.notes_list("mine", true).unwrap().len(), 2);
 
-    // A board write waits for #392's gate, with a reason the page can show.
+    // Alone on a board nothing waits (#392's gate): a board note shows
+    // under its board, made by the person, so it's live at once. (The
+    // wait for another device is tested in core's boards.rs.)
     w.boards_create("MLG", "mlg").unwrap();
-    let err = w.note_new(input("mlg", "Ship to the repo.")).unwrap_err();
-    assert!(err.contains("keep it in Mine"), "{err}");
-    assert!(w.notes_list("mlg", false).unwrap().is_empty());
+    let on_board = w.note_new(input("mlg", "Ship to the repo.")).unwrap();
+    assert_eq!(on_board.scope, "mlg");
+    assert_eq!(on_board.state, "accepted");
+    assert_eq!(w.notes_list("mlg", false).unwrap().len(), 1);
 }
