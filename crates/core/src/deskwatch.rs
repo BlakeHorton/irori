@@ -169,9 +169,24 @@ struct Slot {
 #[derive(Default)]
 pub(crate) struct DeskWatch {
     slots: Mutex<HashMap<String, Slot>>,
+    /// The (PR, head) each desk's holder was last woken for (card #418),
+    /// so a poll that finds the same PR still waiting doesn't wake it again.
+    woke: Mutex<HashMap<String, (i64, String)>>,
 }
 
 impl DeskWatch {
+    /// Whether the holder of `repo_key`'s desk should be woken for `pr` at
+    /// `head`: true once per (PR, head), recording it.
+    pub(crate) fn first_wake(&self, repo_key: &str, pr: i64, head: &str) -> bool {
+        let mut w = self.woke.lock().unwrap_or_else(|e| e.into_inner());
+        let k = (pr, head.to_string());
+        if w.get(repo_key) == Some(&k) {
+            return false;
+        }
+        w.insert(repo_key.to_string(), k);
+        true
+    }
+
     /// Whether `repo_key` is due at `now` (always, before its first poll).
     pub(crate) fn due(&self, repo_key: &str, now: Instant) -> bool {
         let slots = self.slots.lock().unwrap_or_else(|e| e.into_inner());
