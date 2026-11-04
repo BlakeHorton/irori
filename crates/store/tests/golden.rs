@@ -74,7 +74,7 @@ fn board_name(b: Board) -> &'static str {
 
 /// Kinds added after the Go port (shared boards stage 2, waits on card
 /// #87), which Go's table can't list: board logs accept them.
-const SINCE_GO: [&str; 21] = [
+const SINCE_GO: [&str; 22] = [
     kinds::BOARD_ASK_REQUESTED,
     kinds::BOARD_ASK_STATE,
     kinds::BOARD_ASK_EDITED,
@@ -101,6 +101,8 @@ const SINCE_GO: [&str; 21] = [
     // More boards in a space (card #392).
     kinds::SPACE_BOARD_CREATED,
     kinds::SPACE_BOARD_RENAMED,
+    // A shared card's owner changing hands (card #432).
+    kinds::TASK_OWNER,
 ];
 
 /// Kinds added after the Go port that board logs refuse: the person's own

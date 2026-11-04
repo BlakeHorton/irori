@@ -775,6 +775,12 @@ pub async fn boards_withdraw(w: W<'_>, task_id: String) -> R<String> {
 
 #[tauri::command]
 #[specta::specta]
+pub async fn boards_transfer_owner(w: W<'_>, task_id: String, to: String) -> R<String> {
+    w.boards_transfer_owner(&task_id, &to)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn boards_settings(w: W<'_>, board_id: String) -> R<BoardSettings> {
     w.boards_settings(&board_id)
 }
@@ -1394,6 +1400,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             boards_share_preview,
             boards_share,
             boards_withdraw,
+            boards_transfer_owner,
             boards_settings,
             boards_set_open_cards,
             boards_set_receive,

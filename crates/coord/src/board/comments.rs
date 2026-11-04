@@ -461,6 +461,7 @@ impl Fold {
             Vec::new(),
             Vec::new(),
             false,
+            false,
         )?;
         Ok(out)
     }

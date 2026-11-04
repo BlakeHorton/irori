@@ -838,6 +838,7 @@ impl Fold {
             kinds::TASK_PINNED => self.fold_pin(ev),
             kinds::TASK_ARCHIVED => self.fold_archived(ev),
             kinds::TASK_PAUSED => self.fold_paused(ev),
+            kinds::TASK_OWNER => self.fold_owner(ev),
             kinds::TASK_PLACED => self.fold_placed(ev),
             kinds::TASK_COMMENT_EDITED => self.fold_comment_edited(ev, &at),
             kinds::TASK_OFFERED => self.fold_offered(ev, &at),

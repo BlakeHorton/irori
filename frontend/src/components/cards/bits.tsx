@@ -326,8 +326,9 @@ export function ScopeBadge({ card }: { card: CardSummary }) {
 }
 
 // OwnerChip is whose a shared board's card is (card #268): the member who
-// made it, by themselves or through one of their agents. Nothing shows on a
-// private card or a board that is only the person's.
+// made it, by themselves or through one of their agents, or whoever it was
+// handed to since (card #432). Nothing shows on a private card or a board
+// that is only the person's.
 export function OwnerChip({ card }: { card: OwnerCard }) {
   const { boards } = useBoards()
   const o = cardOwner(card, boards)
@@ -340,9 +341,9 @@ export function OwnerChip({ card }: { card: OwnerCard }) {
       className="gap-1 font-normal"
       title={
         o.me
-          ? `Yours: you or one of your agents made it`
+          ? `Yours: you decide Done and answer its questions`
           : o.known
-            ? `${name}'s card: they or one of their agents made it`
+            ? `${name}'s card: they decide Done and answer its questions`
             : "Made by someone who is no longer on the board"
       }
     >

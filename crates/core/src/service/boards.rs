@@ -2394,6 +2394,13 @@ impl super::Core {
         self.s.withdraw_card(trim(task_id))
     }
 
+    /// Card #432: the person offers shared card `task_id` to member `to`
+    /// when they own it, or asks its owner for it; returns the
+    /// Accept/Decline item it raised for the other side.
+    pub fn transfer_owner(&self, task_id: &str, to: &str) -> Result<coord::Blocker> {
+        self.s.transfer_owner(trim(task_id), trim(to))
+    }
+
     /// `f`'s Board on every ready board this device holds.
     pub fn board_views(&self, f: &coord::BoardFilter) -> Vec<coord::BoardView> {
         self.s.board_views(f)

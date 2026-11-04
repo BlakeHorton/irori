@@ -714,6 +714,7 @@ function sampleCreate(input: NewCardInput): TaskResult {
           tag: board.tag,
           visibleTo: board.people,
           canWithdraw: true,
+          canTransfer: true,
         },
       }
     : {}
@@ -1030,6 +1031,7 @@ export function sampleShare(id: string, board: SampleBoard): string {
       tag: board.tag,
       visibleTo: board.people,
       canWithdraw: true,
+      canTransfer: true,
     },
     sharedTo: undefined,
     pinned: false,
@@ -1045,6 +1047,45 @@ export function sampleShare(id: string, board: SampleBoard): string {
   }
   sampleChanged()
   return shared.id
+}
+
+// sampleTransferOwner is Transfer ownership on the sample (card #432): an
+// Accept/Decline item for the other side, as the window's would be.
+export function sampleTransferOwner(id: string, to: string): string {
+  const c = sampleCard(id)
+  if (!c.onBoard)
+    throw new Error(
+      `coord: invalid input: ${id} is a private card: only a card on a shared board changes owner`
+    )
+  if (c.blockers.some((b) => !b.resolved && b.transfer))
+    throw new Error(
+      `coord: conflict: ${c.short} already has an ownership offer or request waiting`
+    )
+  const now = new Date().toISOString()
+  const bid = `b${c.blockers.length + 1}`
+  const option = (answer: string) => ({ answer, why: "", by: sampleYou, at: now, recommended: false })
+  c.blockers.unshift({
+    id: bid,
+    question: to ? "Take over this card?" : "Hand this card over?",
+    context: to
+      ? "Its owner offers it to you. As its owner you decide Done and answer the questions its agents raise."
+      : "Another member asks to own it. They would decide Done and answer the questions its agents raise; you would no longer.",
+    raisedBy: sampleYou,
+    at: now,
+    options: [option("Accept"), option("Decline")],
+    resolved: null,
+    state: "open",
+    links: [],
+    attachments: [],
+    missing: [],
+    optionsAside: false,
+    transfer: true,
+    thread: [],
+  } as CardBlocker)
+  c.state = TaskState.Blocked
+  c.onBoard = { ...c.onBoard, canTransfer: false }
+  sampleChanged()
+  return bid
 }
 
 export function sampleWithdraw(id: string): string {

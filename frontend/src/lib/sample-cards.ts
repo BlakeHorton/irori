@@ -1267,6 +1267,7 @@ export function sampleCards(now: Date): CardDetail[] {
         tag: "mlg",
         visibleTo: ["Stephen", "Blake"],
         canWithdraw: true,
+        canTransfer: true,
       }),
       working: [otter],
       // sample-otter is one of your agents: Home shows it (card #199);
@@ -1301,6 +1302,7 @@ export function sampleCards(now: Date): CardDetail[] {
         tag: "mlg",
         visibleTo: ["Stephen", "Blake"],
         canWithdraw: true,
+        canTransfer: true,
       }),
       state: TaskState.Submitted,
       working: [],
@@ -1325,6 +1327,7 @@ export function sampleCards(now: Date): CardDetail[] {
         tag: "mlg",
         visibleTo: ["Stephen", "Blake"],
         canWithdraw: false,
+        canTransfer: true,
       }),
       working: [
         AgentRef({
@@ -1360,6 +1363,7 @@ export function sampleCards(now: Date): CardDetail[] {
         tag: "mlg",
         visibleTo: ["Stephen", "Blake"],
         canWithdraw: false,
+        canTransfer: true,
       }),
       state: TaskState.Submitted,
       working: [],

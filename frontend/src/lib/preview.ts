@@ -7,6 +7,7 @@
 //   ?devices        opens Settings at Devices and connections
 //   ?boards         opens the Boards dialog
 //   ?share=<card>   opens Share to board on that card's page
+//   ?transfer=<card> opens Transfer ownership (or Ask to own it) there
 //   ?update=ready   shows the update card (also downloading, installing)
 //   ?voice=ready    shows the mic on the text boxes (also needs-model, denied)
 //   ?slots          shows two check.sh runs in the sidebar's Check slots

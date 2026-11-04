@@ -363,6 +363,16 @@ impl Window {
             .map_err(text)
     }
 
+    /// Card #432: the person offers shared card `task_id` to member `to`
+    /// (a person id) when they own it, or asks its owner for it when they
+    /// don't. Returns the Accept/Decline item it raised.
+    pub fn boards_transfer_owner(&self, task_id: &str, to: &str) -> Result<String, String> {
+        self.core
+            .transfer_owner(task_id, to)
+            .map(|b| b.id)
+            .map_err(text)
+    }
+
     /// A board card with its board keys as this device knows them (Go
     /// `privTask`).
     pub(crate) fn priv_task(&self, t: Task) -> Task {
@@ -387,7 +397,12 @@ impl Window {
     /// [`Self::priv_task`]) belongs to the member who made it, by person id:
     /// they made it or one of their agents did, and they answer for it.
     pub(crate) fn board_owner(&self, board_id: &str, raw: &Task, cs: &mut CardSummary) {
-        cs.owner = self.core.board_key_person(board_id, &raw.created_by);
+        // A card handed over since (card #432) belongs to its new owner.
+        cs.owner = if raw.owner.is_empty() {
+            self.core.board_key_person(board_id, &raw.created_by)
+        } else {
+            raw.owner.clone()
+        };
     }
 
     /// A card page's board line, or where a private card was shared to
@@ -409,6 +424,12 @@ impl Window {
                 visible_to: s.people,
                 can_withdraw: !t.withdrawn
                     && (s.owner || t.created_by.starts_with("user:") || t.created_by == user),
+                // Card #432: one change of owner at a time, on an open card
+                // of a board with someone to hand it to.
+                can_transfer: !t.withdrawn
+                    && !coord::is_terminal(&t.state)
+                    && s.members.len() > 1
+                    && !t.blockers.iter().any(|b| b.open() && b.transfer),
             });
             return;
         }

@@ -1201,6 +1201,22 @@ impl Services {
         self.withdraw_one(&co, task_id)
     }
 
+    /// Card #432: a shared card's owner offers it to another member, or a
+    /// member asks its owner for it.
+    pub(crate) fn transfer_owner(&self, task_id: &str, to: &str) -> Result<coord::Blocker> {
+        let (board_id, co) = self.route(task_id)?;
+        if board_id.is_empty() {
+            return Err(Error::coord(
+                CK::Invalid,
+                format_args!(
+                    "{task_id} is a private card: only a card on a shared board changes owner"
+                ),
+            ));
+        }
+        let (_, b) = co.transfer_owner(&self.person_actor(), task_id, to)?;
+        Ok(b)
+    }
+
     /// Withdraws one board card and carries its work on privately.
     fn withdraw_one(&self, co: &Coord, task_id: &str) -> Result<Option<Task>> {
         let t = co.withdraw(&self.person_actor(), task_id, "withdrawn from the board")?;

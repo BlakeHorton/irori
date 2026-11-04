@@ -91,6 +91,9 @@ crate::go_struct! {
         /// A done check (card #112): an agent says the card is done and the
         /// person confirms it. Older folds ignore it: a plain blocker.
         pub done_check: bool = "doneCheck" "omit",
+        /// An ownership offer or request (card #432). Older folds see a
+        /// plain question.
+        pub transfer: bool = "transfer" "omit",
     }
 }
 
@@ -378,6 +381,21 @@ crate::go_struct! {
     #[derive(Debug, Clone, Default, PartialEq)]
     pub struct TaskDeletedRow {
         pub task_id: String = "taskId",
+        pub by: String = "by",
+        pub at: GoTime = "at",
+    }
+}
+
+crate::go_struct! {
+    /// A shared card's owner changing hands (card #432).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct TaskOwnerRow {
+        pub task_id: String = "taskId",
+        /// offer, request, accept or decline.
+        pub op: String = "op",
+        /// Who would own it: a person id.
+        pub person: String = "person",
+        pub blocker_id: String = "blockerId" "omit",
         pub by: String = "by",
         pub at: GoTime = "at",
     }

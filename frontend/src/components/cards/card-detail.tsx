@@ -91,7 +91,8 @@ import { useDraft, useMentionsDraft } from "@/lib/drafts"
 import { composing, MentionBoard, useMissed } from "@/lib/mentions"
 import { useBoards, type BoardSummary } from "@/lib/boards"
 import { previewFlag } from "@/lib/preview"
-import { ShareButton, WithdrawButton } from "./share-dialog"
+import { ShareButton, TransferButton, WithdrawButton } from "./share-dialog"
+import { cardOwner, sharedBoard } from "@/lib/owners"
 
 // Answered is a note answer the person just sent: the note item leaves the
 // card once answered, so the panel keeps it to show who heard.
@@ -724,16 +725,29 @@ function BoardActions({
   onBack: () => void
 }) {
   if (detail.onBoard) {
-    if (!detail.onBoard.canWithdraw || over(detail) || detail.parent) return null
-    // The private card the work carries on in, else back to the grid: a
-    // withdrawn card is hidden and can't be reopened.
+    if (over(detail)) return null
+    const shared = sharedBoard(detail, boards)
     return (
-      <WithdrawButton
-        cardId={detail.id}
-        visibleTo={detail.onBoard.visibleTo}
-        family={(detail.subtasks ?? 0) > 0}
-        onWithdrawn={(id) => (id && onOpen ? onOpen(id) : onBack())}
-      />
+      <>
+        {detail.onBoard.canTransfer && shared && (
+          <TransferButton
+            cardId={detail.id}
+            owner={cardOwner(detail, boards)}
+            members={shared.members ?? []}
+            initialOpen={previewFlag("transfer") === detail.id}
+          />
+        )}
+        {/* The private card the work carries on in, else back to the grid:
+            a withdrawn card is hidden and can't be reopened. */}
+        {detail.onBoard.canWithdraw && !detail.parent && (
+          <WithdrawButton
+            cardId={detail.id}
+            visibleTo={detail.onBoard.visibleTo}
+            family={(detail.subtasks ?? 0) > 0}
+            onWithdrawn={(id) => (id && onOpen ? onOpen(id) : onBack())}
+          />
+        )}
+      </>
     )
   }
   if (

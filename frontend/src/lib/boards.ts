@@ -8,7 +8,7 @@ import { useEffect, useState, useSyncExternalStore } from "react"
 
 import { BoardsService, Events } from "./host"
 import { BoardSettings, BoardSummary, InviteStatus, SharePreview, type SummaryMember } from "./models"
-import { sampleShare, sampleWithdraw, samplePreview, setSampleBoards } from "./cards"
+import { sampleShare, sampleTransferOwner, sampleWithdraw, samplePreview, setSampleBoards } from "./cards"
 import { inWails, relativeTime } from "./irori"
 import { errorText } from "./talk"
 
@@ -357,6 +357,17 @@ export const boards = {
     const back = sampleWithdraw(taskId)
     sampleMoved()
     return back
+  },
+
+  // transferOwner offers shared card taskId to member `to` (a person id)
+  // when the person owns it, or asks its owner for it when they don't
+  // (to is then ""): an Accept/Decline question for the other side (card
+  // #432). It returns that question's id.
+  async transferOwner(taskId: string, to: string): Promise<string> {
+    if (inWails()) return BoardsService.TransferOwner(taskId, to)
+    const id = sampleTransferOwner(taskId, to)
+    sampleMoved()
+    return id
   },
 
   // settings is a board's members and its receive and autonomy presets.

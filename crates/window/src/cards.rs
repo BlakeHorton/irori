@@ -454,6 +454,11 @@ pub struct CardBlocker {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     #[specta(optional)]
     pub done_check: bool,
+    /// An ownership offer or request (card #432): Accept moves the card
+    /// to the other member, Decline leaves it where it is.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub transfer: bool,
     /// On a shared board, the other member this question is for (card
     /// #264): it waits on them, not on this person, who can still answer.
     /// None when it's this person's.
@@ -611,6 +616,9 @@ pub struct CardBoard {
     pub tag: String,
     pub visible_to: Vec<String>,
     pub can_withdraw: bool,
+    /// Card #432: Transfer ownership… is offered (the owner hands it to
+    /// another member, anyone else asks for it).
+    pub can_transfer: bool,
 }
 
 /// Where a private card was shared to (Go `core.SharedCopy`).
@@ -1920,6 +1928,7 @@ impl Window {
                 missing: bl.missing.clone(),
                 options_aside: bl.options_aside && bl.open(),
                 done_check: bl.done_check,
+                transfer: bl.transfer,
                 decider: bl
                     .on
                     .as_ref()

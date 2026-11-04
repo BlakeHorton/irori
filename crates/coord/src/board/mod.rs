@@ -32,6 +32,7 @@ mod mention;
 mod mirror;
 mod notes;
 mod offers;
+mod owner;
 mod placed;
 mod prstate;
 mod threads;
@@ -78,6 +79,7 @@ pub use notes::{
     NOTES_PER_WAKE, NewNote, Note, NoteChange, NoteContext, NoteEdit, NoteEvent, NoteMatch,
     TAG_BOARD, TAG_EVERYWHERE, TAG_MACHINE, TAG_PATH, TAG_REPO, TAG_TOPIC, clean_tag,
 };
+pub use owner::{OWNER_ACCEPT, OWNER_DECLINE};
 pub use placed::MAX_PLACE;
 pub use prstate::{
     NOTICE_PR, PR_CHANGES_REQUESTED, PR_CLOSED, PR_MERGED, PR_OPEN, PrCheck, PrState,
@@ -604,6 +606,14 @@ impl Coord {
     ) -> Result<(Task, Vec<Notice>)> {
         self.lock().answer(by, id, blocker, a)
     }
+    /// On a shared board, the person offers card `id` to person `to` when
+    /// they own it, or asks its owner for it when they don't (card #432):
+    /// an Accept/Decline item for the other side, answered with
+    /// [`Coord::answer`]. The card moves only on Accept.
+    pub fn transfer_owner(&self, by: &str, id: &str, to: &str) -> Result<(Task, Blocker)> {
+        self.lock().transfer_owner(by, id, to)
+    }
+
     /// The person's Done on done check `blocker` (card #315): the card is
     /// completed in one step, and `[0]` tells its holders so.
     pub fn say_done(

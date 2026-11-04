@@ -148,6 +148,7 @@ export const commands = {
 	boardsSharePreview: (taskId: string, boardId: string) => __TAURI_INVOKE<SharePreview>("boards_share_preview", { taskId, boardId }),
 	boardsShare: (taskId: string, boardId: string, hash: string) => __TAURI_INVOKE<string>("boards_share", { taskId, boardId, hash }),
 	boardsWithdraw: (taskId: string) => __TAURI_INVOKE<string>("boards_withdraw", { taskId }),
+	boardsTransferOwner: (taskId: string, to: string) => __TAURI_INVOKE<string>("boards_transfer_owner", { taskId, to }),
 	boardsSettings: (boardId: string) => __TAURI_INVOKE<BoardSettings>("boards_settings", { boardId }),
 	/**  Who a shared board's open cards go to (card #174). */
 	boardsSetOpenCards: (boardId: string, to: string) => __TAURI_INVOKE<BoardSettings>("boards_set_open_cards", { boardId, to }),
@@ -590,6 +591,11 @@ export type CardBlocker = {
 	 */
 	doneCheck?: boolean,
 	/**
+	 *  An ownership offer or request (card #432): Accept moves the card
+	 *  to the other member, Decline leaves it where it is.
+	 */
+	transfer?: boolean,
+	/**
 	 *  On a shared board, the other member this question is for (card
 	 *  #264): it waits on them, not on this person, who can still answer.
 	 *  None when it's this person's.
@@ -605,6 +611,11 @@ export type CardBoard = {
 	tag: string,
 	visibleTo: string[],
 	canWithdraw: boolean,
+	/**
+	 *  Card #432: Transfer ownership… is offered (the owner hands it to
+	 *  another member, anyone else asks for it).
+	 */
+	canTransfer: boolean,
 };
 
 /**  One card opened beside the grid. */

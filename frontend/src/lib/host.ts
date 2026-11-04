@@ -273,6 +273,7 @@ export const BoardsService = {
   SharePreview: (taskId: string, boardId: string) => call(commands.boardsSharePreview(taskId, boardId)),
   Share: (taskId: string, boardId: string, hash: string) => call(commands.boardsShare(taskId, boardId, hash)),
   Withdraw: (taskId: string) => call(commands.boardsWithdraw(taskId)),
+  TransferOwner: (taskId: string, to: string) => call(commands.boardsTransferOwner(taskId, to)),
   Settings: (boardId: string) => call(commands.boardsSettings(boardId)),
   SetReceive: (boardId: string, preset: string, people: string[]) =>
     call(commands.boardsSetReceive(boardId, preset, people)),

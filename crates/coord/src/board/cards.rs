@@ -626,6 +626,7 @@ impl Fold {
                 links: capped(add_links(Vec::new(), &br.links), MAX_BLOCKER_LINKS),
                 attachments: capped(add_files(Vec::new(), &br.attachments), MAX_ATTACHMENTS),
                 done_check: br.done_check,
+                transfer: br.transfer,
                 ..Blocker::default()
             };
             if br.replace {
@@ -991,7 +992,7 @@ impl Fold {
         let t = self.open_task(id)?.clone();
         let bb = nb.blocked_by.clone();
         self.raise_locked(
-            &by, &t, &q, &q, &cx, opts, bb, false, now, links, nb.files, false,
+            &by, &t, &q, &q, &cx, opts, bb, false, now, links, nb.files, false, false,
         )
     }
 
@@ -1107,6 +1108,7 @@ impl Fold {
             Vec::new(),
             files,
             true,
+            false,
         )?;
         Ok(nt)
     }
@@ -1124,9 +1126,10 @@ impl Fold {
             return;
         }
         // The card's owner decides (card #429): the person who made it, or
-        // whose agent did. Another person's agent finishing it, or asking
-        // on it, doesn't make it that agent's person's to handle.
-        let mut p = self.person_of(&t.created_by);
+        // whose agent did, or whoever it was handed to since (card #432).
+        // Another person's agent finishing it, or asking on it, doesn't
+        // make it that agent's person's to handle.
+        let mut p = self.owner_person(t);
         if p.is_empty() {
             p = self.person_of(by);
         }
@@ -1151,6 +1154,7 @@ impl Fold {
         links: Vec<Link>,
         files: Vec<FileRef>,
         done_check: bool,
+        transfer: bool,
     ) -> Result<(Task, Blocker)> {
         if t.open_ask().is_some() {
             return Err(super::asks::ask_refusal(
@@ -1209,6 +1213,7 @@ impl Fold {
             links,
             attachments: files,
             done_check,
+            transfer,
             ..BlockerRow::default()
         };
         if reason_only
@@ -1410,6 +1415,31 @@ impl Fold {
         let b = t.blockers[i].clone();
         if !b.open() {
             return Err(bad_state(format!("blocker {} is already resolved", b.id)));
+        }
+        // An ownership item (card #432): Accept or Decline moves the card
+        // (or not) and resolves it; only the person it asks may.
+        if b.transfer
+            && self
+                .pending_transfer(&t)
+                .is_some_and(|tr| tr.blocker_id == b.id)
+        {
+            let picked = usize::try_from(a.pick - 1)
+                .ok()
+                .and_then(|i| b.options.get(i))
+                .map(|o| o.answer.clone());
+            match picked.as_deref() {
+                Some(super::owner::OWNER_ACCEPT) | Some(super::owner::OWNER_DECLINE) => {
+                    let accept = picked.as_deref() == Some(super::owner::OWNER_ACCEPT);
+                    self.answer_owner(&by, id, &b.id, accept)?;
+                    return self.answer(&by, id, bid, BlockerAnswer { resolve: true, ..a });
+                }
+                _ if !self.is_owner(&by) => {
+                    return Err(not_allowed(
+                        "an ownership change is the person's to accept or decline: reply on it instead",
+                    ));
+                }
+                _ => {}
+            }
         }
         let last = if a.resolve {
             last_answer(self, &t, &b.id)

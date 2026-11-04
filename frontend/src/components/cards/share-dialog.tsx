@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Share2Icon } from "lucide-react"
+import { ArrowRightLeftIcon, Share2Icon } from "lucide-react"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { ConfirmButton } from "@/components/common/confirm-button"
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { boards as actions, type BoardSummary, type SharePreview } from "@/lib/boards"
 import { plainLine } from "@/lib/irori"
+import type { Owner, OwnerMember } from "@/lib/owners"
 import { errorText } from "@/lib/talk"
 
 // ShareButton is Share to board on a private card's page (v0.5 §5.2, §8):
@@ -215,5 +216,99 @@ export function WithdrawButton({
       }
       onConfirm={async () => onWithdrawn(await actions.withdraw(cardId))}
     />
+  )
+}
+
+// TransferButton changes whose a shared card is (card #432): its owner
+// offers it to another member, and anyone else asks the owner for it. The
+// other side gets an Accept/Decline question; the card moves only on
+// Accept. The owner decides Done and answers the questions its agents
+// raise.
+export function TransferButton({
+  cardId,
+  owner,
+  members,
+  onAsked,
+  initialOpen = false,
+}: {
+  cardId: string
+  // The card's owner now, null when this device can't say.
+  owner: Owner | null
+  // The board's members.
+  members: OwnerMember[]
+  onAsked?: () => void
+  initialOpen?: boolean
+}) {
+  const others = members.filter((m) => m.personId !== owner?.personId)
+  const [open, setOpen] = useState(initialOpen)
+  const [to, setTo] = useState(others[0]?.personId ?? "")
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+  if (!owner || !others.length) return null
+  const offering = owner.me
+  const pick = to || others[0]?.personId || ""
+  const pickName = plainLine(others.find((m) => m.personId === pick)?.name ?? "")
+  const ownerName = plainLine(owner.name)
+  const send = async () => {
+    setBusy(true)
+    setFailed(null)
+    try {
+      await actions.transferOwner(cardId, offering ? pick : "")
+      setOpen(false)
+      onAsked?.()
+    } catch (err) {
+      setFailed(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        title={
+          offering
+            ? "Transfer ownership: hand this card to another member"
+            : `Ask ${ownerName} to hand this card over to you`
+        }
+        onClick={() => setOpen(true)}
+      >
+        <ArrowRightLeftIcon className="size-3.5" aria-hidden />
+        {offering ? "Transfer ownership…" : "Ask to own it…"}
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
+        <DialogContent className="gap-3 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{offering ? "Transfer ownership" : "Ask to own this card"}</DialogTitle>
+            <DialogDescription>
+              {offering
+                ? "The card's owner decides Done and answers the questions its agents raise. They get the question, and the card is theirs only once they accept."
+                : `${ownerName} owns it: they decide Done and answer its questions. They get the question, and the card is yours only once they accept.`}
+            </DialogDescription>
+          </DialogHeader>
+          {offering && others.length > 1 && (
+            <ChoiceSelect
+              label="Hand it to"
+              showLabel
+              size="sm"
+              value={pick}
+              onValueChange={setTo}
+              choices={others.map((m) => ({ value: m.personId, label: plainLine(m.name) }))}
+            />
+          )}
+          {failed && <p className="text-xs text-destructive">{failed}</p>}
+          <DialogFooter>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={busy || (offering && !pick)} onClick={() => void send()}>
+              {busy ? "Asking…" : offering ? `Offer it to ${pickName}` : `Ask ${ownerName}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

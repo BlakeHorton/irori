@@ -1767,3 +1767,153 @@ fn a_board_thread_naming_only_a_person_wakes_no_agent() {
         "{ns:?}"
     );
 }
+
+// ---- card #432: a card's owner changes hands when both agree ----
+
+/// The open ownership item on `t` as `s` folds it.
+fn transfer_item(s: &Side, id: &str) -> Blocker {
+    s.c.get_task(id)
+        .unwrap()
+        .blockers
+        .into_iter()
+        .find(|b| b.open() && b.transfer)
+        .expect("an open ownership item")
+}
+
+fn pick(s: &Side, by: &str, id: &str, bid: &str, n: i64) -> Result<(Task, Vec<Notice>)> {
+    s.c.answer(
+        by,
+        id,
+        bid,
+        BlockerAnswer {
+            pick: n,
+            ..BlockerAnswer::default()
+        },
+    )
+}
+
+#[test]
+fn an_offered_card_moves_to_the_member_who_accepts() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let (_, item) = a.c.transfer_owner(P1, &t.id, "p2").unwrap();
+    assert!(item.transfer);
+    assert_eq!(item.on, for_person(P2), "the other side decides");
+    assert_eq!(
+        item.options
+            .iter()
+            .map(|o| o.answer.as_str())
+            .collect::<Vec<_>>(),
+        vec![OWNER_ACCEPT, OWNER_DECLINE]
+    );
+    sync(&a, &b);
+    assert_eq!(needs(&b, P2), vec![t.id.clone()], "it needs p2");
+    // The owner can't accept their own offer, and no agent can.
+    assert!(pick(&a, P1, &t.id, &item.id, 1).is_err());
+    assert!(
+        b.c.answer(
+            CARD2,
+            &t.id,
+            &item.id,
+            BlockerAnswer {
+                text: "accept".into(),
+                resolve: true,
+                ..BlockerAnswer::default()
+            }
+        )
+        .is_err()
+    );
+    pick(&b, P2, &t.id, &item.id, 1).unwrap();
+    sync(&a, &b);
+    for (s, who) in [(&a, "a"), (&b, "b")] {
+        let got = s.c.get_task(&t.id).unwrap();
+        assert_eq!(got.owner, "p2", "{who}: p2 owns it");
+        assert!(got.owner_transfer.is_none(), "{who}: nothing pending");
+        assert!(!got.blockers.iter().any(|x| x.open()), "{who}: item closed");
+    }
+    // From now on an unnamed question, and the done check, are p2's.
+    let (_, q) = ask(&a, CARD1, &t.id, "Which colour?", None).unwrap();
+    assert_eq!(q.on, for_person(P2));
+}
+
+#[test]
+fn a_declined_offer_leaves_the_owner() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let (_, item) = a.c.transfer_owner(P1, &t.id, "p2").unwrap();
+    sync(&a, &b);
+    pick(&b, P2, &t.id, &item.id, 2).unwrap();
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let got = s.c.get_task(&t.id).unwrap();
+        assert_eq!(got.owner, "", "still the creator's");
+        assert!(got.owner_transfer.is_none());
+        assert!(!got.blockers.iter().any(|x| x.open()));
+    }
+    let (_, q) = ask(&b, CARD2, &t.id, "Which colour?", None).unwrap();
+    assert_eq!(q.on, for_person(P1));
+    // A new offer can go out once that one is over.
+    a.c.transfer_owner(P1, &t.id, "p2").unwrap();
+}
+
+#[test]
+fn a_member_asks_for_a_card_and_the_owner_accepts() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    let (_, item) = b.c.transfer_owner(P2, &t.id, "").unwrap();
+    assert_eq!(item.on, for_person(P1), "the owner decides");
+    sync(&a, &b);
+    assert_eq!(transfer_item(&a, &t.id).id, item.id);
+    assert!(
+        a.c.transfer_owner(P1, &t.id, "p2").is_err(),
+        "one transfer at a time"
+    );
+    // The asker can't accept their own request.
+    assert!(pick(&b, P2, &t.id, &item.id, 1).is_err());
+    pick(&a, P1, &t.id, &item.id, 1).unwrap();
+    sync(&a, &b);
+    assert_eq!(a.c.get_task(&t.id).unwrap().owner, "p2");
+    assert_eq!(b.c.get_task(&t.id).unwrap().owner, "p2");
+    // p2 owns it now, so p1 asking for it back is a request to p2.
+    let (_, back) = a.c.transfer_owner(P1, &t.id, "").unwrap();
+    assert_eq!(back.on, for_person(P2));
+}
+
+#[test]
+fn an_owner_row_from_the_wrong_side_is_ignored() {
+    let (a, b, _) = two_people();
+    let t = shared_card(&a, &b);
+    // p2's device writes an accept with no offer, then an offer of a card
+    // it doesn't own: neither counts on either fold.
+    for op in ["accept", "offer"] {
+        b.st.append(
+            P2,
+            kinds::TASK_OWNER,
+            &raw(&format!(
+                r#"{{"taskId":"{}","op":"{op}","person":"p2","by":"person:p2","at":"2026-11-03T00:00:00Z"}}"#,
+                t.id
+            )),
+        )
+        .unwrap();
+    }
+    sync(&a, &b);
+    for s in [&a, &b] {
+        let got = s.c.get_task(&t.id).unwrap();
+        assert_eq!(got.owner, "");
+        assert!(got.owner_transfer.is_none());
+    }
+    // And p1's own device can't accept its own offer behind the tool's back.
+    let (_, item) = a.c.transfer_owner(P1, &t.id, "p2").unwrap();
+    a.st.append(
+        P1,
+        kinds::TASK_OWNER,
+        &raw(&format!(
+            r#"{{"taskId":"{}","op":"accept","person":"p2","blockerId":"{}","by":"person:p1","at":"2026-11-03T00:00:00Z"}}"#,
+            t.id, item.id
+        )),
+    )
+    .unwrap();
+    sync(&a, &b);
+    assert_eq!(b.c.get_task(&t.id).unwrap().owner, "");
+    assert_eq!(a.c.get_task(&t.id).unwrap().owner, "");
+}

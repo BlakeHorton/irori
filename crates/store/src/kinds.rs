@@ -147,6 +147,10 @@ kinds! {
     /// The person paused a card (card #207): its holders are stopped and
     /// their tools refused until Resume. The private log only.
     TASK_PAUSED = "task.paused" => Replicated, Refuses;
+    /// A shared card's owner changing hands (card #432):
+    /// `{taskId, op: offer|request|accept|decline, person, blockerId?, by, at}`.
+    /// `person` is who would own it. Shared boards only.
+    TASK_OWNER = "task.owner" => Replicated, Accepts;
     // capture
     CAPTURE_TURN = "capture.turn" => Replicated, Refuses;
     CAPTURE_EDIT = "capture.edit" => Replicated, Refuses;

@@ -203,6 +203,10 @@ pub struct Blocker {
     /// person's Done closes the card, and their words send it back.
     #[serde(skip_serializing_if = "omit")]
     pub done_check: bool,
+    /// An ownership offer or request (card #432): Accept moves the card to
+    /// the other person, Decline leaves it with its owner.
+    #[serde(skip_serializing_if = "omit")]
+    pub transfer: bool,
     /// The row's reason: Task.reason while this is the first open item.
     #[serde(skip)]
     pub(crate) reason: String,
@@ -233,6 +237,21 @@ crate::go_struct! {
         pub task: String = "task" "omit",
         pub note: String = "note",
     }
+}
+
+/// A shared card's owner changing hands, waiting on the other side
+/// (card #432).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerTransfer {
+    /// `offer` (the owner offers it to `person`) or `request` (`person`
+    /// asks the owner for it).
+    pub op: String,
+    /// Who would own it: a person id.
+    pub person: String,
+    /// The Accept/Decline item it raised.
+    #[serde(skip_serializing_if = "omit")]
+    pub blocker_id: String,
 }
 
 /// Where Irori's hand-out of an unheld card stands (card #82): it goes to
@@ -365,6 +384,13 @@ pub struct Task {
     #[serde(skip_serializing_if = "omit")]
     pub shared: bool,
     pub created_by: String,
+    /// The person who owns it on a shared board (card #432): decides Done
+    /// and answers its questions. Empty: its creator's person.
+    #[serde(skip_serializing_if = "omit")]
+    pub owner: String,
+    /// An ownership offer or request waiting on the other side (card #432).
+    #[serde(skip_serializing_if = "omit")]
+    pub owner_transfer: Option<OwnerTransfer>,
     #[serde(skip_serializing_if = "omit")]
     pub note: String,
     pub created_at: GoTime,
