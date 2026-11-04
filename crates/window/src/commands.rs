@@ -66,7 +66,7 @@ pub struct PolicyInput {
 #[specta::specta]
 pub async fn roster_agents(
     w: W<'_>,
-) -> R<Typed<Vec<coord::roster::AgentCard>, Vec<ts::AgentCard>>> {
+) -> R<Typed<Vec<crate::roster::RosterAgent>, Vec<ts::AgentCard>>> {
     Ok(Typed::new(w.agents()))
 }
 
@@ -1303,6 +1303,14 @@ pub async fn agents_set(w: W<'_>, change: AgentsChange) -> R<AgentsSettings> {
     w.agents_set(change)
 }
 
+/// The person's "Offer it cards" on one of their terminal agents (card
+/// #453): the app only, never a tool. Spawned agents are refused.
+#[tauri::command]
+#[specta::specta]
+pub async fn agents_offer_set(w: W<'_>, key: String, on: bool) -> R<()> {
+    blocking(&w, move |w| w.agents_offer_set(&key, on)).await
+}
+
 /// Every agent Irori started that is still running, or is starting.
 #[tauri::command]
 #[specta::specta]
@@ -1618,6 +1626,7 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             term_list,
             agents_settings,
             agents_set,
+            agents_offer_set,
             agents_end,
             agents_running,
             desk_list,

@@ -295,6 +295,9 @@ impl Fold {
     /// repeated kicks) or the card no longer needs an agent.
     pub(crate) fn request_spawn(&mut self, by: &str, a: SpawnAsk) -> Result<Option<i64>> {
         let by = caller(by)?;
+        if a.step.is_empty() && a.subtask.is_empty() {
+            self.spawn_now.remove(&a.task_id);
+        }
         if !PERMISSION_MODES.contains(&a.permission_mode.as_str()) {
             return Err(bad_state(format!(
                 "a spawn needs an explicit permission mode, not {:?}",
@@ -476,6 +479,7 @@ impl Fold {
             .filter(|t| {
                 t.spawn_request().is_none_or(|s| {
                     s.op != SPAWN_FAILED
+                        || self.spawn_now.contains(&t.id)
                         || gotime::at_least(&now, &s.at, SPAWN_RETRY)
                         || gotime::before(&s.at, &t.updated_at)
                 })

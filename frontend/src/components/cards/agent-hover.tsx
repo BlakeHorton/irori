@@ -18,9 +18,12 @@ import {
 } from "@/lib/cards"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import { setAgentOffer } from "@/lib/agents"
 import { plainLine } from "@/lib/irori"
 import { useMedia } from "@/lib/media"
 import { errorText, talk } from "@/lib/talk"
+import { LiveRoster } from "@/lib/thread"
 
 // AgentCards is what an agent's hover card (card #104) and a #ref in text
 // read: the live cards and the threads, and how to open each (card #144).
@@ -117,6 +120,10 @@ function AgentSummary({
   const spawnedFor = cards.find((c) =>
     c.working.some((r) => r.key === who.key && r.spawned),
   )
+  // Card #453: a terminal agent takes offered work only with the person's
+  // "Offer it cards" on; an agent Irori started keeps its own rules.
+  const live = useContext(LiveRoster).get(who.key)
+  const spawned = !!spawnedFor || !!live?.spawned
   const tint = deviceVar(who.color)
   const device = who.device || who.where
   const state = gone
@@ -185,8 +192,58 @@ function AgentSummary({
       {!holding.length && !offered.length && !watching.length && (
         <p className="text-xs text-muted-foreground">No open cards.</p>
       )}
-      {!gone && !who.offline && who.live && <StopAgent who={who} />}
+      {!gone && !who.offline && who.live && (
+        <>
+          {live && !spawned && (
+            <OfferCards who={who} on={!!live.offersCards} />
+          )}
+          <StopAgent who={who} />
+        </>
+      )}
     </>
+  )
+}
+
+// OfferCards is the person's "Offer it cards" on a terminal agent (card
+// #453). The switch shows the change at once; roster:changed confirms it,
+// and an error puts it back.
+function OfferCards({ who, on }: { who: AgentRef; on: boolean }) {
+  const [want, setWant] = useState<boolean | null>(null)
+  const [error, setError] = useState("")
+  // The roster caught up: show it again.
+  if (want !== null && want === on) setWant(null)
+  const id = `offer-${who.key}`
+  const set = (v: boolean) => {
+    setWant(v)
+    setError("")
+    setAgentOffer(who.key, v).catch((err: unknown) => {
+      setWant(null)
+      setError(errorText(err))
+    })
+  }
+  return (
+    <div className="grid grid-cols-1 gap-1">
+      <div className="flex items-start justify-between gap-3">
+        <span className="grid min-w-0 gap-0.5">
+          <label htmlFor={id} className="cursor-pointer text-xs font-medium">
+            Offer it cards
+          </label>
+          <span id={`${id}-hint`} className="text-xs text-muted-foreground">
+            Irori hands it unheld cards, asks and threads when it's idle.
+            Off: it works only on what you give it.
+          </span>
+        </span>
+        <Switch
+          id={id}
+          size="sm"
+          checked={want ?? on}
+          aria-describedby={`${id}-hint`}
+          onCheckedChange={(v) => set(v)}
+          className="mt-0.5"
+        />
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   )
 }
 

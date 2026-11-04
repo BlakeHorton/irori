@@ -111,9 +111,22 @@ if ("scrollRestoration" in window.history)
 export function App() {
   const roster = useRoster()
   const desks = useDesks()
-  // Threads show "<agent> is working…" from the live roster (card #299).
+  // Threads show "<agent> is working…" from the live roster (card #299);
+  // an agent's hover card shows its "Offer it cards" (card #453).
   const liveRoster = useMemo(
-    () => new Map(roster.agents.map((a) => [a.key, { status: a.status, updatedAt: a.updatedAt, lastTool: a.lastTool }])),
+    () =>
+      new Map(
+        roster.agents.map((a) => [
+          a.key,
+          {
+            status: a.status,
+            updatedAt: a.updatedAt,
+            lastTool: a.lastTool,
+            offersCards: a.offersCards,
+            spawned: a.spawned,
+          },
+        ])
+      ),
     [roster.agents]
   )
   const { gone } = useGone()

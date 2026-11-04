@@ -90,6 +90,11 @@ pub struct AgentCard {
     pub last_tool: String,
     #[specta(optional)]
     pub device_state: String,
+    /// The person's "Offer it cards": Irori hands it unheld cards, asks and
+    /// threads when it's idle (card #453).
+    pub offers_cards: bool,
+    /// Irori started it for a card.
+    pub spawned: bool,
 }
 
 /// presence.ChangeKind.

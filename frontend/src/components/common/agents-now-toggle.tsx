@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 
 // AgentsNowToggle is "Agents answer now" (card #391) on a composer or a
 // thread: on, the agents it names are woken (and a thread naming nobody
-// goes to an idle agent); off, nobody is woken or handed it, and the
+// goes to an idle agent with Offer it cards on); off, nobody is woken or handed it, and the
 // agents in it read it at their next turn.
 export function AgentsNowToggle({
   on,
@@ -26,7 +26,7 @@ export function AgentsNowToggle({
       )}
       title={
         on
-          ? "Agents answer now: the agents it names are woken, and if it names none an idle agent picks it up"
+          ? "Agents answer now: the agents it names are woken, and if it names none an idle agent with Offer it cards on picks it up"
           : "Agents answer later: nobody is woken or handed it; agents in it read it at their next turn and may reply"
       }
     >

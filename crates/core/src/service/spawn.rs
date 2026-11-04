@@ -1332,6 +1332,8 @@ impl Services {
         if !note.trim().is_empty() {
             self.set_brief_answer(id, note);
         }
+        // His ask skips a failed spawn's wait (card #464).
+        self.coord.spawn_now(id);
         let person = format!("user:{}", self.device.id);
         if t.state != coord::SUBMITTED {
             self.coord

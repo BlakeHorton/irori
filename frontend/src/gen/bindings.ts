@@ -281,6 +281,11 @@ export const commands = {
 	agentsSettings: (boardId: string) => __TAURI_INVOKE<AgentsSettings>("agents_settings", { boardId }),
 	/**  The person changes them: the app only, never a tool. */
 	agentsSet: (change: AgentsChange) => __TAURI_INVOKE<AgentsSettings>("agents_set", { change }),
+	/**
+	 *  The person's "Offer it cards" on one of their terminal agents (card
+	 *  #453): the app only, never a tool. Spawned agents are refused.
+	 */
+	agentsOfferSet: (key: string, on: boolean) => __TAURI_INVOKE<null>("agents_offer_set", { key, on }),
 	/**  The person ends an agent Irori started: its hand-off, then stop and rm. */
 	agentsEnd: (key: string) => __TAURI_INVOKE<null>("agents_end", { key }),
 	/**  Every agent Irori started that is still running, or is starting. */
@@ -335,6 +340,13 @@ export type AgentCard = {
 	/**  The tool the session is running now (card #299). */
 	lastTool?: string,
 	deviceState?: string,
+	/**
+	 *  The person's "Offer it cards": Irori hands it unheld cards, asks and
+	 *  threads when it's idle (card #453).
+	 */
+	offersCards: boolean,
+	/**  Irori started it for a card. */
+	spawned: boolean,
 };
 
 /**

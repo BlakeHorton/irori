@@ -78,12 +78,12 @@ export function stateLine(t: ThreadSummary, why = ""): string {
     case "handed":
       return t.told.length
         ? `${displayName(t.told[t.told.length - 1])} is answering`
-        : "An idle agent is answering"
+        : "An agent is answering"
     case "resolved":
       return "Resolved"
     default:
       return t.told.length
-        ? `Waiting for ${t.told.map(displayName).join(", ")}; an idle agent answers after 45s`
+        ? `Waiting for ${t.told.map(displayName).join(", ")}; after 45s, an agent with Offer it cards on answers`
         : why || "Waiting for a free agent"
   }
 }
@@ -199,7 +199,7 @@ export function ThreadView({
         compact
         empty={
           t.state === "waiting" && t.agentsNow
-            ? "No answer yet. If nobody answers in 45s, an idle agent picks it up."
+            ? "No answer yet. If nobody answers in 45s, an agent with Offer it cards on picks it up."
             : t.agentsNow
               ? "No answer yet."
               : "No answer yet. Agents answer now is off: agents in it read it at their next turn."

@@ -707,12 +707,38 @@ fn modify_a_comment_before_it_is_read() {
     assert_eq!(item(&r).text, "use the blue one");
 }
 
+/// The person turns "Offer it cards" on for both of the rig's terminal
+/// agents (card #453), and the roster says so.
+fn offer_both(r: &Rig) {
+    for k in [&r.key_a, &r.key_b] {
+        r.w.agents_offer_set(k, true).unwrap();
+    }
+    let agents = r.w.agents();
+    for k in [&r.key_a, &r.key_b] {
+        let a = agents.iter().find(|a| &a.card.key == k).unwrap();
+        assert!(a.offers_cards && !a.spawned, "{k}");
+    }
+}
+
 /// Card #116: New card makes a card on the person's own board. Unpicked,
-/// Irori hands it to a free agent; picked, it goes to that agent.
+/// Irori hands it to a free agent; picked, it goes to that agent. Card
+/// #453: a terminal agent is free only with "Offer it cards" on.
 #[test]
 fn new_card_from_the_app() {
     use irori_window::new_card::NewCardInput;
     let r = Rig::new();
+    let unoffered =
+        r.w.create_card(NewCardInput {
+            title: "Nobody takes this".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(
+        unoffered.told.to.is_empty(),
+        "terminal agents without Offer it cards aren't handed it: {:?}",
+        unoffered.told
+    );
+    offer_both(&r);
     assert!(
         r.w.create_card(NewCardInput::default()).is_err(),
         "a title is needed"
@@ -796,6 +822,7 @@ fn a_thread_from_the_header_box() {
 fn files_with_a_thread_a_reply_and_a_new_card() {
     use base64::Engine as _;
     let r = Rig::new();
+    offer_both(&r);
     let t = held_task(&r);
     let ib = r.w.core.inbox();
     let up = |name: &str, body: &[u8]| irori_window::board::UploadFile {

@@ -1,6 +1,9 @@
 // Agent counts that match who a thread or ask can go to (card #172).
 // Irori hands work only to an agent whose roster status is exactly "idle"
-// on a device that isn't offline (coord asks.rs free_agents). Everything
+// on a device that isn't offline (coord asks.rs free_agents), and (card
+// #453) only to a terminal agent the person turned "Offer it cards" on
+// for: an idle agent without it, or one Irori started for a card, works
+// only on what it was given, so it isn't free. Everything
 // else that is around is working: "busy", and also "shell" (waiting on a
 // command it started, still on its card) or any other status Claude Code
 // reports. "unresponsive" (#110) is idle but not answering its wakes, so it
@@ -10,7 +13,19 @@
 // NOT_ANSWERING, #110).
 export const NotAnswering = "unresponsive"
 
-type Agent = { status: string; deviceState?: string | null; repoKey?: string }
+type Agent = {
+  status: string
+  deviceState?: string | null
+  repoKey?: string
+  offersCards?: boolean
+  spawned?: boolean
+}
+
+// takesOffers is whether Irori hands this agent unheld cards, asks and
+// threads at all (card #453).
+export function takesOffers(a: Agent): boolean {
+  return !!a.offersCards && !a.spawned
+}
 
 export type AgentCounts = {
   // Agents still around (not gone).
@@ -19,8 +34,11 @@ export type AgentCounts = {
   working: number
   // Of working: the ones waiting on a command they started.
   running: number
-  // Idle on an online device: who a thread or ask goes to.
+  // Idle on an online device with "Offer it cards" on: who a thread or
+  // ask goes to.
   free: number
+  // Idle on an online device, but not taking offered work (card #453).
+  ownWork: number
   // Idle, but their wakes went unread (#110).
   silent: number
   // On a device that is offline.
@@ -28,14 +46,24 @@ export type AgentCounts = {
 }
 
 export function agentCounts(agents: Agent[]): AgentCounts {
-  const c: AgentCounts = { total: 0, working: 0, running: 0, free: 0, silent: 0, offline: 0 }
+  const c: AgentCounts = {
+    total: 0,
+    working: 0,
+    running: 0,
+    free: 0,
+    ownWork: 0,
+    silent: 0,
+    offline: 0,
+  }
   for (const a of agents) {
     if (a.status === "gone") continue
     c.total++
     if (a.deviceState === "offline") c.offline++
     else if (a.status === NotAnswering) c.silent++
-    else if (a.status === "idle") c.free++
-    else {
+    else if (a.status === "idle") {
+      if (takesOffers(a)) c.free++
+      else c.ownWork++
+    } else {
       c.working++
       if (a.status === "shell") c.running++
     }
@@ -49,6 +77,7 @@ export function freeIn(agents: Agent[], repoKey = ""): number {
     (a) =>
       a.status === "idle" &&
       a.deviceState !== "offline" &&
+      takesOffers(a) &&
       (!repoKey || a.repoKey === repoKey)
   ).length
 }
@@ -59,6 +88,8 @@ export function freeIn(agents: Agent[], repoKey = ""): number {
 export function whyWaiting(agents: Agent[], repoKey = ""): string {
   const c = agentCounts(agents)
   if (c.total === 0) return "No agents are running."
+  if (!agents.some((a) => a.status !== "gone" && takesOffers(a)))
+    return "No agent takes offered work: Irori starts one on boards with spawning on, or turn on Offer it cards for an agent."
   if (c.free > 0) {
     if (repoKey && freeIn(agents, repoKey) === 0)
       return `${n(c.free, "agent is", "agents are")} idle, but none works in ${repoKey}.`
@@ -71,9 +102,10 @@ export function whyWaiting(agents: Agent[], repoKey = ""): string {
         ? `${c.working} working (${c.running} waiting on a command they started)`
         : `${c.working} working`
     )
+  if (c.ownWork > 0) parts.push(`${c.ownWork} idle, not taking offered work`)
   if (c.silent > 0) parts.push(`${c.silent} idle but not answering`)
   if (c.offline > 0) parts.push(`${c.offline} on an offline device`)
-  return `Nobody is free: ${parts.join(", ")}. The first to go idle answers it.`
+  return `Nobody is free: ${parts.join(", ")}. The first agent with Offer it cards on to go idle answers it.`
 }
 
 function n(k: number, one: string, many: string): string {

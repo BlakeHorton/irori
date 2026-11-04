@@ -1858,11 +1858,15 @@ fn a_board_card_skips_an_idle_agent_not_offered_cards() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     assert!(
-        !c.board_roster(&b1).iter().any(|a| c.private_key(&a.key) == r.key_b),
+        !c.board_roster(&b1)
+            .iter()
+            .any(|a| c.private_key(&a.key) == r.key_b),
         "beta was put on the board"
     );
     assert!(
-        !r.notices_to(&r.key_b).iter().any(|d| d.message.text.contains("handed it to you")),
+        !r.notices_to(&r.key_b)
+            .iter()
+            .any(|d| d.message.text.contains("handed it to you")),
         "beta was handed it"
     );
     assert!(!c.agent_offered(&r.key_b));

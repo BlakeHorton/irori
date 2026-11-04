@@ -137,7 +137,7 @@ pub fn start(w: Arc<Window>, stop: Cancel) -> Vec<JoinHandle<()>> {
                     Ok(Some(CoreEvent::Presence(ch))) => {
                         let payload = RosterChange {
                             change: *ch,
-                            agents: w.core.mesh_agents(),
+                            agents: w.agents(),
                         };
                         w.emit(EVENT_ROSTER_CHANGED, &payload);
                     }

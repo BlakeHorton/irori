@@ -6,9 +6,9 @@
 
 mod common;
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::collections::HashSet;
 
 use common::*;
 use coord::roster::AgentCard;
@@ -72,9 +72,8 @@ fn an_ask_naming_nobody_goes_only_to_an_agent_offered_cards() {
     let offered = Arc::new(RwLock::new(HashSet::new()));
     e.c = with_offers(&e, &offered);
     let agents = vec![idle(BOB, 20), idle(CAROL, 10)];
-    let (_, n) = e
-        .c
-        .post_ask(
+    let (_, n) =
+        e.c.post_ask(
             USER,
             NewAsk {
                 text: "Why is the build slow?".into(),
@@ -126,9 +125,18 @@ fn a_failed_spawn_waits_before_it_is_asked_for_again() {
         ..e.opts()
     });
     let t = e.c.create_task(USER, nt("Untrusted repo")).unwrap();
-    let g = e.c.request_spawn("irori", spawn_ask(&t.id)).unwrap().unwrap();
-    assert!(e.c.end_spawn("irori", &t.id, g, SPAWN_FAILED, "not trusted").unwrap());
-    assert!(e.c.cards_to_spawn().is_empty(), "not again on the next sweep");
+    let g =
+        e.c.request_spawn("irori", spawn_ask(&t.id))
+            .unwrap()
+            .unwrap();
+    assert!(
+        e.c.end_spawn("irori", &t.id, g, SPAWN_FAILED, "not trusted")
+            .unwrap()
+    );
+    assert!(
+        e.c.cards_to_spawn().is_empty(),
+        "not again on the next sweep"
+    );
     e.clk.add(secs(60));
     assert!(e.c.cards_to_spawn().is_empty());
     e.clk.add(SPAWN_RETRY);
@@ -145,8 +153,12 @@ fn a_failed_spawn_is_asked_for_again_once_the_card_changes() {
         ..e.opts()
     });
     let t = e.c.create_task(USER, nt("Untrusted repo")).unwrap();
-    let g = e.c.request_spawn("irori", spawn_ask(&t.id)).unwrap().unwrap();
-    e.c.end_spawn("irori", &t.id, g, SPAWN_FAILED, "not trusted").unwrap();
+    let g =
+        e.c.request_spawn("irori", spawn_ask(&t.id))
+            .unwrap()
+            .unwrap();
+    e.c.end_spawn("irori", &t.id, g, SPAWN_FAILED, "not trusted")
+        .unwrap();
     assert!(e.c.cards_to_spawn().is_empty());
     e.clk.add(secs(5));
     e.c.edit_task(
@@ -159,4 +171,33 @@ fn a_failed_spawn_is_asked_for_again_once_the_card_changes() {
     )
     .unwrap();
     assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
+}
+
+#[test]
+fn the_persons_start_skips_a_failed_spawns_wait() {
+    let mut e = Env::new();
+    let on = Arc::new(AtomicBool::new(true));
+    let f = on.clone();
+    e.c = e.reopen_with(Options {
+        spawning: Some(Arc::new(move || f.load(Ordering::SeqCst))),
+        ..e.opts()
+    });
+    let t = e.c.create_task(USER, nt("Trust and start")).unwrap();
+    let g =
+        e.c.request_spawn("irori", spawn_ask(&t.id))
+            .unwrap()
+            .unwrap();
+    e.c.end_spawn("irori", &t.id, g, SPAWN_FAILED, "not trusted")
+        .unwrap();
+    assert!(e.c.cards_to_spawn().is_empty());
+    e.c.spawn_now(&t.id);
+    assert_eq!(ids(&e.c.cards_to_spawn()), std::slice::from_ref(&t.id));
+    // Once asked for again, a second failure waits as before.
+    let g =
+        e.c.request_spawn("irori", spawn_ask(&t.id))
+            .unwrap()
+            .unwrap();
+    e.c.end_spawn("irori", &t.id, g, SPAWN_FAILED, "not trusted")
+        .unwrap();
+    assert!(e.c.cards_to_spawn().is_empty());
 }

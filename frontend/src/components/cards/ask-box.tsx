@@ -19,7 +19,8 @@ import { errorText } from "@/lib/talk"
 // AskBox is the box over the grid that starts a thread (cards #116, #134):
 // a question or a conversation with the room, not a card. The agents on
 // the cards it names (#12) and the agents it @mentions hear it first,
-// woken; if none answers within 45s, one idle agent gets it. It shows in
+// woken; if none answers within 45s, one free agent gets it (idle, with
+// Offer it cards on: card #453). It shows in
 // the Threads panel, where the person replies and resolves it. Enter
 // sends, Shift+Enter is a new line. Files go with it (card #124): pick them
 // with the clip, drop them on the box, or paste a screenshot. On a shared
@@ -85,8 +86,8 @@ export function AskBox({
         text: !now
           ? "Sent. Agents answer now was off: no agent was woken or handed it."
           : n === 0
-            ? "Sent. No agent is free yet: the first to go idle answers it."
-            : `Sent to ${n === 1 ? "1 agent" : `${n} agents`}. If nobody answers in 45s, an idle agent picks it up.`,
+            ? "Sent. No agent is free yet: it goes to the first idle agent with Offer it cards on."
+            : `Sent to ${n === 1 ? "1 agent" : `${n} agents`}. If nobody answers in 45s, an agent with Offer it cards on picks it up.`,
       })
       setText("")
       setMentions([])

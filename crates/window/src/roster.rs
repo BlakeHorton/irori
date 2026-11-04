@@ -21,7 +21,18 @@ pub struct RosterChange {
     #[specta(type = ts::Change)]
     pub change: presence::Change,
     #[specta(type = Vec<ts::AgentCard>)]
-    pub agents: Vec<coord::roster::AgentCard>,
+    pub agents: Vec<RosterAgent>,
+}
+
+/// One roster card as the window sends it: the card plus the person's
+/// "Offer it cards" switch and whether Irori spawned it (card #453).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RosterAgent {
+    #[serde(flatten)]
+    pub card: coord::roster::AgentCard,
+    pub offers_cards: bool,
+    pub spawned: bool,
 }
 
 /// A recently gone Claude Code session the person may revive.
@@ -106,8 +117,41 @@ fn err(e: store::Error) -> String {
 impl Window {
     /// RosterService.Agents: the live agents on every one of the person's
     /// devices.
-    pub fn agents(&self) -> Vec<coord::roster::AgentCard> {
-        self.core.mesh_agents()
+    pub fn agents(&self) -> Vec<RosterAgent> {
+        self.core
+            .mesh_agents()
+            .into_iter()
+            .map(|card| RosterAgent {
+                offers_cards: self.core.agent_offered(&card.key),
+                spawned: self.core.agent_spawned(&card.key),
+                card,
+            })
+            .collect()
+    }
+
+    /// The person turns "Offer it cards" on or off for one of their
+    /// terminal agents (card #453); spawned agents are refused. Nothing
+    /// in presence moves, so this sends roster:changed itself.
+    pub fn agents_offer_set(&self, key: &str, on: bool) -> Result<(), String> {
+        self.core.set_agent_offer(key, on)?;
+        let card = self.core.mesh_agents().into_iter().find(|a| a.key == key);
+        // presence's card is the same JSON as the roster's.
+        let card = card
+            .and_then(|c| serde_json::to_value(c).ok())
+            .and_then(|v| serde_json::from_value::<AgentCard>(v).ok());
+        if let Some(card) = card {
+            self.emit(
+                crate::events::EVENT_ROSTER_CHANGED,
+                &RosterChange {
+                    change: presence::Change {
+                        kind: presence::ChangeKind::Updated,
+                        card,
+                    },
+                    agents: self.agents(),
+                },
+            );
+        }
+        Ok(())
     }
 
     /// RosterService.Recent: the newest log rows, newest first.

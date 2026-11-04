@@ -207,6 +207,9 @@ pub type BusyFn = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// Whether a person owned the board at a row's place (`None`: now).
 pub type OwnerAtFn = Arc<dyn Fn(&str, Option<&RowPos>) -> bool + Send + Sync>;
 
+/// Whether an agent takes work Irori hands out ([`Options::offers`]).
+pub type OffersFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 /// The tag of another board in a space, by id (card #392); None for an id
 /// the space doesn't hold.
 pub type BoardTagFn = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -279,7 +282,7 @@ pub struct Options {
     /// cards" for it; everything else reaches it only when given (assign,
     /// a mention, its own board_join or ask_claim). Read when the hand-out
     /// runs. `None`: every agent does, as before.
-    pub offers: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
+    pub offers: Option<OffersFn>,
     /// The board's "Agents per card" (spawned agents §3, part 7): how many
     /// agents a card may have at once, its lead and helpers, unless the
     /// card sets its own. `None` or below 1: [`DEFAULT_AGENTS_PER_CARD`].
@@ -1226,6 +1229,11 @@ impl Coord {
     /// pending already or the card no longer needs an agent.
     pub fn request_spawn(&self, by: &str, a: SpawnAsk) -> Result<Option<i64>> {
         self.lock().request_spawn(by, a)
+    }
+    /// The person asked for card `id`'s agent now: a failed spawn is asked
+    /// for again at the next sweep, not after [`SPAWN_RETRY`].
+    pub fn spawn_now(&self, id: &str) {
+        self.lock().spawn_now.insert(id.to_string());
     }
     /// Ends request `generation` of card `id` (its own part) as failed or
     /// canceled with `reason`.

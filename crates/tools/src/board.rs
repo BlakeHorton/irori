@@ -1278,7 +1278,9 @@ fn main_red_line(s: &Inner, c: &Caller, co: &coord::Coord, rt: &Task, made: bool
             );
         }
         _ if co.spawning() => out += " Irori starts an agent for it.",
-        _ => out += " No agent takes offered cards now: it waits for one the person offers cards to.",
+        _ => {
+            out += " No agent takes offered cards now: it waits for one the person offers cards to."
+        }
     }
     out
 }

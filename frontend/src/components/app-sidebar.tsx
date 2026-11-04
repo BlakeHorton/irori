@@ -455,7 +455,8 @@ export function AppSidebar({
             title={[
               `${n.total} ${n.total === 1 ? "agent" : "agents"}`,
               `${n.working} working${n.running ? ` (${n.running} waiting on a command they started)` : ""}`,
-              `${n.free} free: idle, so a thread or card can go to them`,
+              `${n.free} free: idle with Offer it cards on, so a thread or card can go to them`,
+              n.ownWork && `${n.ownWork} idle, working only on what you give them`,
               n.silent && `${n.silent} idle but not answering`,
               n.offline && `${n.offline} on an offline device`,
             ]

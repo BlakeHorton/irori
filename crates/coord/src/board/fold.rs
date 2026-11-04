@@ -224,7 +224,7 @@ pub struct Fold {
     /// See [`super::Options::spawning`].
     pub(crate) spawning: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     /// See [`super::Options::offers`].
-    pub(crate) offers: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
+    pub(crate) offers: Option<super::OffersFn>,
     /// See [`super::Options::agents_per_card`].
     pub(crate) agents_per_card: Option<Arc<dyn Fn() -> i64 + Send + Sync>>,
     /// See [`super::Options::outside_leases`].
@@ -232,6 +232,10 @@ pub struct Fold {
     /// "task/blocker" of external waits on this person's private leases
     /// (card #339), noted while one of them was held.
     pub(crate) outside_waits: std::cell::RefCell<HashSet<String>>,
+    /// Cards whose failed spawn the person asked to start again now
+    /// (Trust and start, "Start an agent"): past [`super::SPAWN_RETRY`]'s
+    /// wait (card #464). Dropped once a new request is written.
+    pub(crate) spawn_now: HashSet<String>,
     /// On a board, the device that wrote each card's task.created: it runs
     /// the card's hand-out (card #174).
     pub(crate) origin: HashMap<String, String>,
@@ -400,6 +404,7 @@ impl Fold {
             agents_per_card: o.agents_per_card,
             outside_leases: o.outside_leases,
             outside_waits: Default::default(),
+            spawn_now: HashSet::new(),
             origin: HashMap::new(),
             dev_person: o.device_person,
             tag_fn: o.tag,

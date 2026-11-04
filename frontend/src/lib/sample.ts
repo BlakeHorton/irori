@@ -21,6 +21,8 @@ type Seed = {
   text: string
   repoKey: string
   mode: string
+  // The person's "Offer it cards" (card #453).
+  offers?: boolean
 }
 
 const seeds: Seed[] = [
@@ -36,6 +38,7 @@ const seeds: Seed[] = [
     text: "Sample text. Running the example test suite; two of five sample cases pass so far.",
     repoKey: "github.com/sample-org/example-app",
     mode: "bypassPermissions",
+    offers: true,
   },
   {
     session: "sample02-synthetic-session",
@@ -49,6 +52,7 @@ const seeds: Seed[] = [
     text: "Sample text. <b>Tags</b> and **markdown** stay literal here because agent text is untrusted.",
     repoKey: "github.com/sample-org/example-app",
     mode: "bypassPermissions",
+    offers: true,
   },
   {
     session: "sample03-synthetic-session",
@@ -62,6 +66,7 @@ const seeds: Seed[] = [
     text: "Sample text. The placeholder docs are drafted; waiting for a made-up review.",
     repoKey: "root:5a3c1e0b9d7f2a4c6e8b0d1f3a5c7e9b1d3f5a7c",
     mode: "default",
+    offers: true,
   },
   {
     session: "sample04-synthetic-session",
@@ -109,6 +114,7 @@ export function sampleRoster(now: Date) {
             transcript: "",
             repoKey: s.repoKey,
             permissionMode: s.mode,
+            offersCards: !!s.offers,
           })
       )
 

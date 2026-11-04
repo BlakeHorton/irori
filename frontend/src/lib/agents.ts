@@ -115,6 +115,14 @@ export async function endAgent(key: string): Promise<void> {
   await AgentsService.End(key)
 }
 
+// setAgentOffer turns "Offer it cards" on or off for one of the person's
+// terminal agents (card #453); roster:changed brings the new value. The
+// preview has no agents to change.
+export async function setAgentOffer(key: string, on: boolean): Promise<void> {
+  if (!inWails()) return
+  await AgentsService.OfferSet(key, on)
+}
+
 // sampleRunning is the preview's Running agents list: two working, one
 // on another device, one starting.
 function sampleRunning(): RunningAgent[] {

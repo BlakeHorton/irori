@@ -320,7 +320,7 @@ fn inbox_send_reply_and_policy() {
 #[test]
 fn roster_and_devices() {
     let r = Rig::new();
-    let keys: BTreeSet<String> = r.w.agents().into_iter().map(|a| a.key).collect();
+    let keys: BTreeSet<String> = r.w.agents().into_iter().map(|a| a.card.key).collect();
     assert!(keys.contains(&r.key_a) && keys.contains(&r.key_b));
     assert!(!r.w.recent(5).unwrap().is_empty());
     assert!(r.w.gone(0).unwrap().is_empty());

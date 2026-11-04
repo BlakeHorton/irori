@@ -235,6 +235,9 @@ export type LiveAgent = {
   status: string
   updatedAt?: string
   lastTool?: string
+  // Card #453: the person's "Offer it cards", and whether Irori started it.
+  offersCards?: boolean
+  spawned?: boolean
 }
 export const LiveRoster = createContext<ReadonlyMap<string, LiveAgent>>(
   new Map()

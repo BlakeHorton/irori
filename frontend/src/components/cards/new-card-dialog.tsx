@@ -30,8 +30,9 @@ import { errorText } from "@/lib/talk"
 
 // NewCardDialog is New card (card #116): the person makes a card straight
 // from the header, no ask. Title is all it needs; goal, done-when and the
-// repo say more. With nobody picked, Irori hands it to one free agent (the
-// one idle longest), as it does any unheld card; picking an agent hands it
+// repo say more. With nobody picked, Irori starts an agent for it where
+// spawning is on, else hands it to one free agent (idle with Offer it
+// cards on, card #453), as it does any unheld card; picking an agent hands it
 // to that one, woken. Files go with it (card #124): the clip, a drop on
 // the form, or a screenshot pasted in any field; they go on the card as
 // its first comment and with the hand-out. onMade gets the new card's id.
@@ -132,7 +133,7 @@ export function NewCardDialog({
             <DialogDescription>
               {board
                 ? `Goes on ${plainLine(board.tag)}#, visible to ${board.people.map(plainLine).join(", ")}. Nobody picked: it waits there for someone on the board to take it up.`
-                : "Work for an agent to pick up. Nobody picked: Irori hands it to the free agent idle longest."}
+                : "Work for an agent to pick up. Nobody picked: Irori starts an agent for it, or with spawning off hands it to an idle agent with Offer it cards on."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
