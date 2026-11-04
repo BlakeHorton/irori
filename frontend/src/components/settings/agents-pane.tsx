@@ -7,6 +7,7 @@
 import { useId } from "react"
 
 import { ChoiceSelect } from "@/components/common/choice-select"
+import { PermissionsSection } from "@/components/settings/agent-permissions"
 import { Switch } from "@/components/ui/switch"
 import { effortLabel, modelLabel, useAgents } from "@/lib/agents"
 
@@ -76,6 +77,7 @@ export function AgentsPane({ open }: { open: boolean }) {
           />
         </div>
       </section>
+      <PermissionsSection open={open} />
       {error && <p className="text-[12.5px] text-destructive">{error}</p>}
     </div>
   )
