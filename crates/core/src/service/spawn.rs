@@ -499,6 +499,10 @@ pub(crate) struct SpawnState {
     /// decision 1 (a)): on in the desktop app, which can start agents; off
     /// in a headless Core and in tests.
     pub private_default: Arc<std::sync::atomic::AtomicBool>,
+    /// Held while the store's rows and the maps above are brought in line
+    /// (a reload, or the person's write): a sweep that listed the rows
+    /// before his write must not put the old setting back after it.
+    pub rows: Mutex<()>,
 }
 
 impl SpawnState {
@@ -549,6 +553,7 @@ pub(crate) fn load_spawn(st: &Store, s: &SpawnState) {
         limit: store::MAX_LIST_LIMIT,
         ..Filter::default()
     };
+    let _rows = s.rows.lock().unwrap_or_else(|e| e.into_inner());
     let Ok(evs) = st.list(&f) else { return };
     let mut on = HashMap::new();
     let mut caps = HashMap::new();
@@ -611,6 +616,7 @@ impl Services {
             by: format!("user:{}", self.device.id),
             at: (self.now)(),
         };
+        let rows = self.spawn.rows.lock().unwrap_or_else(|e| e.into_inner());
         self.store
             .append("user", kinds::SPAWN_SET, &row)
             .map_err(|e| e.to_string())?;
@@ -619,6 +625,7 @@ impl Services {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(s.board_id.clone(), s);
+        drop(rows);
         self.asks_kick.kick();
         Ok(())
     }
@@ -674,6 +681,7 @@ impl Services {
             by: format!("user:{}", self.device.id),
             at: (self.now)(),
         };
+        let rows = self.spawn.rows.lock().unwrap_or_else(|e| e.into_inner());
         self.store
             .append("user", kinds::SPAWN_CAP, &row)
             .map_err(|e| e.to_string())?;
@@ -682,6 +690,7 @@ impl Services {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(row.device, row.cap);
+        drop(rows);
         self.asks_kick.kick();
         Ok(())
     }
