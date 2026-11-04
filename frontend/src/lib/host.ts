@@ -382,3 +382,13 @@ export const TermService = {
   Ack: (id: number, seq: number) => done(commands.termAck(id, seq)),
   Close: (id: number) => done(commands.termClose(id)),
 }
+
+// Merge desks (card #417).
+export const DeskService = {
+  List: () => call(commands.deskList()),
+  Set: (s: B.DeskSettings) => done(commands.deskSet(s)),
+  Hold: (repoKey: string, pr: number, note: string, cleared: boolean) =>
+    done(commands.deskHold(repoKey, pr, note, cleared)),
+  Pause: (repoKey: string, paused: boolean) => done(commands.deskPause(repoKey, paused)),
+  Ok: (repoKey: string, pr: number, headSha: string) => done(commands.deskOk(repoKey, pr, headSha)),
+}

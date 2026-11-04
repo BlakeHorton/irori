@@ -11,6 +11,15 @@ import { PaletteJump } from "@/components/command-palette"
 import { useCommands } from "@/lib/commands"
 import { previewFlag } from "@/lib/preview"
 
+// OpenSettingsEvent opens Settings at a section from elsewhere in the
+// window (the merge desk's gear, card #417): dispatch it as a CustomEvent
+// whose detail is the section.
+export const OpenSettingsEvent = "irori:open-settings"
+
+export function openSettings(section: SettingsSection) {
+  window.dispatchEvent(new CustomEvent(OpenSettingsEvent, { detail: section }))
+}
+
 // SettingsMenu is the header's gear: it opens Settings (card #132), every
 // setting in one dialog with its sections down the left.
 export function SettingsMenu({ version }: { version?: string }) {
@@ -29,6 +38,15 @@ export function SettingsMenu({ version }: { version?: string }) {
     const close = () => setOpen(false)
     window.addEventListener(PaletteJump, close)
     return () => window.removeEventListener(PaletteJump, close)
+  }, [])
+  useEffect(() => {
+    const open = (e: Event) => {
+      const want = (e as CustomEvent<SettingsSection>).detail
+      if (settingsSections.some((s) => s.id === want)) setSection(want)
+      setOpen(true)
+    }
+    window.addEventListener(OpenSettingsEvent, open)
+    return () => window.removeEventListener(OpenSettingsEvent, open)
   }, [])
   // Settings and each of its sections in the palette (card #213).
   const show = (s: SettingsSection) => {

@@ -19,6 +19,7 @@ use crate::attachments::AttachmentInfo;
 use crate::board::{AnswerResult, AskRepo, CommentResult, TaskResult, UploadFile};
 use crate::boards::{BoardSettings, BoardSummary, SharePreview};
 use crate::cards::{CardDetail, CardMessage, CardSummary, DonePage, IdleReport};
+use crate::desk::{DeskSettings, DeskView};
 use crate::devices::{DeviceView, HomeServerView, PairStatus, RelayView};
 use crate::events::{CaptureChange, Empty};
 use crate::inbox::{InboxCounts, SendResult};
@@ -1194,6 +1195,43 @@ pub async fn voice_open_settings(w: W<'_>, code: String) -> R<()> {
     blocking(&w, move |w| w.voice_open_settings(&code)).await
 }
 
+// ---- merge desks (card #417) ----------------------------------------------
+
+/// Every merge desk in the person's log.
+#[tauri::command]
+#[specta::specta]
+pub async fn desk_list(w: W<'_>) -> R<Vec<DeskView>> {
+    Ok(w.desks())
+}
+
+/// The person sets up or changes a repo's merge desk.
+#[tauri::command]
+#[specta::specta]
+pub async fn desk_set(w: W<'_>, settings: DeskSettings) -> R<()> {
+    w.desk_set(settings)
+}
+
+/// The person holds a desk's PR, or with `cleared` lifts the hold.
+#[tauri::command]
+#[specta::specta]
+pub async fn desk_hold(w: W<'_>, repo_key: String, pr: i64, note: String, cleared: bool) -> R<()> {
+    w.desk_hold(&repo_key, pr, &note, cleared)
+}
+
+/// The person pauses or resumes a desk.
+#[tauri::command]
+#[specta::specta]
+pub async fn desk_pause(w: W<'_>, repo_key: String, paused: bool) -> R<()> {
+    w.desk_pause(&repo_key, paused)
+}
+
+/// The person okays an Outside PR at one head.
+#[tauri::command]
+#[specta::specta]
+pub async fn desk_ok(w: W<'_>, repo_key: String, pr: i64, head_sha: String) -> R<()> {
+    w.desk_ok(&repo_key, pr, &head_sha)
+}
+
 // ---- talk (card #389) -----------------------------------------------------
 
 /// Talk's list: channels, DMs and open threads, with unread counts.
@@ -1439,6 +1477,11 @@ pub(crate) fn builder() -> tauri_specta::Builder<tauri::Wry> {
             term_close,
             term_folders,
             term_list,
+            desk_list,
+            desk_set,
+            desk_hold,
+            desk_pause,
+            desk_ok,
         ])
         .typ::<RosterChange>()
         .typ::<CaptureChange>()

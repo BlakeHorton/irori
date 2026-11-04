@@ -242,6 +242,16 @@ export const commands = {
 	termClose: (id: number) => __TAURI_INVOKE<null>("term_close", { id }),
 	termFolders: (card: string) => __TAURI_INVOKE<Folder[]>("term_folders", { card }),
 	termList: (card: string) => __TAURI_INVOKE<TermInfo[]>("term_list", { card }),
+	/**  Every merge desk in the person's log. */
+	deskList: () => __TAURI_INVOKE<DeskView[]>("desk_list"),
+	/**  The person sets up or changes a repo's merge desk. */
+	deskSet: (settings: DeskSettings) => __TAURI_INVOKE<null>("desk_set", { settings }),
+	/**  The person holds a desk's PR, or with `cleared` lifts the hold. */
+	deskHold: (repoKey: string, pr: number, note: string, cleared: boolean) => __TAURI_INVOKE<null>("desk_hold", { repoKey, pr, note, cleared }),
+	/**  The person pauses or resumes a desk. */
+	deskPause: (repoKey: string, paused: boolean) => __TAURI_INVOKE<null>("desk_pause", { repoKey, paused }),
+	/**  The person okays an Outside PR at one head. */
+	deskOk: (repoKey: string, pr: number, headSha: string) => __TAURI_INVOKE<null>("desk_ok", { repoKey, pr, headSha }),
 };
 
 /* Types */
@@ -980,6 +990,103 @@ export type Delivery = {
 
 /**  inbox.DeliveryMode. */
 export type DeliveryMode = "wake" | "next_turn";
+
+/**  A PR's author card and trust (slice 2's read-only verdict). */
+export type DeskAuthorView = {
+	pr: number,
+	/**  The author card's id; "" none yet. */
+	card: string,
+	/**  Its short ref (`#12`, `wind#4`). */
+	cardRef: string,
+	/**  The agent behind it; "" none. */
+	agent: string,
+	/**  An Outside PR: never checked or merged until the person's OK. */
+	outside: boolean,
+};
+
+/**  One check line (§7). */
+export type DeskCheckLine = {
+	command: string,
+	paths?: string[],
+	/**  An agent key; "" the holder. */
+	runner?: string,
+	/**  `mac`, `windows`, `linux`; "" any. */
+	device?: string,
+};
+
+/**  A hold, a pause, an OK or the holder's run: one PR (0 for a pause). */
+export type DeskMark = {
+	pr: number,
+	/**  A hold's note; an OK's or a run's head sha. */
+	note: string,
+	headSha: string,
+	by: string,
+	at: string,
+};
+
+/**  How polling stands, on the device that polls. */
+export type DeskPollView = {
+	/**  Whether this device is the desk's poll device. */
+	here: boolean,
+	lastPollAt: string,
+	/**  Zero while GitHub can be asked. */
+	unreachableSince: string,
+	error: string,
+};
+
+/**  One open PR in the latest snapshot. */
+export type DeskPrView = {
+	number: number,
+	url: string,
+	title: string,
+	author: string,
+	isDraft: boolean,
+	headRefName: string,
+	headRefOid: string,
+	baseRefName: string,
+	mergeable: string,
+	mergeStateStatus: string,
+	/**  "" (none), `pending`, `failure` or `success`. */
+	checks: string,
+	createdAt: string,
+	updatedAt: string,
+};
+
+/**  A repo's desk settings (`repo.desk`). */
+export type DeskSettings = {
+	repoKey: string,
+	enabled: boolean,
+	takesPrs: boolean,
+	/**  The holder's agent key; "" unheld. */
+	holder?: string,
+	pollDevice?: string,
+	trusted?: string[],
+	checks?: DeskCheckLine[],
+	mergeMethod?: string,
+	perPrOk?: boolean,
+	by?: string,
+	at?: string,
+};
+
+/**  The poller's latest snapshot (`desk.prs`). */
+export type DeskSnapshotView = {
+	truncated: boolean,
+	prs: DeskPrView[],
+	at: string,
+};
+
+/**  One repo's desk. */
+export type DeskView = {
+	settings: DeskSettings,
+	prs?: DeskSnapshotView | null,
+	holds: DeskMark[],
+	paused?: DeskMark | null,
+	oks: DeskMark[],
+	run?: DeskMark | null,
+	poll: DeskPollView,
+	/**  Each PR in the snapshot: its author card and whether it is Outside. */
+	authors: DeskAuthorView[],
+};
 
 /**  One device in the dialog. */
 export type DeviceView = {

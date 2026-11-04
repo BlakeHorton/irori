@@ -13,6 +13,8 @@ export type Section =
   | { kind: "talk"; id: string }
   // tab: "" for Mine, else a shared board's tag.
   | { kind: "notes"; tab: string }
+  // A merge desk (card #417): "#desk", or "#desk/<repoKey>" for one repo.
+  | { kind: "desk"; repo: string }
   | { kind: "boards" }
   | { kind: "board"; id: string }
   | { kind: "profile" }
@@ -30,6 +32,9 @@ export function sectionFromHash(hash: string): Section {
   if (hash === "#notes") return { kind: "notes", tab: "" }
   const n = hash.match(/^#notes\/(.+)$/)
   if (n) return { kind: "notes", tab: decodeURIComponent(n[1]) }
+  if (hash === "#desk") return { kind: "desk", repo: "" }
+  const d = hash.match(/^#desk\/(.+)$/)
+  if (d) return { kind: "desk", repo: decodeURIComponent(d[1]) }
   const m = hash.match(/^#board\/(.+)$/)
   if (m) return { kind: "board", id: decodeURIComponent(m[1]) }
   return Home
@@ -40,6 +45,7 @@ export function sectionHash(s: Section): string {
   if (s.kind === "profile") return "#profile"
   if (s.kind === "talk") return s.id ? `#talk/${encodeURIComponent(s.id)}` : "#talk"
   if (s.kind === "notes") return s.tab ? `#notes/${encodeURIComponent(s.tab)}` : "#notes"
+  if (s.kind === "desk") return s.repo ? `#desk/${encodeURIComponent(s.repo)}` : "#desk"
   if (s.kind === "board") return `#board/${encodeURIComponent(s.id)}`
   return ""
 }
@@ -57,5 +63,6 @@ export function sameSection(a: Section, b: Section): boolean {
   if (a.kind === "board") return b.kind === "board" && a.id === b.id
   if (a.kind === "talk") return b.kind === "talk" && a.id === b.id
   if (a.kind === "notes") return b.kind === "notes" && a.tab === b.tab
+  if (a.kind === "desk") return b.kind === "desk" && a.repo === b.repo
   return true
 }

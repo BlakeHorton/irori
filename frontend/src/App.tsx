@@ -48,6 +48,9 @@ import { useNow, useRoster } from "@/lib/irori"
 import { previewFlag } from "@/lib/preview"
 import { onOpen } from "@/lib/settings"
 import { nameLookup, SystemKey, useGone, useHeld, useInbox } from "@/lib/talk"
+import { deskOn, deskQueue, inputsOf, useDesks } from "@/lib/desk"
+import { DeskPage } from "@/components/desk/desk-page"
+import { openSettings } from "@/components/settings/settings-menu"
 import { UpdateBanner } from "@/updater"
 import { useBoardView } from "@/components/canvas/switch"
 import { BoardHeaderBar, BoardPage } from "@/components/boards/board-page"
@@ -101,6 +104,7 @@ if ("scrollRestoration" in window.history)
 // filter and scroll where they were.
 export function App() {
   const roster = useRoster()
+  const desks = useDesks()
   // Threads show "<agent> is working…" from the live roster (card #299).
   const liveRoster = useMemo(
     () => new Map(roster.agents.map((a) => [a.key, { status: a.status, updatedAt: a.updatedAt, lastTool: a.lastTool }])),
@@ -539,6 +543,12 @@ export function App() {
         roster={roster}
         held={held.held.length}
         talk={threadList.filter(needsYou).length + unreadDms(conversations)}
+        desks={{
+          on: desks.desks.filter(deskOn).length,
+          needYou: desks.desks
+            .filter(deskOn)
+            .reduce((n, d) => n + deskQueue(inputsOf(d)).filter((l) => l.state === "outside").length, 0),
+        }}
         onHeld={() => openHeld("")}
         section={open ? null : section}
         notesWaiting={notesWaiting}
@@ -568,6 +578,8 @@ export function App() {
                   ? "Notes"
                 : section.kind === "profile"
                   ? "Profile"
+                : section.kind === "desk"
+                  ? "Merge desks"
                   : "Home"
         }
         bar={
@@ -638,6 +650,16 @@ export function App() {
               onSpace={setSpace}
             />
           </Scroll>
+        ) : section.kind === "desk" ? (
+          <DeskPage
+            desks={desks.desks}
+            open={section.repo}
+            onOpen={(repo) => go({ kind: "desk", repo })}
+            onOpenCard={openCard}
+            onSettings={() => openSettings("desks")}
+            nameOf={name}
+            now={now}
+          />
         ) : section.kind === "boards" ? (
           <Scroll>
             <BoardsPage

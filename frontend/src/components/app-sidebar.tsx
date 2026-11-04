@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react"
 import {
+  GitMergeIcon,
   HomeIcon,
   InboxIcon,
   LayoutGridIcon,
@@ -73,6 +74,7 @@ export function AppSidebar({
   held,
   onHeld,
   talk,
+  desks = { on: 0, needYou: 0 },
   section,
   notesWaiting = 0,
   boardsNeedYou,
@@ -91,6 +93,9 @@ export function AppSidebar({
   onHeld: () => void
   // Threads answered and waiting on the person (card #390), Talk's count.
   talk: number
+  // Merge desks that are on, and their Outside PRs waiting on the
+  // person's OK (card #417); the Desks item shows once one is on.
+  desks?: { on: number; needYou: number }
   // Where the window is; null on a card's page.
   section: Section | null
   // Notes agents proposed (or changes to live ones) waiting on the
@@ -351,6 +356,18 @@ export function AppSidebar({
           countTitle="Threads an agent answered and DMs you haven't read"
           onClick={() => go({ kind: "talk", id: "" })}
         />
+        {desks.on > 0 && (
+          <NavItem
+            icon={GitMergeIcon}
+            label="Merge desks"
+            folded={folded}
+            current={here({ kind: "desk", repo: "" })}
+            count={desks.needYou}
+            countTone="destructive"
+            countTitle="Outside PRs waiting on your OK"
+            onClick={() => go({ kind: "desk", repo: "" })}
+          />
+        )}
         <NavItem
           icon={NotebookPenIcon}
           label="Notes"

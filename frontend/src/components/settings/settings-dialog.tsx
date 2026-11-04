@@ -2,6 +2,7 @@ import { useId, useRef, useState, type ReactNode } from "react"
 import { useReducedMotion } from "@/lib/motion"
 import {
   BellIcon,
+  GitMergeIcon,
   InfoIcon,
   LaptopIcon,
   PaletteIcon,
@@ -13,6 +14,7 @@ import {
 import { InvitePanel, JoinInvite } from "@/components/boards/parts"
 import { ChoiceSelect } from "@/components/common/choice-select"
 import { DevicesPanel } from "@/components/settings/devices-panel"
+import { DesksPane } from "@/components/settings/desks-pane"
 import { AppearancePane } from "@/components/settings/appearance-pane"
 import { MaintenancePane } from "@/components/settings/maintenance-pane"
 import { Button } from "@/components/ui/button"
@@ -37,6 +39,7 @@ export type SettingsSection =
   | "appearance"
   | "devices"
   | "people"
+  | "desks"
   | "maintenance"
   | "app"
 
@@ -69,6 +72,12 @@ export const settingsSections: {
     label: "People and invites",
     icon: UsersIcon,
     hint: "Who is on your boards, and joining someone else's.",
+  },
+  {
+    id: "desks",
+    label: "Merge desks",
+    icon: GitMergeIcon,
+    hint: "One per repo: open PRs from GitHub, merged in turn by one agent.",
   },
   {
     id: "maintenance",
@@ -149,6 +158,7 @@ export function SettingsDialog({
           {here.id === "people" && (
             <PeoplePane onOpenBoard={() => onOpenChange(false)} />
           )}
+          {here.id === "desks" && <DesksPane open={open} />}
           {here.id === "maintenance" && <MaintenancePane />}
           {here.id === "app" && <AppPane open={open} version={version} />}
         </section>

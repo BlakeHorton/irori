@@ -19,6 +19,7 @@ mod cards;
 mod comment_edit;
 mod comments;
 mod desk;
+mod desk_person;
 mod error;
 mod fold;
 mod idle;
@@ -63,6 +64,7 @@ pub use desk::{
     DESK_LIMIT, Desk, DeskCheck, DeskHoldRow, DeskOkRow, DeskPauseRow, DeskPr, DeskPrsRow,
     DeskRunRow, MERGE_MERGE, MERGE_REBASE, MERGE_SQUASH, RepoDeskRow, github_repo, new_desk,
 };
+pub use desk_person::DESK_NOTE_MAX;
 pub use error::{Error, ErrorKind, Result};
 pub use fold::{
     FOLLOW_KINDS, Fold, LEFT_GONE, LEFT_REMOVED, MADE_KIND, REASON_CONFLICT, REASON_EXPIRED,
@@ -1196,6 +1198,28 @@ impl Coord {
         truncated: bool,
     ) -> Result<bool> {
         self.lock().record_desk_prs(repo_key, prs, truncated)
+    }
+
+    /// The person holds a desk's PR, or lifts the hold (card #417).
+    pub fn hold_desk_pr(
+        &self,
+        by: &str,
+        repo_key: &str,
+        pr: i64,
+        note: &str,
+        cleared: bool,
+    ) -> Result<()> {
+        self.lock().hold_desk_pr(by, repo_key, pr, note, cleared)
+    }
+
+    /// The person pauses or resumes a desk (card #417).
+    pub fn pause_desk(&self, by: &str, repo_key: &str, paused: bool) -> Result<()> {
+        self.lock().pause_desk(by, repo_key, paused)
+    }
+
+    /// The person okays an Outside PR at one head (card #417).
+    pub fn ok_desk_pr(&self, by: &str, repo_key: &str, pr: i64, head_sha: &str) -> Result<()> {
+        self.lock().ok_desk_pr(by, repo_key, pr, head_sha)
     }
 
     /// Every merge desk in this log, by repo key.

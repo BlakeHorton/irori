@@ -40,3 +40,12 @@ describe("Notes lives in the address (card #413)", () => {
     expect(sameSection({ kind: "notes", tab: "" }, { kind: "notes", tab: "mlg" })).toBe(false)
   })
 })
+
+describe("merge desks live in the address (card #417)", () => {
+  test("#desk is the first desk, #desk/<repoKey> one repo's", () => {
+    expect(sectionFromHash("#desk")).toEqual({ kind: "desk", repo: "" })
+    const s = { kind: "desk", repo: "remote:github.com/you/game-repo" } as const
+    expect(sectionFromHash(sectionHash(s))).toEqual(s)
+    expect(sameSection(s, { kind: "desk", repo: "" })).toBe(false)
+  })
+})
