@@ -132,6 +132,11 @@ pub struct Options {
     /// Lists a merge desk's open PRs on GitHub (card #415): the app passes
     /// [`crate::deskwatch::GhLister`]; `None` polls no desk.
     pub desk_lister: Option<Arc<dyn crate::deskwatch::PrLister>>,
+    /// Card #427: clear the `target/` of settled cards' worktrees on this
+    /// device ([`crate::buildclean`]) once untouched this long. The app
+    /// passes [`crate::buildclean::IDLE`]; `None` (tests, rehearsals)
+    /// never deletes a build.
+    pub clear_builds: Option<Duration>,
 }
 
 /// Go `core.ErrNoHomeServer`'s text.
@@ -233,6 +238,11 @@ struct Services {
     /// Card #415: who lists merge desks' PRs, and each desk's polling.
     desk_lister: Option<Arc<dyn crate::deskwatch::PrLister>>,
     desk_watch: crate::deskwatch::DeskWatch,
+    /// Card #427: whether to clear settled cards' builds, when it last
+    /// looked, and whether a pass is deleting now.
+    clear_builds: Option<Duration>,
+    builds_looked: Mutex<crate::buildclean::Looked>,
+    builds_busy: Arc<std::sync::atomic::AtomicBool>,
     members: Arc<Members>,
     names_kick: Arc<Kick>,
     /// This device's agents that stopped answering their wakes (#110).
@@ -1198,6 +1208,9 @@ impl Core {
             pr_watch: Default::default(),
             desk_lister: opts.desk_lister.clone(),
             desk_watch: Default::default(),
+            clear_builds: opts.clear_builds,
+            builds_looked: Default::default(),
+            builds_busy: Default::default(),
             members,
             names_kick: Kick::new(),
             answering,
@@ -3270,6 +3283,7 @@ impl Services {
     fn sweep_coord(self: &Arc<Self>) -> Result<(), String> {
         check_branch_waits(&self.coord);
         self.sweep_where();
+        self.sweep_builds();
         let (ns, err) = self.coord.sweep_notices_partial();
         let (asks, aerr) = self.coord.sweep_asks_partial(&self.ask_agents());
         for n in ns.iter().chain(asks.iter()) {
@@ -3472,6 +3486,65 @@ impl Services {
                     logf(format_args!("where {}: {e}", t.id));
                 }
             }
+        }
+    }
+}
+
+impl Services {
+    /// Card #427: when a card settles, and every [`crate::buildclean::EVERY`],
+    /// clears the `target/` of each settled card's worktree here that
+    /// nothing uses, on a thread of its own (a build folder takes a while
+    /// to delete).
+    fn sweep_builds(&self) {
+        let Some(idle) = self.clear_builds else {
+            return;
+        };
+        let last = self.builds_looked.lock().unwrap().listed;
+        if last.is_some_and(|t| t.elapsed() < crate::buildclean::LOOK) {
+            return;
+        }
+        if self.builds_busy.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let mut tasks = self.coord.list_tasks(&coord::TaskFilter::default());
+        for b in self.shown_boards() {
+            tasks.extend(b.coord().list_tasks(&coord::TaskFilter::default()));
+        }
+        let trees = crate::buildclean::settled_worktrees(&tasks, &self.device.id);
+        {
+            // At once when a card has just settled, else every EVERY (a
+            // build kept as recent may since have gone idle).
+            let mut l = self.builds_looked.lock().unwrap();
+            let now = Instant::now();
+            l.listed = Some(now);
+            if l.seen == trees
+                && l.cleared
+                    .is_some_and(|t| t.elapsed() < crate::buildclean::EVERY)
+            {
+                self.builds_busy.store(false, Ordering::SeqCst);
+                return;
+            }
+            l.cleared = Some(now);
+            l.seen.clone_from(&trees);
+        }
+        let busy = self.builds_busy.clone();
+        let spawned = std::thread::Builder::new()
+            .name("clear-builds".into())
+            .spawn(move || {
+                for w in trees {
+                    match crate::buildclean::clear(Path::new(&w), idle, SystemTime::now()) {
+                        Ok(crate::buildclean::Cleared::Gone) => {
+                            logf(format_args!("cleared {w}/target: its card is settled"));
+                        }
+                        Ok(crate::buildclean::Cleared::Kept(_)) => {}
+                        Err(e) => logf(format_args!("clear build {w}: {e}")),
+                    }
+                }
+                busy.store(false, Ordering::SeqCst);
+            });
+        if let Err(e) = spawned {
+            self.builds_busy.store(false, Ordering::SeqCst);
+            logf(format_args!("clear builds: {e}"));
         }
     }
 }

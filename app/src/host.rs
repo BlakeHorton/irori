@@ -85,6 +85,8 @@ pub fn options(
         pr_checker: Some(Arc::new(irori_core::prwatch::GhChecker)),
         // Card #415: list the open PRs of the merge desks this device polls.
         desk_lister: Some(Arc::new(irori_core::deskwatch::GhLister)),
+        // Card #427: settled cards' worktrees don't keep their target/.
+        clear_builds: Some(irori_core::buildclean::IDLE),
         ..Options::default()
     };
     if offline() {
@@ -95,6 +97,7 @@ pub fn options(
         opts.no_home = true;
         opts.pr_checker = None;
         opts.desk_lister = None;
+        opts.clear_builds = None;
     }
     Ok(opts)
 }
